@@ -1,7 +1,7 @@
 import { GarminConnect } from "garmin-connect";
 import * as fs from "fs";
 import * as path from "path";
-import { ExtractedActivities, ExerciseSet } from "./types";
+import { ExtractedActivities, ExerciseSet, GarminWorkoutSummary, PlannedWorkout, WeeklyWorkoutPlan } from "./types";
 import { generateMockActivities, normalizeActivityType as normalizeMockActivityType, loadLastActivitiesFromDisk } from "./mocks.setup";
 
 class GarminExtractor {
@@ -9,6 +9,10 @@ class GarminExtractor {
   private password: string;
   private client: GarminConnect;
   private mockMode: boolean = false;
+
+  private get clientAny(): any {
+    return this.client as any;
+  }
 
   constructor(email: string, password: string, mockMode: boolean = false) {
     this.email = email;
@@ -20,6 +24,15 @@ class GarminExtractor {
       username: email,
       password: password
     });
+  }
+
+  private async ensureAuthenticated(): Promise<boolean> {
+    if (this.mockMode) {
+      console.log("🔓 Mock mode: Skipping authentication");
+      return true;
+    }
+
+    return this.authenticate();
   }
 
   /**
@@ -294,6 +307,214 @@ class GarminExtractor {
     lastWeekEnd.setHours(23, 59, 59, 999);
     
     return { weekStart: lastWeekStart, weekEnd: lastWeekEnd };
+  }
+
+  /**
+   * Get the start and end of next week (Monday-Sunday)
+   */
+  private getNextWeekDates(): { weekStart: Date; weekEnd: Date } {
+    const { weekStart } = this.getLastWeekDates();
+    const nextWeekStart = new Date(weekStart);
+    nextWeekStart.setDate(weekStart.getDate() + 7);
+    nextWeekStart.setHours(0, 0, 0, 0);
+
+    const nextWeekEnd = new Date(nextWeekStart);
+    nextWeekEnd.setDate(nextWeekStart.getDate() + 6);
+    nextWeekEnd.setHours(23, 59, 59, 999);
+
+    return { weekStart: nextWeekStart, weekEnd: nextWeekEnd };
+  }
+
+  private shiftDate(dateString: string, days: number): string {
+    const date = new Date(dateString);
+    if (Number.isNaN(date.getTime())) {
+      return dateString;
+    }
+
+    date.setDate(date.getDate() + days);
+    return date.toISOString().split("T")[0];
+  }
+
+  private validateWorkoutPlan(plan: WeeklyWorkoutPlan): void {
+    if (!plan || !plan.weekStart || !plan.weekEnd || !Array.isArray(plan.workouts)) {
+      throw new Error("Invalid workout plan: missing weekStart, weekEnd, or workouts");
+    }
+
+    plan.workouts.forEach((workout, index) => {
+      if (!workout.workoutName) {
+        throw new Error(`Invalid workout plan: workout name missing at index ${index}`);
+      }
+    });
+  }
+
+  /**
+   * Fetch workouts from Garmin
+   */
+  async fetchWorkouts(): Promise<GarminWorkoutSummary[]> {
+    try {
+      console.log("📥 Fetching workouts from Garmin...");
+
+      const authenticated = await this.ensureAuthenticated();
+      if (!authenticated) {
+        throw new Error("Failed to authenticate with Garmin");
+      }
+
+      const workouts = await this.clientAny.getWorkouts?.();
+      if (!workouts) {
+        throw new Error("getWorkouts is not available on this Garmin client");
+      }
+      console.log(`✅ Retrieved ${workouts.length} workouts`);
+
+      return workouts.map((workout: any) => ({
+        workoutId: workout.workoutId,
+        workoutName: workout.workoutName || workout.workoutName?.name || "Unnamed Workout",
+        workoutType: workout.workoutType,
+        description: workout.description,
+      }));
+    } catch (error: any) {
+      console.error("❌ Failed to fetch workouts:", error.message);
+      return [];
+    }
+  }
+
+  /**
+   * Export workouts from Garmin to JSON file
+   */
+  async exportWorkoutsToFile(outputPath: string = "./data/workouts.json"): Promise<void> {
+    const workouts = await this.fetchWorkouts();
+
+    // Ensure directory exists
+    const dir = path.dirname(outputPath);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+
+    fs.writeFileSync(outputPath, JSON.stringify(workouts, null, 2));
+    console.log(`✅ Workouts saved to ${outputPath}`);
+  }
+
+  /**
+   * Export next week's workout plan template to a temp file
+   */
+  async exportNextWeekPlanTemp(outputPath: string = "./data/next-week.workouts.tmp.json"): Promise<void> {
+    const workouts = await this.fetchWorkouts();
+    const { weekStart, weekEnd } = this.getNextWeekDates();
+
+    const plan: WeeklyWorkoutPlan = {
+      generatedAt: new Date().toISOString(),
+      weekStart: weekStart.toISOString().split("T")[0],
+      weekEnd: weekEnd.toISOString().split("T")[0],
+      source: "garmin-workouts-template",
+      workouts: workouts.map((workout) => ({
+        workoutId: workout.workoutId,
+        workoutName: workout.workoutName,
+        workoutType: workout.workoutType,
+        description: workout.description,
+        scheduledDate: undefined,
+      })),
+    };
+
+    // Ensure directory exists
+    const dir = path.dirname(outputPath);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+
+    fs.writeFileSync(outputPath, JSON.stringify(plan, null, 2));
+    console.log(`✅ Next-week workout template saved to ${outputPath}`);
+  }
+
+  /**
+   * Import workout plan from JSON file
+   */
+  async importWorkoutPlanFromFile(inputPath: string): Promise<WeeklyWorkoutPlan> {
+    const raw = fs.readFileSync(inputPath, "utf-8");
+    const plan = JSON.parse(raw) as WeeklyWorkoutPlan;
+    this.validateWorkoutPlan(plan);
+    return plan;
+  }
+
+  /**
+   * Copy a workout plan to next week (shift dates by 7 days)
+   */
+  async copyWorkoutPlanToNextWeek(inputPath: string, outputPath: string = "./data/next-week.workouts.tmp.json"): Promise<void> {
+    const plan = await this.importWorkoutPlanFromFile(inputPath);
+    const shifted: WeeklyWorkoutPlan = {
+      ...plan,
+      generatedAt: new Date().toISOString(),
+      weekStart: this.shiftDate(plan.weekStart, 7),
+      weekEnd: this.shiftDate(plan.weekEnd, 7),
+      source: "copy-last-week",
+      workouts: plan.workouts.map((workout) => ({
+        ...workout,
+        scheduledDate: workout.scheduledDate ? this.shiftDate(workout.scheduledDate, 7) : undefined,
+      })),
+    };
+
+    const dir = path.dirname(outputPath);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+
+    fs.writeFileSync(outputPath, JSON.stringify(shifted, null, 2));
+    console.log(`✅ Next-week workout plan saved to ${outputPath}`);
+  }
+
+  /**
+   * Schedule workouts from a plan on Garmin
+   */
+  async scheduleWorkoutPlan(plan: WeeklyWorkoutPlan): Promise<void> {
+    const authenticated = await this.ensureAuthenticated();
+    if (!authenticated) {
+      throw new Error("Failed to authenticate with Garmin");
+    }
+
+    this.validateWorkoutPlan(plan);
+
+    if (!this.clientAny.scheduleWorkout) {
+      throw new Error("scheduleWorkout is not available on this Garmin client");
+    }
+
+    for (const workout of plan.workouts) {
+      if (!workout.scheduledDate) {
+        console.warn(`⚠️  Skipping workout without scheduledDate: ${workout.workoutName}`);
+        continue;
+      }
+
+      const scheduleDate = new Date(workout.scheduledDate);
+      if (Number.isNaN(scheduleDate.getTime())) {
+        console.warn(`⚠️  Invalid scheduledDate for workout: ${workout.workoutName}`);
+        continue;
+      }
+
+      let workoutId = workout.workoutId;
+
+      if (!workoutId && workout.workoutType === "running" && workout.distanceMeters) {
+        try {
+          const created = await this.clientAny.addRunningWorkout?.(
+            workout.workoutName,
+            workout.distanceMeters,
+            workout.description || ""
+          );
+          workoutId = created?.workoutId;
+        } catch (error: any) {
+          console.warn(`⚠️  Failed to create running workout: ${workout.workoutName} (${error.message})`);
+          continue;
+        }
+      }
+
+      if (!workoutId) {
+        console.warn(`⚠️  Missing workoutId for workout: ${workout.workoutName}`);
+        continue;
+      }
+
+      try {
+        await this.clientAny.scheduleWorkout({ workoutId }, scheduleDate);
+        console.log(`✅ Scheduled workout: ${workout.workoutName} on ${workout.scheduledDate}`);
+      } catch (error: any) {
+        console.warn(`⚠️  Failed to schedule workout: ${workout.workoutName} (${error.message})`);
+      }
+    }
   }
 
   /**

@@ -9,6 +9,10 @@ Extract your recent activities from Garmin and update your next week's workout u
 - Extract recent activities from Garmin account
 - Save activities to JSON file
 - Update next week's workout using AI
+- Export workouts from Garmin to JSON
+- Generate a temporary next-week workout plan file for manual edits
+- Copy a workout plan to next week (shift dates by 7 days)
+- Schedule a workout plan to Garmin calendar
 - Comprehensive test suite with unit and integration tests
 - Mock mode for testing without real Garmin credentials
 - **Session cookie authentication** (works even with 2FA enabled)
@@ -75,12 +79,12 @@ To save raw activity data for debugging (saves first activity as `-raw.json`):
 npm run extract-activities -- --raw
 ```
 
-To extract **Self Evaluation** (workout ratings) and other detailed data:
-```bash
-npm run extract-activities 10 -- --detailed
-```
+Detailed mode is enabled by default and fetches complete activity details including self evaluation. This is slower (~1 second per activity) to avoid rate limiting.
 
-**⚠️ Note**: The `--detailed` flag fetches complete activity details including self evaluation. This is slower (~1 second per activity) to avoid rate limiting.
+To disable detailed mode:
+```bash
+npm run extract-activities 10 -- --no-detailed
+```
 
 **Requirements**:
 - `.env` file with `GARMIN_EMAIL` and `GARMIN_PASSWORD`
@@ -101,6 +105,50 @@ npm run extract-activities -- --mock
 ```
 
 This generates realistic test data for development and testing purposes.
+
+## Workouts (Import/Export & Planning)
+
+### Export Workouts from Garmin
+
+Export your Garmin workouts list to JSON:
+
+```bash
+npm run extract-activities -- --export-workouts
+```
+
+Custom output path:
+
+```bash
+npm run extract-activities -- --export-workouts --workouts-output ./data/workouts.json
+```
+
+### Generate a Temporary Next-Week Plan (Editable)
+
+Create a temp plan file you can edit manually before scheduling:
+
+```bash
+npm run extract-activities -- --export-next-week-temp
+```
+
+Custom output path:
+
+```bash
+npm run extract-activities -- --export-next-week-temp --plan-output ./data/next-week.workouts.tmp.json
+```
+
+### Copy Last Week Plan to Next Week (Shift +7 Days)
+
+```bash
+npm run extract-activities -- --copy-plan-next-week ./data/last-week.plan.json
+```
+
+### Schedule a Plan to Garmin Calendar
+
+After editing your temp plan JSON file, schedule it to Garmin:
+
+```bash
+npm run extract-activities -- --schedule-from-plan ./data/next-week.workouts.tmp.json
+```
 
 ## Testing
 

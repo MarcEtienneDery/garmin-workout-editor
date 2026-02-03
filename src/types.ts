@@ -60,4 +60,28 @@ export interface ExtractedActivities {
   activities: GarminActivity[];
 }
 
+export interface GarminWorkoutSummary {
+  workoutId: number | string;
+  workoutName: string;
+  workoutType?: string;
+  description?: string;
+}
+
+export interface PlannedWorkout {
+  workoutId?: number | string;
+  workoutName: string;
+  workoutType?: string;
+  description?: string;
+  distanceMeters?: number;
+  scheduledDate?: string; // ISO date (YYYY-MM-DD)
+}
+
+export interface WeeklyWorkoutPlan {
+  generatedAt: string;
+  weekStart: string;          // ISO date of week start
+  weekEnd: string;            // ISO date of week end
+  workouts: PlannedWorkout[];
+  source?: string;
+}
+
 export default GarminActivity;
