@@ -2,6 +2,7 @@ import { GarminConnect } from "garmin-connect";
 import * as fs from "fs";
 import * as path from "path";
 import { ExtractedActivities, ExerciseSet } from "./types";
+import { generateMockActivities, normalizeActivityType as normalizeMockActivityType, loadLastActivitiesFromDisk } from "./mocks.setup";
 
 class GarminExtractor {
   private email: string;
@@ -55,7 +56,7 @@ class GarminExtractor {
         date.setDate(date.getDate() - daysAgo);
         const timestamp = date.toISOString();
         const typeKey = seed.activityType?.typeKey || seed.activityType;
-        const normalizedType = this.normalizeActivityType(typeKey);
+      const normalizedType = normalizeMockActivityType(typeKey);
         const variance = 0.9 + Math.random() * 0.2; // 0.9-1.1
 
         const durationSeed = seed.duration || seed.elapsedDuration || 1800;
@@ -262,7 +263,7 @@ class GarminExtractor {
       console.log(`📥 Fetching last ${limit} activities from Garmin...`);
 
       if (this.mockMode) {
-        return this.generateMockActivities(limit);
+        return generateMockActivities(limit);
       }
 
       // Use the garmin-connect library's getActivities method
@@ -306,18 +307,6 @@ class GarminExtractor {
       console.error("❌ Failed to fetch activities:", error.message);
       return [];
     }
-  }
-
-  /**
-   * Normalize activity type to our categories
-   */
-  private normalizeActivityType(rawType: string | undefined): 'running' | 'strength_training' | 'cycling' | 'swimming' | 'other' {
-    const type = (rawType || '').toLowerCase();
-    if (type.includes('run') || type.includes('trail')) return 'running';
-    if (type.includes('strength') || type.includes('weight')) return 'strength_training';
-    if (type.includes('cycl') || type.includes('bik')) return 'cycling';
-    if (type.includes('swim') || type.includes('pool')) return 'swimming';
-    return 'other';
   }
 
   /**
@@ -428,7 +417,7 @@ class GarminExtractor {
         return activity;
       }
 
-      const activityType = this.normalizeActivityType(activity.activityType?.typeKey || activity.activityType);
+      const activityType = normalizeMockActivityType(activity.activityType?.typeKey || activity.activityType);
       
       // Base fields for all activity types
       const base = {

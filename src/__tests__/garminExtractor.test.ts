@@ -1,9 +1,3 @@
-import GarminExtractor from "../garminExtractor";
-import * as fs from "fs";
-import * as path from "path";
-import * as os from "os";
-import { GarminConnect } from "garmin-connect";
-
 jest.mock("garmin-connect", () => ({
   GarminConnect: jest.fn().mockImplementation(() => ({
     login: jest.fn().mockResolvedValue(true),
@@ -13,11 +7,11 @@ jest.mock("garmin-connect", () => ({
   })),
 }));
 
-const getMockClient = (): any => {
-  const mock = GarminConnect as unknown as jest.Mock;
-  const instance = mock.mock.results[mock.mock.results.length - 1]?.value;
-  return instance;
-};
+import GarminExtractor from "../garminExtractor";
+import * as fs from "fs";
+import * as path from "path";
+import * as os from "os";
+import { getMockClient, normalizeActivityType } from "../mocks.setup";
 
 describe("GarminExtractor", () => {
   let tempDir: string;
@@ -233,12 +227,11 @@ describe("GarminExtractor", () => {
 
   describe("Helper Methods", () => {
     it("should normalize activity types", () => {
-      const normalize = (extractor as any).normalizeActivityType.bind(extractor);
-      expect(normalize("trail running")).toBe("running");
-      expect(normalize("strength_training")).toBe("strength_training");
-      expect(normalize("cycling")).toBe("cycling");
-      expect(normalize("swim")).toBe("swimming");
-      expect(normalize("unknown"))
+      expect(normalizeActivityType("trail running")).toBe("running");
+      expect(normalizeActivityType("strength_training")).toBe("strength_training");
+      expect(normalizeActivityType("cycling")).toBe("cycling");
+      expect(normalizeActivityType("swim")).toBe("swimming");
+      expect(normalizeActivityType("unknown"))
         .toBe("other");
     });
 
