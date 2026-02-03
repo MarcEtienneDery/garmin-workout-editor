@@ -2,6 +2,7 @@ node_modules/
 .vscode/
 coverage/
 dist/
+data/
 .env
 *.log
 .DS_Store

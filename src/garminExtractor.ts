@@ -1,326 +1,42 @@
-import axios, { AxiosInstance } from "axios";
+import { GarminConnect } from "garmin-connect";
 import * as fs from "fs";
 import * as path from "path";
-import { CookieJar } from "tough-cookie";
-import { ExtractedActivities } from "./types";
+import { ExtractedActivities, ExerciseSet } from "./types";
 
 class GarminExtractor {
   private email: string;
   private password: string;
-  private client: AxiosInstance;
-  private SESSION_ID: string | null = null;
+  private client: GarminConnect;
   private mockMode: boolean = false;
-  private cookies: { [key: string]: string } = {};
-  private cookieJar: CookieJar;
-
-  // Garmin API endpoints
-  private readonly GARMIN_BASE_URL =
-    "https://www.garmin.com";
-  private readonly GARMIN_SSO_URL =
-    "https://sso.garmin.com/sso";
-  private readonly GARMIN_SIGNIN_URL =
-    "https://sso.garmin.com/sso/signin";
-  private readonly GARMIN_CONNECT_API_URL =
-    "https://connect.garmin.com/modern/proxy/activitylist-service/activities/search/activities";
 
   constructor(email: string, password: string, mockMode: boolean = false) {
     this.email = email;
     this.password = password;
     this.mockMode = mockMode;
-    this.cookieJar = new CookieJar();
 
-    this.client = axios.create({
-      withCredentials: true,
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept": "application/json, text/plain, */*",
-        "Accept-Language": "en-US,en;q=0.9",
-      },
+    // Create a new Garmin Connect Client
+    this.client = new GarminConnect({
+      username: email,
+      password: password
     });
-
-    // Add request interceptor to add cookies
-    this.client.interceptors.request.use(async (config) => {
-      const url = config.url;
-      if (url) {
-        const cookieString = await this.getCookieStringForUrl(url);
-        if (cookieString) {
-          config.headers.Cookie = cookieString;
-        }
-      }
-      return config;
-    });
-
-    // Add response interceptor to capture and store cookies
-    this.client.interceptors.response.use(
-      async (response) => {
-        const setCookieHeader = response.headers["set-cookie"];
-        const url = response.config.url;
-        if (setCookieHeader && url) {
-          const cookies = Array.isArray(setCookieHeader)
-            ? setCookieHeader
-            : [setCookieHeader];
-          for (const cookie of cookies) {
-            try {
-              await this.cookieJar.setCookie(cookie, url);
-            } catch (e) {
-              // Cookie parsing might fail for some cookies, that's ok
-            }
-          }
-        }
-        return response;
-      },
-      (error) => Promise.reject(error)
-    );
   }
 
   /**
-   * Get cookies for a specific URL from the cookie jar
-   */
-  private async getCookieStringForUrl(url: string): Promise<string> {
-    try {
-      const cookies = await this.cookieJar.getCookies(url);
-      return cookies.map(c => `${c.key}=${c.value}`).join("; ");
-    } catch (e) {
-      return "";
-    }
-  }
-
-  /**
-   * Get the current cookies as a Cookie header string
-   */
-  private getCookieString(): string {
-    return Object.entries(this.cookies)
-      .map(([name, value]) => `${name}=${value}`)
-      .join("; ");
-  }
-
-  /**
-   * Log response details for debugging
-   */
-  private logResponseDebug(label: string, response: any): void {
-    console.log(`\n  🔍 DEBUG [${label}]:`);
-    console.log(`     Status: ${response.status}`);
-    console.log(`     Headers: ${JSON.stringify(Object.keys(response.headers)).substring(0, 100)}`);
-    console.log(`     Data type: ${typeof response.data}`);
-    if (typeof response.data === "string") {
-      const preview = response.data.substring(0, 200).replace(/\n/g, " ");
-      console.log(`     Data preview: ${preview}`);
-      // Log error messages if present
-      if (response.data.includes("Invalid") || response.data.includes("invalid")) {
-        console.log("     ⚠️  Response contains 'Invalid'");
-      }
-      if (response.data.includes("error") || response.data.includes("Error")) {
-        console.log("     ⚠️  Response contains error");
-      }
-      if (response.data.includes("MFA") || response.data.includes("2fa")) {
-        console.log("     ⚠️  Response mentions MFA/2FA");
-      }
-    } else if (response.data && typeof response.data === "object") {
-      console.log(`     Data keys: ${Object.keys(response.data).slice(0, 5).join(", ")}`);
-      if (response.data.error) {
-        console.log(`     Error: ${response.data.error}`);
-      }
-    }
-  }
-
-  /**
-   * Authenticate with Garmin using SSO
+   * Authenticate with Garmin Connect
    */
   async authenticate(): Promise<boolean> {
     try {
-      console.log("🔐 Authenticating with Garmin...");
+      console.log("🔐 Authenticating with Garmin Connect...");
       
-      // Check if we have a session cookie provided directly
-      const sessionCookie = process.env.GARMIN_SESSION_COOKIE;
-      if (sessionCookie) {
-        console.log("  ✓ Using provided session cookie");
-        try {
-          // Set the cookie in the jar
-          await this.cookieJar.setCookie(`sessionCookie=${sessionCookie}`, "https://connect.garmin.com");
-        } catch (e) {
-          // Cookie might not parse, but that's ok
-        }
-        
-        // Test if the session works
-        const testResponse = await this.client.get(
-          "https://connect.garmin.com/modern/proxy/activitylist-service/activities/search/activities?limit=1",
-          {
-            headers: {
-              "Cookie": `sessionCookie=${sessionCookie}`,
-              "X-Requested-With": "XMLHttpRequest",
-            },
-            validateStatus: () => true,
-          }
-        );
-
-        if (testResponse.status === 200 && typeof testResponse.data !== "string") {
-          console.log("✅ Session cookie authentication successful!");
-          return true;
-        }
-        if (testResponse.status === 200 && typeof testResponse.data === "string" && !testResponse.data.includes("<!DOCTYPE")) {
-          console.log("✅ Session cookie authentication successful!");
-          return true;
-        }
-        console.warn("  ⚠️  Session cookie didn't work, trying normal auth...");
-      }
-
-      // Try new authentication method first (modern Garmin Connect)
-      console.log("  🔄 Attempting modern authentication...");
-      const modernAuthSuccess = await this.tryModernAuthentication();
-      if (modernAuthSuccess) {
-        console.log("✅ Authentication successful!");
-        return true;
-      }
-
-      // Fall back to legacy SSO if modern fails
-      console.log("  🔄 Falling back to legacy SSO...");
-      return await this.tryLegacySSO();
+      await this.client.login();
+      
+      // Verify authentication by getting user profile
+      const userProfile = await this.client.getUserProfile();
+      console.log(`✅ Successfully authenticated as: ${userProfile.userName}`);
+      
+      return true;
     } catch (error: any) {
       console.error("❌ Authentication error:", error.message);
-      return false;
-    }
-  }
-
-  /**
-   * Try modern Garmin Connect authentication
-   */
-  private async tryModernAuthentication(): Promise<boolean> {
-    try {
-      // Step 1: Get the main Garmin Connect page (initialize cookies)
-      const initResponse = await this.client.get("https://connect.garmin.com/modern", {
-        validateStatus: () => true,
-      });
-      console.log(`     Initialized session (status: ${initResponse.status})`);
-
-      // Step 2: Try direct API authentication using the new endpoint
-      const authUrl = "https://connect.garmin.com/modern/proxy/auth/login";
-      const credentials = {
-        login: this.email,
-        password: this.password,
-        rememberMe: true,
-      };
-
-      const authResponse = await this.client.post(authUrl, JSON.stringify(credentials), {
-        headers: {
-          "Content-Type": "application/json",
-          "X-Requested-With": "XMLHttpRequest",
-        },
-        validateStatus: () => true,
-      });
-
-      console.log(`     Auth endpoint response: ${authResponse.status}`);
-      this.logResponseDebug("Modern auth", authResponse);
-
-      if (authResponse.status === 200) {
-        // Check if we got a valid response
-        if (typeof authResponse.data === "object" && authResponse.data.uid) {
-          console.log(`     ✓ Authenticated as UID: ${authResponse.data.uid}`);
-          return true;
-        } else if (typeof authResponse.data === "string" && authResponse.data.includes("uid")) {
-          console.log("     ✓ Authentication successful");
-          return true;
-        }
-      }
-
-      return false;
-    } catch (e) {
-      console.log(`     Modern auth failed: ${e}`);
-      return false;
-    }
-  }
-
-  /**
-   * Try legacy SSO authentication
-   */
-  private async tryLegacySSO(): Promise<boolean> {
-    try {
-      // Step 1: Initialize session by visiting connect.garmin.com
-      const initResponse = await this.client.get("https://connect.garmin.com/modern", {
-        validateStatus: () => true,
-      });
-      console.log(`     Initialized Garmin Connect (status: ${initResponse.status})`);
-
-      // Step 2: Get the signin page - this is crucial to get initial cookies
-      console.log(`     Getting SSO signin page...`);
-      const signInPageResponse = await this.client.get(this.GARMIN_SIGNIN_URL, {
-        validateStatus: () => true,
-      });
-      console.log(`     Got signin page (status: ${signInPageResponse.status})`);
-
-      // Wait a moment before posting to let server settle
-      await new Promise(r => setTimeout(r, 500));
-
-      // Step 3: Now post credentials - the cookies from the signin page should be included via the interceptor
-      const paramSets: Array<Record<string, string>> = [
-        {
-          email: this.email,
-          password: this.password,
-          embed: "true",
-          service: "https://connect.garmin.com/modern",
-        },
-        {
-          email: this.email,
-          password: this.password,
-          embed: "true",
-          service: "https://connect.garmin.com",
-        },
-      ];
-
-      for (let i = 0; i < paramSets.length; i++) {
-        const params = new URLSearchParams(paramSets[i]);
-        console.log(`     Trying SSO variant ${i + 1}...`);
-
-        const loginResponse = await this.client.post(this.GARMIN_SIGNIN_URL, params, {
-          headers: {
-            "Content-Type": "application/x-www-form-urlencoded",
-            "Referer": this.GARMIN_SIGNIN_URL,
-            "Origin": "https://sso.garmin.com",
-          },
-          maxRedirects: 0,
-          validateStatus: () => true,
-        });
-
-        console.log(`       Login response: ${loginResponse.status}`);
-        
-        if (loginResponse.status === 403) {
-          const errorCheck = loginResponse.data.includes("blocked") ? " (blocked)" : "";
-          console.log(`       ⚠️  Got 403${errorCheck}`);
-        }
-
-        if (loginResponse.status === 302) {
-          // 302 redirect usually means successful login
-          console.log(`     ✓ Got 302 redirect (success indicator)`);
-          return true;
-        }
-
-        if (loginResponse.status === 200) {
-          // Check if we actually got authenticated
-          const testResponse = await this.client.get(
-            "https://connect.garmin.com/modern/proxy/activitylist-service/activities/search/activities?limit=1",
-            {
-              headers: {
-                "X-Requested-With": "XMLHttpRequest",
-              },
-              validateStatus: () => true,
-            }
-          );
-
-          if (testResponse.status === 200 && typeof testResponse.data !== "string") {
-            console.log(`     ✓ SSO variant ${i + 1} successful - API accessible`);
-            return true;
-          }
-          if (testResponse.status === 200 && typeof testResponse.data === "string" && !testResponse.data.includes("<!DOCTYPE")) {
-            console.log(`     ✓ SSO variant ${i + 1} successful - got JSON`);
-            return true;
-          }
-        }
-      }
-
-      console.log("     All SSO variants failed");
-      return false;
-    } catch (e) {
-      console.log(`     Legacy SSO error: ${e}`);
       return false;
     }
   }
@@ -329,38 +45,219 @@ class GarminExtractor {
    * Generate mock activities for testing
    */
   private generateMockActivities(limit: number): any[] {
-    const activityTypes = ["running", "cycling", "swimming", "strength"];
+    const seededActivities = this.loadLastActivitiesFromDisk();
+    if (seededActivities && seededActivities.length > 0) {
+      const activities: any[] = [];
+      for (let i = 0; i < limit; i++) {
+        const seed = seededActivities[i % seededActivities.length];
+        const daysAgo = Math.floor(Math.random() * 30);
+        const date = new Date();
+        date.setDate(date.getDate() - daysAgo);
+        const timestamp = date.toISOString();
+        const typeKey = seed.activityType?.typeKey || seed.activityType;
+        const normalizedType = this.normalizeActivityType(typeKey);
+        const variance = 0.9 + Math.random() * 0.2; // 0.9-1.1
+
+        const durationSeed = seed.duration || seed.elapsedDuration || 1800;
+        const base: any = {
+          id: `activity-${i + 1}`,
+          activityName: seed.activityName || "Mock Activity",
+          activityType: normalizedType,
+          startTime: timestamp,
+          duration: Math.max(600, Math.round(durationSeed * variance)),
+          avgHR: seed.avgHR ?? seed.averageHR ?? Math.floor(Math.random() * 40) + 110,
+          maxHR: seed.maxHR ?? seed.maxHR ?? Math.floor(Math.random() * 30) + 140,
+          trainingEffectLabel: seed.trainingEffectLabel || (normalizedType === "other" ? "UNKNOWN" : "AEROBIC_BASE"),
+          differenceBodyBattery: seed.differenceBodyBattery ?? -Math.floor(Math.random() * 12) - 3,
+          moderateIntensityMinutes: seed.moderateIntensityMinutes ?? Math.floor(Math.random() * 40),
+          vigorousIntensityMinutes: seed.vigorousIntensityMinutes ?? Math.floor(Math.random() * 20),
+          selfEvaluationFeeling: seed.selfEvaluationFeeling,
+          directWorkoutFeel: seed.directWorkoutFeel ?? seed.summaryDTO?.directWorkoutFeel,
+          directWorkoutRpe: seed.directWorkoutRpe ?? seed.summaryDTO?.directWorkoutRpe,
+        };
+
+        if (normalizedType === "running") {
+          const distanceSeed = seed.distance ?? 8;
+          base.distance = Math.round(distanceSeed * variance * 1000) / 1000;
+          base.avgPace = seed.avgPace ?? Math.round((5 + Math.random()) * 1000) / 1000;
+          base.avgCadence = seed.avgCadence ?? Math.floor(Math.random() * 15) + 170;
+          base.elevationGain = seed.elevationGain ?? Math.floor(Math.random() * 60) + 10;
+        } else if (normalizedType === "strength_training") {
+          const exerciseSets = seed.exerciseSets || [];
+          base.totalSets = seed.totalSets ?? exerciseSets.reduce((sum: number, ex: any) => sum + (ex.sets || 0), 0);
+          base.totalReps = seed.totalReps ?? exerciseSets.reduce((sum: number, ex: any) => sum + (ex.reps || 0), 0);
+          base.exerciseSets = exerciseSets;
+        }
+
+        activities.push(base);
+      }
+
+      return activities;
+    }
+
+    const activityTypes = ["strength_training", "running", "other"];
+    
+    // Strength exercises modeled after activities.json (weights in lbs)
+    const strengthExercises: { category: string; subCategory?: string; typicalWeight: number }[] = [
+      { category: "BENCH_PRESS", subCategory: "BARBELL_BENCH_PRESS", typicalWeight: 185 },
+      { category: "DEADLIFT", subCategory: "BARBELL_DEADLIFT", typicalWeight: 250 },
+      { category: "SQUAT", subCategory: "BARBELL_SQUAT", typicalWeight: 225 },
+      { category: "ROW", subCategory: "BARBELL_ROW", typicalWeight: 155 },
+      { category: "CURL", subCategory: "DUMBBELL_CURL", typicalWeight: 60 },
+      { category: "TRICEPS_EXTENSION", subCategory: "CABLE_OVERHEAD_TRICEPS_EXTENSION", typicalWeight: 80 },
+      { category: "HIP_RAISE", subCategory: "BARBELL_HIP_THRUST", typicalWeight: 185 },
+      { category: "LUNGE", subCategory: "DUMBBELL_SPLIT_SQUAT", typicalWeight: 60 },
+      { category: "SHOULDER_PRESS", subCategory: "DUMBBELL_SHOULDER_PRESS", typicalWeight: 55 },
+      { category: "PULL_UP", subCategory: "WEIGHTED_PULL_UP", typicalWeight: 10 },
+      { category: "PLANK", subCategory: "SIDE_PLANK", typicalWeight: 0 },
+      { category: "CARDIO", subCategory: "CARDIO", typicalWeight: 0 },
+    ];
+    
     const activities: any[] = [];
 
     for (let i = 0; i < limit; i++) {
       const daysAgo = Math.floor(Math.random() * 30);
       const date = new Date();
       date.setDate(date.getDate() - daysAgo);
+      const activityType = activityTypes[i % activityTypes.length];
 
-      activities.push({
+      const baseActivity: any = {
         activityId: `activity-${i + 1}`,
-        activityName: `Activity ${i + 1}`,
-        activityType: { typeKey: activityTypes[i % activityTypes.length] },
-        startTimeInSeconds: Math.floor(date.getTime() / 1000),
-        durationInSeconds: Math.floor(Math.random() * 3600) + 600, // 10 min - 1 hour
-        distance: Math.floor(Math.random() * 50000) / 1000, // 0-50km
-        calories: Math.floor(Math.random() * 800) + 200,
-        avgHeartRate: Math.floor(Math.random() * 100) + 100,
-        maxHeartRate: Math.floor(Math.random() * 200) + 150,
-        avgCadence: Math.floor(Math.random() * 180) + 80,
-        averageSpeed: Math.floor(Math.random() * 25000) / 1000,
-        maxSpeed: Math.floor(Math.random() * 40000) / 1000,
-        elevation: Math.floor(Math.random() * 500),
-      });
+        activityName:
+          activityType === "strength_training"
+            ? `Strength Session ${i + 1}`
+            : activityType === "running"
+            ? `Zone 2 Run ${i + 1}`
+            : `Yoga ${i + 1}`,
+        activityType: { typeKey: activityType },
+        startTimeGMT: date.toISOString(),
+        startTimeLocal: date.toISOString(),
+        duration:
+          activityType === "strength_training"
+            ? Math.floor(Math.random() * 1800) + 2400 // 40-70 min
+            : activityType === "running"
+            ? Math.floor(Math.random() * 1800) + 1500 // 25-55 min
+            : Math.floor(Math.random() * 900) + 1200, // 20-35 min
+        averageHR:
+          activityType === "other"
+            ? Math.floor(Math.random() * 20) + 70
+            : Math.floor(Math.random() * 40) + 110,
+        maxHR:
+          activityType === "other"
+            ? Math.floor(Math.random() * 15) + 95
+            : Math.floor(Math.random() * 30) + 140,
+        aerobicTrainingEffect:
+          activityType === "other"
+            ? 0.0
+            : Math.round((Math.random() * 3 + 2) * 10) / 10, // 2.0 - 5.0
+        anaerobicTrainingEffect:
+          activityType === "strength_training"
+            ? Math.round((Math.random() * 2 + 1) * 10) / 10 // 1.0 - 3.0
+            : 0.0,
+        trainingEffectLabel:
+          activityType === "strength_training"
+            ? "ANAEROBIC_CAPACITY"
+            : activityType === "running"
+            ? "AEROBIC_BASE"
+            : "UNKNOWN",
+        selfEvaluationFeeling: Math.floor(Math.random() * 5) + 1, // 1-5
+        directWorkoutFeel: Math.floor(Math.random() * 100),
+        directWorkoutRpe: Math.floor(Math.random() * 20) + 1,
+        differenceBodyBattery:
+          activityType === "other"
+            ? -Math.floor(Math.random() * 4) - 1
+            : -Math.floor(Math.random() * 12) - 3,
+        moderateIntensityMinutes:
+          activityType === "other" ? 0 : Math.floor(Math.random() * 40),
+        vigorousIntensityMinutes:
+          activityType === "running"
+            ? Math.floor(Math.random() * 60)
+            : activityType === "strength_training"
+            ? Math.floor(Math.random() * 15)
+            : 0,
+      };
+
+      // Add type-specific fields
+      if (activityType === "strength_training") {
+        const numExercises = Math.floor(Math.random() * 3) + 4; // 4-6 exercises
+        const usedIndices = new Set<number>();
+        const exerciseSets = [];
+
+        while (exerciseSets.length < numExercises && usedIndices.size < strengthExercises.length) {
+          const idx = Math.floor(Math.random() * strengthExercises.length);
+          if (usedIndices.has(idx)) continue;
+          usedIndices.add(idx);
+
+          const exercise = strengthExercises[idx];
+          const sets = Math.floor(Math.random() * 2) + 2; // 2-3 sets
+          const repsPerSet = Math.floor(Math.random() * 8) + 5; // 5-12 reps
+          const totalReps = sets * repsPerSet;
+          const weightLbs = exercise.typicalWeight > 0
+            ? Math.round(exercise.typicalWeight * (0.8 + Math.random() * 0.4))
+            : 0;
+          const maxWeight = weightLbs > 0 ? Math.round(weightLbs * 453.6) : 0; // tenths of grams
+          const volume = maxWeight > 0 ? sets * repsPerSet * maxWeight : 0;
+
+          exerciseSets.push({
+            category: exercise.category,
+            subCategory: exercise.subCategory,
+            sets,
+            reps: totalReps,
+            maxWeight,
+            volume,
+          });
+        }
+
+        baseActivity.totalSets = exerciseSets.reduce((sum, ex) => sum + ex.sets, 0);
+        baseActivity.totalReps = exerciseSets.reduce((sum, ex) => sum + ex.reps, 0);
+        baseActivity.summarizedExerciseSets = exerciseSets;
+      } else if (activityType === "running") {
+        baseActivity.distance = Math.floor(Math.random() * 6000) + 5000; // 5-11 km in meters
+        baseActivity.averageSpeed = Math.random() * 1.5 + 2.6; // 2.6-4.1 m/s
+        baseActivity.averageRunningCadenceInStepsPerMinute = Math.floor(Math.random() * 15) + 170;
+        baseActivity.elevationGain = Math.floor(Math.random() * 60) + 10;
+      }
+
+      activities.push(baseActivity);
     }
 
     return activities;
   }
 
   /**
+   * Load the last 4 activities from disk to seed mock data
+   */
+  private loadLastActivitiesFromDisk(): any[] | null {
+    try {
+      const activitiesPath = path.join(__dirname, "../data/activities.json");
+      if (fs.existsSync(activitiesPath)) {
+        const raw = fs.readFileSync(activitiesPath, "utf-8");
+        const parsed = JSON.parse(raw);
+        const activities = parsed?.activities || [];
+        return activities.slice(-4);
+      }
+    } catch (error) {
+      console.warn("⚠️  Could not load activities.json for mock seeding");
+    }
+
+    try {
+      const rawPath = path.join(__dirname, "../data/activities-raw.json");
+      if (fs.existsSync(rawPath)) {
+        const raw = fs.readFileSync(rawPath, "utf-8");
+        const parsed = JSON.parse(raw);
+        return parsed ? [parsed] : null;
+      }
+    } catch (error) {
+      console.warn("⚠️  Could not load activities-raw.json for mock seeding");
+    }
+
+    return null;
+  }
+
+  /**
    * Fetch recent activities from Garmin
    */
-  async fetchActivities(limit: number = 20): Promise<any[]> {
+  async fetchActivities(limit: number = 20, includeDetails: boolean = false): Promise<any[]> {
     try {
       console.log(`📥 Fetching last ${limit} activities from Garmin...`);
 
@@ -368,130 +265,271 @@ class GarminExtractor {
         return this.generateMockActivities(limit);
       }
 
-      // Use the correct Garmin Connect API endpoint
-      const response = await this.client.get(
-        this.GARMIN_CONNECT_API_URL,
-        {
-          params: {
-            limit: limit,
-            start: 0,
-          },
-          headers: {
-            "X-Requested-With": "XMLHttpRequest",
-            "NK": "NT", // Garmin Connect requires these headers
-            "Cookie": this.getCookieString(),
-            "Referer": "https://connect.garmin.com/modern/activities",
-          },
-          validateStatus: () => true,
-        }
-      );
-
-      console.log(`📊 API Response status: ${response.status}`);
+      // Use the garmin-connect library's getActivities method
+      const activities = await this.client.getActivities(0, limit);
       
-      // Debug: log response type and structure
-      if (response.status === 200) {
-        console.log(`📋 Response type: ${typeof response.data}, is Array: ${Array.isArray(response.data)}`);
-        if (typeof response.data === "string") {
-          console.log(`📄 Response preview: ${response.data.substring(0, 200)}`);
-        } else if (response.data && typeof response.data === "object") {
-          console.log(`📄 Response keys: ${Object.keys(response.data).join(", ")}`);
-        }
-      }
-
-      if (response.status === 200 && response.data) {
-        if (Array.isArray(response.data)) {
-          console.log(`✅ Retrieved ${response.data.length} activities`);
-          return response.data;
-        } else if (response.data.activities && Array.isArray(response.data.activities)) {
-          console.log(`✅ Retrieved ${response.data.activities.length} activities`);
-          return response.data.activities;
-        }
-      }
-
-      console.warn(
-        `⚠️  Unexpected response format (status ${response.status}), falling back to alternative endpoint...`
-      );
-      return await this.fetchActivitiesAlternative(limit);
-    } catch (error: any) {
-      console.warn(
-        "⚠️  Primary API failed, attempting alternative endpoint..."
-      );
-      return await this.fetchActivitiesAlternative(limit);
-    }
-  }
-
-  /**
-   * Alternative method to fetch activities (for testing/fallback)
-   */
-  private async fetchActivitiesAlternative(limit: number): Promise<any[]> {
-    try {
-      // Try with different API path variations
-      const alternatives = [
-        `https://connect.garmin.com/modern/proxy/activitylist-service/activities/search/activities?limit=${limit}&start=0`,
-        `https://www.garmin.com/proxy/activitylist-service/activities/search/activities?limit=${limit}&start=0`,
-        `https://connect.garmin.com/web-api/activities?limit=${limit}&start=0`,
-      ];
-
-      for (const url of alternatives) {
-        try {
-          const response = await this.client.get(url, {
-            headers: {
-              "X-Requested-With": "XMLHttpRequest",
-              "NK": "NT",
-              "Cookie": this.getCookieString(),
-              "Referer": "https://connect.garmin.com/modern/activities",
-            },
-            validateStatus: () => true,
-          });
-
-          console.log(`  Trying ${url.split("/").slice(-1)[0]}... (status: ${response.status})`);
-
-          if (response.status === 200 && response.data) {
-            const activities = Array.isArray(response.data) 
-              ? response.data 
-              : response.data.activities || [];
+      console.log(`✅ Retrieved ${activities.length} activities`);
+      
+      // Optionally fetch detailed info for each activity (includes self evaluation)
+      if (includeDetails) {
+        console.log(`📋 Fetching detailed info (including self evaluation) for ${activities.length} activities...`);
+        const detailedActivities = [];
+        
+        for (let i = 0; i < activities.length; i++) {
+          try {
+            const activity = activities[i];
+            const details = await this.client.getActivity({ activityId: activity.activityId });
             
-            if (activities.length > 0) {
-              console.log(`✅ Retrieved ${activities.length} activities from alternative endpoint`);
-              return activities;
+            // Merge basic activity data with detailed data
+            detailedActivities.push({
+              ...activity,
+              ...details
+            });
+            
+            console.log(`  ✓ ${i + 1}/${activities.length}: ${activity.activityName}`);
+            
+            // Add delay to avoid rate limiting (1 second between requests)
+            if (i < activities.length - 1) {
+              await new Promise(resolve => setTimeout(resolve, 1000));
             }
+          } catch (error: any) {
+            console.warn(`  ⚠️  Could not fetch details for activity ${activities[i].activityId}: ${error.message}`);
+            detailedActivities.push(activities[i]); // Use basic data if detailed fetch fails
           }
-        } catch (e) {
-          // Continue to next alternative
         }
+        
+        return detailedActivities;
       }
-
-      console.error("❌ Failed to fetch activities from all endpoints");
-      return [];
-    } catch (error) {
-      console.error("❌ Failed to fetch activities:", error);
+      
+      return activities;
+    } catch (error: any) {
+      console.error("❌ Failed to fetch activities:", error.message);
       return [];
     }
   }
 
   /**
-   * Transform raw Garmin activities to our format
+   * Normalize activity type to our categories
+   */
+  private normalizeActivityType(rawType: string | undefined): 'running' | 'strength_training' | 'cycling' | 'swimming' | 'other' {
+    const type = (rawType || '').toLowerCase();
+    if (type.includes('run') || type.includes('trail')) return 'running';
+    if (type.includes('strength') || type.includes('weight')) return 'strength_training';
+    if (type.includes('cycl') || type.includes('bik')) return 'cycling';
+    if (type.includes('swim') || type.includes('pool')) return 'swimming';
+    return 'other';
+  }
+
+  /**
+   * Convert speed (m/s) to pace (min/km)
+   */
+  private speedToPace(speedMps: number | undefined): number | undefined {
+    if (!speedMps || speedMps <= 0) return undefined;
+    return 1000 / speedMps / 60; // min/km
+  }
+
+  /**
+   * Format exercise name from Garmin subcategory (e.g., "BARBELL_BENCH_PRESS" -> "Barbell Bench Press")
+   */
+  /**
+   * Check if exercise is a main powerlifting lift
+   */
+  private isMainLift(exerciseName: string): boolean {
+    const mainLifts = ['BENCH_PRESS', 'SQUAT', 'DEADLIFT', 'OVERHEAD_PRESS'];
+    return mainLifts.some(lift => exerciseName.includes(lift));
+  }
+
+  /**
+   * Split warmup and working sets for main lifts
+   * For main lifts, estimate warmup sets (typically first 1-2 sets at ~50-70% of working weight)
+   */
+  private splitWarmupAndWorkingSets(set: any, exerciseName: string): { warmup: any[]; working: any } {
+    const weight = this.convertGarminWeight(set.maxWeight || 0);
+    const totalSets = set.sets || 0;
+    const reps = set.reps || 0;
+    
+    if (!this.isMainLift(set.category || '') || totalSets <= 2 || weight === 0) {
+      // Not a main lift or too few sets, return as-is
+      return {
+        warmup: [],
+        working: {
+          exerciseName: this.formatExerciseName(set.subCategory || set.category),
+          category: set.category || 'UNKNOWN',
+          sets: totalSets,
+          reps,
+          weight,
+          volume: set.volume,
+        }
+      };
+    }
+    
+    // For main lifts with 3+ sets, assume first 1-2 are warmups
+    const warmupCount = Math.min(Math.max(1, Math.ceil(totalSets * 0.25)), 2); // ~1/4 of sets or max 2
+    const workingCount = Math.max(totalSets - warmupCount, 1);
+
+    // Estimate reps per set from total reps
+    const repsPerSet = Math.max(Math.round(reps / totalSets), 1);
+    const warmupRepsPerSet = Math.max(Math.round(repsPerSet * 0.8), 1);
+    const workingRepsPerSet = repsPerSet;
+    
+    // Estimate warmup weight (typically 50-70% of working weight)
+    const warmupWeight = Math.round(weight * 0.6);
+    const workingWeight = weight;
+    
+    return {
+      warmup: warmupCount > 0 ? [{
+        exerciseName: this.formatExerciseName(set.subCategory || set.category) + ' (Warmup)',
+        category: set.category || 'UNKNOWN',
+        sets: warmupCount,
+        reps: warmupRepsPerSet,
+        weight: warmupWeight,
+        volume: warmupCount * warmupRepsPerSet * warmupWeight,
+      }] : [],
+      working: {
+        exerciseName: this.formatExerciseName(set.subCategory || set.category),
+        category: set.category || 'UNKNOWN',
+        sets: workingCount,
+        reps: workingRepsPerSet,
+        weight: workingWeight,
+        volume: set.volume,
+      }
+    };
+  }
+
+  /**
+   * Format exercise name from Garmin subcategory (e.g., "BARBELL_BENCH_PRESS" -> "Barbell Bench Press")
+   */
+  private formatExerciseName(subcategoryKey: string | undefined): string {
+    if (!subcategoryKey) return 'Unknown Exercise';
+    return subcategoryKey
+      .split('_')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join(' ');
+  }
+
+  /**
+   * Convert Garmin weight to lbs
+   * Garmin stores weight in tenths of grams, so: weight_lbs = maxWeight / 4536 (453.6 grams per lb)
+   * Or more simply: weight_lbs = maxWeight / 453.6
+   */
+  private convertGarminWeight(maxWeight: number): number {
+    if (maxWeight === 0) return 0;
+    // Convert from tenths of grams to lbs (1 lb = 453.6g)
+    return Math.round(maxWeight / 453.6);
+  }
+
+  /**
+   * Transform raw Garmin activities to slim format for weekly planning
    */
   private transformActivities(rawActivities: any[]): any[] {
-    return rawActivities.map((activity: any) => ({
-      id: activity.activityId || activity.id,
-      activityName: activity.activityName || "Unknown Activity",
-      activityType: activity.activityType?.typeKey || activity.activityType,
-      startTime: activity.startTimeInSeconds
-        ? new Date(activity.startTimeInSeconds * 1000).toISOString()
-        : activity.startTime,
-      duration: activity.durationInSeconds || 0,
-      distance: activity.distance ? activity.distance / 1000 : 0, // Convert to km
-      calories: activity.calories || 0,
-      avgHR: activity.avgHeartRate || activity.averageHeartRate,
-      maxHR: activity.maxHeartRate,
-      avgPace: activity.avgPace,
-      maxPace: activity.maxPace,
-      elevation: activity.elevation || activity.elevationGain,
-      avgCadence: activity.avgCadence || activity.averageCadence,
-      avgSpeed: activity.avgSpeed || activity.averageSpeed,
-      maxSpeed: activity.maxSpeed,
-    }));
+    return rawActivities.map((activity: any) => {
+      // If already in transformed shape (seeded from activities.json), return as-is
+      if (!activity.activityId && activity.id && activity.activityType && activity.startTime) {
+        return activity;
+      }
+
+      const activityType = this.normalizeActivityType(activity.activityType?.typeKey || activity.activityType);
+      
+      // Base fields for all activity types
+      const base = {
+        id: activity.activityId,
+        activityName: activity.activityName || "Unknown Activity",
+        activityType,
+        startTime: activity.startTimeGMT || activity.startTimeLocal,
+        duration: activity.duration || activity.elapsedDuration || 0,
+        
+        // Heart Rate
+        avgHR: activity.averageHR,
+        maxHR: activity.maxHR,
+        
+        // Training Load (key for scaling)
+        aerobicTrainingEffect: activity.aerobicTrainingEffect,
+        anaerobicTrainingEffect: activity.anaerobicTrainingEffect,
+        trainingEffectLabel: activity.trainingEffectLabel,
+        
+        // Subjective Feedback
+        selfEvaluationFeeling: activity.selfEvaluationFeeling,
+        directWorkoutFeel: activity.directWorkoutFeel ?? activity.summaryDTO?.directWorkoutFeel,
+        directWorkoutRpe: activity.directWorkoutRpe ?? activity.summaryDTO?.directWorkoutRpe,
+        
+        // Recovery Cost
+        differenceBodyBattery: activity.differenceBodyBattery,
+        
+        // Intensity Distribution
+        moderateIntensityMinutes: activity.moderateIntensityMinutes,
+        vigorousIntensityMinutes: activity.vigorousIntensityMinutes,
+      };
+
+      // Add running-specific fields
+      if (activityType === 'running' || activityType === 'cycling') {
+        return {
+          ...base,
+          distance: activity.distance ? activity.distance / 1000 : undefined,
+          avgPace: this.speedToPace(activity.averageSpeed),
+          avgCadence: activity.averageRunningCadenceInStepsPerMinute,
+          elevationGain: activity.elevationGain,
+        };
+      }
+
+      // Add strength-specific fields
+      if (activityType === 'strength_training') {
+        const exerciseSets: ExerciseSet[] = [];
+        
+        activity.summarizedExerciseSets?.forEach((set: any) => {
+          const split = this.splitWarmupAndWorkingSets(set, set.subCategory || set.category);
+          
+          // Add warmup sets if they exist
+          if (split.warmup.length > 0) {
+            exerciseSets.push(...split.warmup);
+          }
+          
+          // Add working sets
+          exerciseSets.push(split.working);
+        });
+
+        return {
+          ...base,
+          totalSets: activity.totalSets,
+          totalReps: activity.totalReps,
+          exerciseSets,
+        };
+      }
+
+      return base;
+    });
+  }
+
+  /**
+   * Get the start and end of last week (Monday-Sunday)
+   */
+  private getLastWeekDates(): { weekStart: Date; weekEnd: Date } {
+    const now = new Date();
+    const dayOfWeek = now.getDay();
+    const daysSinceMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+    
+    // Last Monday (start of current week) minus 7 days = start of last week
+    const lastWeekStart = new Date(now);
+    lastWeekStart.setDate(now.getDate() - daysSinceMonday - 7);
+    lastWeekStart.setHours(0, 0, 0, 0);
+    
+    // Last Sunday (end of last week)
+    const lastWeekEnd = new Date(lastWeekStart);
+    lastWeekEnd.setDate(lastWeekStart.getDate() + 6);
+    lastWeekEnd.setHours(23, 59, 59, 999);
+    
+    return { weekStart: lastWeekStart, weekEnd: lastWeekEnd };
+  }
+
+  /**
+   * Filter activities to only include those from last week
+   */
+  private filterLastWeekActivities(activities: any[]): any[] {
+    const { weekStart, weekEnd } = this.getLastWeekDates();
+    
+    return activities.filter(activity => {
+      const activityDate = new Date(activity.startTimeGMT || activity.startTimeLocal);
+      return activityDate >= weekStart && activityDate <= weekEnd;
+    });
   }
 
   /**
@@ -499,13 +537,24 @@ class GarminExtractor {
    */
   async saveActivitiesToFile(
     activities: any[],
-    outputPath: string = "./data/activities.json"
+    outputPath: string = "./data/activities.json",
+    saveRaw: boolean = false,
+    filterToLastWeek: boolean = false
   ): Promise<void> {
     try {
+      const { weekStart, weekEnd } = this.getLastWeekDates();
+      
+      // Optionally filter to last week only
+      const filteredActivities = filterToLastWeek 
+        ? this.filterLastWeekActivities(activities) 
+        : activities;
+
       const data: ExtractedActivities = {
         extractedAt: new Date().toISOString(),
-        totalActivities: activities.length,
-        activities: this.transformActivities(activities),
+        weekStart: weekStart.toISOString().split('T')[0],
+        weekEnd: weekEnd.toISOString().split('T')[0],
+        totalActivities: filteredActivities.length,
+        activities: this.transformActivities(filteredActivities),
       };
 
       // Ensure directory exists
@@ -516,6 +565,13 @@ class GarminExtractor {
 
       fs.writeFileSync(outputPath, JSON.stringify(data, null, 2));
       console.log(`✅ Activities saved to ${outputPath}`);
+      
+      // Optionally save raw data for debugging
+      if (saveRaw && activities.length > 0) {
+        const rawPath = outputPath.replace('.json', '-raw.json');
+        fs.writeFileSync(rawPath, JSON.stringify(activities, null, 2));
+        console.log(`📋 Raw activities saved to ${rawPath}`);
+      }
     } catch (error) {
       console.error("❌ Error saving activities:", error);
       throw error;
@@ -524,8 +580,19 @@ class GarminExtractor {
 
   /**
    * Extract activities and save to file
+   * @param limit - Max activities to fetch
+   * @param outputPath - Output file path
+   * @param saveRaw - Save raw API response for debugging
+   * @param includeDetails - Fetch detailed data (slower, includes self-evaluation)
+   * @param lastWeekOnly - Filter to only include last week's activities
    */
-  async extract(limit: number = 20, outputPath?: string): Promise<boolean> {
+  async extract(
+    limit: number = 20, 
+    outputPath?: string, 
+    saveRaw: boolean = false, 
+    includeDetails: boolean = true,
+    lastWeekOnly: boolean = false
+  ): Promise<boolean> {
     try {
       // Skip authentication in mock mode
       if (!this.mockMode) {
@@ -539,7 +606,7 @@ class GarminExtractor {
       }
 
       // Fetch activities
-      const activities = await this.fetchActivities(limit);
+      const activities = await this.fetchActivities(limit, includeDetails);
       if (activities.length === 0) {
         console.warn("⚠️  No activities found");
         return false;
@@ -548,11 +615,13 @@ class GarminExtractor {
       // Save to file
       await this.saveActivitiesToFile(
         activities,
-        outputPath || "./data/activities.json"
+        outputPath || "./data/activities.json",
+        saveRaw,
+        lastWeekOnly
       );
       return true;
-    } catch (error) {
-      console.error("❌ Extraction failed:", error);
+    } catch (error: any) {
+      console.error("❌ Extraction failed:", error.message);
       return false;
     }
   }

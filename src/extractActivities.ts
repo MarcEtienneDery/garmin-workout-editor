@@ -8,60 +8,46 @@ dotenv.config();
 async function main() {
   const email = process.env.GARMIN_EMAIL;
   const password = process.env.GARMIN_PASSWORD;
-  const sessionCookie = process.env.GARMIN_SESSION_COOKIE;
   const mockMode = process.env.MOCK_MODE === "true" || process.argv.includes("--mock");
+  const saveRaw = process.argv.includes("--raw");
+  const includeDetails = !process.argv.includes("--no-detailed");
+  const lastWeekOnly = process.argv.includes("--last-week");
 
-  if (!sessionCookie && (!email || !password)) {
-    console.error(
-      "❌ Error: Credentials are required"
-    );
-    console.error("Provide ONE of the following:");
-    console.error("  1. GARMIN_EMAIL and GARMIN_PASSWORD in .env");
-    console.error("  2. GARMIN_SESSION_COOKIE in .env or environment");
-    console.error("");
-    console.error("For session cookie method, see GET_SESSION.md");
+  if (!email || !password) {
+    console.error("❌ Error: Credentials are required");
+    console.error("Please provide GARMIN_EMAIL and GARMIN_PASSWORD in .env");
     process.exit(1);
   }
 
-  const extractor = new GarminExtractor(email || "", password || "", mockMode);
-  const limit = parseInt(process.argv[2] || "20");
-  const outputPath =
-    process.argv[3] || path.join(__dirname, "../data/activities.json");
+  const extractor = new GarminExtractor(email, password, mockMode);
+  
+  // Get limit from arguments, excluding flags
+  const args = process.argv.slice(2).filter(arg => !arg.startsWith("--"));
+  const limit = parseInt(args[0] || "20");
+  const outputPath = args[1] || path.join(__dirname, "../data/activities.json");
 
-  console.log("🚀 Garmin Activity Extractor");
-  console.log("============================\n");
+  console.log("🚀 Garmin Activity Extractor (Weekly Planning Mode)");
+  console.log("===================================================\n");
   if (mockMode) {
     console.log("🔄 Running in MOCK mode (test data)\n");
   }
-  if (sessionCookie) {
-    console.log("🔑 Using session cookie authentication\n");
+  if (saveRaw) {
+    console.log("📋 Raw data will be saved for inspection\n");
+  }
+  if (includeDetails) {
+    console.log("🔍 Detailed mode enabled - fetching self evaluation and extra data\n");
+    console.log("⏱️  This will take ~1 second per activity to avoid rate limiting\n");
+  }
+  if (lastWeekOnly) {
+    console.log("📅 Filtering to last week's activities only\n");
   }
 
-  const success = await extractor.extract(limit, outputPath);
+  const success = await extractor.extract(limit, outputPath, saveRaw, includeDetails, lastWeekOnly);
 
   if (success) {
     console.log("\n✅ Extraction completed successfully!");
   } else {
     console.log("\n❌ Extraction failed");
-    console.log("\n� Authentication Issue Detected:");
-    console.log("   Garmin is blocking automated login attempts.");
-    console.log("");
-    console.log("🔧 Quick Fixes:");
-    console.log("   1. Use session cookie method (recommended):");
-    console.log("      → See GET_SESSION.md for instructions");
-    console.log("      → Extract cookie from browser after logging in");
-    console.log("      → Set: export GARMIN_SESSION_COOKIE=\"<your-cookie>\"");
-    console.log("");
-    console.log("   2. Disable 2FA if enabled:");
-    console.log("      → Go to https://connect.garmin.com/");
-    console.log("      → Account Settings → Security → Disable 2FA");
-    console.log("      → Try again");
-    console.log("");
-    console.log("   3. Check account status:");
-    console.log("      → Log in manually at https://connect.garmin.com/");
-    console.log("      → Ensure account isn't locked");
-    console.log("");
-    console.log("📖 Full details: See AUTH_ISSUES.md and GET_SESSION.md");
     process.exit(1);
   }
 }

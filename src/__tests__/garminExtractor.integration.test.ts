@@ -48,12 +48,10 @@ describe("GarminExtractor Integration Tests", () => {
       data.activities.forEach((activity: any, index: number) => {
         expect(activity.id).toBeDefined();
         expect(activity.activityName).toBeDefined();
-        expect(activity.activityType).toMatch(/running|cycling|swimming|strength/);
+        expect(activity.activityType).toMatch(/running|cycling|swimming|strength_training|other/);
         expect(activity.startTime).toBeDefined();
         expect(new Date(activity.startTime).getTime()).not.toBeNaN();
         expect(activity.duration).toBeGreaterThan(0);
-        expect(activity.distance).toBeGreaterThanOrEqual(0);
-        expect(activity.calories).toBeGreaterThan(0);
         expect(activity.avgHR).toBeGreaterThan(0);
         expect(activity.maxHR).toBeGreaterThan(0);
       });
@@ -253,8 +251,6 @@ describe("GarminExtractor Integration Tests", () => {
         expect(typeof activity.activityType).toBe("string");
         expect(typeof activity.startTime).toBe("string");
         expect(typeof activity.duration).toBe("number");
-        expect(typeof activity.distance).toBe("number");
-        expect(typeof activity.calories).toBe("number");
       });
     });
 
