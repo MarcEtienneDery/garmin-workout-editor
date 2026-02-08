@@ -1,4 +1,4 @@
-import { GarminConnect } from "garmin-connect";
+import { GarminConnect } from "@flow-js/garmin-connect";
 
 /**
  * Shared Garmin client initialization and authentication

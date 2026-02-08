@@ -1,9 +1,9 @@
-jest.mock("garmin-connect", () => ({
+jest.mock("@flow-js/garmin-connect", () => ({
   GarminConnect: jest.fn().mockImplementation(() => ({
     login: jest.fn().mockResolvedValue(true),
     getUserProfile: jest.fn().mockResolvedValue({ userName: "tester" }),
     getWorkouts: jest.fn().mockResolvedValue([]),
-    getWorkout: jest.fn().mockResolvedValue({ workoutSteps: [] }),
+    getWorkoutDetail: jest.fn().mockResolvedValue({ workoutSegments: [] }),
     scheduleWorkout: jest.fn().mockResolvedValue({}),
   })),
 }));
@@ -91,11 +91,12 @@ describe("WorkoutEditor", () => {
             scheduledDate: "2026-02-02",
             steps: [
               {
-                stepType: "exercise",
-                exerciseName: "Bench Press",
-                targetSets: 4,
-                targetReps: 8,
-                targetWeight: 225,
+                stepType: "interval",
+                exerciseName: "BARBELL_BENCH_PRESS",
+                endCondition: "reps",
+                endConditionValue: 8,
+                reps: 8,
+                weight: 225,
               },
             ],
           },
@@ -173,26 +174,34 @@ describe("WorkoutEditor", () => {
 
       const rawSteps = [
         {
-          stepType: "exercise",
+          type: "ExecutableStepDTO",
+          stepType: { stepTypeKey: "interval" },
           exerciseName: "Bench Press",
-          category: "BENCH_PRESS",
-          targetSets: 4,
-          targetReps: 8,
-          targetWeight: 225,
+          targetType: { workoutTargetTypeKey: "zone" },
+          targetValueOne: 4,
+          targetValueTwo: 8,
+          weightValue: 225,
+          stepOrder: 0,
+          endCondition: { conditionTypeKey: "reps" },
+          endConditionValue: 8,
         },
         {
-          stepType: "rest",
-          duration: 120,
+          type: "ExecutableStepDTO",
+          stepType: { stepTypeKey: "rest" },
+          endCondition: { conditionTypeKey: "time" },
+          endConditionValue: 120,
+          stepOrder: 1,
         },
       ];
 
       const steps = transform(rawSteps);
 
-      expect(steps.length).toBe(2);
+      // Should merge rest into previous step
+      expect(steps.length).toBe(1);
       expect(steps[0].exerciseName).toBe("Bench Press");
-      expect(steps[0].targetSets).toBe(4);
-      expect(steps[1].stepType).toBe("rest");
-      expect(steps[1].duration).toBe(120);
+      expect(steps[0].targetValueOne).toBe(4);
+      expect(steps[0].restTimeSeconds).toBe(120);
+      expect(steps[0].reps).toBe(8);
     });
 
     it("should handle null/undefined steps", () => {
@@ -206,15 +215,38 @@ describe("WorkoutEditor", () => {
     it("should convert Garmin weight format", () => {
       const transform = (editor as any).transformWorkoutSteps.bind(editor);
 
-      const rawSteps = [
+      // Test 1: Weight already in pounds
+      const stepsInPounds = [
         {
-          stepType: "exercise",
-          maxWeight: 102261, // ~225 lbs
+          type: "ExecutableStepDTO",
+          stepType: { stepTypeKey: "interval" },
+          weightValue: 99.99947750443862, // Already in pounds
+          weightUnit: { unitKey: "pound", factor: 453.59237 },
+          stepOrder: 0,
+          endCondition: { conditionTypeKey: "reps" },
+          endConditionValue: 5,
         },
       ];
 
-      const steps = transform(rawSteps);
-      expect(steps[0].targetWeight).toBeCloseTo(225, 0);
+      let steps = transform(stepsInPounds);
+      // Weight already in pounds, should round to 100
+      expect(steps[0].weight).toBe(100);
+
+      // Test 2: Weight in grams (needs conversion)
+      const stepsInGrams = [
+        {
+          type: "ExecutableStepDTO",
+          stepType: { stepTypeKey: "interval" },
+          weightValue: 102261, // Garmin weight value in grams
+          stepOrder: 0,
+          endCondition: { conditionTypeKey: "reps" },
+          endConditionValue: 5,
+        },
+      ];
+
+      steps = transform(stepsInGrams);
+      // Weight should be converted from grams to lbs (~225)
+      expect(steps[0].weight).toBeCloseTo(225, 0);
     });
   });
 
@@ -281,9 +313,253 @@ describe("WorkoutEditor", () => {
     it("should convert Garmin weight to lbs", () => {
       const convert = (editor as any).convertGarminWeight.bind(editor);
 
+      // Test zero weight
       expect(convert(0)).toBe(0);
-      expect(convert(453.6)).toBe(1);
+      
+      // Test weight already in pounds
+      expect(convert(100, { unitKey: "pound", factor: 453.59237 })).toBe(100);
+      expect(convert(99.99947750443862, { unitKey: "pound" })).toBe(100);
+      
+      // Test weight in grams (needs conversion)
+      expect(convert(453.59237)).toBe(1);
       expect(convert(102261)).toBeCloseTo(225, 0);
+    });
+  });
+
+  describe("Workout Step Transformation", () => {
+    it("should flatten nested RepeatGroupDTO structures", () => {
+      const mockSteps = [
+        {
+          type: "ExecutableStepDTO",
+          stepOrder: 1,
+          stepType: { stepTypeKey: "warmup" },
+          endCondition: { conditionTypeKey: "time" },
+          endConditionValue: 300,
+        },
+        {
+          type: "RepeatGroupDTO",
+          stepOrder: 2,
+          numberOfIterations: 3,
+          workoutSteps: [
+            {
+              type: "ExecutableStepDTO",
+              stepOrder: 3,
+              stepType: { stepTypeKey: "interval" },
+              exerciseName: "BARBELL_SQUAT",
+              endCondition: { conditionTypeKey: "reps" },
+              endConditionValue: 10,
+            },
+            {
+              type: "ExecutableStepDTO",
+              stepOrder: 4,
+              stepType: { stepTypeKey: "rest" },
+              endCondition: { conditionTypeKey: "time" },
+              endConditionValue: 60,
+            },
+          ],
+        },
+      ];
+
+      const transformed = (editor as any).transformWorkoutSteps(mockSteps);
+
+      // Should have 2 steps: warmup + interval (rest merged)
+      expect(transformed).toHaveLength(2);
+      expect(transformed[0].stepType).toBe("warmup");
+      expect(transformed[0].stepOrder).toBe(1);
+      expect(transformed[1].stepType).toBe("interval");
+      expect(transformed[1].numberOfRepeats).toBe(3);
+      expect(transformed[1].restTimeSeconds).toBe(60);
+      expect(transformed[1].stepOrder).toBe(2);
+    });
+
+    it("should merge only first rest step into preceding exercise", () => {
+      const mockSteps = [
+        {
+          type: "ExecutableStepDTO",
+          stepOrder: 1,
+          stepType: { stepTypeKey: "interval" },
+          exerciseName: "BARBELL_BENCH_PRESS",
+          endCondition: { conditionTypeKey: "reps" },
+          endConditionValue: 10,
+        },
+        {
+          type: "ExecutableStepDTO",
+          stepOrder: 2,
+          stepType: { stepTypeKey: "rest" },
+          endCondition: { conditionTypeKey: "time" },
+          endConditionValue: 90,
+        },
+        {
+          type: "ExecutableStepDTO",
+          stepOrder: 3,
+          stepType: { stepTypeKey: "rest" },
+          endCondition: { conditionTypeKey: "time" },
+          endConditionValue: 60,
+        },
+      ];
+
+      const transformed = (editor as any).transformWorkoutSteps(mockSteps);
+
+      // Should have 2 steps: interval with merged rest + separate rest
+      expect(transformed).toHaveLength(2);
+      expect(transformed[0].restTimeSeconds).toBe(90);
+      expect(transformed[1].stepType).toBe("rest");
+      expect(transformed[1].durationSeconds).toBe(60);
+    });
+
+    it("should convert weight from Garmin format to lbs", () => {
+      const mockSteps = [
+        {
+          type: "ExecutableStepDTO",
+          stepOrder: 1,
+          stepType: { stepTypeKey: "interval" },
+          exerciseName: "BARBELL_DEADLIFT",
+          weightValue: 102261, // ~225 lbs in tenths of grams
+          endCondition: { conditionTypeKey: "reps" },
+          endConditionValue: 5,
+        },
+      ];
+
+      const transformed = (editor as any).transformWorkoutSteps(mockSteps);
+
+      expect(transformed[0].weight).toBeCloseTo(225, 0);
+    });
+
+    it("should extract parallel fields based on endCondition", () => {
+      const mockSteps = [
+        {
+          type: "ExecutableStepDTO",
+          stepOrder: 1,
+          stepType: { stepTypeKey: "interval" },
+          endCondition: { conditionTypeKey: "reps" },
+          endConditionValue: 12,
+        },
+        {
+          type: "ExecutableStepDTO",
+          stepOrder: 2,
+          stepType: { stepTypeKey: "interval" },
+          endCondition: { conditionTypeKey: "time" },
+          endConditionValue: 600,
+        },
+        {
+          type: "ExecutableStepDTO",
+          stepOrder: 3,
+          stepType: { stepTypeKey: "interval" },
+          endCondition: { conditionTypeKey: "distance" },
+          endConditionValue: 1000,
+        },
+      ];
+
+      const transformed = (editor as any).transformWorkoutSteps(mockSteps);
+
+      expect(transformed[0].reps).toBe(12);
+      expect(transformed[1].durationSeconds).toBe(600);
+      expect(transformed[2].distanceMeters).toBe(1000);
+    });
+
+    it("should preserve targetValueOne and targetValueTwo", () => {
+      const mockSteps = [
+        {
+          type: "ExecutableStepDTO",
+          stepOrder: 1,
+          stepType: { stepTypeKey: "interval" },
+          targetType: { workoutTargetTypeKey: "heart.rate.zone" },
+          targetValueOne: 155,
+          targetValueTwo: 165,
+          endCondition: { conditionTypeKey: "time" },
+          endConditionValue: 720,
+        },
+      ];
+
+      const transformed = (editor as any).transformWorkoutSteps(mockSteps);
+
+      expect(transformed[0].targetType).toBe("heart.rate.zone");
+      expect(transformed[0].targetValueOne).toBe(155);
+      expect(transformed[0].targetValueTwo).toBe(165);
+    });
+
+    it("should renumber stepOrder sequentially after flattening", () => {
+      const mockSteps = [
+        {
+          type: "ExecutableStepDTO",
+          stepOrder: 1,
+          stepType: { stepTypeKey: "warmup" },
+          endCondition: { conditionTypeKey: "time" },
+          endConditionValue: 300,
+        },
+        {
+          type: "RepeatGroupDTO",
+          stepOrder: 6,
+          numberOfIterations: 2,
+          workoutSteps: [
+            {
+              type: "ExecutableStepDTO",
+              stepOrder: 7,
+              stepType: { stepTypeKey: "interval" },
+              endCondition: { conditionTypeKey: "reps" },
+              endConditionValue: 10,
+            },
+            {
+              type: "ExecutableStepDTO",
+              stepOrder: 8,
+              stepType: { stepTypeKey: "rest" },
+              endCondition: { conditionTypeKey: "time" },
+              endConditionValue: 60,
+            },
+          ],
+        },
+      ];
+
+      const transformed = (editor as any).transformWorkoutSteps(mockSteps);
+
+      // Should be renumbered 1, 2 (rest merged into interval)
+      expect(transformed[0].stepOrder).toBe(1);
+      expect(transformed[1].stepOrder).toBe(2);
+    });
+
+    it("should expand running workout repeat groups", () => {
+      const mockSteps = [
+        {
+          type: "ExecutableStepDTO",
+          stepOrder: 1,
+          stepType: { stepTypeKey: "warmup" },
+          endCondition: { conditionTypeKey: "time" },
+          endConditionValue: 600,
+        },
+        {
+          type: "RepeatGroupDTO",
+          stepOrder: 2,
+          numberOfIterations: 4,
+          workoutSteps: [
+            {
+              type: "ExecutableStepDTO",
+              stepOrder: 3,
+              stepType: { stepTypeKey: "interval" },
+              targetType: { workoutTargetTypeKey: "pace.zone" },
+              targetValueOne: 3.5,
+              targetValueTwo: 3.8,
+              endCondition: { conditionTypeKey: "distance" },
+              endConditionValue: 1000,
+            },
+            {
+              type: "ExecutableStepDTO",
+              stepOrder: 4,
+              stepType: { stepTypeKey: "recovery" },
+              endCondition: { conditionTypeKey: "time" },
+              endConditionValue: 120,
+            },
+          ],
+        },
+      ];
+
+      const transformed = (editor as any).transformWorkoutSteps(mockSteps);
+
+      // Should have 3 steps: warmup + interval + recovery (both with numberOfRepeats=4)
+      expect(transformed).toHaveLength(3);
+      expect(transformed[1].numberOfRepeats).toBe(4);
+      expect(transformed[1].distanceMeters).toBe(1000);
+      expect(transformed[2].numberOfRepeats).toBe(4);
+      expect(transformed[2].durationSeconds).toBe(120);
     });
   });
 });

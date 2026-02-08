@@ -2,40 +2,74 @@
 
 ## Project Architecture
 
-This is a TypeScript CLI tool for extracting Garmin Connect activities and managing workout plans. The codebase is split into two main workflows:
+A TypeScript CLI tool with two independent workflows: activity extraction from Garmin Connect API and workout plan management. Both workflows support mock mode and follow a **fetch → transform → save** pattern, with a special **transform-only** mode that decouples API fetching from data transformation.
 
-1. **Activity Extraction** ([exportActivities.ts](../src/exportActivities.ts)) - Fetches activities from Garmin Connect API
-2. **Workout Management** ([manageWorkouts.ts](../src/manageWorkouts.ts)) - Imports, exports, and schedules workout plans
+**Entry Points:**
+- `exportActivities.ts` - Activity extraction and transformation pipeline
+- `manageWorkouts.ts` - Workout management (export, import, schedule)
 
-### Core Components
+**Core Services:**
+- `GarminClient` - Centralized Garmin API authentication via email/password or session cookie (mock mode always available)
+- `ActivityExporter` - Fetches activities, transforms to slim format, handles interval/exercise parsing
+- `WorkoutEditor` - Manages workouts, flattens nested Garmin structures, converts units (weight to lbs)
+- `Types` - Unified type system ([shared/types.ts](../src/shared/types.ts)) with `GarminActivity`, `DetailedWorkout`, `WorkoutStep`
 
-- **GarminClient** ([shared/garminClient.ts](../src/shared/garminClient.ts)) - Shared authentication and client wrapper around `garmin-connect` library
-- **ActivityExporter** ([activityExporter.ts](../src/activityExporter.ts)) - Extracts and transforms activities
-- **WorkoutEditor** ([workoutEditor.ts](../src/workoutEditor.ts)) - Workout CRUD operations and scheduling
-- **Types** ([types.ts](../src/types.ts), [shared/types.ts](../src/shared/types.ts)) - Central type definitions for activities and workouts
+### Authentication
 
-### Authentication Pattern
-
-Garmin authentication is centralized in `GarminClient`. Always use `ensureAuthenticated()` before API calls. The project supports **mock mode** (`MOCK_MODE=true` or `--mock` flag) for testing without credentials.
-
+Use `ensureAuthenticated()` before any API call - it's mock-safe:
 ```typescript
 const garminClient = new GarminClient(email, password, mockMode);
 await garminClient.ensureAuthenticated();
 ```
 
-Session cookie authentication is the recommended method (email/password blocked by Garmin 2FA).
+⚠️ **Session cookie method recommended** - direct email/password blocked by Garmin 2FA (see README.md)
 
 ## Testing Philosophy
 
-Tests are organized by type:
-- **Unit tests**: Mock the Garmin API client (`garminExtractor.test.ts`, `workoutEditor.test.ts`)
-- **Integration tests**: Test actual API interactions (`garminExtractor.integration.test.ts`)
+Tests are organized in `src/__tests__/` with Jest configured for **single-worker execution** (`maxWorkers: 1` in jest.config.js) to prevent concurrency issues.
 
-Mock data is generated via [mocks.setup.ts](../src/mocks.setup.ts) and seeded from the last 4 activities in `data/activities.json` if available.
+**Test Types:**
+- **Unit tests** - Mock `@flow-js/garmin-connect` using Jest (see `activityExporter.test.ts` for pattern)
+- **Integration tests** - Hit real Garmin API with credentials (marked with `.integration.test.ts`)
 
-Run tests with `npm test`. Jest is configured for single-worker execution (`maxWorkers: 1`) to avoid concurrency issues.
+**Running Tests:**
+```bash
+npm test                  # All tests, single worker
+npm run test:watch       # Watch mode
+npm run test:coverage    # Coverage report
+```
 
-## Key Conventions
+**Mock Data Strategy:**
+- `mocks.setup.ts` provides `generateMockActivities()` and `generateMockWorkouts()`
+- Seeded from last 4 items in `data/activities.json` or `data/workouts-raw.json` if available
+- Fallback: generates synthetic data matching Garmin API shape
+- Use `GarminClient(..., mockMode=true)` to enable mock without real credentials
+
+## Transform-Only Workflow
+
+Both `ActivityExporter` and `WorkoutEditor` support **transform-only mode** - re-run transformation logic on saved raw data without hitting the API. This avoids rate limits and enables faster iteration.
+
+**Activities:**
+```bash
+# First: Fetch raw data (once)
+npm run export-activities -- 20 --raw
+
+# Then: Re-transform without API calls
+npm run export-activities -- --transform-only data/activities-raw.json
+npm run export-activities -- --transform-only data/activities-raw.json \
+  --week-start 2026-02-02 --week-end 2026-02-08
+```
+
+**Workouts:**
+```bash
+# First: Fetch raw data (once)
+npm run manage-workouts -- --export --raw
+
+# Then: Re-transform without API calls
+npm run manage-workouts -- --transform-only data/workouts-raw.json
+```
+
+**Implementation:** `ActivityExporter.transformAndSave()` and `WorkoutEditor.transformAndSaveWorkouts()` handle the transform-only path. Fetch and transform are completely decoupled.
 
 ### Activity Type Normalization
 
@@ -45,6 +79,21 @@ Activity types from Garmin are normalized to 5 categories in [types.ts](../src/t
 ```
 
 Use `normalizeActivityType()` helper when transforming raw Garmin data.
+
+### Exercise & Interval Processing
+
+**Running activities** use `buildIntervalSets()` to extract lap/interval data from `activity.intervals`, `activity.laps`, `activity.splits` (tries multiple sources):
+- Filters out walk/stand intervals (`RWD_WALK`, `RWD_RUN`, `RWD_STAND`)
+- Normalizes distance: values >20m assumed to be meters, converted to km
+- Calculates pace from speed (m/s → min/km) or duration/distance
+- Returns `ExerciseSet[]` with pace, distance, avgHR, maxHR, duration, splitType
+
+**Strength activities** use `splitWarmupTopBackoffSets()` for main lifts (bench/squat/deadlift/overhead):
+- Warmup phase: ~60% of weight, 80% of reps
+- Top set: max weight, full reps
+- Backoff phase: ~85% of weight, full reps
+- Non-main lifts return as single entry
+- Weight stored in tenths of grams in Garmin; convert with `weight / 453.6` for lbs
 
 ### Date Handling
 
@@ -77,11 +126,27 @@ Entry points are [exportActivities.ts](../src/exportActivities.ts) and [manageWo
 3. Initialize `GarminClient` with mock mode support
 4. Execute operation via exporter/editor class
 
-Common flags:
+**Activity Export:**
+```bash
+npm run export-activities                  # Last 20 activities
+npm run export-activities -- 50            # Last 50 activities
+npm run export-activities -- 20 --raw      # Save raw API response too
+npm run export-activities -- --transform-only data/activities-raw.json  # Re-transform saved raw
+```
+
+**Workout Management:**
+```bash
+npm run manage-workouts -- --export                    # Export all workouts
+npm run manage-workouts -- --export --raw             # Export with raw API data
+npm run manage-workouts -- --generate-template        # Generate next-week template
+npm run manage-workouts -- --schedule <file>          # Schedule workouts from file
+npm run manage-workouts -- --transform-only <file>    # Re-transform saved raw
+```
+
+Common flags work on both:
 - `--mock`: Use test data instead of real API
 - `--raw`: Save raw Garmin response for debugging
-- `--no-detailed`: Skip detailed activity fetch (faster but less data)
-- `--last-week` / `--this-week`: Filter by date range
+- `--output <path>`: Override output file path
 
 ## Rate Limiting
 
@@ -94,9 +159,10 @@ This pattern appears in both activity and workout detail fetches.
 
 ## Garmin API Quirks
 
-- **Weight encoding**: Garmin stores weight in tenths of grams. Convert with `maxWeight / 453.6` for lbs.
-- **Exercise names**: Stored as SCREAMING_SNAKE_CASE (e.g., `BARBELL_BENCH_PRESS`). Transform to title case.
-- **Workout steps**: Nested structure with `workoutSteps` arrays containing exercise sets. See `transformWorkoutSteps()` in [workoutEditor.ts](../src/workoutEditor.ts).
+- **Weight encoding**: Garmin stores weight in tenths of grams. Convert to lbs: `weight_lbs = maxWeight / 453.6`
+- **Exercise names**: Stored as SCREAMING_SNAKE_CASE (e.g., `BARBELL_BENCH_PRESS`). Transform to title case with `formatExerciseName()`
+- **Workout steps**: Nested structure with `workoutSteps` arrays + `RepeatGroupDTO` wrappers. Flatten recursively using `flattenSteps()`, then merge first rest step into preceding exercise as `restTimeSeconds`
+- **Interval sources**: Check multiple fields (`intervals`, `laps`, `splits`, `splitSummaries`, `intervalSummaries`, `lapSummaries`) - use first non-empty array
 
 ## Build & Development
 

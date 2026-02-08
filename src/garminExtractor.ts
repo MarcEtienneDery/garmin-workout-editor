@@ -1,4 +1,4 @@
-import { GarminConnect } from "garmin-connect";
+import { GarminConnect } from "@flow-js/garmin-connect";
 import * as fs from "fs";
 import * as path from "path";
 import { ExtractedActivities, ExerciseSet, GarminWorkoutSummary, PlannedWorkout, WeeklyWorkoutPlan } from "./types";

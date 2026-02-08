@@ -69,15 +69,32 @@ export interface ExtractedActivities {
 
 // Workout step/exercise details
 export interface WorkoutStep {
-  stepType: string;           // e.g., "exercise", "rest", "warmup"
-  exerciseName?: string;      // e.g., "Barbell Bench Press"
-  category?: string;          // e.g., "BENCH_PRESS", "SQUAT"
-  targetSets?: number;
-  targetReps?: number;
-  targetWeight?: number;      // lbs
-  duration?: number;          // seconds for rest/cardio
-  restSeconds?: number;       // rest between sets
+  stepType: string;           // e.g., "exercise", "rest", "warmup", "interval", "repeat"
+  exerciseName?: string;      // e.g., "BARBELL_BENCH_PRESS", "RUN"
+  
+  // API-specific fields from IWorkoutStep (preserved from Garmin API)
+  targetType?: string;        // e.g., "no.target", "heart.rate.zone", "pace.zone"
+  targetValueOne?: number;    // Context-dependent: HR zone min (BPM), pace zone slower limit (m/s), etc.
+  targetValueTwo?: number;    // Context-dependent: HR zone max (BPM), pace zone faster limit (m/s), etc.
+  endCondition?: string;      // e.g., "reps", "time", "distance", "lap.button", "iterations"
+  endConditionValue?: number; // End condition threshold
+  weight?: number;            // Equipment weight (lbs, converted from Garmin's tenths of grams)
+  weightPercentage?: number;  // Weight as percentage (e.g., 75 for 75% of 1RM)
+  benchmarkKey?: string;      // Exercise the percentage is based on (e.g., "BARBELL_BENCH_PRESS")
+  stepOrder?: number;         // Step order in sequence (renumbered sequentially after flattening)
+  
+  // Extracted parallel fields based on endCondition
+  reps?: number;              // When endCondition="reps", extracted from endConditionValue
+  durationSeconds?: number;   // When endCondition="time", extracted from endConditionValue
+  distanceMeters?: number;    // When endCondition="distance", extracted from endConditionValue
+  
+  // Rest merging
+  restTimeSeconds?: number;   // Merged from first subsequent rest step
+  
+  // Repeat group tracking
+  numberOfRepeats?: number;   // From RepeatGroupDTO.numberOfIterations
 }
+
 
 // Minimal workout summary (for backward compatibility)
 export interface GarminWorkoutSummary {

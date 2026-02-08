@@ -570,6 +570,95 @@ export class ActivityExporter {
   }
 
   /**
+   * Load raw activities from a JSON file
+   */
+  async loadRawActivitiesFromFile(inputPath: string): Promise<any[]> {
+    try {
+      const raw = fs.readFileSync(inputPath, "utf-8");
+      const data = JSON.parse(raw);
+      
+      // If it's already an ExtractedActivities object, extract the activities array
+      if (data.activities && Array.isArray(data.activities)) {
+        return data.activities;
+      }
+      
+      // If it's already just an array, return it
+      if (Array.isArray(data)) {
+        return data;
+      }
+      
+      throw new Error("Invalid raw activities file format");
+    } catch (error: any) {
+      console.error(`❌ Failed to load raw activities from ${inputPath}:`, error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Transform raw activities and save to file without fetching from Garmin
+   * Useful for re-running transformation logic on previously saved raw data
+   * @param inputPath - Path to raw activities JSON file
+   * @param outputPath - Output file path for transformed activities
+   * @param weekStart - Optional: Override week start date (ISO format)
+   * @param weekEnd - Optional: Override week end date (ISO format)
+   */
+  async transformAndSave(
+    inputPath: string,
+    outputPath?: string,
+    weekStart?: string,
+    weekEnd?: string
+  ): Promise<boolean> {
+    try {
+      console.log("📂 Loading raw activities from file...");
+      const rawActivities = await this.loadRawActivitiesFromFile(inputPath);
+      
+      if (rawActivities.length === 0) {
+        console.warn("⚠️  No activities found in file");
+        return false;
+      }
+
+      console.log(`📊 Transforming ${rawActivities.length} activities...`);
+      const transformed = this.transformActivities(rawActivities);
+
+      // Use provided dates or calculate from raw data
+      let startDate: Date;
+      let endDate: Date;
+
+      if (weekStart && weekEnd) {
+        startDate = new Date(weekStart);
+        endDate = new Date(weekEnd);
+      } else {
+        const lastWeekDates = this.getLastWeekDates();
+        startDate = lastWeekDates.weekStart;
+        endDate = lastWeekDates.weekEnd;
+      }
+
+      const data: ExtractedActivities = {
+        extractedAt: new Date().toISOString(),
+        weekStart: startDate.toISOString().split("T")[0],
+        weekEnd: endDate.toISOString().split("T")[0],
+        totalActivities: transformed.length,
+        activities: transformed,
+      };
+
+      const outPath = outputPath || inputPath.replace("-raw.json", ".json");
+      
+      // Ensure directory exists
+      const dir = path.dirname(outPath);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+
+      fs.writeFileSync(outPath, JSON.stringify(data, null, 2));
+      console.log(`✅ Transformed activities saved to ${outPath}`);
+      return true;
+    } catch (error: any) {
+      console.error("❌ Transform failed:", error.message);
+      return false;
+    }
+  }
+
+  /**
    * Extract activities and save to file
    * @param limit - Max activities to fetch
    * @param outputPath - Output file path

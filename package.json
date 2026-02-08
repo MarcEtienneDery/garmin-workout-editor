@@ -18,7 +18,7 @@
     "test:coverage": "jest --coverage"
   },
   "dependencies": {
-    "garmin-connect": "^1.6.2",
+    "@flow-js/garmin-connect": "^1.6.7",
     "dotenv": "^16.3.1"
   },
   "devDependencies": {

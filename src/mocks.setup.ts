@@ -1,4 +1,4 @@
-import { GarminConnect } from "garmin-connect";
+import { GarminConnect } from "@flow-js/garmin-connect";
 import * as fs from "fs";
 import * as path from "path";
 
@@ -57,6 +57,25 @@ export const loadLastActivitiesFromDisk = (): any[] | null => {
     }
   } catch (error) {
     console.warn("⚠️  Could not load activities-raw.json for mock seeding");
+  }
+
+  return null;
+};
+
+/**
+ * Load the last 4 workouts from disk to seed mock data
+ */
+export const loadLastWorkoutsFromDisk = (): any[] | null => {
+  try {
+    const workoutsPath = path.join(__dirname, "../data/workouts-raw.json");
+    if (fs.existsSync(workoutsPath)) {
+      const raw = fs.readFileSync(workoutsPath, "utf-8");
+      const parsed = JSON.parse(raw);
+      // workouts-raw.json is an array of workouts
+      return Array.isArray(parsed) ? parsed.slice(0, 4) : null;
+    }
+  } catch (error) {
+    console.warn("⚠️  Could not load workouts-raw.json for mock seeding");
   }
 
   return null;
@@ -269,4 +288,47 @@ export const generateMockActivities = (limit: number): any[] => {
   }
 
   return activities;
+};
+
+/**
+ * Generate mock workouts for testing
+ */
+export const generateMockWorkouts = (limit: number = 4): any[] => {
+  const seededWorkouts = loadLastWorkoutsFromDisk();
+  
+  if (seededWorkouts && seededWorkouts.length > 0) {
+    // Return up to limit workouts from seeded data
+    return seededWorkouts.slice(0, limit);
+  }
+
+  // Fallback: generate basic mock workout structure
+  const mockWorkouts: any[] = [];
+  
+  for (let i = 0; i < limit; i++) {
+    mockWorkouts.push({
+      workoutId: `mock-workout-${i + 1}`,
+      workoutName: `Mock Workout ${i + 1}`,
+      sportType: { sportTypeKey: i % 2 === 0 ? "strength_training" : "running" },
+      description: `Mock workout description ${i + 1}`,
+      workoutSegments: [
+        {
+          segmentOrder: 1,
+          sportType: { sportTypeKey: i % 2 === 0 ? "strength_training" : "running" },
+          workoutSteps: [
+            {
+              type: "ExecutableStepDTO",
+              stepId: `mock-step-${i}-1`,
+              stepOrder: 1,
+              stepType: { stepTypeKey: "warmup" },
+              endCondition: { conditionTypeKey: "time" },
+              endConditionValue: 300,
+              targetType: { workoutTargetTypeKey: "no.target" },
+            },
+          ],
+        },
+      ],
+    });
+  }
+
+  return mockWorkouts;
 };

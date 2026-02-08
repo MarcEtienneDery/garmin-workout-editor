@@ -1,4 +1,4 @@
-jest.mock("garmin-connect", () => ({
+jest.mock("@flow-js/garmin-connect", () => ({
   GarminConnect: jest.fn().mockImplementation(() => ({
     login: jest.fn().mockResolvedValue(true),
     getUserProfile: jest.fn().mockResolvedValue({ userName: "tester" }),
