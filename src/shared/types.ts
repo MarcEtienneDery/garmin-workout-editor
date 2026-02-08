@@ -67,11 +67,32 @@ export interface ExtractedActivities {
   activities: GarminActivity[];
 }
 
+// Workout step/exercise details
+export interface WorkoutStep {
+  stepType: string;           // e.g., "exercise", "rest", "warmup"
+  exerciseName?: string;      // e.g., "Barbell Bench Press"
+  category?: string;          // e.g., "BENCH_PRESS", "SQUAT"
+  targetSets?: number;
+  targetReps?: number;
+  targetWeight?: number;      // lbs
+  duration?: number;          // seconds for rest/cardio
+  restSeconds?: number;       // rest between sets
+}
+
+// Minimal workout summary (for backward compatibility)
 export interface GarminWorkoutSummary {
   workoutId: number | string;
   workoutName: string;
   workoutType?: string;
   description?: string;
+}
+
+// Detailed workout with full exercise information
+export interface DetailedWorkout extends GarminWorkoutSummary {
+  steps?: WorkoutStep[];      // Full exercise breakdown
+  totalSets?: number;
+  totalReps?: number;
+  estimatedDurationSeconds?: number;
 }
 
 export interface PlannedWorkout {
@@ -81,6 +102,7 @@ export interface PlannedWorkout {
   description?: string;
   distanceMeters?: number;
   scheduledDate?: string; // ISO date (YYYY-MM-DD)
+  steps?: WorkoutStep[];  // Full exercise breakdown for import
 }
 
 export interface WeeklyWorkoutPlan {

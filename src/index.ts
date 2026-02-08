@@ -1,4 +1,7 @@
-import GarminExtractor from "./garminExtractor";
+import ActivityExporter from "./activityExporter";
+import WorkoutEditor from "./workoutEditor";
+import { GarminClient } from "./shared/garminClient";
 
-export { GarminExtractor };
-export default GarminExtractor;
+export { ActivityExporter, WorkoutEditor, GarminClient };
+export default { ActivityExporter, WorkoutEditor, GarminClient };
+

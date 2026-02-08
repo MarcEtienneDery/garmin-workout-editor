@@ -1,4 +1,4 @@
-import GarminActivity, { ExtractedActivities } from "../types";
+import GarminActivity, { ExtractedActivities } from "../shared/types";
 
 describe("Types", () => {
   describe("GarminActivity", () => {

@@ -81,6 +81,29 @@ const STRENGTH_EXERCISES: { category: string; subCategory?: string; typicalWeigh
 ];
 
 /**
+ * Generate mock interval data for running activities
+ */
+const buildMockIntervals = (): any[] => {
+  const intervalCount = 6;
+  return Array.from({ length: intervalCount }, (_, index) => {
+    const duration = Math.floor(Math.random() * 45) + 60; // 60-105s
+    const distanceMeters = Math.floor(Math.random() * 200) + 300; // 300-500m
+    const averageSpeed = distanceMeters / duration; // m/s
+    const avgHR = Math.floor(Math.random() * 25) + 150;
+    const maxHR = avgHR + Math.floor(Math.random() * 15) + 5;
+
+    return {
+      intervalName: `Interval ${index + 1}`,
+      duration,
+      distance: distanceMeters,
+      averageSpeed,
+      avgHR,
+      maxHR,
+    };
+  });
+};
+
+/**
  * Generate mock activities for testing
  */
 export const generateMockActivities = (limit: number): any[] => {
@@ -121,6 +144,7 @@ export const generateMockActivities = (limit: number): any[] => {
         base.avgPace = seed.avgPace ?? Math.round((5 + Math.random()) * 1000) / 1000;
         base.avgCadence = seed.avgCadence ?? Math.floor(Math.random() * 15) + 170;
         base.elevationGain = seed.elevationGain ?? Math.floor(Math.random() * 60) + 10;
+        base.intervals = seed.intervals ?? buildMockIntervals();
       } else if (normalizedType === "strength_training") {
         const exerciseSets = seed.exerciseSets || [];
         base.totalSets = seed.totalSets ?? exerciseSets.reduce((sum: number, ex: any) => sum + (ex.sets || 0), 0);
@@ -238,6 +262,7 @@ export const generateMockActivities = (limit: number): any[] => {
       baseActivity.averageSpeed = Math.random() * 1.5 + 2.6; // 2.6-4.1 m/s
       baseActivity.averageRunningCadenceInStepsPerMinute = Math.floor(Math.random() * 15) + 170;
       baseActivity.elevationGain = Math.floor(Math.random() * 60) + 10;
+      baseActivity.intervals = buildMockIntervals();
     }
 
     activities.push(baseActivity);
