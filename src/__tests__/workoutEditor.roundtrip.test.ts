@@ -12,7 +12,6 @@ import WorkoutEditor from "../workoutEditor";
 import { GarminClient } from "../shared/garminClient";
 import * as fs from "fs";
 import * as path from "path";
-import { DetailedWorkout } from "../shared/types";
 
 describe("WorkoutEditor - Round-trip Transformation", () => {
   let editor: WorkoutEditor;
@@ -55,24 +54,8 @@ describe("WorkoutEditor - Round-trip Transformation", () => {
     expect(garminWorkout.workoutName).toBe(originalRaw.workoutName);
     expect(garminWorkout.workoutId).toBe(originalRaw.workoutId);
 
-    // Step 3: Verify key structural elements match
-    expect(garminWorkout.workoutSegments).toBeDefined();
-    expect(Array.isArray(garminWorkout.workoutSegments)).toBe(true);
-    expect(garminWorkout.workoutSegments.length).toBeGreaterThan(0);
-
-    const originalSegment = originalRaw.workoutSegments[0];
-    const roundtripSegment = garminWorkout.workoutSegments[0];
-
-    // Verify segment structure
-    expect(roundtripSegment.sportType.sportTypeKey).toBe(
-      originalSegment.sportType.sportTypeKey
-    );
-    expect(Array.isArray(roundtripSegment.workoutSteps)).toBe(true);
-
-    // Verify there are workout steps
-    if (originalSegment.workoutSteps && originalSegment.workoutSteps.length > 0) {
-      expect(roundtripSegment.workoutSteps.length).toBeGreaterThan(0);
-    }
+    // Step 3: Exact match
+    expect(garminWorkout).toEqual(originalRaw);
   });
 
   it("should handle all workouts in raw file without errors", () => {
@@ -98,10 +81,8 @@ describe("WorkoutEditor - Round-trip Transformation", () => {
         );
         expect(garminWorkout).toBeDefined();
 
-        // Verify basic structure
-        expect(garminWorkout.workoutName).toBe(raw.workoutName);
-        expect(garminWorkout.workoutSegments).toBeDefined();
-        expect(garminWorkout.workoutSegments.length).toBeGreaterThan(0);
+        // Exact match for each sampled workout
+        expect(garminWorkout).toEqual(raw);
 
         successCount++;
       } catch (error: any) {
@@ -150,32 +131,10 @@ describe("WorkoutEditor - Round-trip Transformation", () => {
 
     const roundtripSteps = garminWorkout.workoutSegments[0].workoutSteps;
 
-    // Verify we have steps
-    expect(roundtripSteps.length).toBeGreaterThan(0);
-
-    // Count step types
+    // Verify step types match exactly
     const originalStepTypes = originalSteps.map((s: any) => s.stepType?.stepTypeKey);
     const roundtripStepTypes = roundtripSteps.map((s: any) => s.stepType?.stepTypeKey);
 
-    console.log(`Original step count: ${originalSteps.length}`);
-    console.log(`Round-trip step count: ${roundtripSteps.length}`);
-    console.log(`Original step types: ${originalStepTypes.join(", ")}`);
-    console.log(`Round-trip step types: ${roundtripStepTypes.join(", ")}`);
-   // Log the intermediate DetailedWorkout structure
-   console.log("\n=== INTERMEDIATE DetailedWorkout ===");
-   console.log(`Transformed workout steps count: ${transformed.steps?.length || 0}`);
-   if (transformed.steps && transformed.steps.length > 0) {
-     console.log("Transformed step types:", transformed.steps.map((s: any) => `${s.stepType}(repeats=${s.numberOfRepeats})`).join(", "));
-     console.log("\nFirst transformed step:", JSON.stringify(transformed.steps[0], null, 2).slice(0, 500));
-   }
-
-
-    console.log("\nFirst original step:", JSON.stringify(originalSteps[0], null, 2).slice(0, 500));
-    if (roundtripSteps[0]) {
-      console.log("First round-trip step:", JSON.stringify(roundtripSteps[0], null, 2).slice(0, 500));
-    }
-
-    // At minimum, verify we have step type information
-    expect(roundtripStepTypes.some((t: any) => t !== undefined)).toBe(true);
+    expect(roundtripStepTypes).toEqual(originalStepTypes);
   });
 });
