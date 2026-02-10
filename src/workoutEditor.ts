@@ -1251,12 +1251,10 @@ export class WorkoutEditor {
       };
     }
 
-    // Add weight percentage if present
-    if (step.weightPercentage !== undefined) {
+    // Add weight percentage if present (only if BOTH benchmarkPercentage and benchmarkKey can be set)
+    if (step.weightPercentage !== undefined && step.weightPercentage !== null && step.benchmarkKey) {
       garminStep.benchmarkPercentage = step.weightPercentage;
-      if (step.benchmarkKey) {
-        garminStep.benchmarkKey = step.benchmarkKey;
-      }
+      garminStep.benchmarkKey = step.benchmarkKey;
     }
 
     return garminStep;

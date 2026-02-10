@@ -30,7 +30,7 @@ async function main() {
   const generateTemplate = process.argv.includes("--generate-template");
   const scheduleFromPlan = process.argv.includes("--schedule");
   const copyPlanNextWeek = process.argv.includes("--copy-next-week");
-  const importAndSchedule = process.argv.includes("--import-and-schedule");
+  const uploadAndSchedule = process.argv.includes("--upload-and-schedule");
   const uploadWorkouts = process.argv.includes("--upload");
   const uploadSingle = process.argv.includes("--upload-single");
   const saveRaw = process.argv.includes("--raw");
@@ -45,7 +45,7 @@ async function main() {
   const planInputPath =
     getArgValue("--schedule") ||
     getArgValue("--copy-next-week") ||
-    getArgValue("--import-and-schedule");
+    getArgValue("--upload-and-schedule");
   const uploadInputPath = getArgValue("--upload");
   const uploadWorkoutId = getArgValue("--upload-single");
 
@@ -114,18 +114,18 @@ async function main() {
       return;
     }
 
-    if (importAndSchedule) {
+    if (uploadAndSchedule) {
       if (!planInputPath) {
         console.error(
-          "❌ Error: Missing plan input path for --import-and-schedule"
+          "❌ Error: Missing plan input path for --upload-and-schedule"
         );
         console.error(
-          "Usage: npm run manage-workouts -- --import-and-schedule <path>"
+          "Usage: npm run manage-workouts -- --upload-and-schedule <path>"
         );
         process.exit(1);
       }
 
-      console.log("📥 Importing and scheduling workouts...\n");
+      console.log("📥 Uploading and scheduling workouts...\n");
       const plan = await editor.importWorkoutPlan(planInputPath);
       await editor.addToCalendar(plan);
       console.log("\n✅ Workouts imported and scheduled successfully!");
@@ -218,7 +218,7 @@ async function main() {
       "  npm run manage-workouts -- --schedule <path>               Schedule workouts from plan"
     );
     console.log(
-      "  npm run manage-workouts -- --import-and-schedule <path>    Import and add to calendar"
+      "  npm run manage-workouts -- --upload-and-schedule <path>    Upload and add to calendar"
     );
     console.log(
       "  npm run manage-workouts -- --upload <path>                 Upload workouts to Garmin (delete + recreate)"

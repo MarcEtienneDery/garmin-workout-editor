@@ -106,48 +106,129 @@ npm run extract-activities -- --mock
 
 This generates realistic test data for development and testing purposes.
 
-## Workouts (Import/Export & Planning)
+## Manage Workouts (Import/Export & Planning)
+
+All workout commands use the `manage-workouts` script:
+
+```bash
+npm run manage-workouts -- <flags>
+```
 
 ### Export Workouts from Garmin
 
-Export your Garmin workouts list to JSON:
+Export all your Garmin workouts with full exercise details to JSON:
 
 ```bash
-npm run extract-activities -- --export-workouts
+npm run manage-workouts -- --export
 ```
 
 Custom output path:
 
 ```bash
-npm run extract-activities -- --export-workouts --workouts-output ./data/workouts.json
+npm run manage-workouts -- --export --output ./data/workouts.json
 ```
 
-### Generate a Temporary Next-Week Plan (Editable)
-
-Create a temp plan file you can edit manually before scheduling:
+To save raw workout data for debugging:
 
 ```bash
-npm run extract-activities -- --export-next-week-temp
+npm run manage-workouts -- --export --raw
+```
+
+### Transform Workouts (No API Fetch)
+
+Re-transform saved raw workout data without hitting the API:
+
+```bash
+npm run manage-workouts -- --transform-only data/workouts-raw.json
+```
+
+With custom week dates:
+
+```bash
+npm run manage-workouts -- --transform-only data/workouts-raw.json \
+  --week-start 2026-02-02 --week-end 2026-02-08
+```
+
+### Generate a Next-Week Workout Plan Template
+
+Create a workout plan template file for next week that you can edit manually:
+
+```bash
+npm run manage-workouts -- --generate-template
 ```
 
 Custom output path:
 
 ```bash
-npm run extract-activities -- --export-next-week-temp --plan-output ./data/next-week.workouts.tmp.json
+npm run manage-workouts -- --generate-template --template-output ./data/next-week.workouts.tmp.json
 ```
 
-### Copy Last Week Plan to Next Week (Shift +7 Days)
+### Copy Workout Plan to Next Week (Shift +7 Days)
+
+Copy an existing workout plan and shift all dates to next week:
 
 ```bash
-npm run extract-activities -- --copy-plan-next-week ./data/last-week.plan.json
+npm run manage-workouts -- --copy-next-week ./data/last-week.plan.json
 ```
 
-### Schedule a Plan to Garmin Calendar
-
-After editing your temp plan JSON file, schedule it to Garmin:
+Custom output path:
 
 ```bash
-npm run extract-activities -- --schedule-from-plan ./data/next-week.workouts.tmp.json
+npm run manage-workouts -- --copy-next-week ./data/last-week.plan.json \
+  --template-output ./data/next-week.plan.json
+```
+
+### Schedule Workouts to Garmin Calendar
+
+Schedule workouts from a plan file (requires existing workout IDs in Garmin):
+
+```bash
+npm run manage-workouts -- --schedule ./data/next-week.workouts.tmp.json
+```
+
+### Upload and Schedule Workouts (Plan File)
+
+Upload workout definitions from a plan file and add them to your Garmin calendar (creates new workouts as needed):
+
+```bash
+npm run manage-workouts -- --upload-and-schedule ./data/next-week.workouts.tmp.json
+```
+
+### Upload Workouts to Garmin (Workout Library)
+
+Upload workouts from a workouts file to your Garmin library (creates or replaces workouts only, no calendar scheduling):
+
+```bash
+npm run manage-workouts -- --upload ./data/workouts.json
+```
+
+Validate workouts without uploading (dry-run):
+
+```bash
+npm run manage-workouts -- --upload ./data/workouts.json --dry-run
+```
+
+Upload a single workout by ID:
+
+```bash
+npm run manage-workouts -- --upload-single 12345678
+```
+
+Specify a custom workouts file:
+
+```bash
+npm run manage-workouts -- --upload-single 12345678 --file ./data/workouts.json
+```
+
+**Note:** After uploading, run `--export` to sync the new workout IDs to your local file.
+
+### Mock Mode for Testing
+
+All workout commands support mock mode for testing without real credentials:
+
+```bash
+npm run manage-workouts -- --export --mock
+npm run manage-workouts -- --generate-template --mock
 ```
 
 ## Testing
