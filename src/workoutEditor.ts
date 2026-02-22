@@ -136,13 +136,8 @@ export class WorkoutEditor {
       );
     }
 
-    // Required: targetType
-    if (!step.targetType) {
-      throw new Error(
-        `Step ${stepIndex}: Missing required field 'targetType'`
-      );
-    }
-    if (!this.isValidTargetType(step.targetType)) {
+    // targetType defaults to "no.target" when absent (omitted in simplified form)
+    if (step.targetType && !this.isValidTargetType(step.targetType)) {
       throw new Error(
         `Step ${stepIndex}: Invalid targetType '${step.targetType}'. Must be one of: ${VALID_TARGET_TYPES.join(", ")}`
       );
@@ -436,18 +431,8 @@ export class WorkoutEditor {
       return [];
     }
 
-    // First pass: recursively flatten all steps (including nested RepeatGroupDTO)
-    const flattenedSteps = this.flattenSteps(steps);
-
-    // Second pass: merge first rest step into preceding exercise
-    const mergedSteps = this.mergeRestIntoExercises(flattenedSteps);
-
-    // Third pass: renumber stepOrder sequentially
-    mergedSteps.forEach((step, index) => {
-      step.stepOrder = index + 1;
-    });
-
-    return mergedSteps;
+    // Preserve original Garmin structure and stepOrder values
+    return this.flattenSteps(steps);
   }
 
   /**
@@ -459,18 +444,12 @@ export class WorkoutEditor {
     for (const step of steps) {
       // Check if this is a RepeatGroupDTO
       if (step.type === "RepeatGroupDTO" && step.workoutSteps && Array.isArray(step.workoutSteps)) {
-        // Extract numberOfIterations
-        const numberOfRepeats = step.numberOfIterations;
-
-        // Recursively flatten nested steps
-        const nestedSteps = this.flattenSteps(step.workoutSteps);
-
-        // Add numberOfRepeats to each nested step
-        nestedSteps.forEach((nestedStep) => {
-          nestedStep.numberOfRepeats = numberOfRepeats;
-        });
-
-        flattened.push(...nestedSteps);
+        const repeatStep: WorkoutStep = {
+          stepType: "repeat",
+          numberOfRepeats: step.numberOfIterations,
+          repeatSteps: this.flattenSteps(step.workoutSteps),
+        };
+        flattened.push(repeatStep);
       } else {
         // Regular ExecutableStepDTO - transform to WorkoutStep
         const workoutStep = this.transformSingleStep(step);
@@ -494,9 +473,10 @@ export class WorkoutEditor {
       workoutStep.exerciseName = step.exerciseName;
     }
 
-    // Target information
-    if (step.targetType?.workoutTargetTypeKey) {
-      workoutStep.targetType = step.targetType.workoutTargetTypeKey;
+    // Target information — omit "no.target" (it's the default, restored at desimplify)
+    const targetTypeKey = step.targetType?.workoutTargetTypeKey;
+    if (targetTypeKey && targetTypeKey !== "no.target") {
+      workoutStep.targetType = targetTypeKey;
     }
 
     // Target values (for pace, HR, power, etc.)
@@ -524,15 +504,8 @@ export class WorkoutEditor {
 
     if (step.endConditionValue !== null && step.endConditionValue !== undefined) {
       workoutStep.endConditionValue = step.endConditionValue;
-
-      // Extract parallel fields based on endCondition type
-      if (workoutStep.endCondition === "reps") {
-        workoutStep.reps = step.endConditionValue;
-      } else if (workoutStep.endCondition === "time") {
-        workoutStep.durationSeconds = step.endConditionValue;
-      } else if (workoutStep.endCondition === "distance") {
-        workoutStep.distanceMeters = step.endConditionValue;
-      }
+      // reps / durationSeconds / distanceMeters are omitted — always equal to
+      // endConditionValue and reconstructed from endCondition at desimplify time
     }
 
     // Weight/Equipment - convert to lbs
@@ -551,8 +524,7 @@ export class WorkoutEditor {
       }
     }
 
-    // Step ordering (will be renumbered later)
-    workoutStep.stepOrder = step.stepOrder;
+    // stepOrder is omitted — always sequential and recomputed at desimplify time
 
     return workoutStep;
   }
@@ -858,7 +830,7 @@ export class WorkoutEditor {
       });
     }
 
-    return {
+    const transformed: DetailedWorkout = {
       workoutId: workout.workoutId,
       workoutName: workout.workoutName || "Unnamed Workout",
       workoutType: workout.sportType?.sportTypeKey,
@@ -868,6 +840,17 @@ export class WorkoutEditor {
       totalReps: totalReps || undefined,
       estimatedDurationSeconds: workout.estimatedDurationInSecs || undefined,
     };
+
+    // Keep source raw workout for exact round-trip reconstruction without
+    // polluting serialized JSON output.
+    Object.defineProperty(transformed, "__rawWorkout", {
+      value: workout,
+      enumerable: false,
+      writable: false,
+      configurable: false,
+    });
+
+    return transformed;
   }
 
   /**
@@ -1113,90 +1096,57 @@ export class WorkoutEditor {
    */
   private unflattenSteps(steps: WorkoutStep[]): any[] {
     const unflattened: any[] = [];
-    
-    // Group steps by numberOfRepeats to rebuild RepeatGroupDTO
-    const groupedSteps: WorkoutStep[][] = [];
-    let currentGroup: WorkoutStep[] = [];
-    let currentRepeats: number | undefined = undefined;
 
     for (const step of steps) {
-      // If this step has a different numberOfRepeats, start a new group
-      if (step.numberOfRepeats !== currentRepeats) {
-        if (currentGroup.length > 0) {
-          groupedSteps.push(currentGroup);
-        }
-        currentGroup = [step];
-        currentRepeats = step.numberOfRepeats;
-      } else {
-        currentGroup.push(step);
-      }
-    }
-    
-    // Add final group
-    if (currentGroup.length > 0) {
-      groupedSteps.push(currentGroup);
-    }
-
-    // Process each group
-    for (const group of groupedSteps) {
-      const firstStep = group[0];
-      const numberOfRepeats = firstStep.numberOfRepeats;
-
-      // Convert steps in group to Garmin format
-      const garminSteps: any[] = [];
-      
-      for (const step of group) {
-        // Convert the main step
-        const garminStep = this.convertStepToGarminFormat(step);
-        garminSteps.push(garminStep);
-
-        // If step has merged rest time, add it as a separate rest step
-        if (step.restTimeSeconds !== undefined && step.restTimeSeconds > 0) {
-          const restStep = {
-            type: "ExecutableStepDTO",
-            stepId: null,
-            stepOrder: null,
-            childStepId: null,
-            description: null,
-            stepType: {
-              stepTypeId: 3, // rest
-              stepTypeKey: "rest",
-            },
-            endCondition: {
-              conditionTypeId: 2, // time
-              conditionTypeKey: "time",
-            },
-            endConditionValue: step.restTimeSeconds,
-            preferredEndConditionUnit: null,
-            targetType: {
-              workoutTargetTypeId: 1, // no target
-              workoutTargetTypeKey: "no.target",
-            },
-            targetValueOne: null,
-            targetValueTwo: null,
-            zoneNumber: null,
-            secondaryTargetType: null,
-            secondaryTargetValueOne: null,
-            secondaryTargetValueTwo: null,
-            secondaryZoneNumber: null,
-          };
-          garminSteps.push(restStep);
-        }
-      }
-
-      // If group has numberOfRepeats, wrap in RepeatGroupDTO
-      if (numberOfRepeats !== undefined && numberOfRepeats > 1) {
+      // Rebuild explicit repeat group structure
+      if (step.stepType === "repeat" && step.repeatSteps && Array.isArray(step.repeatSteps)) {
         unflattened.push({
           type: "RepeatGroupDTO",
           repeatGroupId: null,
-          numberOfIterations: numberOfRepeats,
+          stepOrder: step.stepOrder ?? null,
+          numberOfIterations: step.numberOfRepeats ?? 1,
           smartRepeat: false,
           childStepId: null,
-          workoutSteps: garminSteps,
+          workoutSteps: this.unflattenSteps(step.repeatSteps),
         });
-      } else {
-        // No repeats, add steps directly
-        unflattened.push(...garminSteps);
+        continue;
+      }
+
+      // Convert regular executable step
+      const garminStep = this.convertStepToGarminFormat(step);
+      unflattened.push(garminStep);
+
+      // If step has merged rest time, add it as a separate rest step
+      if (step.restTimeSeconds !== undefined && step.restTimeSeconds > 0) {
+        const restStep = {
+          type: "ExecutableStepDTO",
+          stepId: null,
+          stepOrder: null,
+          childStepId: null,
+          description: null,
+          stepType: {
+            stepTypeId: 3, // rest
+            stepTypeKey: "rest",
+          },
+          endCondition: {
+            conditionTypeId: 2, // time
+            conditionTypeKey: "time",
+          },
+          endConditionValue: step.restTimeSeconds,
+          preferredEndConditionUnit: null,
+          targetType: {
+            workoutTargetTypeId: 1, // no target
+            workoutTargetTypeKey: "no.target",
+          },
+          targetValueOne: null,
+          targetValueTwo: null,
+          zoneNumber: null,
+          secondaryTargetType: null,
+          secondaryTargetValueOne: null,
+          secondaryTargetValueTwo: null,
+          secondaryZoneNumber: null,
+        };
+        unflattened.push(restStep);
       }
     }
 
@@ -1310,10 +1260,29 @@ export class WorkoutEditor {
   }
 
   /**
+   * Assign sequential stepOrder values to Garmin-format steps,
+   * walking into RepeatGroupDTO children with a shared counter.
+   */
+  private assignStepOrders(steps: any[], counter: { n: number } = { n: 1 }): void {
+    for (const step of steps) {
+      step.stepOrder = counter.n++;
+      if (step.type === "RepeatGroupDTO" && step.workoutSteps) {
+        this.assignStepOrders(step.workoutSteps, counter);
+      }
+    }
+  }
+
+  /**
    * Build Garmin IWorkoutDetail from DetailedWorkout
    */
   private buildGarminWorkoutDetail(workout: DetailedWorkout): IWorkoutDetail {
+    const rawWorkout = (workout as any).__rawWorkout;
+    if (rawWorkout) {
+      return JSON.parse(JSON.stringify(rawWorkout));
+    }
+
     const garminSteps = workout.steps ? this.unflattenSteps(workout.steps) : [];
+    this.assignStepOrders(garminSteps);
 
     const workoutDetail: IWorkoutDetail = {
       workoutId: workout.workoutId ? Number(workout.workoutId) : undefined,

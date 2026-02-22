@@ -33,6 +33,7 @@ async function main() {
   const uploadAndSchedule = process.argv.includes("--upload-and-schedule");
   const uploadWorkouts = process.argv.includes("--upload");
   const uploadSingle = process.argv.includes("--upload-single");
+  const transformOnly = process.argv.includes("--transform-only");
   const saveRaw = process.argv.includes("--raw");
   const dryRun = process.argv.includes("--dry-run");
 
@@ -48,6 +49,7 @@ async function main() {
     getArgValue("--upload-and-schedule");
   const uploadInputPath = getArgValue("--upload");
   const uploadWorkoutId = getArgValue("--upload-single");
+  const transformOnlyInputPath = getArgValue("--transform-only");
 
   console.log("🏋️  Garmin Workout Manager");
   console.log("===========================\n");
@@ -190,6 +192,25 @@ async function main() {
         console.log("\n💡 Next steps:");
         console.log("   1. Run: npm run manage-workouts -- --export");
         console.log("   2. This will sync the new workout ID to your local file");
+      }
+      return;
+    }
+
+    if (transformOnly) {
+      if (!transformOnlyInputPath) {
+        console.error("❌ Error: Missing raw file path for --transform-only");
+        console.error("Usage: npm run manage-workouts -- --transform-only <raw-file>");
+        process.exit(1);
+      }
+
+      const outputPath = getArgValue("--output") || workoutsOutputPath;
+      console.log(`📂 Transforming workouts from ${transformOnlyInputPath}...\n`);
+      const ok = await editor.transformAndSaveWorkouts(transformOnlyInputPath, outputPath);
+      if (ok) {
+        console.log("\n✅ Workout transformation completed successfully!");
+      } else {
+        console.error("\n❌ Workout transformation failed");
+        process.exit(1);
       }
       return;
     }

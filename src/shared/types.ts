@@ -93,6 +93,7 @@ export interface WorkoutStep {
   
   // Repeat group tracking
   numberOfRepeats?: number;   // From RepeatGroupDTO.numberOfIterations
+  repeatSteps?: WorkoutStep[]; // Nested steps for stepType="repeat"
 }
 
 
