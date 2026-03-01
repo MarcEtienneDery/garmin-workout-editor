@@ -228,10 +228,8 @@ WeeklyWorkoutPlan schema:
 }`;
   }
 
-  /** Create a LLM session (no-op in mock mode) */
+  /** Create a LLM session */
   async createSession(): Promise<void> {
-    if (this.mockMode) return;
-
     const { CopilotClient } = await import("@github/copilot-sdk");
 
     // Auth: prefer GitHub token env vars, then BYOK (OpenAI / Anthropic)
@@ -295,10 +293,6 @@ WeeklyWorkoutPlan schema:
    * for the first token so the user knows the process is alive.
    */
   private async sendPrompt(prompt: string): Promise<string> {
-    if (this.mockMode) {
-      return this.getMockResponse();
-    }
-
     if (!this.session) {
       throw new Error("LLM session not initialized. Call createSession() first.");
     }
@@ -658,9 +652,60 @@ Return ONLY a JSON object with these fields:
     console.log(`✅ Weekly summary appended to ${path.basename(trainingPlanPath)}`);
   }
 
+  /**
+   * Re-adjust a single workout based on user feedback.
+   * Sends only the workout + feedback to the LLM and returns the updated workout.
+   */
+  async iterateSingleWorkout(
+    feedback: string,
+    workout: PlannedWorkout
+  ): Promise<PlannedWorkout> {
+    const prompt = `
+## User feedback on a single workout
+
+Workout: ${workout.workoutName} (${workout.scheduledDate ?? "unscheduled"})
+
+Feedback: ${feedback}
+
+## Current workout (for reference)
+
+${JSON.stringify(workout, null, 2)}
+
+Apply the feedback and return ONLY the updated single workout as a JSON object (PlannedWorkout schema, not wrapped in WeeklyWorkoutPlan), then SUMMARY:.
+`.trim();
+
+    console.log("\n🤖 Adjusting workout...");
+    console.log("─".repeat(60));
+    const rawResponse = await this.sendPrompt(prompt);
+    console.log("─".repeat(60));
+
+    this.saveLastResponse(rawResponse);
+
+    // Extract JSON + summary
+    const summaryMatch = rawResponse.match(/\nSUMMARY:([\s\S]*)$/m);
+    const summary = summaryMatch ? summaryMatch[1].trim() : "";
+    const jsonPortion = summaryMatch
+      ? rawResponse.slice(0, summaryMatch.index)
+      : rawResponse;
+
+    let parsed: unknown;
+    try {
+      parsed = extractJson(jsonPortion);
+    } catch (e) {
+      console.error(`⚠️  Could not parse LLM response. Keeping original workout.`);
+      return workout;
+    }
+
+    if (summary) {
+      console.log("\n📝 LLM Summary:");
+      console.log(summary);
+    }
+
+    return parsed as PlannedWorkout;
+  }
+
   /** Clean up the LLM session and client */
   async cleanup(): Promise<void> {
-    if (this.mockMode) return;
     try {
       if (this.session) {
         await this.session.destroy();
@@ -758,4 +803,232 @@ export async function interactiveLoop(
 
   rl.close();
   return approved ? currentPlan : null;
+}
+
+// ─── Per-workout review helpers ──────────────────────────────────────────────
+
+/**
+ * Pretty-print all steps of a single workout.
+ */
+export function displayWorkoutDetail(workout: PlannedWorkout): void {
+  const steps = workout.steps ?? [];
+  if (steps.length === 0) {
+    console.log("  (no steps)");
+    return;
+  }
+
+  for (let i = 0; i < steps.length; i++) {
+    const s = steps[i];
+    const parts: string[] = [`  ${i + 1}.`];
+
+    // Step type badge
+    parts.push(`[${s.stepType}]`);
+
+    // Exercise name
+    if (s.exerciseName) parts.push(s.exerciseName);
+
+    // Repeat group
+    if (s.stepType === "repeat" && s.numberOfRepeats) {
+      parts.push(`x${s.numberOfRepeats}`);
+      console.log(parts.join(" "));
+      if (s.repeatSteps) {
+        for (let j = 0; j < s.repeatSteps.length; j++) {
+          const rs = s.repeatSteps[j];
+          const rParts: string[] = [`     ${i + 1}.${j + 1}`, `[${rs.stepType}]`];
+          if (rs.exerciseName) rParts.push(rs.exerciseName);
+          if (rs.reps !== undefined) rParts.push(`${rs.reps} reps`);
+          if (rs.durationSeconds !== undefined) rParts.push(`${rs.durationSeconds}s`);
+          if (rs.weight !== undefined) rParts.push(`@${rs.weight}lbs`);
+          if (rs.weightPercentage !== undefined) rParts.push(`@${rs.weightPercentage}%`);
+          if (rs.restTimeSeconds) rParts.push(`rest:${rs.restTimeSeconds}s`);
+          if (rs.targetValueOne !== undefined && rs.targetValueTwo !== undefined) {
+            rParts.push(`target:${rs.targetValueOne}-${rs.targetValueTwo}`);
+          }
+          console.log(rParts.join(" "));
+        }
+      }
+      continue;
+    }
+
+    // End condition details
+    if (s.reps !== undefined) parts.push(`${s.reps} reps`);
+    if (s.durationSeconds !== undefined) parts.push(`${s.durationSeconds}s`);
+    if (s.distanceMeters !== undefined) parts.push(`${s.distanceMeters}m`);
+
+    // Weight
+    if (s.weight !== undefined) parts.push(`@${s.weight}lbs`);
+    if (s.weightPercentage !== undefined) {
+      parts.push(`@${s.weightPercentage}%`);
+      if (s.benchmarkKey) parts.push(`of ${s.benchmarkKey}`);
+    }
+
+    // Target zones
+    if (s.targetType && s.targetType !== "no.target" && s.targetValueOne !== undefined && s.targetValueTwo !== undefined) {
+      parts.push(`target(${s.targetType}):${s.targetValueOne}-${s.targetValueTwo}`);
+    }
+
+    // Rest
+    if (s.restTimeSeconds) parts.push(`rest:${s.restTimeSeconds}s`);
+
+    console.log(parts.join(" "));
+  }
+}
+
+/**
+ * Display a side-by-side diff of a single workout (old vs new).
+ */
+export function formatSingleWorkoutDiff(
+  oldWorkout: PlannedWorkout | undefined,
+  newWorkout: PlannedWorkout
+): string {
+  const lines: string[] = [];
+
+  if (!oldWorkout) {
+    lines.push(`  NEW workout (no original to compare)`);
+    return lines.join("\n");
+  }
+
+  // Date change
+  if (oldWorkout.scheduledDate !== newWorkout.scheduledDate) {
+    lines.push(`  Date: ${oldWorkout.scheduledDate} -> ${newWorkout.scheduledDate}`);
+  }
+
+  // Step-level diff
+  const oldSteps = flattenForDiff(oldWorkout.steps ?? []);
+  const newSteps = flattenForDiff(newWorkout.steps ?? []);
+  const maxLen = Math.max(oldSteps.length, newSteps.length);
+
+  let changeCount = 0;
+  for (let i = 0; i < maxLen; i++) {
+    const os = oldSteps[i] ? describeStep(oldSteps[i]) : "(removed)";
+    const ns = newSteps[i] ? describeStep(newSteps[i]) : "(removed)";
+    if (os !== ns) {
+      lines.push(`  Step ${i + 1}: ${os}  ->  ${ns}`);
+      changeCount++;
+    }
+  }
+
+  if (changeCount === 0) {
+    lines.push("  (no changes)");
+  }
+
+  return lines.join("\n");
+}
+
+/**
+ * Per-workout interactive review loop.
+ * Iterates through each workout individually, allowing approve/edit/skip per workout.
+ * Returns the final WeeklyWorkoutPlan with only approved workouts, or null if user quit.
+ */
+export async function perWorkoutReviewLoop(
+  adjuster: WorkoutAdjuster,
+  initialResult: AdjustmentResult,
+  originalPlan: WeeklyWorkoutPlan
+): Promise<WeeklyWorkoutPlan | null> {
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+
+  const question = (q: string): Promise<string> =>
+    new Promise((resolve) => rl.question(q, resolve));
+
+  const adjustedPlan = initialResult.adjustedPlan;
+  const workouts = [...adjustedPlan.workouts];
+  const originalByName = new Map(
+    originalPlan.workouts.map((w) => [w.workoutName, w])
+  );
+
+  // Show overall summary first
+  if (initialResult.changeSummary) {
+    console.log("\n" + initialResult.changeSummary);
+  }
+
+  console.log(`\n📋 Reviewing ${workouts.length} workout(s) individually...\n`);
+
+  const approved: PlannedWorkout[] = [];
+  const skipped: string[] = [];
+  let quit = false;
+
+  for (let i = 0; i < workouts.length; i++) {
+    let workout = workouts[i];
+    const original = originalByName.get(workout.workoutName);
+    let reviewingThisWorkout = true;
+
+    while (reviewingThisWorkout) {
+      console.log("═".repeat(60));
+      console.log(`  Workout ${i + 1}/${workouts.length}: ${workout.workoutName}`);
+      console.log(`  Date: ${workout.scheduledDate ?? "unscheduled"} | Type: ${workout.workoutType ?? "unknown"}`);
+      console.log("─".repeat(60));
+
+      // Show diff
+      const diff = formatSingleWorkoutDiff(original, workout);
+      console.log(diff);
+      console.log("─".repeat(60));
+
+      const answer = await question(
+        "\n  [a] Approve  [e] Edit (give feedback)  [v] View details  [s] Skip  [q] Quit\n  > "
+      );
+      const choice = answer.trim().toLowerCase();
+
+      if (choice === "a" || choice === "approve") {
+        approved.push(workout);
+        console.log(`  ✅ Approved: ${workout.workoutName}`);
+        reviewingThisWorkout = false;
+      } else if (choice === "s" || choice === "skip") {
+        skipped.push(workout.workoutName);
+        console.log(`  ⏭️  Skipped: ${workout.workoutName}`);
+        reviewingThisWorkout = false;
+      } else if (choice === "v" || choice === "view") {
+        console.log("\n  Full step details:");
+        displayWorkoutDetail(workout);
+      } else if (choice === "e" || choice === "edit") {
+        const feedback = await question("  Enter feedback:\n  > ");
+        if (feedback.trim()) {
+          workout = await adjuster.iterateSingleWorkout(feedback, workout);
+          workouts[i] = workout;
+          // Loop back to show updated diff
+        }
+      } else if (choice === "q" || choice === "quit") {
+        quit = true;
+        reviewingThisWorkout = false;
+      } else {
+        console.log("  Unrecognized choice. Try a, e, v, s, or q.");
+      }
+    }
+
+    if (quit) break;
+  }
+
+  rl.close();
+
+  if (quit) {
+    return null;
+  }
+
+  // Show summary
+  console.log("\n" + "═".repeat(60));
+  console.log("📊 Review Summary");
+  console.log("─".repeat(60));
+  console.log(`  Approved: ${approved.length}`);
+  if (skipped.length > 0) {
+    console.log(`  Skipped:  ${skipped.length} (${skipped.join(", ")})`);
+  }
+  console.log("─".repeat(60));
+
+  for (const w of approved) {
+    console.log(`  ${w.scheduledDate ?? "?"} | ${w.workoutName}`);
+  }
+  console.log("═".repeat(60));
+
+  if (approved.length === 0) {
+    console.log("\n  No workouts approved.");
+    return null;
+  }
+
+  // Build final plan with only approved workouts
+  return {
+    ...adjustedPlan,
+    workouts: approved,
+  };
 }

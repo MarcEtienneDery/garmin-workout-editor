@@ -2,13 +2,14 @@
  * adjustWorkouts.ts — LLM-powered workout adjustment CLI
  *
  * Flow:
- *   1. Fetch last/this week's activities from Garmin (or load from file)
- *   2. Load next week's workout plan (or load from file)
- *   3. Load training progression config (data/training-plan.json)
- *   4. Send context to LLM via @github/copilot-sdk
- *   5. Interactive CLI loop: review → give feedback → re-adjust
- *   6. On approval: save adjusted plan, optionally upload + schedule to Garmin
- *   7. Append weekly summary to training plan history
+ *   1. Ask which week's activities to analyze (or use --last-week/--this-week)
+ *   2. Sync workout library from Garmin
+ *   3. Generate next-week workout template from library
+ *   4. Load training progression config (data/training-plan.json)
+ *   5. Send context to LLM via @github/copilot-sdk
+ *   6. Per-workout interactive review: approve, edit, skip, or view each workout
+ *   7. On approval: save adjusted plan, upload + schedule approved workouts to Garmin
+ *   8. Append weekly summary to training plan history
  *
  * Usage:
  *   npm run adjust-workouts
@@ -28,8 +29,7 @@ import ActivityExporter from "./activityExporter";
 import WorkoutEditor from "./workoutEditor";
 import {
   WorkoutAdjuster,
-  interactiveLoop,
-  formatChangeSummary,
+  perWorkoutReviewLoop,
 } from "./workoutAdjuster";
 import { AdjustmentContext, TrainingPlan, WeeklyWorkoutPlan } from "./shared/types";
 
@@ -137,6 +137,32 @@ async function yesNo(question: string): Promise<boolean> {
   });
 }
 
+/**
+ * Prompt the user to choose which week's activities to analyze.
+ * Returns { lastWeek, thisWeek } booleans.
+ */
+async function promptWeekChoice(): Promise<{ lastWeek: boolean; thisWeek: boolean }> {
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+
+  return new Promise((resolve) => {
+    console.log("\nWhich week's activities should we analyze?");
+    console.log("  [1] Last week (default)");
+    console.log("  [2] Current week");
+    rl.question("> ", (answer) => {
+      rl.close();
+      const choice = answer.trim();
+      if (choice === "2") {
+        resolve({ lastWeek: false, thisWeek: true });
+      } else {
+        resolve({ lastWeek: true, thisWeek: false });
+      }
+    });
+  });
+}
+
 // ─── Main ────────────────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
@@ -180,12 +206,28 @@ async function main(): Promise<void> {
     path.join(__dirname, "../data/workouts-adjusted.json");
   const tempActivitiesPath = path.join(__dirname, "../data/activities.json");
   const tempWorkoutsPath = path.join(__dirname, "../data/next-week.workouts.tmp.json");
+  const tempWorkoutsExportPath = path.join(__dirname, "../data/workouts.json");
   const modelName = getArgValue("--model");
   const dryRun = hasFlag("--dry-run");
 
-  const thisWeek = hasFlag("--this-week");
-  // Default to last week if neither flag is given
-  const lastWeek = !thisWeek;
+  // ── Week selection: flags override, otherwise prompt interactively ─────
+  let thisWeek: boolean;
+  let lastWeek: boolean;
+  if (hasFlag("--this-week")) {
+    thisWeek = true;
+    lastWeek = false;
+  } else if (hasFlag("--last-week")) {
+    thisWeek = false;
+    lastWeek = true;
+  } else if (!activitiesFilePath) {
+    const choice = await promptWeekChoice();
+    thisWeek = choice.thisWeek;
+    lastWeek = choice.lastWeek;
+  } else {
+    // Loading from file — week flags irrelevant
+    thisWeek = false;
+    lastWeek = true;
+  }
 
   // ── Garmin client ────────────────────────────────────────────────────────
   const garminClient = new GarminClient(
@@ -218,7 +260,17 @@ async function main(): Promise<void> {
     console.log(`📂 Loading activities from ${resolvedActivitiesPath}`);
   }
 
-  // ── Step 2: Load / fetch next week's workout plan ─────────────────────────
+  // ── Step 2: Sync workout library from Garmin ──────────────────────────────
+  if (!workoutsFilePath && !mockMode) {
+    console.log("📥 Syncing workout library from Garmin...");
+    try {
+      await workoutEditor.exportWorkouts(tempWorkoutsExportPath, true, false);
+    } catch (e) {
+      console.warn(`⚠️  Could not sync workout library: ${(e as Error).message}`);
+    }
+  }
+
+  // ── Step 3: Load / fetch next week's workout plan ─────────────────────────
   let resolvedWorkoutsPath = workoutsFilePath;
 
   if (!resolvedWorkoutsPath) {
@@ -236,14 +288,14 @@ async function main(): Promise<void> {
     console.log(`📂 Loading workout plan from ${resolvedWorkoutsPath}`);
   }
 
-  // ── Step 3: Load training plan ────────────────────────────────────────────
+  // ── Step 4: Load training plan ────────────────────────────────────────────
   if (!fs.existsSync(trainingPlanPath)) {
     console.error(`❌ Training plan not found at ${trainingPlanPath}`);
     console.error("   Run: npm run adjust-workouts -- --init-plan");
     process.exit(1);
   }
 
-  // ── Step 4: Build context object ─────────────────────────────────────────
+  // ── Step 5: Build context object ─────────────────────────────────────────
   const adjuster = new WorkoutAdjuster({
     modelName,
     mockMode,
@@ -264,11 +316,11 @@ async function main(): Promise<void> {
     trainingPlan,
   };
 
-  // ── Step 5: Create LLM session ────────────────────────────────────────────
+  // ── Step 6: Create LLM session ────────────────────────────────────────────
   console.log(`🤖 Initializing LLM session (model: ${modelName ?? process.env.COPILOT_MODEL ?? "claude-sonnet-4.5"})...`);
   await adjuster.createSession();
 
-  // ── Step 6: Initial analysis ──────────────────────────────────────────────
+  // ── Step 7: Initial analysis ──────────────────────────────────────────────
   let analysisResult;
   try {
     analysisResult = await adjuster.analyzeAndAdjust(context);
@@ -278,8 +330,8 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  // ── Step 7: Interactive loop ──────────────────────────────────────────────
-  const approvedPlan = await interactiveLoop(adjuster, analysisResult, workoutPlan);
+  // ── Step 8: Per-workout interactive review ───────────────────────────────
+  const approvedPlan = await perWorkoutReviewLoop(adjuster, analysisResult, workoutPlan);
 
   if (!approvedPlan) {
     // User quit — save current state anyway
@@ -295,11 +347,11 @@ async function main(): Promise<void> {
     return;
   }
 
-  // ── Step 8: Save approved plan ────────────────────────────────────────────
+  // ── Step 9: Save approved plan ────────────────────────────────────────────
   fs.writeFileSync(outputPath, JSON.stringify(approvedPlan, null, 2), "utf-8");
   console.log(`\n✅ Adjusted plan saved to ${outputPath}`);
 
-  // ── Step 9: Upload & schedule ─────────────────────────────────────────────
+  // ── Step 10: Upload & schedule ────────────────────────────────────────────
   if (!dryRun) {
     const doUpload = await yesNo("\n🚀 Upload and schedule workouts to Garmin?");
     if (doUpload) {
@@ -323,7 +375,7 @@ async function main(): Promise<void> {
     }
   }
 
-  // ── Step 10: Append weekly summary ────────────────────────────────────────
+  // ── Step 11: Append weekly summary ───────────────────────────────────────
   try {
     await adjuster.appendWeekSummary(context, trainingPlanPath);
     // Also advance periodization week counter

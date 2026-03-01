@@ -4,20 +4,19 @@
   "description": "Extract Garmin activities and manage workouts",
   "main": "dist/index.js",
   "bin": {
-    "export-activities": "dist/exportActivities.js",
-    "manage-workouts": "dist/manageWorkouts.js"
+    "garmin-workout-editor": "dist/cli.js"
   },
   "scripts": {
     "build": "tsc",
     "dev": "ts-node src/index.ts",
-    "start": "node dist/index.js",
+    "start": "ts-node src/cli.ts",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
     "export-activities": "ts-node src/exportActivities.ts",
     "manage-workouts": "ts-node src/manageWorkouts.ts",
     "adjust-workouts": "tsx src/adjustWorkouts.ts",
-    "test-llm": "tsx src/testLlm.ts",
-    "test": "jest",
-    "test:watch": "jest --watch",
-    "test:coverage": "jest --coverage"
+    "test-llm": "tsx src/testLlm.ts"
   },
   "dependencies": {
     "@flow-js/garmin-connect": "^1.6.7",

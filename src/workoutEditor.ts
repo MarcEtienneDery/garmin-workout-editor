@@ -453,21 +453,25 @@ export class WorkoutEditor {
   /**
    * Recursively flatten workout steps, expanding RepeatGroupDTO nested structures
    */
-  private flattenSteps(steps: any[]): WorkoutStep[] {
+  private flattenSteps(steps: any[], groupCounter: { value: number } = { value: 0 }): WorkoutStep[] {
     const flattened: WorkoutStep[] = [];
 
     for (const step of steps) {
       // Check if this is a RepeatGroupDTO
       if (step.type === "RepeatGroupDTO" && step.workoutSteps && Array.isArray(step.workoutSteps)) {
+        // Assign a unique index for this group so it can be reconstructed separately
+        const groupIndex = groupCounter.value++;
+
         // Extract numberOfIterations
         const numberOfRepeats = step.numberOfIterations;
 
         // Recursively flatten nested steps
-        const nestedSteps = this.flattenSteps(step.workoutSteps);
+        const nestedSteps = this.flattenSteps(step.workoutSteps, groupCounter);
 
-        // Add numberOfRepeats to each nested step
+        // Add numberOfRepeats and repeatGroupIndex to each nested step
         nestedSteps.forEach((nestedStep) => {
           nestedStep.numberOfRepeats = numberOfRepeats;
+          nestedStep.repeatGroupIndex = groupIndex;
         });
 
         flattened.push(...nestedSteps);
@@ -1109,69 +1113,36 @@ export class WorkoutEditor {
   /**
    * Unflatten workout steps: reverse the merge and flatten operations
    * 1. Split merged restTimeSeconds back into separate rest steps
-   * 2. Rebuild RepeatGroupDTO structures using numberOfRepeats
+   * 2. Rebuild RepeatGroupDTO structures using repeatGroupIndex (unique per original group)
    */
   private unflattenSteps(steps: WorkoutStep[]): any[] {
     const unflattened: any[] = [];
-    
-    // Group steps by numberOfRepeats to rebuild RepeatGroupDTO
-    const groupedSteps: WorkoutStep[][] = [];
-    let currentGroup: WorkoutStep[] = [];
-    let currentRepeats: number | undefined = undefined;
+    let currentGroupIndex: number | undefined = undefined;
+    let currentGroupSteps: WorkoutStep[] = [];
 
-    for (const step of steps) {
-      // If this step has a different numberOfRepeats, start a new group
-      if (step.numberOfRepeats !== currentRepeats) {
-        if (currentGroup.length > 0) {
-          groupedSteps.push(currentGroup);
-        }
-        currentGroup = [step];
-        currentRepeats = step.numberOfRepeats;
-      } else {
-        currentGroup.push(step);
-      }
-    }
-    
-    // Add final group
-    if (currentGroup.length > 0) {
-      groupedSteps.push(currentGroup);
-    }
+    const flushGroup = () => {
+      if (currentGroupSteps.length === 0) return;
 
-    // Process each group
-    for (const group of groupedSteps) {
-      const firstStep = group[0];
+      const firstStep = currentGroupSteps[0];
       const numberOfRepeats = firstStep.numberOfRepeats;
-
-      // Convert steps in group to Garmin format
       const garminSteps: any[] = [];
-      
-      for (const step of group) {
-        // Convert the main step
-        const garminStep = this.convertStepToGarminFormat(step);
-        garminSteps.push(garminStep);
 
-        // If step has merged rest time, add it as a separate rest step
+      for (const step of currentGroupSteps) {
+        garminSteps.push(this.convertStepToGarminFormat(step));
+
+        // Re-expand merged rest step
         if (step.restTimeSeconds !== undefined && step.restTimeSeconds > 0) {
-          const restStep = {
+          garminSteps.push({
             type: "ExecutableStepDTO",
             stepId: null,
             stepOrder: null,
             childStepId: null,
             description: null,
-            stepType: {
-              stepTypeId: 3, // rest
-              stepTypeKey: "rest",
-            },
-            endCondition: {
-              conditionTypeId: 2, // time
-              conditionTypeKey: "time",
-            },
+            stepType: { stepTypeId: 3, stepTypeKey: "rest" },
+            endCondition: { conditionTypeId: 2, conditionTypeKey: "time" },
             endConditionValue: step.restTimeSeconds,
             preferredEndConditionUnit: null,
-            targetType: {
-              workoutTargetTypeId: 1, // no target
-              workoutTargetTypeKey: "no.target",
-            },
+            targetType: { workoutTargetTypeId: 1, workoutTargetTypeKey: "no.target" },
             targetValueOne: null,
             targetValueTwo: null,
             zoneNumber: null,
@@ -1179,15 +1150,14 @@ export class WorkoutEditor {
             secondaryTargetValueOne: null,
             secondaryTargetValueTwo: null,
             secondaryZoneNumber: null,
-          };
-          garminSteps.push(restStep);
+          });
         }
       }
 
-      // If group has numberOfRepeats, wrap in RepeatGroupDTO
       if (numberOfRepeats !== undefined && numberOfRepeats > 1) {
         unflattened.push({
           type: "RepeatGroupDTO",
+          stepType: { stepTypeId: 7, stepTypeKey: "repeat" },
           repeatGroupId: null,
           numberOfIterations: numberOfRepeats,
           smartRepeat: false,
@@ -1195,10 +1165,56 @@ export class WorkoutEditor {
           workoutSteps: garminSteps,
         });
       } else {
-        // No repeats, add steps directly
         unflattened.push(...garminSteps);
       }
+
+      currentGroupSteps = [];
+      currentGroupIndex = undefined;
+    };
+
+    for (const step of steps) {
+      const idx = step.repeatGroupIndex;
+
+      if (idx === undefined) {
+        // Non-repeat step: flush any pending group, then emit immediately
+        flushGroup();
+        const garminStep = this.convertStepToGarminFormat(step);
+        unflattened.push(garminStep);
+
+        if (step.restTimeSeconds !== undefined && step.restTimeSeconds > 0) {
+          unflattened.push({
+            type: "ExecutableStepDTO",
+            stepId: null,
+            stepOrder: null,
+            childStepId: null,
+            description: null,
+            stepType: { stepTypeId: 3, stepTypeKey: "rest" },
+            endCondition: { conditionTypeId: 2, conditionTypeKey: "time" },
+            endConditionValue: step.restTimeSeconds,
+            preferredEndConditionUnit: null,
+            targetType: { workoutTargetTypeId: 1, workoutTargetTypeKey: "no.target" },
+            targetValueOne: null,
+            targetValueTwo: null,
+            zoneNumber: null,
+            secondaryTargetType: null,
+            secondaryTargetValueOne: null,
+            secondaryTargetValueTwo: null,
+            secondaryZoneNumber: null,
+          });
+        }
+      } else if (idx !== currentGroupIndex) {
+        // New repeat group started: flush previous group
+        flushGroup();
+        currentGroupIndex = idx;
+        currentGroupSteps.push(step);
+      } else {
+        // Same repeat group: accumulate
+        currentGroupSteps.push(step);
+      }
     }
+
+    // Flush final group
+    flushGroup();
 
     return unflattened;
   }

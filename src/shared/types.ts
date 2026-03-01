@@ -94,6 +94,8 @@ export interface WorkoutStep {
   
   // Repeat group tracking
   numberOfRepeats?: number;   // From RepeatGroupDTO.numberOfIterations
+  repeatGroupIndex?: number;  // Unique index assigned per RepeatGroupDTO during flattening (for round-trip reconstruction)
+  repeatSteps?: WorkoutStep[];  // Nested steps within a repeat group
 }
 
 
@@ -129,6 +131,50 @@ export interface WeeklyWorkoutPlan {
   weekEnd: string;            // ISO date of week end
   workouts: PlannedWorkout[];
   source?: string;
+}
+
+// Training plan configuration for periodized programming
+export interface TrainingPlan {
+  version: string;
+  createdAt: string;
+  updatedAt?: string;
+  athlete: { name: string; experienceLevel: string };
+  goals: { primary: string; secondary?: string; notes?: string };
+  strengthBenchmarks: Record<string, { oneRepMax: number; lastUpdated: string }>;
+  runningBenchmarks: Record<string, any>;
+  periodization: {
+    currentPhase: string;
+    weekInPhase: number;
+    totalWeeksInPhase: number;
+    phases: Array<{ name: string; totalWeeks: number; notes?: string }>;
+  };
+  constraints: Record<string, any>;
+  programPrinciples?: Record<string, string[]>;
+  weeklyStructure?: Record<string, any>;
+  weeklyHistory: WeekSummary[];
+}
+
+// Weekly training summary appended to training plan history
+export interface WeekSummary {
+  weekStart: string;
+  weekEnd: string;
+  summary: string;
+  adherence?: string;
+  adjustmentsMade?: string;
+}
+
+// Context bundle sent to LLM for workout adjustment
+export interface AdjustmentContext {
+  activities: ExtractedActivities;
+  currentPlan: WeeklyWorkoutPlan;
+  trainingPlan: TrainingPlan;
+}
+
+// Result returned from LLM workout adjustment
+export interface AdjustmentResult {
+  adjustedPlan: WeeklyWorkoutPlan;
+  changeSummary: string;
+  llmReasoning: string;
 }
 
 export default GarminActivity;
