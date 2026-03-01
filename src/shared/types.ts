@@ -2,6 +2,7 @@
 interface GarminActivity {
   // Identity
   id: string;
+  workoutId?: number | string;  // Garmin workout template ID (when activity was based on a workout)
   activityName: string;
   activityType: 'running' | 'strength_training' | 'cycling' | 'swimming' | 'other';
   startTime: string;
@@ -93,7 +94,6 @@ export interface WorkoutStep {
   
   // Repeat group tracking
   numberOfRepeats?: number;   // From RepeatGroupDTO.numberOfIterations
-  repeatSteps?: WorkoutStep[]; // Nested steps for stepType="repeat"
 }
 
 

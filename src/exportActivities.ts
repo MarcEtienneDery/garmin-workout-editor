@@ -32,6 +32,7 @@ async function main() {
 
     const weekStart = getArgValue("--week-start");
     const weekEnd = getArgValue("--week-end");
+    const typeFilter = getArgValue("--type");
     const outputPath =
       getArgValue("--output") || rawInputPath.replace("-raw.json", ".json");
 
@@ -39,7 +40,8 @@ async function main() {
       rawInputPath,
       outputPath,
       weekStart,
-      weekEnd
+      weekEnd,
+      typeFilter
     );
 
     if (!success) {
@@ -60,9 +62,34 @@ async function main() {
   const includeDetails = !process.argv.includes("--no-detailed");
   const lastWeekOnly = process.argv.includes("--last-week");
   const thisWeekOnly = process.argv.includes("--this-week");
+  const last4WeeksOnly = process.argv.includes("--last-4-weeks");
+  const typeFilter = getArgValue("--type");
 
-  // Get limit from arguments, excluding flags
-  const args = process.argv.slice(2).filter((arg) => !arg.startsWith("--"));
+  // Compute --last-4-weeks as a customWeekStart (Monday 4 weeks ago)
+  let customWeekStart = getArgValue("--week-start");
+  let customWeekEnd = getArgValue("--week-end");
+  if (last4WeeksOnly && !customWeekStart) {
+    const now = new Date();
+    const utcDay = now.getUTCDay();
+    const daysSinceMonday = utcDay === 0 ? 6 : utcDay - 1;
+    const monday4WeeksAgo = new Date(now);
+    monday4WeeksAgo.setUTCDate(now.getUTCDate() - daysSinceMonday - 21);
+    monday4WeeksAgo.setUTCHours(0, 0, 0, 0);
+    customWeekStart = monday4WeeksAgo.toISOString().split("T")[0];
+  }
+
+  // Get limit from positional arguments, excluding flags and their values
+  const flagsWithValues = new Set(["--type", "--week-start", "--week-end", "--output", "--transform-only"]);
+  const args: string[] = [];
+  const rawArgs = process.argv.slice(2);
+  for (let i = 0; i < rawArgs.length; i++) {
+    const arg = rawArgs[i];
+    if (arg.startsWith("--")) {
+      if (flagsWithValues.has(arg)) i++; // skip the value too
+    } else {
+      args.push(arg);
+    }
+  }
   const limit = parseInt(args[0] || "20");
   const outputPath =
     args[1] || path.join(__dirname, "../data/activities.json");
@@ -87,6 +114,15 @@ async function main() {
   if (thisWeekOnly) {
     console.log("📅 Filtering to this week's activities only\n");
   }
+  if (last4WeeksOnly) {
+    console.log(`📅 Filtering to last 4 weeks (from ${customWeekStart})\n`);
+  }
+  if (typeFilter) {
+    console.log(`🏃 Filtering to activity type: ${typeFilter}\n`);
+  }
+  if (customWeekStart) {
+    console.log(`📅 Filtering from: ${customWeekStart}${customWeekEnd ? ` → ${customWeekEnd}` : " onwards"}\n`);
+  }
 
   const garminClient = new GarminClient(email, password, mockMode);
   const exporter = new ActivityExporter(garminClient);
@@ -95,8 +131,12 @@ async function main() {
     limit,
     outputPath,
     saveRaw,
+    includeDetails,
     lastWeekOnly,
-    thisWeekOnly
+    thisWeekOnly,
+    typeFilter,
+    customWeekStart,
+    customWeekEnd
   );
 
   if (success) {

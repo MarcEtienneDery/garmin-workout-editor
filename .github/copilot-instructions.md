@@ -4,22 +4,23 @@
 
 A TypeScript CLI tool with two independent workflows: activity extraction from Garmin Connect API and workout plan management. Both workflows support mock mode and follow a **fetch → transform → save** pattern, with a special **transform-only** mode that decouples API fetching from data transformation.
 
-**Entry Points:**
+**Entry Points (current):**
 - `exportActivities.ts` - Activity extraction and transformation pipeline
-- `manageWorkouts.ts` - Workout management (export, import, schedule)
+- `manageWorkouts.ts` - Workout management (export, import, schedule, upload)
 
 **Core Services:**
-- `GarminClient` - Centralized Garmin API authentication via email/password or session cookie (mock mode always available)
-- `ActivityExporter` - Fetches activities, transforms to slim format, handles interval/exercise parsing
-- `WorkoutEditor` - Manages workouts, flattens nested Garmin structures, converts units (weight to lbs)
-- `Types` - Unified type system ([shared/types.ts](../src/shared/types.ts)) with `GarminActivity`, `DetailedWorkout`, `WorkoutStep`
+- `shared/garminClient.ts` - Centralized Garmin API authentication; always use `ensureAuthenticated()` which is mock-safe
+- `activityExporter.ts` - Fetches activities, transforms to slim format, handles interval/exercise parsing
+- `workoutEditor.ts` - Manages workouts, flattens nested Garmin structures, converts units (weight to lbs), uploads via `WorkoutBuilder` from `@flow-js/garmin-connect`
+- `shared/types.ts` - Unified type system with `GarminActivity`, `DetailedWorkout`, `WorkoutStep`
+
+**⚠️ Legacy files (do not extend):** `garminExtractor.ts`, `extractActivities.ts`, and `src/types.ts` are the previous monolithic implementation. Prefer the refactored `activityExporter.ts` + `shared/` pattern for any new work.
 
 ### Authentication
 
-Use `ensureAuthenticated()` before any API call - it's mock-safe:
 ```typescript
 const garminClient = new GarminClient(email, password, mockMode);
-await garminClient.ensureAuthenticated();
+await garminClient.ensureAuthenticated(); // no-op in mock mode
 ```
 
 ⚠️ **Session cookie method recommended** - direct email/password blocked by Garmin 2FA (see README.md)
@@ -44,6 +45,8 @@ npm run test:coverage    # Coverage report
 - Seeded from last 4 items in `data/activities.json` or `data/workouts-raw.json` if available
 - Fallback: generates synthetic data matching Garmin API shape
 - Use `GarminClient(..., mockMode=true)` to enable mock without real credentials
+- `getMockClient()` retrieves the last instantiated mock instance to configure per-test behavior; `resetMockClient()` clears state between tests
+- `normalizeActivityType()` is exported from `mocks.setup.ts` (not from `types.ts`)
 
 ## Transform-Only Workflow
 
@@ -73,12 +76,10 @@ npm run manage-workouts -- --transform-only data/workouts-raw.json
 
 ### Activity Type Normalization
 
-Activity types from Garmin are normalized to 5 categories in [types.ts](../src/types.ts):
+Activity types from Garmin are normalized to 5 categories — the `normalizeActivityType()` helper is in [mocks.setup.ts](../src/mocks.setup.ts):
 ```typescript
 'running' | 'strength_training' | 'cycling' | 'swimming' | 'other'
 ```
-
-Use `normalizeActivityType()` helper when transforming raw Garmin data.
 
 ### Exercise & Interval Processing
 
@@ -140,13 +141,21 @@ npm run manage-workouts -- --export                    # Export all workouts
 npm run manage-workouts -- --export --raw             # Export with raw API data
 npm run manage-workouts -- --generate-template        # Generate next-week template
 npm run manage-workouts -- --schedule <file>          # Schedule workouts from file
+npm run manage-workouts -- --upload <file>            # Upload workouts to Garmin
+npm run manage-workouts -- --upload-and-schedule <file> # Upload + schedule in one step
+npm run manage-workouts -- --copy-next-week <file>    # Copy plan shifted +7 days
 npm run manage-workouts -- --transform-only <file>    # Re-transform saved raw
+npm run manage-workouts -- --dry-run                  # Preview without writing
 ```
 
 Common flags work on both:
 - `--mock`: Use test data instead of real API
 - `--raw`: Save raw Garmin response for debugging
 - `--output <path>`: Override output file path
+
+### Workout Upload API
+
+`WorkoutEditor` uses `WorkoutBuilder`, `Step`, `Target`, `Duration` from `@flow-js/garmin-connect` for building uploadable workout structures. Valid enumerated values for step fields are defined as `VALID_STEP_TYPES`, `VALID_END_CONDITIONS`, and `VALID_TARGET_TYPES` constants at the top of `workoutEditor.ts`.
 
 ## Rate Limiting
 

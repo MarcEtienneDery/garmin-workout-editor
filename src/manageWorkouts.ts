@@ -30,10 +30,9 @@ async function main() {
   const generateTemplate = process.argv.includes("--generate-template");
   const scheduleFromPlan = process.argv.includes("--schedule");
   const copyPlanNextWeek = process.argv.includes("--copy-next-week");
-  const uploadAndSchedule = process.argv.includes("--upload-and-schedule");
+  const importAndSchedule = process.argv.includes("--import-and-schedule");
   const uploadWorkouts = process.argv.includes("--upload");
   const uploadSingle = process.argv.includes("--upload-single");
-  const transformOnly = process.argv.includes("--transform-only");
   const saveRaw = process.argv.includes("--raw");
   const dryRun = process.argv.includes("--dry-run");
 
@@ -46,10 +45,9 @@ async function main() {
   const planInputPath =
     getArgValue("--schedule") ||
     getArgValue("--copy-next-week") ||
-    getArgValue("--upload-and-schedule");
+    getArgValue("--import-and-schedule");
   const uploadInputPath = getArgValue("--upload");
   const uploadWorkoutId = getArgValue("--upload-single");
-  const transformOnlyInputPath = getArgValue("--transform-only");
 
   console.log("🏋️  Garmin Workout Manager");
   console.log("===========================\n");
@@ -116,18 +114,18 @@ async function main() {
       return;
     }
 
-    if (uploadAndSchedule) {
+    if (importAndSchedule) {
       if (!planInputPath) {
         console.error(
-          "❌ Error: Missing plan input path for --upload-and-schedule"
+          "❌ Error: Missing plan input path for --import-and-schedule"
         );
         console.error(
-          "Usage: npm run manage-workouts -- --upload-and-schedule <path>"
+          "Usage: npm run manage-workouts -- --import-and-schedule <path>"
         );
         process.exit(1);
       }
 
-      console.log("📥 Uploading and scheduling workouts...\n");
+      console.log("📥 Importing and scheduling workouts...\n");
       const plan = await editor.importWorkoutPlan(planInputPath);
       await editor.addToCalendar(plan);
       console.log("\n✅ Workouts imported and scheduled successfully!");
@@ -196,25 +194,6 @@ async function main() {
       return;
     }
 
-    if (transformOnly) {
-      if (!transformOnlyInputPath) {
-        console.error("❌ Error: Missing raw file path for --transform-only");
-        console.error("Usage: npm run manage-workouts -- --transform-only <raw-file>");
-        process.exit(1);
-      }
-
-      const outputPath = getArgValue("--output") || workoutsOutputPath;
-      console.log(`📂 Transforming workouts from ${transformOnlyInputPath}...\n`);
-      const ok = await editor.transformAndSaveWorkouts(transformOnlyInputPath, outputPath);
-      if (ok) {
-        console.log("\n✅ Workout transformation completed successfully!");
-      } else {
-        console.error("\n❌ Workout transformation failed");
-        process.exit(1);
-      }
-      return;
-    }
-
     // Default: show usage
     console.log("Usage:");
     console.log(
@@ -239,7 +218,7 @@ async function main() {
       "  npm run manage-workouts -- --schedule <path>               Schedule workouts from plan"
     );
     console.log(
-      "  npm run manage-workouts -- --upload-and-schedule <path>    Upload and add to calendar"
+      "  npm run manage-workouts -- --import-and-schedule <path>    Import and add to calendar"
     );
     console.log(
       "  npm run manage-workouts -- --upload <path>                 Upload workouts to Garmin (delete + recreate)"

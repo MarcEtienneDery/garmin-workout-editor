@@ -364,6 +364,7 @@ export class ActivityExporter {
       // Base fields for all activity types
       const base = {
         id: activity.activityId,
+        workoutId: activity.workoutId || undefined,
         activityName: activity.activityName || "Unknown Activity",
         activityType,
         startTime: activity.startTimeGMT || activity.startTimeLocal,
@@ -510,6 +511,35 @@ export class ActivityExporter {
   }
 
   /**
+   * Filter activities by a custom date range on raw activities
+   */
+  private filterActivitiesByDateRange(
+    activities: any[],
+    fromDate: Date,
+    toDate?: Date
+  ): any[] {
+    return activities.filter((activity) => {
+      const activityDate = new Date(
+        activity.startTimeGMT || activity.startTimeLocal
+      );
+      if (activityDate < fromDate) return false;
+      if (toDate && activityDate > toDate) return false;
+      return true;
+    });
+  }
+
+  /**
+   * Filter transformed activities by normalized activity type
+   */
+  private filterActivitiesByType(
+    activities: ReturnType<ActivityExporter["transformActivities"]>,
+    typeFilter: string
+  ): ReturnType<ActivityExporter["transformActivities"]> {
+    const normalizedFilter = typeFilter.toLowerCase().trim();
+    return activities.filter((a) => a.activityType === normalizedFilter);
+  }
+
+  /**
    * Save activities to JSON file
    */
   async saveActivitiesToFile(
@@ -517,14 +547,34 @@ export class ActivityExporter {
     outputPath: string = "./data/activities.json",
     saveRaw: boolean = false,
     filterToLastWeek: boolean = false,
-    filterToThisWeek: boolean = false
+    filterToThisWeek: boolean = false,
+    typeFilter?: string,
+    customWeekStart?: string,
+    customWeekEnd?: string
   ): Promise<void> {
     try {
       let filteredActivities = activities;
       let weekStart: Date;
       let weekEnd: Date;
 
-      if (filterToThisWeek) {
+      if (customWeekStart) {
+        weekStart = new Date(customWeekStart);
+        weekStart.setUTCHours(0, 0, 0, 0);
+        weekEnd = customWeekEnd
+          ? new Date(customWeekEnd)
+          : new Date(); // default to now
+        if (customWeekEnd) weekEnd.setUTCHours(23, 59, 59, 999);
+        filteredActivities = this.filterActivitiesByDateRange(
+          activities,
+          weekStart,
+          customWeekEnd ? weekEnd : undefined
+        );
+        console.log(
+          `📅 Filtering to date range: ${weekStart.toISOString().split("T")[0]} → ${
+            customWeekEnd ? weekEnd.toISOString().split("T")[0] : "now"
+          }`
+        );
+      } else if (filterToThisWeek) {
         const thisWeekDates = this.getThisWeekDates();
         weekStart = thisWeekDates.weekStart;
         weekEnd = thisWeekDates.weekEnd;
@@ -540,12 +590,22 @@ export class ActivityExporter {
         weekEnd = lastWeekDates.weekEnd;
       }
 
+      let transformed = this.transformActivities(filteredActivities);
+
+      if (typeFilter) {
+        const before = transformed.length;
+        transformed = this.filterActivitiesByType(transformed, typeFilter);
+        console.log(
+          `🏃 Filtered by type "${typeFilter}": ${transformed.length} of ${before} activities`
+        );
+      }
+
       const data: ExtractedActivities = {
         extractedAt: new Date().toISOString(),
         weekStart: weekStart.toISOString().split("T")[0],
         weekEnd: weekEnd.toISOString().split("T")[0],
-        totalActivities: filteredActivities.length,
-        activities: this.transformActivities(filteredActivities),
+        totalActivities: transformed.length,
+        activities: transformed,
       };
 
       // Ensure directory exists
@@ -599,26 +659,50 @@ export class ActivityExporter {
    * Useful for re-running transformation logic on previously saved raw data
    * @param inputPath - Path to raw activities JSON file
    * @param outputPath - Output file path for transformed activities
-   * @param weekStart - Optional: Override week start date (ISO format)
-   * @param weekEnd - Optional: Override week end date (ISO format)
+   * @param weekStart - Optional: Filter/label from this date (ISO format)
+   * @param weekEnd - Optional: Filter/label to this date (ISO format)
+   * @param typeFilter - Optional: Filter to a specific activity type (e.g. "running")
    */
   async transformAndSave(
     inputPath: string,
     outputPath?: string,
     weekStart?: string,
-    weekEnd?: string
+    weekEnd?: string,
+    typeFilter?: string
   ): Promise<boolean> {
     try {
       console.log("📂 Loading raw activities from file...");
-      const rawActivities = await this.loadRawActivitiesFromFile(inputPath);
+      let rawActivities = await this.loadRawActivitiesFromFile(inputPath);
       
       if (rawActivities.length === 0) {
         console.warn("⚠️  No activities found in file");
         return false;
       }
 
+      // Apply date range filter on raw activities if provided
+      if (weekStart) {
+        const fromDate = new Date(weekStart);
+        fromDate.setUTCHours(0, 0, 0, 0);
+        const toDate = weekEnd ? new Date(weekEnd) : undefined;
+        if (toDate) toDate.setUTCHours(23, 59, 59, 999);
+        rawActivities = this.filterActivitiesByDateRange(rawActivities, fromDate, toDate);
+        console.log(
+          `📅 Filtered to date range: ${fromDate.toISOString().split("T")[0]} → ${
+            toDate ? toDate.toISOString().split("T")[0] : "now"
+          } (${rawActivities.length} activities)`
+        );
+      }
+
       console.log(`📊 Transforming ${rawActivities.length} activities...`);
-      const transformed = this.transformActivities(rawActivities);
+      let transformed = this.transformActivities(rawActivities);
+
+      if (typeFilter) {
+        const before = transformed.length;
+        transformed = this.filterActivitiesByType(transformed, typeFilter);
+        console.log(
+          `🏃 Filtered by type "${typeFilter}": ${transformed.length} of ${before} activities`
+        );
+      }
 
       // Use provided dates or calculate from raw data
       let startDate: Date;
@@ -666,6 +750,9 @@ export class ActivityExporter {
    * @param includeDetails - Fetch detailed data (slower, includes self-evaluation)
    * @param lastWeekOnly - Filter to only include last week's activities
    * @param thisWeekOnly - Filter to only include this week's activities
+   * @param typeFilter - Filter to a specific activity type (e.g. "running")
+   * @param customWeekStart - Filter to activities on or after this date (ISO format)
+   * @param customWeekEnd - Filter to activities on or before this date (ISO format)
    */
   async extract(
     limit: number = 20,
@@ -673,7 +760,10 @@ export class ActivityExporter {
     saveRaw: boolean = false,
     includeDetails: boolean = true,
     lastWeekOnly: boolean = false,
-    thisWeekOnly: boolean = false
+    thisWeekOnly: boolean = false,
+    typeFilter?: string,
+    customWeekStart?: string,
+    customWeekEnd?: string
   ): Promise<boolean> {
     try {
       // Skip authentication in mock mode
@@ -700,7 +790,10 @@ export class ActivityExporter {
         outputPath || "./data/activities.json",
         saveRaw,
         lastWeekOnly,
-        thisWeekOnly
+        thisWeekOnly,
+        typeFilter,
+        customWeekStart,
+        customWeekEnd
       );
       return true;
     } catch (error: any) {

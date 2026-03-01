@@ -7,6 +7,10 @@ module.exports = {
   transform: {
     '^.+\\.ts$': ['ts-jest', { tsconfig: { esModuleInterop: true } }],
   },
+  // Map ESM-only packages to CJS-compatible manual mocks for ts-jest
+  moduleNameMapper: {
+    '^@github/copilot-sdk$': '<rootDir>/src/__mocks__/copilot-sdk.ts',
+  },
   collectCoverageFrom: [
     'src/**/*.ts',
     '!src/**/*.d.ts',

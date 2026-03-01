@@ -196,16 +196,12 @@ describe("WorkoutEditor", () => {
 
       const steps = transform(rawSteps);
 
-      // Should preserve rest as a separate step
-      expect(steps.length).toBe(2);
+      // Should merge rest into previous step
+      expect(steps.length).toBe(1);
       expect(steps[0].exerciseName).toBe("Bench Press");
       expect(steps[0].targetValueOne).toBe(4);
-      expect(steps[0].endConditionValue).toBe(8);
-      expect(steps[0].reps).toBeUndefined();         // omitted — use endConditionValue
-      expect(steps[0].stepOrder).toBeUndefined();    // omitted — recomputed at desimplify
-      expect(steps[1].stepType).toBe("rest");
-      expect(steps[1].endConditionValue).toBe(120);
-      expect(steps[1].durationSeconds).toBeUndefined(); // omitted — use endConditionValue
+      expect(steps[0].restTimeSeconds).toBe(120);
+      expect(steps[0].reps).toBe(8);
     });
 
     it("should handle null/undefined steps", () => {
@@ -366,17 +362,17 @@ describe("WorkoutEditor", () => {
 
       const transformed = (editor as any).transformWorkoutSteps(mockSteps);
 
-      // Should have 2 steps: warmup + repeat group
+      // Should have 2 steps: warmup + interval (rest merged)
       expect(transformed).toHaveLength(2);
       expect(transformed[0].stepType).toBe("warmup");
-      expect(transformed[1].stepType).toBe("repeat");
+      expect(transformed[0].stepOrder).toBe(1);
+      expect(transformed[1].stepType).toBe("interval");
       expect(transformed[1].numberOfRepeats).toBe(3);
-      expect(transformed[1].repeatSteps).toHaveLength(2);
-      expect(transformed[1].repeatSteps?.[0].stepType).toBe("interval");
-      expect(transformed[1].repeatSteps?.[1].stepType).toBe("rest");
+      expect(transformed[1].restTimeSeconds).toBe(60);
+      expect(transformed[1].stepOrder).toBe(2);
     });
 
-    it("should preserve multiple rest steps", () => {
+    it("should merge only first rest step into preceding exercise", () => {
       const mockSteps = [
         {
           type: "ExecutableStepDTO",
@@ -404,15 +400,11 @@ describe("WorkoutEditor", () => {
 
       const transformed = (editor as any).transformWorkoutSteps(mockSteps);
 
-      // Should have 3 steps: interval + rest + rest
-      expect(transformed).toHaveLength(3);
-      expect(transformed[0].stepType).toBe("interval");
+      // Should have 2 steps: interval with merged rest + separate rest
+      expect(transformed).toHaveLength(2);
+      expect(transformed[0].restTimeSeconds).toBe(90);
       expect(transformed[1].stepType).toBe("rest");
-      expect(transformed[1].endConditionValue).toBe(90);
-      expect(transformed[1].durationSeconds).toBeUndefined();
-      expect(transformed[2].stepType).toBe("rest");
-      expect(transformed[2].endConditionValue).toBe(60);
-      expect(transformed[2].durationSeconds).toBeUndefined();
+      expect(transformed[1].durationSeconds).toBe(60);
     });
 
     it("should convert weight from Garmin format to lbs", () => {
@@ -460,13 +452,9 @@ describe("WorkoutEditor", () => {
 
       const transformed = (editor as any).transformWorkoutSteps(mockSteps);
 
-      // Parallel alias fields are omitted; endConditionValue is the single source of truth
-      expect(transformed[0].endConditionValue).toBe(12);
-      expect(transformed[0].reps).toBeUndefined();
-      expect(transformed[1].endConditionValue).toBe(600);
-      expect(transformed[1].durationSeconds).toBeUndefined();
-      expect(transformed[2].endConditionValue).toBe(1000);
-      expect(transformed[2].distanceMeters).toBeUndefined();
+      expect(transformed[0].reps).toBe(12);
+      expect(transformed[1].durationSeconds).toBe(600);
+      expect(transformed[2].distanceMeters).toBe(1000);
     });
 
     it("should preserve targetValueOne and targetValueTwo", () => {
@@ -490,7 +478,7 @@ describe("WorkoutEditor", () => {
       expect(transformed[0].targetValueTwo).toBe(165);
     });
 
-    it("should preserve stepOrder for repeat groups", () => {
+    it("should renumber stepOrder sequentially after flattening", () => {
       const mockSteps = [
         {
           type: "ExecutableStepDTO",
@@ -524,13 +512,9 @@ describe("WorkoutEditor", () => {
 
       const transformed = (editor as any).transformWorkoutSteps(mockSteps);
 
-      // stepOrder is omitted in simplified form (recomputed at desimplify)
-      expect(transformed[0].stepOrder).toBeUndefined();
-      expect(transformed[1].stepOrder).toBeUndefined();
-      // Structure is still preserved
-      expect(transformed[0].stepType).toBe("warmup");
-      expect(transformed[1].stepType).toBe("repeat");
-      expect(transformed[1].numberOfRepeats).toBe(2);
+      // Should be renumbered 1, 2 (rest merged into interval)
+      expect(transformed[0].stepOrder).toBe(1);
+      expect(transformed[1].stepOrder).toBe(2);
     });
 
     it("should expand running workout repeat groups", () => {
@@ -570,15 +554,12 @@ describe("WorkoutEditor", () => {
 
       const transformed = (editor as any).transformWorkoutSteps(mockSteps);
 
-      // Should have 2 steps: warmup + repeat group
-      expect(transformed).toHaveLength(2);
-      expect(transformed[1].stepType).toBe("repeat");
+      // Should have 3 steps: warmup + interval + recovery (both with numberOfRepeats=4)
+      expect(transformed).toHaveLength(3);
       expect(transformed[1].numberOfRepeats).toBe(4);
-      expect(transformed[1].repeatSteps).toHaveLength(2);
-      expect(transformed[1].repeatSteps?.[0].endConditionValue).toBe(1000);
-      expect(transformed[1].repeatSteps?.[0].distanceMeters).toBeUndefined();
-      expect(transformed[1].repeatSteps?.[1].endConditionValue).toBe(120);
-      expect(transformed[1].repeatSteps?.[1].durationSeconds).toBeUndefined();
+      expect(transformed[1].distanceMeters).toBe(1000);
+      expect(transformed[2].numberOfRepeats).toBe(4);
+      expect(transformed[2].durationSeconds).toBe(120);
     });
   });
 });
