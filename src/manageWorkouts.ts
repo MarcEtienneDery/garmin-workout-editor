@@ -1,5 +1,6 @@
 import * as dotenv from "dotenv";
 import * as path from "path";
+import * as fs from "fs";
 import { GarminClient } from "./shared/garminClient";
 import WorkoutEditor from "./workoutEditor";
 
@@ -155,6 +156,12 @@ async function main() {
       console.log("📥 Importing and scheduling workouts...\n");
       const plan = await editor.importWorkoutPlan(planInputPath);
       await editor.uploadAndScheduleWorkoutPlan(plan);
+      
+      // Save the updated plan with new workoutIds back to the file
+      console.log("\n💾 Saving updated workout IDs to file...");
+      fs.writeFileSync(planInputPath, JSON.stringify(plan, null, 2), "utf-8");
+      console.log(`✅ Updated file with new workout IDs: ${planInputPath}`);
+      
       console.log("\n✅ Workouts imported and scheduled successfully!");
       return;
     }
