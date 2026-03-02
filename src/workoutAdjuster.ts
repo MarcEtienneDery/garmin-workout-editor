@@ -13,7 +13,7 @@ import {
 } from "./shared/types";
 import { ExtractedActivities } from "./shared/types";
 
-const DEFAULT_MODEL = process.env.COPILOT_MODEL ?? "claude-sonnet-4.5";
+const DEFAULT_MODEL = process.env.COPILOT_MODEL ?? "gpt-5.2";
 
 // ─── JSON extraction helpers ──────────────────────────────────────────────────
 
@@ -56,12 +56,379 @@ function describeStep(step: WorkoutStep): string {
   if (step.endConditionValue !== undefined && step.endCondition) {
     parts.push(`${step.endConditionValue}${step.endCondition === "reps" ? " reps" : step.endCondition === "time" ? "s" : "m"}`);
   }
+  if (
+    step.reps !== undefined &&
+    !(step.endCondition === "reps" && step.endConditionValue === step.reps)
+  ) {
+    parts.push(`${step.reps} reps`);
+  }
+  if (
+    step.durationSeconds !== undefined &&
+    !(step.endCondition === "time" && step.endConditionValue === step.durationSeconds)
+  ) {
+    parts.push(`${step.durationSeconds}s`);
+  }
+  if (
+    step.distanceMeters !== undefined &&
+    !(step.endCondition === "distance" && step.endConditionValue === step.distanceMeters)
+  ) {
+    parts.push(`${step.distanceMeters}m`);
+  }
   if (step.weightPercentage !== undefined)
     parts.push(`@${step.weightPercentage}%`);
   else if (step.weight !== undefined) parts.push(`@${step.weight}lbs`);
   if (step.targetValueOne !== undefined && step.targetValueTwo !== undefined)
     parts.push(`target:${step.targetValueOne}-${step.targetValueTwo}`);
   return parts.join(" ");
+}
+
+type StepDiffOp =
+  | { type: "equal"; oldIndex: number; newIndex: number }
+  | { type: "replace"; oldIndex: number; newIndex: number }
+  | { type: "remove"; oldIndex: number }
+  | { type: "add"; newIndex: number };
+
+function shouldMergeIntoReplace(oldStep: WorkoutStep, newStep: WorkoutStep): boolean {
+  if (oldStep.stepType !== newStep.stepType) {
+    return false;
+  }
+
+  const oldExercise = normalizeExerciseName(oldStep.exerciseName);
+  const newExercise = normalizeExerciseName(newStep.exerciseName);
+
+  if (oldExercise || newExercise) {
+    return oldExercise === newExercise;
+  }
+
+  if (oldStep.endCondition && newStep.endCondition) {
+    return oldStep.endCondition === newStep.endCondition;
+  }
+
+  return true;
+}
+
+function normalizeExerciseName(name: string | undefined): string {
+  if (!name) return "";
+  return name
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+function normalizeSelectorText(text: string | undefined): string {
+  if (!text) return "";
+  return text
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+function tokenizeSelectorText(text: string | undefined): string[] {
+  const normalized = normalizeSelectorText(text);
+  if (!normalized) return [];
+
+  const stopWords = new Set([
+    "WORKOUT",
+    "SESSION",
+    "THE",
+    "AND",
+    "WITH",
+    "FOR",
+    "DAY",
+    "EASY",
+    "QUALITY",
+  ]);
+
+  return normalized
+    .split("_")
+    .map((token) => token.trim())
+    .filter((token) => token.length >= 2 && !stopWords.has(token));
+}
+
+function inferWorkoutTypeFromText(text: string | undefined): PlannedWorkout["workoutType"] | undefined {
+  if (!text) return undefined;
+  const lower = text.toLowerCase();
+
+  if (lower.includes("bike") || lower.includes("cycling") || lower.includes("cycle")) {
+    return "cycling";
+  }
+
+  if (lower.includes("swim") || lower.includes("swimming")) {
+    return "swimming";
+  }
+
+  if (
+    lower.includes("run") ||
+    lower.includes("pace") ||
+    lower.includes("interval") ||
+    lower.includes("tempo") ||
+    lower.includes("threshold") ||
+    lower.includes("zone") ||
+    lower.includes("km")
+  ) {
+    return "running";
+  }
+
+  if (
+    lower.includes("squat") ||
+    lower.includes("bench") ||
+    lower.includes("deadlift") ||
+    lower.includes("lift") ||
+    lower.includes("strength")
+  ) {
+    return "strength_training";
+  }
+
+  return undefined;
+}
+
+interface WeeklySelectionTarget {
+  day: string;
+  workoutNameHint?: string;
+  normalizedNameHint?: string;
+  workoutTypeHint?: PlannedWorkout["workoutType"];
+  tokens: string[];
+}
+
+function workoutIdentityMatches(
+  a: PlannedWorkout | undefined,
+  b: PlannedWorkout
+): boolean {
+  if (!a) return false;
+
+  if (a.workoutId !== undefined && b.workoutId !== undefined) {
+    if (String(a.workoutId) === String(b.workoutId)) return true;
+  }
+
+  if (
+    a.workoutName === b.workoutName &&
+    a.scheduledDate &&
+    b.scheduledDate &&
+    a.scheduledDate === b.scheduledDate
+  ) {
+    return true;
+  }
+
+  return a.workoutName === b.workoutName;
+}
+
+function findMatchingWorkoutIndex(
+  workouts: PlannedWorkout[],
+  target: PlannedWorkout,
+  usedIndices?: Set<number>
+): number {
+  const isUsed = (index: number) => (usedIndices ? usedIndices.has(index) : false);
+
+  if (target.workoutId !== undefined) {
+    const byId = workouts.findIndex(
+      (workout, index) =>
+        !isUsed(index) &&
+        workout.workoutId !== undefined &&
+        String(workout.workoutId) === String(target.workoutId)
+    );
+    if (byId !== -1) return byId;
+  }
+
+  if (target.scheduledDate) {
+    const byNameDate = workouts.findIndex(
+      (workout, index) =>
+        !isUsed(index) &&
+        workout.workoutName === target.workoutName &&
+        workout.scheduledDate === target.scheduledDate
+    );
+    if (byNameDate !== -1) return byNameDate;
+  }
+
+  return workouts.findIndex(
+    (workout, index) =>
+      !isUsed(index) && workout.workoutName === target.workoutName
+  );
+}
+
+function diffSteps(oldSteps: WorkoutStep[], newSteps: WorkoutStep[]): StepDiffOp[] {
+  const oldDesc = oldSteps.map(describeStep);
+  const newDesc = newSteps.map(describeStep);
+  const m = oldDesc.length;
+  const n = newDesc.length;
+
+  const dp: number[][] = Array.from({ length: m + 1 }, () =>
+    Array.from({ length: n + 1 }, () => 0)
+  );
+
+  for (let i = m - 1; i >= 0; i--) {
+    for (let j = n - 1; j >= 0; j--) {
+      if (oldDesc[i] === newDesc[j]) {
+        dp[i][j] = dp[i + 1][j + 1] + 1;
+      } else {
+        dp[i][j] = Math.max(dp[i + 1][j], dp[i][j + 1]);
+      }
+    }
+  }
+
+  const rawOps: Array<
+    { type: "equal"; oldIndex: number; newIndex: number } |
+    { type: "remove"; oldIndex: number } |
+    { type: "add"; newIndex: number }
+  > = [];
+
+  let i = 0;
+  let j = 0;
+
+  while (i < m && j < n) {
+    if (oldDesc[i] === newDesc[j]) {
+      rawOps.push({ type: "equal", oldIndex: i, newIndex: j });
+      i++;
+      j++;
+    } else if (dp[i + 1][j] >= dp[i][j + 1]) {
+      rawOps.push({ type: "remove", oldIndex: i });
+      i++;
+    } else {
+      rawOps.push({ type: "add", newIndex: j });
+      j++;
+    }
+  }
+
+  while (i < m) {
+    rawOps.push({ type: "remove", oldIndex: i });
+    i++;
+  }
+
+  while (j < n) {
+    rawOps.push({ type: "add", newIndex: j });
+    j++;
+  }
+
+  // Smart merging: pair consecutive removes with consecutive adds
+  const mergedOps: StepDiffOp[] = [];
+  let k = 0;
+  while (k < rawOps.length) {
+    const current = rawOps[k];
+    
+    if (current.type === "remove") {
+      // Collect all consecutive removes
+      const removes: Array<{ oldIndex: number; k: number }> = [];
+      let idx = k;
+      while (idx < rawOps.length && rawOps[idx].type === "remove") {
+        removes.push({ oldIndex: (rawOps[idx] as any).oldIndex, k: idx });
+        idx++;
+      }
+      
+      // Collect all consecutive adds that follow
+      const adds: Array<{ newIndex: number; k: number }> = [];
+      let addIdx = idx;
+      while (addIdx < rawOps.length && rawOps[addIdx].type === "add") {
+        adds.push({ newIndex: (rawOps[addIdx] as any).newIndex, k: addIdx });
+        addIdx++;
+      }
+      
+      // Pair removes with adds by index first, then by content
+      const usedAdds = new Set<number>();
+      for (const remove of removes) {
+        let found = false;
+        
+        // Try to match by index first
+        for (let i = 0; i < adds.length; i++) {
+          if (!usedAdds.has(i) && remove.oldIndex === adds[i].newIndex) {
+            if (shouldMergeIntoReplace(oldSteps[remove.oldIndex], newSteps[adds[i].newIndex])) {
+              mergedOps.push({
+                type: "replace",
+                oldIndex: remove.oldIndex,
+                newIndex: adds[i].newIndex,
+              });
+              usedAdds.add(i);
+              found = true;
+              break;
+            }
+          }
+        }
+        
+        // If no index match, try content-based matching
+        if (!found) {
+          for (let i = 0; i < adds.length; i++) {
+            if (!usedAdds.has(i)) {
+              if (shouldMergeIntoReplace(oldSteps[remove.oldIndex], newSteps[adds[i].newIndex])) {
+                mergedOps.push({
+                  type: "replace",
+                  oldIndex: remove.oldIndex,
+                  newIndex: adds[i].newIndex,
+                });
+                usedAdds.add(i);
+                found = true;
+                break;
+              }
+            }
+          }
+        }
+        
+        // If still not found, treat as standalone remove
+        if (!found) {
+          mergedOps.push({ type: "remove", oldIndex: remove.oldIndex });
+        }
+      }
+      
+      // Add unmatched adds
+      for (let i = 0; i < adds.length; i++) {
+        if (!usedAdds.has(i)) {
+          mergedOps.push({ type: "add", newIndex: adds[i].newIndex });
+        }
+      }
+      
+      k = addIdx;
+    } else {
+      mergedOps.push(current);
+      k++;
+    }
+  }
+
+  return mergedOps;
+}
+
+function formatScheduledDate(date: string | undefined): string {
+  return date ?? "unscheduled";
+}
+
+function buildStepDiffLines(
+  oldSteps: WorkoutStep[],
+  newSteps: WorkoutStep[],
+  arrow: string
+): string[] {
+  const lines: string[] = [];
+  const ops = diffSteps(oldSteps, newSteps);
+
+  // Sort operations by their final position for display
+  const sortedOps = [...ops].sort((a, b) => {
+    // Get sort key for each operation
+    const aKey = a.type === "equal" ? -1 : a.type === "remove" ? a.oldIndex : a.newIndex;
+    const bKey = b.type === "equal" ? -1 : b.type === "remove" ? b.oldIndex : b.newIndex;
+    return aKey - bKey;
+  });
+
+  for (const op of sortedOps) {
+    if (op.type === "equal") {
+      continue;
+    }
+
+    if (op.type === "replace") {
+      const oldStep = describeStep(oldSteps[op.oldIndex]);
+      const newStep = describeStep(newSteps[op.newIndex]);
+      const stepNumber = op.newIndex + 1;
+      lines.push(`  Step ${stepNumber}: ${oldStep}  ${arrow}  ${newStep}`);
+      continue;
+    }
+
+    if (op.type === "remove") {
+      const oldStep = describeStep(oldSteps[op.oldIndex]);
+      const stepNumber = op.oldIndex + 1;
+      lines.push(`  Step ${stepNumber}: ${oldStep}  ${arrow}  (removed)`);
+      continue;
+    }
+
+    const newStep = describeStep(newSteps[op.newIndex]);
+    const stepNumber = op.newIndex + 1;
+    lines.push(`  Step ${stepNumber}: (added)  ${arrow}  ${newStep}`);
+  }
+
+  return lines;
 }
 
 /**
@@ -74,13 +441,20 @@ export function formatChangeSummary(
 ): string {
   const lines: string[] = ["─── Suggested Changes ───────────────────────────"];
 
-  const byName = (ws: PlannedWorkout[]) =>
-    new Map(ws.map((w) => [w.workoutName, w]));
-  const oldMap = byName(oldPlan.workouts);
-  const newMap = byName(newPlan.workouts);
+  const matchedOldIndices = new Set<number>();
 
   for (const newW of newPlan.workouts) {
-    const oldW = oldMap.get(newW.workoutName);
+    const oldIndex = findMatchingWorkoutIndex(
+      oldPlan.workouts,
+      newW,
+      matchedOldIndices
+    );
+    const oldW = oldIndex !== -1 ? oldPlan.workouts[oldIndex] : undefined;
+
+    if (oldIndex !== -1) {
+      matchedOldIndices.add(oldIndex);
+    }
+
     if (!oldW) {
       lines.push(`  ✚ NEW: ${newW.workoutName} (${newW.scheduledDate ?? "no date"})`);
       continue;
@@ -89,19 +463,14 @@ export function formatChangeSummary(
     const changedLines: string[] = [];
 
     if (oldW.scheduledDate !== newW.scheduledDate) {
-      changedLines.push(`  Date: ${oldW.scheduledDate} → ${newW.scheduledDate}`);
+      changedLines.push(
+        `  Date: ${formatScheduledDate(oldW.scheduledDate)} → ${formatScheduledDate(newW.scheduledDate)}`
+      );
     }
 
     const oldSteps = flattenForDiff(oldW.steps ?? []);
     const newSteps = flattenForDiff(newW.steps ?? []);
-    const maxLen = Math.max(oldSteps.length, newSteps.length);
-    for (let i = 0; i < maxLen; i++) {
-      const os = oldSteps[i] ? describeStep(oldSteps[i]) : "(removed)";
-      const ns = newSteps[i] ? describeStep(newSteps[i]) : "(removed)";
-      if (os !== ns) {
-        changedLines.push(`  Step ${i + 1}: ${os}  →  ${ns}`);
-      }
-    }
+    changedLines.push(...buildStepDiffLines(oldSteps, newSteps, "→"));
 
     if (changedLines.length > 0) {
       lines.push(`\n📋 ${newW.workoutName} (${newW.scheduledDate ?? "no date"})`);
@@ -109,10 +478,9 @@ export function formatChangeSummary(
     }
   }
 
-  for (const name of oldMap.keys()) {
-    if (!newMap.has(name)) {
-      lines.push(`  ✖ REMOVED: ${name}`);
-    }
+  for (let oldIndex = 0; oldIndex < oldPlan.workouts.length; oldIndex++) {
+    if (matchedOldIndices.has(oldIndex)) continue;
+    lines.push(`  ✖ REMOVED: ${oldPlan.workouts[oldIndex].workoutName}`);
   }
 
   if (lines.length === 1) lines.push("  (No structural changes detected)");
@@ -129,7 +497,24 @@ function flattenForDiff(steps: WorkoutStep[]): WorkoutStep[] {
         result.push(...flattenForDiff(s.repeatSteps));
       }
     } else {
-      result.push(s);
+      const legacyRepeats =
+        s.stepType !== "repeat" &&
+        typeof s.numberOfRepeats === "number" &&
+        s.numberOfRepeats > 1
+          ? s.numberOfRepeats
+          : 1;
+
+      for (let i = 0; i < legacyRepeats; i++) {
+        if (legacyRepeats === 1) {
+          result.push(s);
+        } else {
+          result.push({
+            ...s,
+            numberOfRepeats: undefined,
+            repeatGroupIndex: undefined,
+          });
+        }
+      }
     }
   }
   return result;
@@ -191,7 +576,7 @@ Your job is to review an athlete's completed activities from the past week,
 compare them to their planned workouts and training progression, then produce
 an adjusted workout plan for the upcoming week as valid JSON.
 
-RULES:
+SYSTEM RULES (FORMAT + SCHEMA):
 1. Output ONLY valid JSON matching the WeeklyWorkoutPlan schema — no prose, no markdown fences.
 2. Preserve all workoutId values exactly.
 3. Keep workoutName and scheduledDate values unchanged unless explicitly asked to swap days.
@@ -205,10 +590,18 @@ RULES:
 11. For repeat groups: stepType must be "repeat", include numberOfRepeats (positive integer) and repeatSteps array.
 12. Paces for running targets are in m/s (targetValueOne = slower limit, targetValueTwo = faster limit).
 13. Only adjust workouts that fall in the next week's date range (weekStart–weekEnd of the plan).
-14. If an activity shows strong performance (low RPE, good body battery, training effect ≥ 4), progress the next workout modestly (+2.5–5% weight or +1–2 reps or –5 sec/km pace).
-15. If performance was poor (high RPE, low body battery < 20, missed sets), reduce load 5–10% or keep flat.
-16. Respect the current periodization phase (hypertrophy = higher reps/volume, strength = lower reps/higher %).
+14. **CRITICAL: Do not add, remove, or duplicate steps; only edit existing step fields (weights/percent/reps/rest).**
+15. **Preserve the exact step count and ensure unique, sequential stepOrder values.**
+16. **Validate output: no duplicate steps (same exerciseName + stepOrder) and return strictly valid JSON.**
 17. After the JSON, on a new line starting with "SUMMARY:", write a concise human-readable bullet list of what you changed and why (this part WILL be shown to the user).
+
+BUSINESS RULES (TRAINING ADJUSTMENTS):
+1. The primary driver of adjustments must be the TrainingPlan (goals, periodization phase, benchmarks, and constraints). Use previous-week activity performance only as a secondary signal.
+2. At the start of a new TrainingPlan or at the beginning of a phase (early weeks), place minimal weight on previous activities and follow the planned progression baseline.
+3. If an activity shows strong performance (low RPE, good body battery, training effect ≥ 4), progress the next workout modestly (+2.5–5% weight or +1–2 reps or –5 sec/km pace).
+4. If performance was poor (high RPE, low body battery < 20, missed sets), reduce load 5–10% or keep flat.
+5. Respect the current periodization phase (hypertrophy = higher reps/volume, strength = lower reps/higher %).
+6. **STRICT CONSTRAINT: Never duplicate steps. Each exercise-stepOrder pair must be unique within a workout. Only modify existing step fields (weight, percentage, reps, rest time). Do not add new steps; return the input step count exactly as provided.**
 
 WeeklyWorkoutPlan schema:
 {
@@ -230,6 +623,15 @@ WeeklyWorkoutPlan schema:
 
   /** Create a LLM session */
   async createSession(): Promise<void> {
+    if (this.mockMode) {
+      console.log("   Mock mode: skipping LLM session initialization.");
+      return;
+    }
+
+    await this.createCopilotSdkSession();
+  }
+
+  private async createCopilotSdkSession(): Promise<void> {
     const { CopilotClient } = await import("@github/copilot-sdk");
 
     // Auth: prefer GitHub token env vars, then BYOK (OpenAI / Anthropic)
@@ -293,6 +695,14 @@ WeeklyWorkoutPlan schema:
    * for the first token so the user knows the process is alive.
    */
   private async sendPrompt(prompt: string): Promise<string> {
+    if (this.mockMode) {
+      return this.getMockResponse();
+    }
+
+    return this.sendPromptCopilotSdk(prompt);
+  }
+
+  private async sendPromptCopilotSdk(prompt: string): Promise<string> {
     if (!this.session) {
       throw new Error("LLM session not initialized. Call createSession() first.");
     }
@@ -394,17 +804,322 @@ WeeklyWorkoutPlan schema:
       throw new Error("LLM response does not contain a valid WeeklyWorkoutPlan structure after retries.");
     }
 
+    // Check for duplicate steps (same exerciseName + stepOrder)
+    if (this.planHasDuplicates(plan)) {
+      if (retryCount < 2) {
+        console.error(`\n⚠️  LLM response contains duplicate steps (same exerciseName + stepOrder). Asking for correction...`);
+        const duplicateDetails = plan.workouts
+          .map((w) => {
+            const dups = this.detectDuplicateSteps(w);
+            if (dups.length === 0) return null;
+            return `Workout "${w.workoutName}": ${dups.map((d) => `${d.exerciseName}@stepOrder ${d.stepOrder} (${d.count}× found)`).join(", ")}`;
+          })
+          .filter(Boolean)
+          .join("; ");
+        const fixPrompt = `Your JSON has duplicate steps: ${duplicateDetails}. Each (exerciseName, stepOrder) pair must be unique within a workout. Remove the duplicate entries while preserving the other steps. Return the corrected JSON.`;
+        const retry = await this.sendPrompt(fixPrompt);
+        return this.parseAndValidateResponse(retry, retryCount + 1);
+      }
+      throw new Error(
+        "LLM response contains duplicate steps after 2 retries. Unable to proceed."
+      );
+    }
+
     return { plan, summary };
+  }
+
+  /**
+   * Detect duplicate steps within a workout.
+   * A duplicate is defined as steps with the same exerciseName and stepOrder.
+   * Returns an array of duplicate step signatures for error reporting.
+   */
+  private detectDuplicateSteps(
+    workout: PlannedWorkout
+  ): Array<{ exerciseName: string; stepOrder: number; count: number }> {
+    if (!workout.steps) return [];
+
+    const stepMap = new Map<string, number>(); // key: "exerciseName:stepOrder"
+    const duplicates: Array<{ exerciseName: string; stepOrder: number; count: number }> = [];
+
+    for (const step of workout.steps) {
+      // Skip steps without stepOrder (shouldn't happen, but be safe)
+      if (step.stepOrder === undefined) continue;
+
+      const exerciseName = step.exerciseName || "(no exercise)";
+      const key = `${exerciseName}:${step.stepOrder}`;
+
+      const count = (stepMap.get(key) ?? 0) + 1;
+      stepMap.set(key, count);
+
+      if (count > 1 && !duplicates.some((d) => d.exerciseName === exerciseName && d.stepOrder === step.stepOrder)) {
+        duplicates.push({ exerciseName, stepOrder: step.stepOrder, count });
+      }
+    }
+
+    return duplicates;
+  }
+
+  /**
+   * Check plan for duplicate steps across all workouts.
+   * Returns true if any duplicates found.
+   */
+  private planHasDuplicates(plan: WeeklyWorkoutPlan): boolean {
+    if (!plan.workouts) return false;
+
+    for (const workout of plan.workouts) {
+      const duplicates = this.detectDuplicateSteps(workout);
+      if (duplicates.length > 0) {
+        return true;
+      }
+    }
+
+    return false;
   }
 
   // ── Payload helpers ────────────────────────────────────────────────────────
 
+  private buildWeeklySelectionTargets(trainingPlan: TrainingPlan): WeeklySelectionTarget[] {
+    const weeklyStructure = trainingPlan.weeklyStructure;
+
+    if (!weeklyStructure || typeof weeklyStructure !== "object") {
+      return [];
+    }
+
+    const targets: WeeklySelectionTarget[] = [];
+
+    for (const [day, value] of Object.entries(weeklyStructure)) {
+      if (typeof value === "string") {
+        if (/\b(off|rest|mobility|recovery)\b/i.test(value)) {
+          continue;
+        }
+
+        const typeHint = inferWorkoutTypeFromText(value);
+        const normalizedNameHint = normalizeSelectorText(value);
+        const tokens = tokenizeSelectorText(value);
+
+        if (!typeHint && !normalizedNameHint) {
+          continue;
+        }
+
+        targets.push({
+          day,
+          workoutNameHint: value,
+          normalizedNameHint: normalizedNameHint || undefined,
+          workoutTypeHint: typeHint,
+          tokens,
+        });
+        continue;
+      }
+
+      if (!value || typeof value !== "object") {
+        continue;
+      }
+
+      const entry = value as Record<string, unknown>;
+      const workoutName =
+        typeof entry.workoutName === "string" ? entry.workoutName : undefined;
+      const description =
+        typeof entry.description === "string" ? entry.description : undefined;
+      const explicitWorkoutType =
+        typeof entry.workoutType === "string"
+          ? (entry.workoutType as PlannedWorkout["workoutType"])
+          : undefined;
+
+      const selectorText = workoutName ?? description;
+      const normalizedNameHint = normalizeSelectorText(selectorText);
+      const typeHint =
+        explicitWorkoutType ??
+        inferWorkoutTypeFromText(`${workoutName ?? ""} ${description ?? ""}`.trim());
+
+      if (!workoutName && !description && !typeHint) {
+        continue;
+      }
+
+      targets.push({
+        day,
+        workoutNameHint: selectorText,
+        normalizedNameHint: normalizedNameHint || undefined,
+        workoutTypeHint: typeHint,
+        tokens: tokenizeSelectorText(selectorText),
+      });
+    }
+
+    return targets;
+  }
+
+  private scoreWorkoutAgainstTarget(
+    workout: PlannedWorkout,
+    target: WeeklySelectionTarget
+  ): number {
+    let score = 0;
+
+    const workoutNameNormalized = normalizeSelectorText(workout.workoutName);
+    const workoutTokens = tokenizeSelectorText(workout.workoutName);
+
+    if (target.workoutTypeHint && workout.workoutType === target.workoutTypeHint) {
+      score += 25;
+    }
+
+    if (target.normalizedNameHint) {
+      if (workoutNameNormalized === target.normalizedNameHint) {
+        score += 70;
+      } else if (
+        workoutNameNormalized.includes(target.normalizedNameHint) ||
+        target.normalizedNameHint.includes(workoutNameNormalized)
+      ) {
+        score += 40;
+      }
+
+      if (target.tokens.length > 0 && workoutTokens.length > 0) {
+        const workoutTokenSet = new Set(workoutTokens);
+        let overlap = 0;
+        for (const token of target.tokens) {
+          if (workoutTokenSet.has(token)) {
+            overlap += 1;
+          }
+        }
+        score += Math.min(20, overlap * 6);
+      }
+    }
+
+    if (workout.steps && workout.steps.length > 0) {
+      score += 2;
+    }
+
+    return score;
+  }
+
+  private selectWorkoutsFromUnscheduledLibrary(
+    plan: WeeklyWorkoutPlan,
+    trainingPlan: TrainingPlan,
+    limit = 7
+  ): PlannedWorkout[] {
+    const targets = this.buildWeeklySelectionTargets(trainingPlan);
+
+    if (targets.length === 0) {
+      throw new Error(
+        "Workout plan contains unscheduled workouts, but training plan weeklyStructure is missing or unusable for auto-selection. " +
+        "Provide a curated weekly workout file (for example data/next-week.workouts.tmp.json), schedule dates, or add workoutName/workoutType hints under weeklyStructure."
+      );
+    }
+
+    const desiredCount = Math.min(plan.workouts.length, Math.max(1, targets.length));
+    const selectedIndices = new Set<number>();
+    const selectedWorkouts: PlannedWorkout[] = [];
+
+    let namedTargets = 0;
+    let namedMatches = 0;
+
+    for (const target of targets) {
+      const hasNameHint = !!target.normalizedNameHint;
+      if (hasNameHint) {
+        namedTargets += 1;
+      }
+
+      let bestIndex = -1;
+      let bestScore = -1;
+
+      for (let index = 0; index < plan.workouts.length; index++) {
+        if (selectedIndices.has(index)) continue;
+        const workout = plan.workouts[index];
+        const score = this.scoreWorkoutAgainstTarget(workout, target);
+        if (score > bestScore) {
+          bestScore = score;
+          bestIndex = index;
+        }
+      }
+
+      const minScore = hasNameHint ? 35 : target.workoutTypeHint ? 20 : 45;
+      if (bestIndex !== -1 && bestScore >= minScore) {
+        selectedIndices.add(bestIndex);
+        selectedWorkouts.push(plan.workouts[bestIndex]);
+        if (hasNameHint) {
+          namedMatches += 1;
+        }
+      }
+
+      if (selectedWorkouts.length >= desiredCount) {
+        break;
+      }
+    }
+
+    if (selectedWorkouts.length < desiredCount) {
+      const fallbackCandidates = plan.workouts
+        .map((workout, index) => {
+          if (selectedIndices.has(index)) {
+            return null;
+          }
+          const bestScore = targets.reduce((maxScore, target) => {
+            return Math.max(maxScore, this.scoreWorkoutAgainstTarget(workout, target));
+          }, 0);
+
+          return { index, bestScore };
+        })
+        .filter((candidate): candidate is { index: number; bestScore: number } => !!candidate)
+        .sort((a, b) => {
+          if (b.bestScore !== a.bestScore) {
+            return b.bestScore - a.bestScore;
+          }
+          return a.index - b.index;
+        });
+
+      for (const candidate of fallbackCandidates) {
+        if (selectedWorkouts.length >= desiredCount) {
+          break;
+        }
+
+        if (candidate.bestScore < 15) {
+          continue;
+        }
+
+        selectedIndices.add(candidate.index);
+        selectedWorkouts.push(plan.workouts[candidate.index]);
+      }
+    }
+
+    const minNamedMatches =
+      namedTargets > 0 ? Math.max(1, Math.ceil(namedTargets * 0.5)) : 0;
+    const minTotalMatches = Math.max(1, Math.ceil(desiredCount * 0.6));
+
+    if (
+      selectedWorkouts.length < minTotalMatches ||
+      (namedTargets > 0 && namedMatches < minNamedMatches)
+    ) {
+      throw new Error(
+        `Unable to confidently auto-select a weekly subset from ${plan.workouts.length} unscheduled workouts ` +
+        `(selected ${selectedWorkouts.length}/${desiredCount}, named matches ${namedMatches}/${namedTargets}). ` +
+        "Pass a curated weekly workout file (for example data/next-week.workouts.tmp.json) or schedule dates in the workout file before running adjust-workouts."
+      );
+    }
+
+    if (selectedWorkouts.length > limit) {
+      console.warn(
+        `\n⚠️  Auto-selection inferred ${selectedWorkouts.length} workouts from weeklyStructure (limit hint: ${limit}).` +
+        "\n   Sending all inferred workouts to preserve weekly intent.\n"
+      );
+    }
+
+    console.log(
+      `   Auto-selected ${selectedWorkouts.length} workout(s) from ${plan.workouts.length} unscheduled entries using training-plan weeklyStructure.`
+    );
+
+    return selectedWorkouts;
+  }
+
   /**
    * Trim the workout plan down to what the LLM actually needs:
    * - Prefer workouts with a scheduledDate within the plan's week range.
-   * - If none have scheduledDate (flat library dump), cap at `limit` and warn.
+   * - If none have scheduledDate, attempt deterministic selection from trainingPlan.weeklyStructure.
+   * - Fail fast on low-confidence matching instead of arbitrary first-N truncation.
    */
-  private trimPlanForLLM(plan: WeeklyWorkoutPlan, limit = 7): WeeklyWorkoutPlan {
+  private trimPlanForLLM(
+    plan: WeeklyWorkoutPlan,
+    options: {
+      limit?: number;
+      trainingPlan?: TrainingPlan;
+    } = {}
+  ): WeeklyWorkoutPlan {
+    const limit = options.limit ?? 7;
     const scheduled = plan.workouts.filter((w) => !!w.scheduledDate);
 
     if (scheduled.length > 0) {
@@ -420,16 +1135,72 @@ WeeklyWorkoutPlan schema:
       return { ...plan, workouts };
     }
 
-    // No scheduledDate — this is probably the full library export.
-    // Cap it and warn so the user knows to use a proper plan file.
-    if (plan.workouts.length > limit) {
-      console.warn(
-        `\n⚠️  Workout file contains ${plan.workouts.length} workouts with no scheduled dates.` +
-        `\n   Sending only the first ${limit} to the LLM. For better results, pass a weekly plan` +
-        `\n   file (e.g. data/next-week.workouts.tmp.json from --generate-template).\n`
-      );
+    if (!options.trainingPlan) {
+      if (plan.workouts.length > limit) {
+        console.warn(
+          `\n⚠️  Workout context has ${plan.workouts.length} unscheduled workouts and no training-plan selector context.` +
+          `\n   Sending only the first ${limit} workouts in this optional context.\n`
+        );
+      }
+      return { ...plan, workouts: plan.workouts.slice(0, limit) };
     }
-    return { ...plan, workouts: plan.workouts.slice(0, limit) };
+
+    if (plan.workouts.length <= limit) {
+      return plan;
+    }
+
+    const workouts = this.selectWorkoutsFromUnscheduledLibrary(
+      plan,
+      options.trainingPlan,
+      limit
+    );
+
+    return { ...plan, workouts };
+  }
+
+  /**
+   * Filter activities to only those from scheduled workouts (having workoutId field).
+   * This removes ad-hoc activities that aren't associated with Garmin workout templates.
+   */
+  private filterActivitiesToScheduled(activities: ExtractedActivities): ExtractedActivities {
+    const filteredActivities = activities.activities.filter(a => a.workoutId != null);
+    return {
+      ...activities,
+      activities: filteredActivities,
+      totalActivities: filteredActivities.length,
+    };
+  }
+
+  /**
+   * Extract unique workout IDs from activities that have workoutId field.
+   * Returns a Set of workout IDs that were actually performed.
+   */
+  private extractWorkoutIds(activities: ExtractedActivities): Set<string | number> {
+    const workoutIds = new Set<string | number>();
+    activities.activities.forEach(a => {
+      if (a.workoutId != null) {
+        workoutIds.add(a.workoutId);
+      }
+    });
+    return workoutIds;
+  }
+
+  /**
+   * Filter workouts to only those that have a matching performed activity.
+   * Uses strict workoutId matching between activities and workout templates.
+   */
+  private filterWorkoutsByIds(
+    plan: WeeklyWorkoutPlan,
+    performedIds: Set<string | number>
+  ): WeeklyWorkoutPlan {
+    const filteredWorkouts = plan.workouts.filter(w => {
+      if (w.workoutId == null) return false;
+      return performedIds.has(w.workoutId);
+    });
+    return {
+      ...plan,
+      workouts: filteredWorkouts,
+    };
   }
 
   /**
@@ -459,6 +1230,298 @@ WeeklyWorkoutPlan schema:
     }));
   }
 
+  private validateTrainingPlanShape(plan: TrainingPlan): void {
+    if (!plan || typeof plan !== "object") {
+      throw new Error("Training plan must be a JSON object");
+    }
+
+    if (!plan.version || !plan.athlete || !plan.goals || !plan.periodization) {
+      throw new Error(
+        "Training plan missing required fields: version, athlete, goals, or periodization"
+      );
+    }
+
+    if (!plan.periodization.currentPhase || !Array.isArray(plan.periodization.phases)) {
+      throw new Error(
+        "Training plan periodization is invalid (missing currentPhase or phases)"
+      );
+    }
+
+    if (!Array.isArray(plan.weeklyHistory)) {
+      throw new Error("Training plan weeklyHistory must be an array");
+    }
+  }
+
+  private isEarlyPhase(trainingPlan: TrainingPlan): boolean {
+    const weekInPhase = trainingPlan.periodization?.weekInPhase;
+    return typeof weekInPhase === "number" && weekInPhase <= 2;
+  }
+
+  private extractTrainingPlanMainLiftBaselines(
+    trainingPlan: TrainingPlan
+  ): Map<string, { exerciseName: string; minSets: number }> {
+    const baselines = new Map<string, { exerciseName: string; minSets: number }>();
+    const weeklyStructure = trainingPlan.weeklyStructure;
+
+    if (!weeklyStructure || typeof weeklyStructure !== "object") {
+      return baselines;
+    }
+
+    for (const entry of Object.values(weeklyStructure)) {
+      if (!entry || typeof entry !== "object") continue;
+
+      const typedEntry = entry as Record<string, unknown>;
+      const workoutName = typedEntry.workoutName;
+      const exercises = typedEntry.exercises;
+
+      if (typeof workoutName !== "string" || !Array.isArray(exercises)) {
+        continue;
+      }
+
+      for (const exerciseEntry of exercises) {
+        if (!exerciseEntry || typeof exerciseEntry !== "object") continue;
+
+        const typedExercise = exerciseEntry as Record<string, unknown>;
+        const exerciseName = typedExercise.exercise;
+        const sets = typedExercise.sets;
+
+        if (typeof exerciseName !== "string" || !Array.isArray(sets)) {
+          continue;
+        }
+
+        const workSet = sets.find((setEntry) => {
+          if (!setEntry || typeof setEntry !== "object") return false;
+          const typedSet = setEntry as Record<string, unknown>;
+          return (
+            typeof typedSet.phase === "string" &&
+            typedSet.phase.toLowerCase() === "work" &&
+            typeof typedSet.sets === "number" &&
+            typedSet.sets > 0
+          );
+        }) as Record<string, unknown> | undefined;
+
+        if (workSet && typeof workSet.sets === "number") {
+          baselines.set(workoutName, {
+            exerciseName: normalizeExerciseName(exerciseName),
+            minSets: workSet.sets,
+          });
+          break;
+        }
+      }
+    }
+
+    return baselines;
+  }
+
+  private countExerciseSets(
+    steps: WorkoutStep[],
+    normalizedExerciseName: string,
+    repeatMultiplier = 1
+  ): number {
+    let count = 0;
+
+    for (const step of steps) {
+      if (step.stepType === "repeat" && step.repeatSteps) {
+        const repeats = step.numberOfRepeats ?? 1;
+        count += this.countExerciseSets(
+          step.repeatSteps,
+          normalizedExerciseName,
+          repeatMultiplier * repeats
+        );
+        continue;
+      }
+
+      if (normalizeExerciseName(step.exerciseName) === normalizedExerciseName) {
+        count += repeatMultiplier;
+      }
+    }
+
+    return count;
+  }
+
+  private findFirstExerciseStep(
+    steps: WorkoutStep[],
+    normalizedExerciseName: string
+  ): WorkoutStep | undefined {
+    for (const step of steps) {
+      if (step.stepType === "repeat" && step.repeatSteps) {
+        const nested = this.findFirstExerciseStep(
+          step.repeatSteps,
+          normalizedExerciseName
+        );
+        if (nested) return nested;
+        continue;
+      }
+
+      if (normalizeExerciseName(step.exerciseName) === normalizedExerciseName) {
+        return step;
+      }
+    }
+
+    return undefined;
+  }
+
+  private cloneStep(step: WorkoutStep): WorkoutStep {
+    return JSON.parse(JSON.stringify(step)) as WorkoutStep;
+  }
+
+  /**
+   * Get the maximum stepOrder in a list of steps (recursive, including repeat groups).
+   */
+  private getMaxStepOrder(steps: WorkoutStep[]): number {
+    let max = 0;
+    for (const step of steps) {
+      if (step.stepOrder !== undefined && step.stepOrder > max) {
+        max = step.stepOrder;
+      }
+      if (step.stepType === "repeat" && step.repeatSteps) {
+        max = Math.max(max, this.getMaxStepOrder(step.repeatSteps));
+      }
+    }
+    return max;
+  }
+
+  private ensureWorkoutExerciseSetMinimum(
+    workout: PlannedWorkout,
+    normalizedExerciseName: string,
+    minSets: number
+  ): PlannedWorkout {
+    if (!workout.steps || minSets <= 0 || !normalizedExerciseName) {
+      return workout;
+    }
+
+    const currentSets = this.countExerciseSets(workout.steps, normalizedExerciseName);
+    if (currentSets >= minSets) {
+      return workout;
+    }
+
+    const templateStep = this.findFirstExerciseStep(workout.steps, normalizedExerciseName);
+    if (!templateStep) {
+      return workout;
+    }
+
+    // Clone steps to meet minimum set requirements.
+    // Assign new, unique stepOrder values to avoid (exerciseName, stepOrder) duplicates.
+    const updatedSteps = [...workout.steps];
+    const maxStepOrder = this.getMaxStepOrder(updatedSteps);
+    let nextStepOrder = maxStepOrder + 1;
+
+    for (let i = currentSets; i < minSets; i++) {
+      const clonedStep = this.cloneStep(templateStep);
+      clonedStep.stepOrder = nextStepOrder;
+      nextStepOrder++;
+      updatedSteps.push(clonedStep);
+    }
+
+    return {
+      ...workout,
+      steps: updatedSteps,
+    };
+  }
+
+  private applyMainLiftBaselinesFromTrainingPlan(
+    trainingPlan: TrainingPlan,
+    plan: WeeklyWorkoutPlan
+  ): WeeklyWorkoutPlan {
+    if (!this.isEarlyPhase(trainingPlan)) {
+      return plan;
+    }
+
+    const baselinesByWorkoutName = this.extractTrainingPlanMainLiftBaselines(trainingPlan);
+    if (baselinesByWorkoutName.size === 0) {
+      return plan;
+    }
+
+    return {
+      ...plan,
+      workouts: plan.workouts.map((workout) => {
+        const baseline = baselinesByWorkoutName.get(workout.workoutName);
+        if (!baseline) return workout;
+        return this.ensureWorkoutExerciseSetMinimum(
+          workout,
+          baseline.exerciseName,
+          baseline.minSets
+        );
+      }),
+    };
+  }
+
+  private guessPrimaryExerciseName(workout: PlannedWorkout): string | undefined {
+    const steps = flattenForDiff(workout.steps ?? []);
+    const firstExercise = steps.find((step) => !!step.exerciseName)?.exerciseName;
+    if (!firstExercise) return undefined;
+    return normalizeExerciseName(firstExercise);
+  }
+
+  private applyPrimarySetFloorsFromBasePlan(
+    basePlan: WeeklyWorkoutPlan,
+    adjustedPlan: WeeklyWorkoutPlan
+  ): WeeklyWorkoutPlan {
+    const updatedWorkouts = adjustedPlan.workouts.map((adjustedWorkout) => {
+      const baseIndex = findMatchingWorkoutIndex(basePlan.workouts, adjustedWorkout);
+      if (baseIndex === -1) return adjustedWorkout;
+
+      const baseWorkout = basePlan.workouts[baseIndex];
+      const primaryExercise = this.guessPrimaryExerciseName(baseWorkout);
+      if (!primaryExercise) return adjustedWorkout;
+
+      const baseSets = this.countExerciseSets(
+        baseWorkout.steps ?? [],
+        primaryExercise
+      );
+      if (baseSets <= 0) return adjustedWorkout;
+
+      return this.ensureWorkoutExerciseSetMinimum(
+        adjustedWorkout,
+        primaryExercise,
+        baseSets
+      );
+    });
+
+    return {
+      ...adjustedPlan,
+      workouts: updatedWorkouts,
+    };
+  }
+
+  /**
+   * Audit plan for duplicate steps after post-processing.
+   * Logs warnings if duplicates are found (they may have been introduced by step-cloning in post-processing).
+   */
+  private auditForDuplicatesWarning(plan: WeeklyWorkoutPlan): void {
+    if (!plan.workouts) return;
+
+    const allDuplicates: Array<{
+      workoutName: string;
+      exerciseName: string;
+      stepOrder: number;
+      count: number;
+    }> = [];
+
+    for (const workout of plan.workouts) {
+      const duplicates = this.detectDuplicateSteps(workout);
+      for (const dup of duplicates) {
+        allDuplicates.push({
+          workoutName: workout.workoutName,
+          exerciseName: dup.exerciseName,
+          stepOrder: dup.stepOrder,
+          count: dup.count,
+        });
+      }
+    }
+
+    if (allDuplicates.length > 0) {
+      console.warn(
+        "\n⚠️  POST-PROCESSING AUDIT: Found duplicate steps in final plan (likely from step-cloning to meet minimum set requirements):"
+      );
+      for (const dup of allDuplicates) {
+        console.warn(
+          `    - Workout "${dup.workoutName}": ${dup.exerciseName} @ stepOrder ${dup.stepOrder} appears ${dup.count} times`
+        );
+      }
+    }
+  }
+
   // ── Main flows ─────────────────────────────────────────────────────────────
 
   /**
@@ -467,8 +1530,40 @@ WeeklyWorkoutPlan schema:
   async analyzeAndAdjust(context: AdjustmentContext): Promise<AdjustmentResult> {
     const { activities, currentPlan, trainingPlan } = context;
 
-    const trimmedPlan = this.trimPlanForLLM(currentPlan);
-    const compactActs = this.compactActivities(activities);
+    // Filter activities to only those from scheduled workouts
+    const filteredActivities = this.filterActivitiesToScheduled(activities);
+    console.log(
+      `   Filtered activities: ${activities.activities.length} → ${filteredActivities.activities.length} (with workoutId)`
+    );
+
+    // Only apply workout filtering if workouts have scheduledDate (not a library plan)
+    // This allows auto-selection logic to work for unscheduled library plans
+    const hasScheduledDates = currentPlan.workouts.some(w => w.scheduledDate != null);
+    let planToUse = currentPlan;
+    
+    if (hasScheduledDates) {
+      // Extract performed workout IDs and filter workouts to only those performed
+      const performedIds = this.extractWorkoutIds(filteredActivities);
+      planToUse = this.filterWorkoutsByIds(currentPlan, performedIds);
+      console.log(
+        `   Filtered workouts: ${currentPlan.workouts.length} → ${planToUse.workouts.length} (matching performed activities)`
+      );
+      if (performedIds.size > 0) {
+        console.log(
+          `   Matched workout IDs: ${Array.from(performedIds).join(", ")}`
+        );
+      }
+    } else {
+      console.log(
+        `   Skipping workout filtering (unscheduled library → using auto-selection)`
+      );
+    }
+
+    const trimmedPlan = this.trimPlanForLLM(planToUse, {
+      trainingPlan,
+      limit: 7,
+    });
+    const compactActs = this.compactActivities(filteredActivities);
 
     console.log(`   Sending ${trimmedPlan.workouts.length} workout(s) and ${compactActs.length} activit(ies) to LLM.`);
 
@@ -491,31 +1586,9 @@ ${JSON.stringify(trimmedPlan, null, 2)}
 
 ---
 
-## Training progression context
+## Full Training Plan
 
-Current phase: ${trainingPlan.periodization.currentPhase}
-Week ${trainingPlan.periodization.weekInPhase} of ${trainingPlan.periodization.totalWeeksInPhase}
-
-Goals:
-- Primary: ${trainingPlan.goals.primary}
-${trainingPlan.goals.secondary ? `- Secondary: ${trainingPlan.goals.secondary}` : ""}
-${trainingPlan.goals.notes ? `- Notes: ${trainingPlan.goals.notes}` : ""}
-
-Strength benchmarks (1RM):
-${Object.entries(trainingPlan.strengthBenchmarks)
-  .map(([k, v]) => `  ${k}: ${v.oneRepMax} lbs`)
-  .join("\n")}
-
-Running benchmarks:
-${trainingPlan.runningBenchmarks.easyPace ? `  Easy pace: ${trainingPlan.runningBenchmarks.easyPace} min/km` : ""}
-${trainingPlan.runningBenchmarks.fiveKPace ? `  5K pace: ${trainingPlan.runningBenchmarks.fiveKPace} min/km` : ""}
-
-Phase notes: ${trainingPlan.periodization.phases.find((p) => p.name === trainingPlan.periodization.currentPhase)?.notes ?? ""}
-
-Constraints: ${JSON.stringify(trainingPlan.constraints)}
-
-Recent weekly history (last 3 weeks):
-${JSON.stringify(trainingPlan.weeklyHistory.slice(-3), null, 2)}
+${JSON.stringify(trainingPlan, null, 2)}
 
 ---
 
@@ -535,6 +1608,14 @@ Return the adjusted WeeklyWorkoutPlan JSON, then SUMMARY:.
 
     this.saveLastResponse(rawResponse);
     const { plan, summary } = await this.parseAndValidateResponse(rawResponse);
+    const withTrainingBaselines = this.applyMainLiftBaselinesFromTrainingPlan(
+      trainingPlan,
+      plan
+    );
+    const guardedPlan = this.applyPrimarySetFloorsFromBasePlan(
+      trimmedPlan,
+      withTrainingBaselines
+    );
 
     if (summary) {
       console.log("\n📝 LLM Summary:");
@@ -543,9 +1624,12 @@ Return the adjusted WeeklyWorkoutPlan JSON, then SUMMARY:.
       console.log("─".repeat(60));
     }
 
+    // Audit for duplicates that may have been introduced by post-processing
+    this.auditForDuplicatesWarning(guardedPlan);
+
     return {
-      adjustedPlan: plan,
-      changeSummary: summary || formatChangeSummary(trimmedPlan, plan),
+      adjustedPlan: guardedPlan,
+      changeSummary: summary || formatChangeSummary(trimmedPlan, guardedPlan),
       llmReasoning: rawResponse,
     };
   }
@@ -586,6 +1670,7 @@ Please apply the feedback and return the updated WeeklyWorkoutPlan JSON, then SU
 
     this.saveLastResponse(rawResponse);
     const { plan, summary } = await this.parseAndValidateResponse(rawResponse);
+    const guardedPlan = this.applyPrimarySetFloorsFromBasePlan(currentPlan, plan);
 
     if (summary) {
       console.log("\n📝 LLM Summary:");
@@ -595,10 +1680,99 @@ Please apply the feedback and return the updated WeeklyWorkoutPlan JSON, then SU
     }
 
     return {
-      adjustedPlan: plan,
-      changeSummary: summary || formatChangeSummary(currentPlan, plan),
+      adjustedPlan: guardedPlan,
+      changeSummary: summary || formatChangeSummary(currentPlan, guardedPlan),
       llmReasoning: rawResponse,
     };
+  }
+
+  /**
+   * Revisit and refine a TrainingPlan using LLM guidance.
+   * Returns an updated TrainingPlan plus a short summary of changes.
+   */
+  async revisitTrainingPlan(
+    trainingPlan: TrainingPlan,
+    options: {
+      activities?: ExtractedActivities;
+      currentPlan?: WeeklyWorkoutPlan;
+      reviewNotes?: string;
+    } = {}
+  ): Promise<{ updatedPlan: TrainingPlan; summary: string; llmReasoning: string }> {
+    const compactActivities = options.activities
+      ? this.compactActivities(options.activities)
+      : undefined;
+    const trimmedWorkoutPlan = options.currentPlan
+      ? this.trimPlanForLLM(options.currentPlan, { limit: 7 })
+      : undefined;
+
+    const prompt = `
+You are reviewing and improving a strength + endurance TrainingPlan JSON.
+
+GOAL:
+- Revisit this training plan and produce a refined version that is internally consistent,
+  realistic, and aligned with current progression.
+
+RULES:
+1. Return ONLY valid TrainingPlan JSON (same top-level schema), then on a new line: SUMMARY:
+2. Preserve athlete identity and long-term intent unless notes explicitly ask to change.
+3. Keep fields machine-readable; no markdown fences.
+4. Ensure periodization fields are coherent: currentPhase, weekInPhase, totalWeeksInPhase, phases[].
+5. Keep weeklyHistory as an array.
+6. Update updatedAt timestamp.
+
+${options.reviewNotes?.trim() ? `USER NOTES:\n${options.reviewNotes.trim()}\n` : ""}
+
+CURRENT TRAINING PLAN:
+${JSON.stringify(trainingPlan, null, 2)}
+
+${trimmedWorkoutPlan ? `CURRENT WORKOUT PLAN CONTEXT:\n${JSON.stringify(trimmedWorkoutPlan, null, 2)}\n` : ""}
+
+${compactActivities ? `RECENT ACTIVITIES CONTEXT:\n${JSON.stringify(compactActivities, null, 2)}\n` : ""}
+
+Return the updated TrainingPlan JSON, then SUMMARY:.
+`.trim();
+
+    console.log("\n🤖 Revisiting training plan with LLM...");
+    console.log("─".repeat(60));
+    let rawResponse = await this.sendPrompt(prompt);
+    console.log("─".repeat(60));
+
+    this.saveLastResponse(rawResponse);
+
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const summaryMatch = rawResponse.match(/\nSUMMARY:([\s\S]*)$/m);
+      const summary = summaryMatch ? summaryMatch[1].trim() : "";
+      const jsonPortion = summaryMatch
+        ? rawResponse.slice(0, summaryMatch.index)
+        : rawResponse;
+
+      try {
+        const parsed = extractJson(jsonPortion) as TrainingPlan;
+        this.validateTrainingPlanShape(parsed);
+
+        return {
+          updatedPlan: parsed,
+          summary,
+          llmReasoning: rawResponse,
+        };
+      } catch (error: any) {
+        if (attempt === 2) {
+          throw new Error(
+            `Failed to parse/validate TrainingPlan after retries: ${error.message}`
+          );
+        }
+
+        console.error(
+          `\n⚠️  Invalid TrainingPlan response. Asking LLM for a corrected JSON-only response (attempt ${attempt + 1}/2)...`
+        );
+        rawResponse = await this.sendPrompt(
+          `Your previous response was invalid: ${error.message}. Return ONLY valid TrainingPlan JSON matching the original schema, then SUMMARY: on a new line.`
+        );
+        this.saveLastResponse(rawResponse);
+      }
+    }
+
+    throw new Error("Unexpected failure while revisiting training plan");
   }
 
   /**
@@ -701,7 +1875,22 @@ Apply the feedback and return ONLY the updated single workout as a JSON object (
       console.log(summary);
     }
 
-    return parsed as PlannedWorkout;
+    const parsedWorkout = parsed as PlannedWorkout;
+    const primaryExercise = this.guessPrimaryExerciseName(workout);
+    if (!primaryExercise) {
+      return parsedWorkout;
+    }
+
+    const baseSets = this.countExerciseSets(workout.steps ?? [], primaryExercise);
+    if (baseSets <= 0) {
+      return parsedWorkout;
+    }
+
+    return this.ensureWorkoutExerciseSetMinimum(
+      parsedWorkout,
+      primaryExercise,
+      baseSets
+    );
   }
 
   /** Clean up the LLM session and client */
@@ -890,25 +2079,18 @@ export function formatSingleWorkoutDiff(
 
   // Date change
   if (oldWorkout.scheduledDate !== newWorkout.scheduledDate) {
-    lines.push(`  Date: ${oldWorkout.scheduledDate} -> ${newWorkout.scheduledDate}`);
+    lines.push(
+      `  Date: ${formatScheduledDate(oldWorkout.scheduledDate)} -> ${formatScheduledDate(newWorkout.scheduledDate)}`
+    );
   }
 
   // Step-level diff
   const oldSteps = flattenForDiff(oldWorkout.steps ?? []);
   const newSteps = flattenForDiff(newWorkout.steps ?? []);
-  const maxLen = Math.max(oldSteps.length, newSteps.length);
+  const stepDiffLines = buildStepDiffLines(oldSteps, newSteps, "->");
+  lines.push(...stepDiffLines);
 
-  let changeCount = 0;
-  for (let i = 0; i < maxLen; i++) {
-    const os = oldSteps[i] ? describeStep(oldSteps[i]) : "(removed)";
-    const ns = newSteps[i] ? describeStep(newSteps[i]) : "(removed)";
-    if (os !== ns) {
-      lines.push(`  Step ${i + 1}: ${os}  ->  ${ns}`);
-      changeCount++;
-    }
-  }
-
-  if (changeCount === 0) {
+  if (stepDiffLines.length === 0) {
     lines.push("  (no changes)");
   }
 
@@ -935,9 +2117,7 @@ export async function perWorkoutReviewLoop(
 
   const adjustedPlan = initialResult.adjustedPlan;
   const workouts = [...adjustedPlan.workouts];
-  const originalByName = new Map(
-    originalPlan.workouts.map((w) => [w.workoutName, w])
-  );
+  const matchedOriginalIndices = new Set<number>();
 
   // Show overall summary first
   if (initialResult.changeSummary) {
@@ -952,7 +2132,18 @@ export async function perWorkoutReviewLoop(
 
   for (let i = 0; i < workouts.length; i++) {
     let workout = workouts[i];
-    const original = originalByName.get(workout.workoutName);
+    const originalIndex = findMatchingWorkoutIndex(
+      originalPlan.workouts,
+      workout,
+      matchedOriginalIndices
+    );
+    const original =
+      originalIndex !== -1 ? originalPlan.workouts[originalIndex] : undefined;
+    if (originalIndex !== -1) {
+      matchedOriginalIndices.add(originalIndex);
+    }
+
+    let comparisonBase = original;
     let reviewingThisWorkout = true;
 
     while (reviewingThisWorkout) {
@@ -962,7 +2153,7 @@ export async function perWorkoutReviewLoop(
       console.log("─".repeat(60));
 
       // Show diff
-      const diff = formatSingleWorkoutDiff(original, workout);
+      const diff = formatSingleWorkoutDiff(comparisonBase, workout);
       console.log(diff);
       console.log("─".repeat(60));
 
@@ -985,8 +2176,10 @@ export async function perWorkoutReviewLoop(
       } else if (choice === "e" || choice === "edit") {
         const feedback = await question("  Enter feedback:\n  > ");
         if (feedback.trim()) {
+          const previousWorkout = workout;
           workout = await adjuster.iterateSingleWorkout(feedback, workout);
           workouts[i] = workout;
+          comparisonBase = previousWorkout;
           // Loop back to show updated diff
         }
       } else if (choice === "q" || choice === "quit") {

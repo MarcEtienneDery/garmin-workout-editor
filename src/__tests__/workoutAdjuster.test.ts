@@ -14,7 +14,12 @@
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
-import { WorkoutAdjuster, extractJson, formatChangeSummary } from "../workoutAdjuster";
+import {
+  WorkoutAdjuster,
+  extractJson,
+  formatChangeSummary,
+  formatSingleWorkoutDiff,
+} from "../workoutAdjuster";
 import { WeeklyWorkoutPlan, TrainingPlan, ExtractedActivities } from "../shared/types";
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
@@ -76,6 +81,7 @@ const MINIMAL_ACTIVITIES: ExtractedActivities = {
       duration: 3600,
       totalSets: 5,
       totalReps: 25,
+      workoutId: 123,  // Added to match MINIMAL_PLAN workout
     },
   ],
 };
@@ -174,6 +180,240 @@ describe("formatChangeSummary", () => {
     const summary = formatChangeSummary(MINIMAL_PLAN, emptyPlan);
     expect(summary).toContain("REMOVED: Monday Bench");
   });
+
+  it("aligns inserted steps without cascading false replacements", () => {
+    const oldPlan: WeeklyWorkoutPlan = {
+      ...MINIMAL_PLAN,
+      workouts: [
+        {
+          ...MINIMAL_PLAN.workouts[0],
+          steps: [
+            {
+              stepType: "interval",
+              exerciseName: "BARBELL_BACK_SQUAT",
+              endCondition: "reps",
+              endConditionValue: 5,
+              weightPercentage: 80,
+            },
+            {
+              stepType: "interval",
+              exerciseName: "BOX_JUMP",
+              endCondition: "reps",
+              endConditionValue: 10,
+            },
+          ],
+        },
+      ],
+    };
+
+    const newPlan: WeeklyWorkoutPlan = {
+      ...oldPlan,
+      workouts: [
+        {
+          ...oldPlan.workouts[0],
+          steps: [
+            {
+              stepType: "interval",
+              exerciseName: "BARBELL_BACK_SQUAT",
+              endCondition: "reps",
+              endConditionValue: 5,
+              weightPercentage: 80,
+            },
+            {
+              stepType: "interval",
+              exerciseName: "BARBELL_BENCH_PRESS",
+              endCondition: "reps",
+              endConditionValue: 2,
+              weightPercentage: 93,
+            },
+            {
+              stepType: "interval",
+              exerciseName: "BOX_JUMP",
+              endCondition: "reps",
+              endConditionValue: 10,
+            },
+          ],
+        },
+      ],
+    };
+
+    const summary = formatChangeSummary(oldPlan, newPlan);
+    expect(summary).toContain("Step 2: (added)");
+    expect(summary).toContain("BARBELL_BENCH_PRESS 2 reps @93%");
+    expect(summary).not.toContain("Step 3:");
+  });
+
+  it("does not collapse unrelated remove/add into replacement", () => {
+    const oldPlan: WeeklyWorkoutPlan = {
+      ...MINIMAL_PLAN,
+      workouts: [
+        {
+          ...MINIMAL_PLAN.workouts[0],
+          steps: [
+            {
+              stepType: "interval",
+              exerciseName: "DUMBBELL_BICEPS_CURL",
+              endCondition: "reps",
+              endConditionValue: 12,
+              weight: 60,
+            },
+          ],
+        },
+      ],
+    };
+
+    const newPlan: WeeklyWorkoutPlan = {
+      ...oldPlan,
+      workouts: [
+        {
+          ...oldPlan.workouts[0],
+          steps: [
+            {
+              stepType: "interval",
+              exerciseName: "SINGLE_LEG_ROMANIAN_DEADLIFT_WITH_DUMBBELL",
+              endCondition: "reps",
+              endConditionValue: 10,
+              weight: 40,
+            },
+          ],
+        },
+      ],
+    };
+
+    const summary = formatChangeSummary(oldPlan, newPlan);
+    expect(summary).toContain("DUMBBELL_BICEPS_CURL 12 reps @60lbs  →  (removed)");
+    expect(summary).toContain("(added)  →  interval SINGLE_LEG_ROMANIAN_DEADLIFT_WITH_DUMBBELL 10 reps @40lbs");
+    expect(summary).not.toContain("DUMBBELL_BICEPS_CURL 12 reps @60lbs  →  interval SINGLE_LEG_ROMANIAN_DEADLIFT_WITH_DUMBBELL");
+  });
+
+  it("treats legacy repeated interval format as equivalent to repeat-group format", () => {
+    const oldPlan: WeeklyWorkoutPlan = {
+      ...MINIMAL_PLAN,
+      workouts: [
+        {
+          ...MINIMAL_PLAN.workouts[0],
+          steps: [
+            {
+              stepType: "interval",
+              exerciseName: "BARBELL_BENCH_PRESS",
+              endCondition: "reps",
+              endConditionValue: 5,
+              weightPercentage: 75,
+              numberOfRepeats: 2,
+              repeatGroupIndex: 0,
+            },
+          ],
+        },
+      ],
+    };
+
+    const newPlan: WeeklyWorkoutPlan = {
+      ...oldPlan,
+      workouts: [
+        {
+          ...oldPlan.workouts[0],
+          steps: [
+            {
+              stepType: "repeat",
+              endCondition: "iterations",
+              endConditionValue: 2,
+              numberOfRepeats: 2,
+              repeatSteps: [
+                {
+                  stepType: "interval",
+                  exerciseName: "BARBELL_BENCH_PRESS",
+                  endCondition: "reps",
+                  endConditionValue: 5,
+                  weightPercentage: 75,
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+
+    const summary = formatChangeSummary(oldPlan, newPlan);
+    expect(summary).toContain("No structural changes detected");
+  });
+
+  it("matches workouts by id when names are duplicated", () => {
+    const oldPlan: WeeklyWorkoutPlan = {
+      ...MINIMAL_PLAN,
+      workouts: [
+        {
+          workoutId: 1,
+          workoutName: "Strength Day",
+          scheduledDate: "2026-02-23",
+          steps: [
+            {
+              stepType: "interval",
+              exerciseName: "BARBELL_BENCH_PRESS",
+              endCondition: "reps",
+              endConditionValue: 5,
+              weightPercentage: 80,
+            },
+          ],
+        },
+        {
+          workoutId: 2,
+          workoutName: "Strength Day",
+          scheduledDate: "2026-02-25",
+          steps: [
+            {
+              stepType: "interval",
+              exerciseName: "BARBELL_SQUAT",
+              endCondition: "reps",
+              endConditionValue: 5,
+              weightPercentage: 82.5,
+            },
+          ],
+        },
+      ],
+    };
+
+    const newPlan: WeeklyWorkoutPlan = {
+      ...oldPlan,
+      workouts: [
+        oldPlan.workouts[0],
+        {
+          ...oldPlan.workouts[1],
+          steps: [
+            {
+              stepType: "interval",
+              exerciseName: "BARBELL_SQUAT",
+              endCondition: "reps",
+              endConditionValue: 5,
+              weightPercentage: 87.5,
+            },
+          ],
+        },
+      ],
+    };
+
+    const summary = formatChangeSummary(oldPlan, newPlan);
+    expect(summary).toContain("BARBELL_SQUAT");
+    expect(summary).toContain("@82.5%");
+    expect(summary).toContain("@87.5%");
+    expect(summary).not.toContain("REMOVED");
+  });
+});
+
+describe("formatSingleWorkoutDiff", () => {
+  it("renders unscheduled date instead of undefined", () => {
+    const oldWorkout = {
+      ...MINIMAL_PLAN.workouts[0],
+      scheduledDate: undefined,
+    };
+
+    const newWorkout = {
+      ...MINIMAL_PLAN.workouts[0],
+      scheduledDate: "2026-03-02",
+    };
+
+    const diff = formatSingleWorkoutDiff(oldWorkout, newWorkout);
+    expect(diff).toContain("Date: unscheduled -> 2026-03-02");
+  });
 });
 
 // ─── WorkoutAdjuster — non-LLM methods ───────────────────────────────────────
@@ -258,12 +498,225 @@ describe("WorkoutAdjuster", () => {
         trainingPlan: MINIMAL_TRAINING_PLAN,
       };
 
-      await adjuster.createSession(); // no-op in mock mode
+      (adjuster as any).sendPrompt = jest
+        .fn()
+        .mockResolvedValue(`${JSON.stringify(MODIFIED_PLAN, null, 2)}\nSUMMARY:\n- Increased bench intensity by 5%.`);
       const result = await adjuster.analyzeAndAdjust(context);
 
       expect(result.adjustedPlan).toBeDefined();
       expect(Array.isArray(result.adjustedPlan.workouts)).toBe(true);
       expect(typeof result.changeSummary).toBe("string");
+    });
+
+    it("auto-selects workouts from unscheduled libraries using weeklyStructure hints", async () => {
+      const unscheduledLibraryPlan: WeeklyWorkoutPlan = {
+        generatedAt: "2026-03-01T00:00:00.000Z",
+        weekStart: "2026-03-02",
+        weekEnd: "2026-03-08",
+        workouts: [
+          { workoutId: 201, workoutName: "Run easy", workoutType: "running", steps: [] },
+          { workoutId: 202, workoutName: "4x4", workoutType: "running", steps: [] },
+          { workoutId: 203, workoutName: "Zone 2 Thursday", workoutType: "running", steps: [] },
+          { workoutId: 204, workoutName: "Bike 120-135 Saturday", workoutType: "cycling", steps: [] },
+          { workoutId: 205, workoutName: "Goal Pace Repeats", workoutType: "running", steps: [] },
+          { workoutId: 206, workoutName: "Threshold Bike Workout", workoutType: "cycling", steps: [] },
+          { workoutId: 207, workoutName: "Random Strength A", workoutType: "strength_training", steps: [] },
+          { workoutId: 208, workoutName: "Random Strength B", workoutType: "strength_training", steps: [] },
+          { workoutId: 123, workoutName: "09-25 - Monday", workoutType: "strength_training", steps: [] },  // Matches activity
+          { workoutId: 210, workoutName: "Run Threshold Tuesday", workoutType: "running", steps: [] },
+          { workoutId: 211, workoutName: "09-25 - Friday", workoutType: "strength_training", steps: [] },
+          { workoutId: 212, workoutName: "Zone 2 Sunday", workoutType: "running", steps: [] },
+        ],
+      };
+
+      const selectorTrainingPlan: TrainingPlan = {
+        ...MINIMAL_TRAINING_PLAN,
+        weeklyStructure: {
+          Monday: { workoutName: "09-25 - Monday" },
+          Tuesday: "Run Threshold Tuesday",
+          Friday: { workoutName: "09-25 - Friday" },
+          Sunday: "Off / Mobility",
+        },
+      };
+
+      let capturedPrompt = "";
+      (adjuster as any).sendPrompt = jest.fn().mockImplementation(async (prompt: string) => {
+        capturedPrompt = prompt;
+        return `${JSON.stringify({
+          ...unscheduledLibraryPlan,
+          workouts: [
+            unscheduledLibraryPlan.workouts[8],
+            unscheduledLibraryPlan.workouts[9],
+            unscheduledLibraryPlan.workouts[10],
+          ],
+        }, null, 2)}\nSUMMARY:\n- Selected week-specific workouts.`;
+      });
+
+      await adjuster.analyzeAndAdjust({
+        activities: MINIMAL_ACTIVITIES,
+        currentPlan: unscheduledLibraryPlan,
+        trainingPlan: selectorTrainingPlan,
+      });
+
+      expect(capturedPrompt).toContain('"09-25 - Monday"');
+      expect(capturedPrompt).toContain('"Run Threshold Tuesday"');
+      expect(capturedPrompt).toContain('"09-25 - Friday"');
+      expect(capturedPrompt).not.toContain('"Run easy"');
+      expect((adjuster as any).sendPrompt).toHaveBeenCalledTimes(1);
+    });
+
+    it("fails fast when weeklyStructure matching confidence is too low", async () => {
+      const unscheduledLibraryPlan: WeeklyWorkoutPlan = {
+        generatedAt: "2026-03-01T00:00:00.000Z",
+        weekStart: "2026-03-02",
+        weekEnd: "2026-03-08",
+        workouts: [
+          { workoutId: 301, workoutName: "Run easy", workoutType: "running", steps: [] },
+          { workoutId: 302, workoutName: "4x4", workoutType: "running", steps: [] },
+          { workoutId: 303, workoutName: "Zone 2 Thursday", workoutType: "running", steps: [] },
+          { workoutId: 304, workoutName: "Threshold Bike Workout", workoutType: "cycling", steps: [] },
+          { workoutId: 305, workoutName: "09-25 - Wednesday", workoutType: "strength_training", steps: [] },
+          { workoutId: 123, workoutName: "09-25 - Monday", workoutType: "strength_training", steps: [] },  // Matches activity
+          { workoutId: 307, workoutName: "09-25 - Friday", workoutType: "strength_training", steps: [] },
+          { workoutId: 308, workoutName: "130-140 HR", workoutType: "running", steps: [] },
+          { workoutId: 309, workoutName: "Tempo Run", workoutType: "running", steps: [] },
+          { workoutId: 310, workoutName: "Bike Endurance", workoutType: "cycling", steps: [] },
+        ],
+      };
+
+      const lowConfidenceTrainingPlan: TrainingPlan = {
+        ...MINIMAL_TRAINING_PLAN,
+        weeklyStructure: {
+          Monday: {
+            workoutName: "UNMATCHABLE_STRENGTH_DAY",
+            workoutType: "strength_training",
+          },
+          Tuesday: {
+            workoutName: "UNMATCHABLE_RUNNING_DAY",
+            workoutType: "running",
+          },
+          Friday: {
+            workoutName: "UNMATCHABLE_CYCLING_DAY",
+            workoutType: "cycling",
+          },
+        },
+      };
+
+      (adjuster as any).sendPrompt = jest.fn().mockResolvedValue("{}\nSUMMARY:\n- should not be called");
+
+      await expect(
+        adjuster.analyzeAndAdjust({
+          activities: MINIMAL_ACTIVITIES,
+          currentPlan: unscheduledLibraryPlan,
+          trainingPlan: lowConfidenceTrainingPlan,
+        })
+      ).rejects.toThrow("Unable to confidently auto-select");
+
+      expect((adjuster as any).sendPrompt).not.toHaveBeenCalled();
+    });
+
+    it("keeps primary lift sets at baseline in early phase", async () => {
+      const basePlan: WeeklyWorkoutPlan = {
+        generatedAt: "2026-02-22T00:00:00.000Z",
+        weekStart: "2026-02-23",
+        weekEnd: "2026-03-01",
+        workouts: [
+          {
+            workoutId: 123,  // Changed from 99 to match MINIMAL_ACTIVITIES
+            workoutName: "09-25 - Monday",
+            workoutType: "strength_training",
+            scheduledDate: "2026-02-24",
+            steps: [
+              {
+                stepType: "interval",
+                exerciseName: "BARBELL_BENCH_PRESS",
+                endCondition: "reps",
+                endConditionValue: 5,
+              },
+              {
+                stepType: "interval",
+                exerciseName: "BARBELL_BENCH_PRESS",
+                endCondition: "reps",
+                endConditionValue: 5,
+              },
+              {
+                stepType: "interval",
+                exerciseName: "BARBELL_BENCH_PRESS",
+                endCondition: "reps",
+                endConditionValue: 5,
+              },
+              {
+                stepType: "interval",
+                exerciseName: "BARBELL_BENCH_PRESS",
+                endCondition: "reps",
+                endConditionValue: 5,
+              },
+            ],
+          },
+        ],
+      };
+
+      const reducedPlan: WeeklyWorkoutPlan = {
+        ...basePlan,
+        workouts: [
+          {
+            ...basePlan.workouts[0],
+            steps: [
+              {
+                stepType: "interval",
+                exerciseName: "BARBELL_BENCH_PRESS",
+                endCondition: "reps",
+                endConditionValue: 5,
+              },
+              {
+                stepType: "interval",
+                exerciseName: "BARBELL_BENCH_PRESS",
+                endCondition: "reps",
+                endConditionValue: 5,
+              },
+            ],
+          },
+        ],
+      };
+
+      const earlyPhaseTrainingPlan: TrainingPlan = {
+        ...MINIMAL_TRAINING_PLAN,
+        periodization: {
+          ...MINIMAL_TRAINING_PLAN.periodization,
+          weekInPhase: 1,
+        },
+        weeklyStructure: {
+          Wednesday: {
+            workoutName: "09-25 - Monday",
+            exercises: [
+              {
+                exercise: "Barbell Bench Press",
+                sets: [
+                  { phase: "Warmup", sets: 1, reps: 10 },
+                  { phase: "Work", sets: 4, reps: 5 },
+                ],
+              },
+            ],
+          },
+        },
+      };
+
+      const context = {
+        activities: MINIMAL_ACTIVITIES,
+        currentPlan: basePlan,
+        trainingPlan: earlyPhaseTrainingPlan,
+      };
+
+      (adjuster as any).sendPrompt = jest
+        .fn()
+        .mockResolvedValue(`${JSON.stringify(reducedPlan, null, 2)}\nSUMMARY:\n- Reduced bench volume.`);
+
+      const result = await adjuster.analyzeAndAdjust(context);
+      const benchSets = (result.adjustedPlan.workouts[0].steps ?? []).filter(
+        (step) => step.exerciseName === "BARBELL_BENCH_PRESS"
+      ).length;
+
+      expect(benchSets).toBeGreaterThanOrEqual(4);
     });
   });
 
@@ -282,15 +735,70 @@ describe("WorkoutAdjuster", () => {
         trainingPlan: { ...planWithHistory },
       };
 
-      // In mock mode, appendWeekSummary calls getMockResponse which may fall
-      // back to writing a minimal entry — stub the internal send
-      await adjuster.createSession();
+      (adjuster as any).sendPrompt = jest
+        .fn()
+        .mockResolvedValue(
+          JSON.stringify({
+            weekStart: "2026-02-16",
+            weekEnd: "2026-02-22",
+            summary: "Good adherence with one missed accessory block.",
+            adherence: "partial",
+            adjustmentsMade: "Reduced lower-body volume by one set.",
+          })
+        );
       await adjuster.appendWeekSummary(context, planPath);
 
       const updated = JSON.parse(fs.readFileSync(planPath, "utf-8")) as TrainingPlan;
       expect(updated.weeklyHistory.length).toBeGreaterThanOrEqual(1);
       expect(updated.weeklyHistory[0].weekStart).toBe("2026-02-16");
       expect(updated.updatedAt).not.toBe("2026-02-22T00:00:00.000Z");
+    });
+  });
+
+  describe("revisitTrainingPlan", () => {
+    it("returns a revised training plan and summary from LLM response", async () => {
+      const revised: TrainingPlan = {
+        ...MINIMAL_TRAINING_PLAN,
+        updatedAt: "2026-03-01T00:00:00.000Z",
+        periodization: {
+          ...MINIMAL_TRAINING_PLAN.periodization,
+          weekInPhase: 1,
+          currentPhase: "Strength",
+          phases: [
+            { name: "Strength", totalWeeks: 4 },
+            { name: "Deload", totalWeeks: 1 },
+          ],
+        },
+      };
+
+      (adjuster as any).sendPrompt = jest
+        .fn()
+        .mockResolvedValue(`${JSON.stringify(revised, null, 2)}\nSUMMARY:\n- Updated periodization for current block.`);
+
+      const result = await adjuster.revisitTrainingPlan(MINIMAL_TRAINING_PLAN, {
+        reviewNotes: "Bias toward strength this block.",
+      });
+
+      expect(result.updatedPlan.periodization.currentPhase).toBe("Strength");
+      expect(result.updatedPlan.periodization.weekInPhase).toBe(1);
+      expect(result.summary).toContain("Updated periodization");
+    });
+
+    it("retries once when first response is invalid", async () => {
+      const revised: TrainingPlan = {
+        ...MINIMAL_TRAINING_PLAN,
+        updatedAt: "2026-03-01T00:00:00.000Z",
+      };
+
+      (adjuster as any).sendPrompt = jest
+        .fn()
+        .mockResolvedValueOnce("not valid json")
+        .mockResolvedValueOnce(`${JSON.stringify(revised, null, 2)}\nSUMMARY:\n- Kept core goals, refreshed metadata.`);
+
+      const result = await adjuster.revisitTrainingPlan(MINIMAL_TRAINING_PLAN);
+
+      expect(result.updatedPlan.goals.primary).toBe(MINIMAL_TRAINING_PLAN.goals.primary);
+      expect(((adjuster as any).sendPrompt as jest.Mock).mock.calls.length).toBe(2);
     });
   });
 

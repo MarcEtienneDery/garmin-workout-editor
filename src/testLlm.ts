@@ -36,7 +36,7 @@ async function main() {
   await client.start();
   console.log("   ✅ Client started");
 
-  let modelName = process.env.COPILOT_MODEL ?? "claude-sonnet-4-5";
+  let modelName = process.env.COPILOT_MODEL ?? "gpt-5.2";
   const sessionConfig: Record<string, unknown> = {};
 
   if (!githubToken && openAiKey) {

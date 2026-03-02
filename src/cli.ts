@@ -133,6 +133,7 @@ async function workoutManagementFlow(): Promise<void> {
       { label: 'Schedule workouts from file', value: 'schedule' },
       { label: 'Upload workouts to Garmin', value: 'upload' },
       { label: 'Copy plan shifted 7 days', value: 'copy-next-week' },
+      { label: 'Start new training plan (reset schedule)', value: 'start-new-plan' },
     ],
     0
   );
@@ -146,6 +147,13 @@ async function workoutManagementFlow(): Promise<void> {
   if (operation === 'schedule' || operation === 'upload' || operation === 'copy-next-week') {
     const workoutFile = await promptText('Workout file path', 'data/workouts.json');
     answers.workoutFile = workoutFile;
+  }
+
+  if (operation === 'start-new-plan') {
+    const workoutPlanFile = await promptText('Workout plan file path', 'data/next-week.workouts.tmp.json');
+    const trainingPlanFile = await promptText('Training plan file path', 'data/training-plan.json');
+    answers.workoutFile = workoutPlanFile;
+    answers.planFile = trainingPlanFile;
   }
 
   // Dry run option for operations that modify data
@@ -177,6 +185,45 @@ async function workoutManagementFlow(): Promise<void> {
 async function adjustWorkoutsFlow(): Promise<void> {
   console.log('\n🤖 Adjust Workouts\n');
 
+  const flow = await promptChoice(
+    'Which AI workflow?',
+    [
+      { label: 'Adjust next-week workouts', value: 'adjust-workouts' },
+      { label: 'Revisit training plan', value: 'revisit-plan' },
+    ],
+    0
+  );
+
+  const answers: Record<string, any> = {
+    mode: flow,
+    mock: await promptYesNo('Use mock data?', false),
+  };
+
+  if (flow === 'revisit-plan') {
+    const planFile = await promptText('Training plan file path', path.join(DATA_DIR, 'training-plan.json'));
+    const includeActivities = await promptYesNo('Include activities context file?', false);
+    const includeWorkouts = await promptYesNo('Include workouts context file?', false);
+    const notes = await promptText('Additional review notes (optional)', '');
+    const outputPath = await promptText('Output training plan path', planFile);
+
+    answers.planFile = planFile;
+    if (includeActivities) {
+      answers.activitiesFile = await promptText('Activities file path', path.join(DATA_DIR, 'activities.json'));
+    }
+    if (includeWorkouts) {
+      answers.workoutsFile = await promptText('Workouts file path', path.join(DATA_DIR, 'next-week.workouts.tmp.json'));
+    }
+    if (notes) answers.reviewNotes = notes;
+    answers.outputPath = outputPath;
+
+    const args = buildProcessArgs('adjust-workouts', answers);
+    closePrompt();
+
+    console.log('\n🚀 Running training-plan revisit...\n');
+    await runEntryPoint('src/adjustWorkouts.ts', args, 'tsx');
+    return;
+  }
+
   const week = await promptChoice(
     'Which week to analyze?',
     [
@@ -189,18 +236,20 @@ async function adjustWorkoutsFlow(): Promise<void> {
   // Check for cached files
   const activitiesCached = path.join(DATA_DIR, 'activities.json');
   const workoutsCached = path.join(DATA_DIR, 'workouts.json');
+  const weeklyWorkoutsCached = path.join(DATA_DIR, 'next-week.workouts.tmp.json');
   const planCached = path.join(DATA_DIR, 'training-plan.json');
+  const defaultWorkoutsFile = fs.existsSync(weeklyWorkoutsCached)
+    ? weeklyWorkoutsCached
+    : workoutsCached;
 
   const useCache = await promptYesNo('Use cached files or fetch fresh?', true);
 
-  const answers: Record<string, any> = {
-    week,
-    mock: await promptYesNo('Use mock data?', false),
-  };
+  answers.week = week;
 
   if (useCache) {
+    console.log('💡 Tip: prefer a weekly workout plan file (for example data/next-week.workouts.tmp.json).');
     const activitiesFile = await promptText('Activities file path', activitiesCached);
-    const workoutsFile = await promptText('Workouts file path', workoutsCached);
+    const workoutsFile = await promptText('Workouts file path (weekly plan recommended)', defaultWorkoutsFile);
     const planFile = await promptText('Training plan file path', planCached);
 
     answers.activitiesFile = activitiesFile;

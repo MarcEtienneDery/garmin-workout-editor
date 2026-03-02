@@ -4,6 +4,7 @@ import {
   DetailedWorkout,
   GarminWorkoutSummary,
   PlannedWorkout,
+  TrainingPlan,
   WeeklyWorkoutPlan,
   WorkoutStep,
 } from "./shared/types";
@@ -198,6 +199,15 @@ export class WorkoutEditor {
           `Step ${stepIndex}: Field 'benchmarkKey' is required when 'weightPercentage' is set`
         );
       }
+    }
+
+    // For interval/exercise steps with weight or reps, exerciseName should be provided (warning only)
+    if ((step.stepType === "interval" || step.stepType === "exercise") && 
+        (step.weight !== undefined || step.reps !== undefined) && 
+        !step.exerciseName) {
+      console.warn(
+        `⚠️  Step ${stepIndex}: Missing 'exerciseName' for exercise step with ${step.weight ? 'weight' : 'reps'}. This may cause issues in Garmin.`
+      );
     }
 
     // Reps validation
@@ -1022,6 +1032,81 @@ export class WorkoutEditor {
   }
 
   /**
+   * Start a new training plan cycle by:
+   * 1) resetting training plan progression state
+   * 2) clearing all scheduled dates in a workout plan
+   */
+  async startNewTrainingPlan(
+    trainingPlanPath: string,
+    workoutPlanPath: string,
+    periodizationTemplatePath?: string
+  ): Promise<void> {
+    const nowIso = new Date().toISOString();
+    const templatePath =
+      periodizationTemplatePath ??
+      path.join(__dirname, "../data/training-plan.json");
+
+    const trainingPlanRaw = fs.readFileSync(trainingPlanPath, "utf-8");
+    const currentPlan = JSON.parse(trainingPlanRaw) as TrainingPlan;
+
+    let periodization = currentPlan.periodization;
+    try {
+      const templateRaw = fs.readFileSync(templatePath, "utf-8");
+      const templatePlan = JSON.parse(templateRaw) as TrainingPlan;
+      if (templatePlan?.periodization) {
+        periodization = templatePlan.periodization;
+      }
+    } catch (error: any) {
+      console.warn(
+        `⚠️  Failed to load periodization template from ${templatePath}. Keeping existing periodization. (${error.message})`
+      );
+    }
+
+    const resetTrainingPlan: TrainingPlan = {
+      ...currentPlan,
+      updatedAt: nowIso,
+      periodization: {
+        ...periodization,
+        weekInPhase: 1,
+      },
+      weeklyHistory: [],
+    };
+
+    const workoutPlan = await this.importWorkoutPlan(workoutPlanPath);
+    const resetWorkoutPlan: WeeklyWorkoutPlan = {
+      ...workoutPlan,
+      generatedAt: nowIso,
+      source: "start-new-training-plan",
+      workouts: workoutPlan.workouts.map((workout) => ({
+        ...workout,
+        scheduledDate: undefined,
+      })),
+    };
+
+    const trainingPlanDir = path.dirname(trainingPlanPath);
+    if (!fs.existsSync(trainingPlanDir)) {
+      fs.mkdirSync(trainingPlanDir, { recursive: true });
+    }
+
+    const workoutPlanDir = path.dirname(workoutPlanPath);
+    if (!fs.existsSync(workoutPlanDir)) {
+      fs.mkdirSync(workoutPlanDir, { recursive: true });
+    }
+
+    fs.writeFileSync(
+      trainingPlanPath,
+      JSON.stringify(resetTrainingPlan, null, 2)
+    );
+    fs.writeFileSync(
+      workoutPlanPath,
+      JSON.stringify(resetWorkoutPlan, null, 2)
+    );
+
+    console.log(`✅ Training plan reset saved to ${trainingPlanPath}`);
+    console.log(`✅ Workout schedule reset saved to ${workoutPlanPath}`);
+  }
+
+  /**
    * Schedule workouts from a plan on Garmin calendar
    */
   async scheduleWorkoutPlan(plan: WeeklyWorkoutPlan): Promise<void> {
@@ -1088,6 +1173,30 @@ export class WorkoutEditor {
           `✅ Scheduled workout: ${workout.workoutName} on ${workout.scheduledDate}`
         );
       } catch (error: any) {
+        const errorMsg = (error.message || "").toLowerCase();
+        const errorBody = JSON.stringify(error).toLowerCase();
+        
+        // Check for 404 (workout not found/already deleted) - skip silently
+        if (errorMsg.includes("404") || errorBody.includes("not found")) {
+          console.log(
+            `ℹ️  Skipped workout not found in Garmin (already deleted): ${workout.workoutName}`
+          );
+          continue;
+        }
+        
+        // Check for 409 Conflict or "already scheduled" patterns
+        if (errorMsg.includes("409") || errorMsg.includes("conflict") || 
+            errorMsg.includes("already") || errorBody.includes("already")) {
+          console.log(
+            `✅ Workout already scheduled on this date: ${workout.workoutName} on ${workout.scheduledDate}`
+          );
+          continue;
+        }
+        
+        if (process.env.DEBUG_WORKOUTS) {
+          console.log(`[DEBUG] Schedule error details: ${JSON.stringify(error)}`);
+        }
+        
         console.warn(
           `⚠️  Failed to schedule workout: ${workout.workoutName} (${error.message})`
         );
@@ -1104,10 +1213,230 @@ export class WorkoutEditor {
   }
 
   /**
+   * Upload workouts from a plan and then schedule them
+   * Handles both new workout creation and scheduling to calendar
+   */
+  async uploadAndScheduleWorkoutPlan(plan: WeeklyWorkoutPlan): Promise<void> {
+    const authenticated = await this.garminClient.ensureAuthenticated();
+    if (!authenticated) {
+      throw new Error("Failed to authenticate with Garmin");
+    }
+
+    this.validateWorkoutPlan(plan);
+
+    const client = this.garminClient.getClientAny();
+    
+    // Step 1: Upload workouts - create new ones and update existing ones
+    console.log("📤 Uploading workouts to Garmin...\n");
+    
+    for (const workout of plan.workouts) {
+      // For running workouts WITHOUT structured steps, use simple addRunningWorkout
+      // For workouts WITH structured steps (including heart rate zones), use full createWorkout
+      if (workout.workoutType === "running" && workout.distanceMeters && 
+          (!workout.steps || workout.steps.length === 0)) {
+        try {
+          // Try to delete existing if has ID (but don't fail if delete doesn't work)
+          if (workout.workoutId && client.deleteWorkout) {
+            try {
+              console.log(`  🗑️  Deleting existing running workout: ${workout.workoutName} (ID: ${workout.workoutId})`);
+              await client.deleteWorkout({ workoutId: String(workout.workoutId) });
+              console.log(`     ✓ Deleted`);
+            } catch (deleteError: any) {
+              // Delete failed - continue with creation anyway
+              console.log(`     ℹ️  Could not delete (${deleteError.message ? deleteError.message.split('\n')[0] : 'unknown error'}) - attempting to create anyway`);
+            }
+          }
+          
+          const created = await client.addRunningWorkout?.(
+            workout.workoutName,
+            workout.distanceMeters,
+            workout.description || ""
+          );
+          workout.workoutId = created?.workoutId;
+          console.log(`✅ Created/updated running workout: ${workout.workoutName} (ID: ${workout.workoutId})`);
+        } catch (error: any) {
+          console.warn(
+            `⚠️  Failed to create running workout: ${workout.workoutName} (${error.message})`
+          );
+        }
+        continue;
+      }
+
+      // For all other workouts AND running workouts with steps/targets, use full structured upload
+      console.log(`\n📋 Processing ${workout.workoutName}:`);
+      console.log(`   Type: ${workout.workoutType}, Steps: ${workout.steps?.length || 0}`);
+      
+      if (workout.steps && workout.steps.length > 0) {
+        try {
+          // Try to delete existing if has ID (but don't fail if delete doesn't work)
+          if (workout.workoutId && client.deleteWorkout) {
+            try {
+              console.log(`  🗑️  Deleting existing workout: ${workout.workoutName} (ID: ${workout.workoutId})`);
+              await client.deleteWorkout({ workoutId: String(workout.workoutId) });
+              console.log(`     ✓ Deleted`);
+            } catch (deleteError: any) {
+              // Delete failed (might already be deleted or part of a plan) - continue with creation anyway
+              console.log(`     ℹ️  Could not delete (${deleteError.message ? deleteError.message.split('\n')[0] : 'unknown error'}) - attempting to create anyway`);
+            }
+          }
+          
+          const garminWorkout = this.buildGarminWorkoutDetail(workout as DetailedWorkout);
+          console.log(`   📝 Built Garmin format: ${garminWorkout.workoutSegments?.[0]?.workoutSteps?.length || 0} steps`);
+          
+          if (!client.createWorkout) {
+            throw new Error("createWorkout is not available on this Garmin client");
+          }
+          
+          const created = await client.createWorkout(garminWorkout);
+          workout.workoutId = created.workoutId;
+          console.log(`✅ Created/updated structured workout: ${workout.workoutName} (ID: ${workout.workoutId})`);
+        } catch (error: any) {
+          console.error(
+            `❌ Failed to create structured workout: ${workout.workoutName} (${error.message})`
+          );
+        }
+        continue;
+      }
+
+      // Warn if we can't create it
+      console.warn(
+        `⚠️  Cannot create workout without steps or distance: ${workout.workoutName}`
+      );
+    }
+
+    // Step 2: Schedule workouts to calendar (reuse existing auth)
+    console.log("\n📅 Scheduling workouts to calendar...\n");
+    
+    if (!client.scheduleWorkout) {
+      throw new Error("scheduleWorkout is not available on this Garmin client");
+    }
+
+    for (const workout of plan.workouts) {
+      if (!workout.scheduledDate) {
+        console.warn(
+          `⚠️  Skipping workout without scheduledDate: ${workout.workoutName}`
+        );
+        continue;
+      }
+
+      const scheduleDate = new Date(workout.scheduledDate);
+      if (Number.isNaN(scheduleDate.getTime())) {
+        console.warn(
+          `⚠️  Invalid scheduledDate for workout: ${workout.workoutName}`
+        );
+        continue;
+      }
+
+      const workoutId = workout.workoutId;
+
+      if (!workoutId) {
+        console.warn(
+          `⚠️  Missing workoutId for workout: ${workout.workoutName}`
+        );
+        continue;
+      }
+
+      try {
+        await client.scheduleWorkout({ workoutId }, scheduleDate);
+        console.log(
+          `✅ Scheduled workout: ${workout.workoutName} on ${workout.scheduledDate}`
+        );
+      } catch (error: any) {
+        const errorMsg = (error.message || "").toLowerCase();
+        const errorBody = JSON.stringify(error).toLowerCase();
+        
+        // Check for 404 (workout not found/already deleted)
+        if (errorMsg.includes("404") || errorBody.includes("not found")) {
+          console.log(
+            `ℹ️  Skipped workout not found in Garmin (already deleted): ${workout.workoutName}`
+          );
+          continue;
+        }
+        
+        // Check for "already scheduled" patterns (409 Conflict, or message containing keywords)
+        if (errorMsg.includes("409") || errorMsg.includes("conflict") || 
+            errorMsg.includes("already") || errorBody.includes("already")) {
+          console.log(
+            `✅ Workout already scheduled on this date: ${workout.workoutName} on ${workout.scheduledDate}`
+          );
+          continue;
+        }
+        
+        if (process.env.DEBUG_WORKOUTS) {
+          console.log(`[DEBUG] Schedule error details: ${JSON.stringify(error)}`);
+        }
+        
+        console.warn(
+          `⚠️  Failed to schedule workout: ${workout.workoutName} (${error.message})`
+        );
+      }
+    }
+  }
+
+  /**
    * Convert weight from lbs back to grams (reverse of convertGarminWeight)
    */
   private convertWeightToGrams(weightLbs: number): number {
     return Math.round(weightLbs * 453.59237);
+  }
+
+  /**
+   * Build Garmin rest step DTO
+   */
+  private buildGarminRestStep(restSeconds: number): any {
+    return {
+      type: "ExecutableStepDTO",
+      stepId: null,
+      stepOrder: null,
+      childStepId: null,
+      description: null,
+      stepType: {
+        stepTypeId: this.getStepTypeId("rest"),
+        stepTypeKey: "rest",
+      },
+      endCondition: {
+        conditionTypeId: this.getEndConditionId("time"),
+        conditionTypeKey: "time",
+      },
+      endConditionValue: restSeconds,
+      preferredEndConditionUnit: null,
+      targetType: {
+        workoutTargetTypeId: this.getTargetTypeId("no.target"),
+        workoutTargetTypeKey: "no.target",
+      },
+      targetValueOne: null,
+      targetValueTwo: null,
+      targetValueUnit: null,
+      zoneNumber: null,
+      secondaryTargetType: null,
+      secondaryTargetValueOne: null,
+      secondaryTargetValueTwo: null,
+      secondaryTargetValueUnit: null,
+      secondaryZoneNumber: null,
+    };
+  }
+
+  /**
+   * Assign sequential stepOrder to all executable steps in traversal order
+   */
+  private assignSequentialStepOrder(steps: any[]): void {
+    let order = 1;
+
+    const visit = (items: any[]) => {
+      for (const item of items) {
+        if (item?.type === "RepeatGroupDTO" && Array.isArray(item.workoutSteps)) {
+          item.stepOrder = order++;
+          visit(item.workoutSteps);
+          continue;
+        }
+
+        if (item?.type === "ExecutableStepDTO") {
+          item.stepOrder = order++;
+        }
+      }
+    };
+
+    visit(steps);
   }
 
   /**
@@ -1116,6 +1445,9 @@ export class WorkoutEditor {
    * 2. Rebuild RepeatGroupDTO structures using repeatGroupIndex (unique per original group)
    */
   private unflattenSteps(steps: WorkoutStep[]): any[] {
+    const orderedSteps = [...steps].sort(
+      (a, b) => (a.stepOrder ?? Number.MAX_SAFE_INTEGER) - (b.stepOrder ?? Number.MAX_SAFE_INTEGER)
+    );
     const unflattened: any[] = [];
     let currentGroupIndex: number | undefined = undefined;
     let currentGroupSteps: WorkoutStep[] = [];
@@ -1132,32 +1464,15 @@ export class WorkoutEditor {
 
         // Re-expand merged rest step
         if (step.restTimeSeconds !== undefined && step.restTimeSeconds > 0) {
-          garminSteps.push({
-            type: "ExecutableStepDTO",
-            stepId: null,
-            stepOrder: null,
-            childStepId: null,
-            description: null,
-            stepType: { stepTypeId: 3, stepTypeKey: "rest" },
-            endCondition: { conditionTypeId: 2, conditionTypeKey: "time" },
-            endConditionValue: step.restTimeSeconds,
-            preferredEndConditionUnit: null,
-            targetType: { workoutTargetTypeId: 1, workoutTargetTypeKey: "no.target" },
-            targetValueOne: null,
-            targetValueTwo: null,
-            zoneNumber: null,
-            secondaryTargetType: null,
-            secondaryTargetValueOne: null,
-            secondaryTargetValueTwo: null,
-            secondaryZoneNumber: null,
-          });
+          garminSteps.push(this.buildGarminRestStep(step.restTimeSeconds));
         }
       }
 
       if (numberOfRepeats !== undefined && numberOfRepeats > 1) {
         unflattened.push({
           type: "RepeatGroupDTO",
-          stepType: { stepTypeId: 7, stepTypeKey: "repeat" },
+          stepType: { stepTypeId: this.getStepTypeId("repeat"), stepTypeKey: "repeat" },
+          stepOrder: null,
           repeatGroupId: null,
           numberOfIterations: numberOfRepeats,
           smartRepeat: false,
@@ -1172,7 +1487,7 @@ export class WorkoutEditor {
       currentGroupIndex = undefined;
     };
 
-    for (const step of steps) {
+    for (const step of orderedSteps) {
       const idx = step.repeatGroupIndex;
 
       if (idx === undefined) {
@@ -1182,25 +1497,7 @@ export class WorkoutEditor {
         unflattened.push(garminStep);
 
         if (step.restTimeSeconds !== undefined && step.restTimeSeconds > 0) {
-          unflattened.push({
-            type: "ExecutableStepDTO",
-            stepId: null,
-            stepOrder: null,
-            childStepId: null,
-            description: null,
-            stepType: { stepTypeId: 3, stepTypeKey: "rest" },
-            endCondition: { conditionTypeId: 2, conditionTypeKey: "time" },
-            endConditionValue: step.restTimeSeconds,
-            preferredEndConditionUnit: null,
-            targetType: { workoutTargetTypeId: 1, workoutTargetTypeKey: "no.target" },
-            targetValueOne: null,
-            targetValueTwo: null,
-            zoneNumber: null,
-            secondaryTargetType: null,
-            secondaryTargetValueOne: null,
-            secondaryTargetValueTwo: null,
-            secondaryZoneNumber: null,
-          });
+          unflattened.push(this.buildGarminRestStep(step.restTimeSeconds));
         }
       } else if (idx !== currentGroupIndex) {
         // New repeat group started: flush previous group
@@ -1215,6 +1512,9 @@ export class WorkoutEditor {
 
     // Flush final group
     flushGroup();
+
+    // Ensure deterministic executable step ordering for Garmin ingestion
+    this.assignSequentialStepOrder(unflattened);
 
     return unflattened;
   }
@@ -1245,37 +1545,77 @@ export class WorkoutEditor {
       },
       targetValueOne: step.targetValueOne !== undefined ? step.targetValueOne : null,
       targetValueTwo: step.targetValueTwo !== undefined ? step.targetValueTwo : null,
+      targetValueUnit: null,
       zoneNumber: null,
       secondaryTargetType: null,
       secondaryTargetValueOne: null,
       secondaryTargetValueTwo: null,
+      secondaryTargetValueUnit: null,
       secondaryZoneNumber: null,
     };
 
-    // Add exercise name if present
-    if (step.exerciseName) {
-      garminStep.exerciseName = step.exerciseName;
-    }
-
-    // Add weight if present (convert back to grams)
-    if (step.weight !== undefined && step.weight > 0) {
-      garminStep.weightValue = this.convertWeightToGrams(step.weight);
-      garminStep.weightUnit = {
-        unitId: 11, // grams
-        unitKey: "gram",
+    // Add preferredEndConditionUnit for distance
+    if (step.endCondition === "distance") {
+      garminStep.preferredEndConditionUnit = {
+        unitId: 1,
+        unitKey: "meter",
         factor: 1,
       };
     }
 
-    // Add weight percentage if present
-    if (step.weightPercentage !== undefined) {
-      garminStep.benchmarkPercentage = step.weightPercentage;
-      if (step.benchmarkKey) {
-        garminStep.benchmarkKey = step.benchmarkKey;
+    // Add exercise name and derive category if present
+    if (step.exerciseName) {
+      garminStep.exerciseName = step.exerciseName;
+      const category = this.getCategoryFromExerciseName(step.exerciseName);
+      if (category) {
+        garminStep.category = category;
       }
     }
 
+    // Add weight if present (Garmin expects pounds for strength steps)
+    if (step.weight !== undefined && step.weight > 0) {
+      garminStep.weightValue = step.weight;
+      garminStep.weightUnit = {
+        unitId: 9,
+        unitKey: "pound",
+        factor: 453.59237,
+      };
+    }
+
+    // Add weight percentage if present (both benchmarkKey and benchmarkPercentage required together)
+    if (step.weightPercentage !== undefined && step.benchmarkKey) {
+      garminStep.benchmarkPercentage = step.weightPercentage;
+      garminStep.benchmarkKey = step.benchmarkKey;
+    }
+
     return garminStep;
+  }
+
+  /**
+   * Derive exercise category from exercise name
+   */
+  private getCategoryFromExerciseName(exerciseName: string): string | null {
+    const name = (exerciseName || "").toUpperCase();
+    
+    // Direct matches to known Garmin categories
+    if (name.includes("SQUAT")) return "SQUAT";
+    if (name.includes("DEADLIFT") || name.includes("DEAD_LIFT")) return "DEADLIFT";
+    if (name.includes("BENCH") || (name.includes("PRESS") && !name.includes("SHOULDER"))) return "BENCH_PRESS";
+    if (name.includes("SHOULDER") && name.includes("PRESS")) return "SHOULDER_PRESS";
+    if (name.includes("ROW")) return "ROW";
+    if (name.includes("PULL") || name.includes("CHIN") || name.includes("LAT_PULLDOWN")) return "PULL_UP";
+    if (name.includes("LUNGE")) return "LUNGE";
+    if (name.includes("CALF")) return "CALF_RAISE";
+    if (name.includes("LATERAL_RAISE") || name.includes("LATERAL RAISE")) return "LATERAL_RAISE";
+    if (name.includes("CURL")) return "CURL";
+    if (name.includes("TRICEPS") || name.includes("TRICEP")) return "TRICEPS_EXTENSION";
+    if (name.includes("HIP") && name.includes("RAISE")) return "HIP_RAISE";
+    if (name.includes("PLANK")) return "PLANK";
+    if (name.includes("PLYO") || name.includes("JUMP") || name.includes("EXPLOSIVE")) return "PLYO";
+    if (name.includes("CARDIO") || name.includes("RUNNING") || name.includes("TREADMILL")) return "CARDIO";
+    
+    // Default to null if we can't determine the category
+    return null;
   }
 
   /**
@@ -1287,10 +1627,10 @@ export class WorkoutEditor {
       cooldown: 2,
       interval: 3,
       recovery: 4,
-      rest: 3,
+      rest: 5,
       exercise: 6,
-      repeat: 7,
-      other: 8,
+      repeat: 6,
+      other: 7,
     };
     return mapping[stepTypeKey] || 6; // default to exercise
   }
@@ -1305,7 +1645,7 @@ export class WorkoutEditor {
       distance: 3,
       calories: 4,
       "heart.rate": 5,
-      reps: 6,
+      reps: 10,
       iterations: 7,
     };
     return mapping[endConditionKey] || 1;
@@ -1317,10 +1657,10 @@ export class WorkoutEditor {
   private getTargetTypeId(targetTypeKey: string): number {
     const mapping: { [key: string]: number } = {
       "no.target": 1,
-      "heart.rate.zone": 2,
-      "pace.zone": 3,
-      "speed.zone": 4,
-      "power.zone": 6,
+      "heart.rate.zone": 4,
+      "pace.zone": 6,
+      "speed.zone": 3,
+      "power.zone": 2,
       "cadence.zone": 7,
       open: 8,
     };
@@ -1332,6 +1672,33 @@ export class WorkoutEditor {
    */
   private buildGarminWorkoutDetail(workout: DetailedWorkout): IWorkoutDetail {
     const garminSteps = workout.steps ? this.unflattenSteps(workout.steps) : [];
+
+    // DEBUG: Log the generated steps
+    if (process.env.DEBUG_WORKOUTS) {
+      console.log(`\n[DEBUG] Building Garmin format for: ${workout.workoutName}`);
+      console.log(`[DEBUG] Input steps: ${workout.steps?.length || 0}`);
+      console.log(`[DEBUG] Output Garmin steps: ${garminSteps.length}`);
+      if (workout.steps && workout.steps.length <= 12) {
+        console.log(`[DEBUG] Step details:`);
+        garminSteps.forEach((step: any, i: number) => {
+          if (step.type === "RepeatGroupDTO") {
+            console.log(`  [${i}] RepeatGroupDTO: ${step.numberOfIterations}x iterations, ${step.workoutSteps?.length || 0} nested steps`);
+            step.workoutSteps?.slice(0, 3).forEach((nested: any, ni: number) => {
+              const target = nested.targetType?.workoutTargetTypeKey !== 'no.target' ? 
+                ` [${nested.targetType?.workoutTargetTypeKey}: ${nested.targetValueOne}${nested.targetValueTwo ? `-${nested.targetValueTwo}` : ''}]` : '';
+              console.log(`      [${ni}] ${nested.stepType?.stepTypeKey}: ${nested.exerciseName || nested.endCondition?.conditionTypeKey || 'step'}${target}`);
+            });
+            if ((step.workoutSteps?.length || 0) > 3) {
+              console.log(`      ... and ${(step.workoutSteps?.length || 0) - 3} more`);
+            }
+          } else {
+            const target = step.targetType?.workoutTargetTypeKey !== 'no.target' ? 
+              ` [${step.targetType?.workoutTargetTypeKey}: ${step.targetValueOne}${step.targetValueTwo ? `-${step.targetValueTwo}` : ''}]` : '';
+            console.log(`  [${i}] ${step.stepType?.stepTypeKey}: ${step.exerciseName || step.endCondition?.conditionTypeKey || 'step'} (val: ${step.endConditionValue})${target}`);
+          }
+        });
+      }
+    }
 
     const workoutDetail: IWorkoutDetail = {
       workoutId: workout.workoutId ? Number(workout.workoutId) : undefined,
@@ -1404,9 +1771,9 @@ export class WorkoutEditor {
     const mapping: { [key: string]: number } = {
       running: 1,
       cycling: 2,
-      cardio: 3,
-      strength_training: 13,
-      swimming: 5,
+      cardio: 1,  // fallback to running
+      strength_training: 5,
+      swimming: 1,  // fallback to running
       other: 0,
     };
     return mapping[workoutTypeKey] || 0;
@@ -1430,6 +1797,23 @@ export class WorkoutEditor {
       console.log(`     Type: ${workout.workoutType || "N/A"}`);
       if (workout.steps && workout.steps.length > 0) {
         console.log(`     Steps: ${workout.steps.length} exercises`);
+        
+        // DEBUG: Show Garmin format for first workout
+        if (process.env.DEBUG_WORKOUTS && dryRun) {
+          const garminWorkout = this.buildGarminWorkoutDetail(workout);
+          const garminSteps = garminWorkout.workoutSegments?.[0]?.workoutSteps || [];
+          console.log(`     [Garmin format: ${garminSteps.length} steps]`);
+          if (garminSteps.length <= 15) {
+            garminSteps.forEach((step: any, i: number) => {
+              if (step.type === "RepeatGroupDTO") {
+                console.log(`       [${i}] RepeatGroupDTO: ${step.numberOfIterations}x iterations, ${step.workoutSteps?.length || 0} nested steps`);
+              } else {
+                console.log(`       [${i}] ${step.stepType?.stepTypeKey}: ${step.exerciseName || step.stepOrder || 'step'}`);
+              }
+            });
+          }
+        }
+        
         workout.steps.slice(0, 3).forEach((step, i) => {
           console.log(`       ${i + 1}. ${step.exerciseName || step.stepType}`);
         });

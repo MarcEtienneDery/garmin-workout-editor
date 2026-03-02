@@ -168,6 +168,146 @@ describe("WorkoutEditor", () => {
     });
   });
 
+  describe("Start New Training Plan", () => {
+    it("should reset training progression and clear workout schedule", async () => {
+      const trainingPlanPath = path.join(tempDir, "training-plan.json");
+      const workoutPlanPath = path.join(tempDir, "next-week.workouts.tmp.json");
+      const templatePath = path.join(__dirname, "../../data/training-plan.json");
+
+      const templatePlan = JSON.parse(fs.readFileSync(templatePath, "utf-8"));
+
+      const initialTrainingPlan = {
+        version: "1.0",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-02-01T00:00:00.000Z",
+        athlete: { name: "Tester", experienceLevel: "intermediate" },
+        goals: { primary: "Keep this goal" },
+        strengthBenchmarks: {},
+        runningBenchmarks: {},
+        periodization: {
+          currentPhase: "Custom",
+          weekInPhase: 3,
+          totalWeeksInPhase: 6,
+          phases: [{ name: "Custom", totalWeeks: 6 }],
+        },
+        constraints: { maxDaysPerWeek: 6 },
+        weeklyHistory: [
+          {
+            weekStart: "2026-01-25",
+            weekEnd: "2026-01-31",
+            summary: "Completed week",
+          },
+        ],
+      };
+
+      const workoutPlan: WeeklyWorkoutPlan = {
+        generatedAt: new Date().toISOString(),
+        weekStart: "2026-02-01",
+        weekEnd: "2026-02-07",
+        workouts: [
+          {
+            workoutId: 1,
+            workoutName: "Monday Workout",
+            scheduledDate: "2026-02-02",
+          },
+          {
+            workoutId: 2,
+            workoutName: "Wednesday Workout",
+            scheduledDate: "2026-02-04",
+          },
+        ],
+      };
+
+      fs.writeFileSync(trainingPlanPath, JSON.stringify(initialTrainingPlan, null, 2));
+      fs.writeFileSync(workoutPlanPath, JSON.stringify(workoutPlan, null, 2));
+
+      await editor.startNewTrainingPlan(trainingPlanPath, workoutPlanPath);
+
+      const updatedTrainingPlan = JSON.parse(
+        fs.readFileSync(trainingPlanPath, "utf-8")
+      );
+      const updatedWorkoutPlan = JSON.parse(
+        fs.readFileSync(workoutPlanPath, "utf-8")
+      );
+
+      expect(updatedTrainingPlan.goals.primary).toBe("Keep this goal");
+      expect(updatedTrainingPlan.constraints.maxDaysPerWeek).toBe(6);
+      expect(updatedTrainingPlan.weeklyHistory).toEqual([]);
+      expect(updatedTrainingPlan.periodization.currentPhase).toBe(
+        templatePlan.periodization.currentPhase
+      );
+      expect(updatedTrainingPlan.periodization.phases).toEqual(
+        templatePlan.periodization.phases
+      );
+      expect(updatedTrainingPlan.periodization.weekInPhase).toBe(1);
+      expect(updatedTrainingPlan.updatedAt).toBeDefined();
+
+      expect(updatedWorkoutPlan.source).toBe("start-new-training-plan");
+      expect(updatedWorkoutPlan.workouts[0].scheduledDate).toBeUndefined();
+      expect(updatedWorkoutPlan.workouts[1].scheduledDate).toBeUndefined();
+    });
+
+    it("should keep current periodization when template loading fails", async () => {
+      const trainingPlanPath = path.join(tempDir, "training-plan-fallback.json");
+      const workoutPlanPath = path.join(tempDir, "workouts-fallback.json");
+      const missingTemplatePath = path.join(tempDir, "missing-template.json");
+
+      const initialTrainingPlan = {
+        version: "1.0",
+        createdAt: "2026-01-01T00:00:00.000Z",
+        updatedAt: "2026-02-01T00:00:00.000Z",
+        athlete: { name: "Tester", experienceLevel: "intermediate" },
+        goals: { primary: "Keep this goal" },
+        strengthBenchmarks: {},
+        runningBenchmarks: {},
+        periodization: {
+          currentPhase: "Custom",
+          weekInPhase: 4,
+          totalWeeksInPhase: 6,
+          phases: [{ name: "Custom", totalWeeks: 6 }],
+        },
+        constraints: {},
+        weeklyHistory: [
+          {
+            weekStart: "2026-01-25",
+            weekEnd: "2026-01-31",
+            summary: "Completed week",
+          },
+        ],
+      };
+
+      const workoutPlan: WeeklyWorkoutPlan = {
+        generatedAt: new Date().toISOString(),
+        weekStart: "2026-02-01",
+        weekEnd: "2026-02-07",
+        workouts: [
+          {
+            workoutId: 1,
+            workoutName: "Monday Workout",
+            scheduledDate: "2026-02-02",
+          },
+        ],
+      };
+
+      fs.writeFileSync(trainingPlanPath, JSON.stringify(initialTrainingPlan, null, 2));
+      fs.writeFileSync(workoutPlanPath, JSON.stringify(workoutPlan, null, 2));
+
+      await editor.startNewTrainingPlan(
+        trainingPlanPath,
+        workoutPlanPath,
+        missingTemplatePath
+      );
+
+      const updatedTrainingPlan = JSON.parse(
+        fs.readFileSync(trainingPlanPath, "utf-8")
+      );
+
+      expect(updatedTrainingPlan.periodization.currentPhase).toBe("Custom");
+      expect(updatedTrainingPlan.periodization.weekInPhase).toBe(1);
+      expect(updatedTrainingPlan.weeklyHistory).toEqual([]);
+    });
+  });
+
   describe("Workout Steps Transformation", () => {
     it("should transform workout steps correctly", () => {
       const transform = (editor as any).transformWorkoutSteps.bind(editor);

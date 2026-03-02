@@ -16,6 +16,7 @@
  *   npm run adjust-workouts -- --this-week
  *   npm run adjust-workouts -- --activities data/activities.json --workouts data/next-week.workouts.tmp.json
  *   npm run adjust-workouts -- --init-plan
+ *   npm run adjust-workouts -- --revisit-plan --plan data/training-plan.json
  *   npm run adjust-workouts -- --mock
  */
 
@@ -53,12 +54,14 @@ Usage: npm run adjust-workouts -- [options]
 
 Options:
   --init-plan                  Scaffold data/training-plan.json template and exit
+  --revisit-plan               Revisit and rewrite the training plan with LLM
   --last-week                  Fetch last week's activities (default)
   --this-week                  Fetch this week's activities instead
   --activities <path>          Use an already-saved activities JSON file
-  --workouts <path>            Use an already-saved workout plan JSON file
+  --workouts <path>            Use a saved weekly workout plan JSON file (recommended: data/next-week.workouts.tmp.json)
   --plan <path>                Training plan config (default: data/training-plan.json)
-  --model <name>               Override LLM model (default: $COPILOT_MODEL or claude-sonnet-4.5)
+  --review-notes <text>        Extra instructions for training-plan revisit
+  --model <name>               Override LLM model (default: $COPILOT_MODEL or gpt-5.2)
   --output <path>              Override output path for the adjusted plan
   --dry-run                    Validate only; do not upload or schedule
   --mock                       Use mock data (no Garmin API, no LLM)
@@ -170,6 +173,7 @@ async function main(): Promise<void> {
     process.env.MOCK_MODE === "true" || hasFlag("--mock");
   const email = process.env.GARMIN_EMAIL;
   const password = process.env.GARMIN_PASSWORD;
+  const revisitPlan = hasFlag("--revisit-plan");
 
   console.log("🏋️  Garmin Workout Adjuster (AI-powered)");
   console.log("=========================================\n");
@@ -189,8 +193,9 @@ async function main(): Promise<void> {
   const activitiesFilePath = getArgValue("--activities");
   const workoutsFilePath = getArgValue("--workouts");
   const needsGarmin = !activitiesFilePath || !workoutsFilePath;
+  const reviewNotes = getArgValue("--review-notes");
 
-  if (!mockMode && needsGarmin && (!email || !password)) {
+  if (!revisitPlan && !mockMode && needsGarmin && (!email || !password)) {
     console.error("❌ Error: GARMIN_EMAIL and GARMIN_PASSWORD are required.");
     console.error("   Use --activities and --workouts to load from files instead.");
     printUsage();
@@ -209,6 +214,72 @@ async function main(): Promise<void> {
   const tempWorkoutsExportPath = path.join(__dirname, "../data/workouts.json");
   const modelName = getArgValue("--model");
   const dryRun = hasFlag("--dry-run");
+
+  if (revisitPlan) {
+    if (!fs.existsSync(trainingPlanPath)) {
+      console.error(`❌ Training plan not found at ${trainingPlanPath}`);
+      console.error("   Run: npm run adjust-workouts -- --init-plan");
+      process.exit(1);
+    }
+
+    const adjuster = new WorkoutAdjuster({
+      modelName,
+      mockMode,
+    });
+
+    const trainingPlan = adjuster.loadTrainingPlan(trainingPlanPath);
+    const activities =
+      activitiesFilePath && fs.existsSync(activitiesFilePath)
+        ? adjuster.loadActivities(activitiesFilePath)
+        : undefined;
+    const workoutPlan =
+      workoutsFilePath && fs.existsSync(workoutsFilePath)
+        ? adjuster.loadWorkoutPlan(workoutsFilePath)
+        : undefined;
+
+    console.log("📘 Revisit mode: training plan");
+    console.log(`   Plan       : ${trainingPlanPath}`);
+    if (activities) {
+      console.log(`   Activities : ${activities.totalActivities} (${activities.weekStart} → ${activities.weekEnd})`);
+    }
+    if (workoutPlan) {
+      console.log(`   Workouts   : ${workoutPlan.workouts.length} (${workoutPlan.weekStart} → ${workoutPlan.weekEnd})`);
+    }
+
+    const planOutputPath = getArgValue("--output") ?? trainingPlanPath;
+
+    console.log(`\n🤖 Initializing LLM session (model: ${modelName ?? process.env.COPILOT_MODEL ?? "gpt-5.2"})...`);
+    await adjuster.createSession();
+
+    try {
+      const result = await adjuster.revisitTrainingPlan(trainingPlan, {
+        activities,
+        currentPlan: workoutPlan,
+        reviewNotes,
+      });
+
+      fs.writeFileSync(
+        planOutputPath,
+        JSON.stringify(result.updatedPlan, null, 2),
+        "utf-8"
+      );
+
+      console.log(`\n✅ Revised training plan saved to ${planOutputPath}`);
+      if (result.summary) {
+        console.log("\n📝 LLM Summary:");
+        console.log("─".repeat(60));
+        console.log(result.summary);
+        console.log("─".repeat(60));
+      }
+    } catch (e) {
+      console.error(`\n❌ Training plan revisit failed: ${(e as Error).message}`);
+      process.exitCode = 1;
+    } finally {
+      await adjuster.cleanup();
+    }
+
+    return;
+  }
 
   // ── Week selection: flags override, otherwise prompt interactively ─────
   let thisWeek: boolean;
@@ -317,7 +388,7 @@ async function main(): Promise<void> {
   };
 
   // ── Step 6: Create LLM session ────────────────────────────────────────────
-  console.log(`🤖 Initializing LLM session (model: ${modelName ?? process.env.COPILOT_MODEL ?? "claude-sonnet-4.5"})...`);
+  console.log(`🤖 Initializing LLM session (model: ${modelName ?? process.env.COPILOT_MODEL ?? "gpt-5.2"})...`);
   await adjuster.createSession();
 
   // ── Step 7: Initial analysis ──────────────────────────────────────────────
@@ -363,7 +434,7 @@ async function main(): Promise<void> {
         console.log("\n✅ Workouts uploaded and scheduled!");
       } catch (e) {
         console.error(`\n❌ Upload/schedule failed: ${(e as Error).message}`);
-        console.error(`   You can retry manually: npm run manage-workouts -- --upload-and-schedule ${outputPath}`);
+        console.error(`   You can retry manually: npm run manage-workouts -- --import-and-schedule ${outputPath}`);
       }
     }
   } else {

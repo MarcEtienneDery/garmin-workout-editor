@@ -12,6 +12,7 @@ Extract your recent activities from Garmin and update your next week's workout u
 - Export workouts from Garmin to JSON
 - Generate a temporary next-week workout plan file for manual edits
 - Copy a workout plan to next week (shift dates by 7 days)
+- Start a new training plan cycle (reset training progression + clear schedule dates)
 - Schedule a workout plan to Garmin calendar
 - Comprehensive test suite with unit and integration tests
 - Mock mode for testing without real Garmin credentials
@@ -56,6 +57,38 @@ npm run extract-activities
 ```
 
 **Note:** If this fails with "You have been blocked", use the session cookie method instead.
+
+### LLM Model (for AI workout adjustment)
+
+- Default model: `gpt-5.2`
+- Override per run: `npm run adjust-workouts -- --model <model-name>`
+- Override globally: set `COPILOT_MODEL` in `.env`
+- For `--workouts`, prefer a weekly plan file (for example `data/next-week.workouts.tmp.json`).
+- When a large unscheduled library is provided, the adjust flow now auto-selects workouts using `trainingPlan.weeklyStructure` and fails fast if matching confidence is low.
+
+### Revisit Training Plan with AI
+
+Use LLM to review and rewrite your training-plan JSON:
+
+```bash
+npm run adjust-workouts -- --revisit-plan --plan data/training-plan.json
+```
+
+Optional context and notes:
+
+```bash
+npm run adjust-workouts -- --revisit-plan \
+  --plan data/training-plan.json \
+  --activities data/activities.json \
+  --workouts data/next-week.workouts.tmp.json \
+  --review-notes "prioritize 10k goal while preserving strength"
+```
+
+Save to a different file instead of overwriting:
+
+```bash
+npm run adjust-workouts -- --revisit-plan --plan data/training-plan.json --output data/training-plan.revised.json
+```
 
 ## Usage
 
@@ -177,6 +210,24 @@ Custom output path:
 npm run manage-workouts -- --copy-next-week ./data/last-week.plan.json \
   --template-output ./data/next-week.plan.json
 ```
+
+### Start a New Training Plan Cycle
+
+Reset your training progression state and clear all scheduled workout dates:
+
+```bash
+npm run manage-workouts -- --start-new-plan ./data/next-week.workouts.tmp.json --plan ./data/training-plan.json
+```
+
+This command:
+- Overwrites the selected training plan file
+- Replaces `periodization` from `data/training-plan.json`
+- Resets `periodization.weekInPhase` to `1`
+- Clears `weeklyHistory`
+- Updates `updatedAt`
+- Clears all `scheduledDate` fields in the workout plan file
+
+Note: this is local-file only and does not remove workouts from Garmin calendar.
 
 ### Schedule Workouts to Garmin Calendar
 

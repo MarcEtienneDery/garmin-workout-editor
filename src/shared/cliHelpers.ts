@@ -203,18 +203,29 @@ export function buildProcessArgs(
         args.push('--upload', answers.workoutFile);
       } else if (answers.operation === 'copy-next-week') {
         args.push('--copy-next-week', answers.workoutFile);
+      } else if (answers.operation === 'start-new-plan') {
+        args.push('--start-new-plan', answers.workoutFile);
+        if (answers.planFile) args.push('--plan', answers.planFile);
       }
     }
     if (answers.outputPath) args.push('--output', answers.outputPath);
     if (answers.dryRun) args.push('--dry-run');
   } else if (operation === 'adjust-workouts') {
-    if (answers.week) args.push(`--${answers.week}`);
-    if (answers.useCache === false || answers.cached === 'fresh') {
-      // Fetch mode, no additional args needed for file paths
-    } else {
+    if (answers.mode === 'revisit-plan') {
+      args.push('--revisit-plan');
+      if (answers.planFile) args.push('--plan', answers.planFile);
       if (answers.activitiesFile) args.push('--activities', answers.activitiesFile);
       if (answers.workoutsFile) args.push('--workouts', answers.workoutsFile);
-      if (answers.planFile) args.push('--plan', answers.planFile);
+      if (answers.reviewNotes) args.push('--review-notes', answers.reviewNotes);
+    } else {
+      if (answers.week) args.push(`--${answers.week}`);
+      if (answers.useCache === false || answers.cached === 'fresh') {
+        // Fetch mode, no additional args needed for file paths
+      } else {
+        if (answers.activitiesFile) args.push('--activities', answers.activitiesFile);
+        if (answers.workoutsFile) args.push('--workouts', answers.workoutsFile);
+        if (answers.planFile) args.push('--plan', answers.planFile);
+      }
     }
     if (answers.outputPath) args.push('--output', answers.outputPath);
     if (answers.dryRun) args.push('--dry-run');

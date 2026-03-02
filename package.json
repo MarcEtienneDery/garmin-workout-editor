@@ -16,7 +16,8 @@
     "export-activities": "ts-node src/exportActivities.ts",
     "manage-workouts": "ts-node src/manageWorkouts.ts",
     "adjust-workouts": "tsx src/adjustWorkouts.ts",
-    "test-llm": "tsx src/testLlm.ts"
+    "test-llm": "tsx src/testLlm.ts",
+    "test-prompt": "tsx src/testPrompt.ts"
   },
   "dependencies": {
     "@flow-js/garmin-connect": "^1.6.7",

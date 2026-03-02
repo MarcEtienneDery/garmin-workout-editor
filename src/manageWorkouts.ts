@@ -18,14 +18,6 @@ async function main() {
     return process.argv[index + 1];
   };
 
-  if (!email || !password) {
-    console.error("❌ Error: Credentials are required");
-    console.error(
-      "Please provide GARMIN_EMAIL and GARMIN_PASSWORD in .env"
-    );
-    process.exit(1);
-  }
-
   const exportWorkouts = process.argv.includes("--export");
   const generateTemplate = process.argv.includes("--generate-template");
   const scheduleFromPlan = process.argv.includes("--schedule");
@@ -33,8 +25,17 @@ async function main() {
   const importAndSchedule = process.argv.includes("--import-and-schedule");
   const uploadWorkouts = process.argv.includes("--upload");
   const uploadSingle = process.argv.includes("--upload-single");
+  const startNewPlan = process.argv.includes("--start-new-plan");
   const saveRaw = process.argv.includes("--raw");
   const dryRun = process.argv.includes("--dry-run");
+
+  if (!mockMode && !startNewPlan && (!email || !password)) {
+    console.error("❌ Error: Credentials are required");
+    console.error(
+      "Please provide GARMIN_EMAIL and GARMIN_PASSWORD in .env"
+    );
+    process.exit(1);
+  }
 
   const workoutsOutputPath =
     getArgValue("--output") ||
@@ -46,6 +47,10 @@ async function main() {
     getArgValue("--schedule") ||
     getArgValue("--copy-next-week") ||
     getArgValue("--import-and-schedule");
+  const startNewPlanWorkoutPath = getArgValue("--start-new-plan");
+  const trainingPlanPath =
+    getArgValue("--plan") ||
+    path.join(__dirname, "../data/training-plan.json");
   const uploadInputPath = getArgValue("--upload");
   const uploadWorkoutId = getArgValue("--upload-single");
 
@@ -58,10 +63,32 @@ async function main() {
     console.log("🔍 DRY-RUN mode enabled (validation only, no API changes)\n");
   }
 
-  const garminClient = new GarminClient(email, password, mockMode);
+  const garminClient = new GarminClient(
+    email ?? "dummy@example.com",
+    password ?? "dummy",
+    mockMode
+  );
   const editor = new WorkoutEditor(garminClient);
 
   try {
+    if (startNewPlan) {
+      if (!startNewPlanWorkoutPath) {
+        console.error(
+          "❌ Error: Missing workout plan path for --start-new-plan"
+        );
+        console.error("Usage: npm run manage-workouts -- --start-new-plan <workout-plan-path> --plan <training-plan-path>");
+        process.exit(1);
+      }
+
+      console.log("🆕 Starting new training plan and resetting schedule...\n");
+      await editor.startNewTrainingPlan(
+        trainingPlanPath,
+        startNewPlanWorkoutPath
+      );
+      console.log("\n✅ Training plan updated and schedule reset successfully!");
+      return;
+    }
+
     if (exportWorkouts) {
       console.log("📤 Exporting workouts with full details...\n");
       await editor.exportWorkouts(workoutsOutputPath, true);
@@ -127,7 +154,7 @@ async function main() {
 
       console.log("📥 Importing and scheduling workouts...\n");
       const plan = await editor.importWorkoutPlan(planInputPath);
-      await editor.addToCalendar(plan);
+      await editor.uploadAndScheduleWorkoutPlan(plan);
       console.log("\n✅ Workouts imported and scheduled successfully!");
       return;
     }
@@ -215,6 +242,9 @@ async function main() {
       "  npm run manage-workouts -- --copy-next-week <path>         Copy plan to next week"
     );
     console.log(
+      "  npm run manage-workouts -- --start-new-plan <path> --plan <training-plan-path>"
+    );
+    console.log(
       "  npm run manage-workouts -- --schedule <path>               Schedule workouts from plan"
     );
     console.log(
@@ -231,6 +261,7 @@ async function main() {
     console.log(
       "  --template-output <path>     Set template/plan output path"
     );
+    console.log("  --plan <path>                Training plan path (for --start-new-plan)");
     console.log("  --week-start <YYYY-MM-DD>    Override week start date (transform only)");
     console.log("  --week-end <YYYY-MM-DD>      Override week end date (transform only)");
     console.log("  --file <path>                Specify workouts file (for --upload-single)");
