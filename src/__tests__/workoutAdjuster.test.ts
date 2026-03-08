@@ -808,3 +808,91 @@ describe("WorkoutAdjuster", () => {
     });
   });
 });
+
+// ─── sendPromptCopilotSdk timing ─────────────────────────────────────────────
+
+describe("sendPromptCopilotSdk timing", () => {
+  let adjuster: WorkoutAdjuster;
+  let stdoutChunks: string[];
+
+  beforeEach(() => {
+    adjuster = new WorkoutAdjuster({ mockMode: false });
+    stdoutChunks = [];
+    jest.spyOn(process.stdout, "write").mockImplementation((chunk: any) => {
+      stdoutChunks.push(typeof chunk === "string" ? chunk : chunk.toString());
+      return true;
+    });
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  /** Build a mock session that emits events synchronously when send() is called. */
+  function makeMockSession(opts: { withDelta?: boolean } = {}) {
+    const handlers: Record<string, Array<(event: any) => void>> = {};
+
+    return {
+      on: jest.fn().mockImplementation((event: string, handler: (e: any) => void) => {
+        (handlers[event] ??= []).push(handler);
+        return () => { handlers[event] = handlers[event].filter(h => h !== handler); };
+      }),
+      send: jest.fn().mockImplementation(() => {
+        if (opts.withDelta) {
+          (handlers["assistant.message_delta"] ?? []).forEach(h =>
+            h({ data: { deltaContent: "tok" } })
+          );
+        }
+        (handlers["assistant.message"] ?? []).forEach(h =>
+          h({ data: { content: '{"workouts":[]}' } })
+        );
+        return Promise.resolve();
+      }),
+      destroy: jest.fn().mockResolvedValue(undefined),
+    };
+  }
+
+  it("logs callLabel, prompt chars, TTFT and total after streaming response", async () => {
+    (adjuster as any).session = makeMockSession({ withDelta: true });
+
+    await (adjuster as any).sendPromptCopilotSdk("hello world", "analyzeAndAdjust");
+
+    const output = stdoutChunks.join("");
+    expect(output).toContain("[analyzeAndAdjust]");
+    expect(output).toContain("TTFT:");
+    expect(output).toContain("total:");
+    expect(output).toContain("chars");
+    // Prompt is "hello world" (11 chars)
+    expect(output).toContain("11");
+  });
+
+  it("reports TTFT: n/a when no delta events fired (non-streaming)", async () => {
+    (adjuster as any).session = makeMockSession({ withDelta: false });
+
+    await (adjuster as any).sendPromptCopilotSdk("some prompt", "appendWeekSummary");
+
+    const output = stdoutChunks.join("");
+    expect(output).toContain("TTFT: n/a");
+    expect(output).toContain("[appendWeekSummary]");
+  });
+
+  it("includes correct prompt char count for a longer prompt", async () => {
+    (adjuster as any).session = makeMockSession({ withDelta: true });
+
+    const prompt = "x".repeat(500);
+    await (adjuster as any).sendPromptCopilotSdk(prompt, "iterateSingleWorkout");
+
+    const output = stdoutChunks.join("");
+    expect(output).toContain("500");
+    expect(output).toContain("[iterateSingleWorkout]");
+  });
+
+  it("timing line includes different labels for different call sites", async () => {
+    for (const label of ["revisitTrainingPlan", "retry", "iterate"]) {
+      stdoutChunks = [];
+      (adjuster as any).session = makeMockSession({ withDelta: false });
+      await (adjuster as any).sendPromptCopilotSdk("p", label);
+      expect(stdoutChunks.join("")).toContain(`[${label}]`);
+    }
+  });
+});

@@ -315,9 +315,10 @@ async function main(): Promise<void> {
   if (!resolvedActivitiesPath) {
     console.log(`📥 Fetching ${lastWeek ? "last" : "this"} week's activities from Garmin...`);
     const success = await activityExporter.extract(
-      50,
+      20,
       tempActivitiesPath,
-      false,
+      true,    // saveRaw
+      true,    // includeDetails (full activity data with exercise sets, RPE, feel)
       lastWeek,
       thisWeek
     );

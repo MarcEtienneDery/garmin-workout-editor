@@ -13,7 +13,7 @@ import {
 } from "./shared/types";
 import { ExtractedActivities } from "./shared/types";
 
-const DEFAULT_MODEL = process.env.COPILOT_MODEL ?? "gpt-5.2";
+const DEFAULT_MODEL = process.env.COPILOT_MODEL ?? "gpt-5.4";
 
 // ─── JSON extraction helpers ──────────────────────────────────────────────────
 
@@ -694,21 +694,22 @@ WeeklyWorkoutPlan schema:
    * Streams tokens to stdout in real-time. Prints a heartbeat line while waiting
    * for the first token so the user knows the process is alive.
    */
-  private async sendPrompt(prompt: string): Promise<string> {
+  private async sendPrompt(prompt: string, callLabel = "llm"): Promise<string> {
     if (this.mockMode) {
       return this.getMockResponse();
     }
 
-    return this.sendPromptCopilotSdk(prompt);
+    return this.sendPromptCopilotSdk(prompt, callLabel);
   }
 
-  private async sendPromptCopilotSdk(prompt: string): Promise<string> {
+  private async sendPromptCopilotSdk(prompt: string, callLabel: string): Promise<string> {
     if (!this.session) {
       throw new Error("LLM session not initialized. Call createSession() first.");
     }
 
     let fullContent = "";
     let firstTokenReceived = false;
+    let firstTokenTime: number | null = null;
     const startTime = Date.now();
 
     // Heartbeat: print elapsed time every 4s until first token arrives
@@ -725,6 +726,7 @@ WeeklyWorkoutPlan schema:
         if (delta) {
           if (!firstTokenReceived) {
             firstTokenReceived = true;
+            firstTokenTime = Date.now();
             clearInterval(heartbeat);
             process.stdout.write("\r"); // clear the heartbeat line
           }
@@ -745,6 +747,16 @@ WeeklyWorkoutPlan schema:
             process.stdout.write(finalContent);
           }
           process.stdout.write("\n");
+
+          const endTime = Date.now();
+          const totalSec = ((endTime - startTime) / 1000).toFixed(1);
+          const ttftPart = firstTokenTime != null
+            ? `TTFT: ${((firstTokenTime - startTime) / 1000).toFixed(1)}s`
+            : "TTFT: n/a";
+          process.stdout.write(
+            `⏱  [${callLabel}] prompt: ${prompt.length.toLocaleString()} chars | ${ttftPart} | total: ${totalSec}s\n`
+          );
+
           resolve(finalContent);
         }
       );
@@ -785,7 +797,7 @@ WeeklyWorkoutPlan schema:
       if (retryCount < 2) {
         console.error(`\n⚠️  LLM returned unparseable JSON. Asking for correction (attempt ${retryCount + 1}/2)...`);
         const fixPrompt = `Your previous response could not be parsed as JSON. Error: ${(e as Error).message}\nPlease return ONLY the WeeklyWorkoutPlan JSON with no additional text, followed by SUMMARY: on a new line.`;
-        const retry = await this.sendPrompt(fixPrompt);
+        const retry = await this.sendPrompt(fixPrompt, "retry");
         return this.parseAndValidateResponse(retry, retryCount + 1);
       }
       throw new Error(`Failed to parse LLM response as JSON after 2 retries: ${(e as Error).message}`);
@@ -798,7 +810,7 @@ WeeklyWorkoutPlan schema:
       if (retryCount < 2) {
         console.error(`\n⚠️  LLM response missing 'workouts' array. Asking for correction...`);
         const fixPrompt = `Your previous response was missing the 'workouts' array. Please return valid WeeklyWorkoutPlan JSON with a 'workouts' array, followed by SUMMARY: on a new line.`;
-        const retry = await this.sendPrompt(fixPrompt);
+        const retry = await this.sendPrompt(fixPrompt, "retry");
         return this.parseAndValidateResponse(retry, retryCount + 1);
       }
       throw new Error("LLM response does not contain a valid WeeklyWorkoutPlan structure after retries.");
@@ -817,7 +829,7 @@ WeeklyWorkoutPlan schema:
           .filter(Boolean)
           .join("; ");
         const fixPrompt = `Your JSON has duplicate steps: ${duplicateDetails}. Each (exerciseName, stepOrder) pair must be unique within a workout. Remove the duplicate entries while preserving the other steps. Return the corrected JSON.`;
-        const retry = await this.sendPrompt(fixPrompt);
+        const retry = await this.sendPrompt(fixPrompt, "retry");
         return this.parseAndValidateResponse(retry, retryCount + 1);
       }
       throw new Error(
@@ -1156,19 +1168,6 @@ WeeklyWorkoutPlan schema:
     );
 
     return { ...plan, workouts };
-  }
-
-  /**
-   * Filter activities to only those from scheduled workouts (having workoutId field).
-   * This removes ad-hoc activities that aren't associated with Garmin workout templates.
-   */
-  private filterActivitiesToScheduled(activities: ExtractedActivities): ExtractedActivities {
-    const filteredActivities = activities.activities.filter(a => a.workoutId != null);
-    return {
-      ...activities,
-      activities: filteredActivities,
-      totalActivities: filteredActivities.length,
-    };
   }
 
   /**
@@ -1530,20 +1529,14 @@ WeeklyWorkoutPlan schema:
   async analyzeAndAdjust(context: AdjustmentContext): Promise<AdjustmentResult> {
     const { activities, currentPlan, trainingPlan } = context;
 
-    // Filter activities to only those from scheduled workouts
-    const filteredActivities = this.filterActivitiesToScheduled(activities);
-    console.log(
-      `   Filtered activities: ${activities.activities.length} → ${filteredActivities.activities.length} (with workoutId)`
-    );
-
     // Only apply workout filtering if workouts have scheduledDate (not a library plan)
     // This allows auto-selection logic to work for unscheduled library plans
     const hasScheduledDates = currentPlan.workouts.some(w => w.scheduledDate != null);
     let planToUse = currentPlan;
-    
+
     if (hasScheduledDates) {
-      // Extract performed workout IDs and filter workouts to only those performed
-      const performedIds = this.extractWorkoutIds(filteredActivities);
+      // Extract performed workout IDs (from activities that have one) and filter workouts
+      const performedIds = this.extractWorkoutIds(activities);
       planToUse = this.filterWorkoutsByIds(currentPlan, performedIds);
       console.log(
         `   Filtered workouts: ${currentPlan.workouts.length} → ${planToUse.workouts.length} (matching performed activities)`
@@ -1563,7 +1556,7 @@ WeeklyWorkoutPlan schema:
       trainingPlan,
       limit: 7,
     });
-    const compactActs = this.compactActivities(filteredActivities);
+    const compactActs = this.compactActivities(activities);
 
     console.log(`   Sending ${trimmedPlan.workouts.length} workout(s) and ${compactActs.length} activit(ies) to LLM.`);
 
@@ -1603,7 +1596,7 @@ Return the adjusted WeeklyWorkoutPlan JSON, then SUMMARY:.
 
     console.log("\n🤖 Sending context to LLM for analysis...");
     console.log("─".repeat(60));
-    const rawResponse = await this.sendPrompt(prompt);
+    const rawResponse = await this.sendPrompt(prompt, "analyzeAndAdjust");
     console.log("─".repeat(60));
 
     this.saveLastResponse(rawResponse);
@@ -1665,7 +1658,7 @@ Please apply the feedback and return the updated WeeklyWorkoutPlan JSON, then SU
 
     console.log("\n🤖 Applying feedback...");
     console.log("─".repeat(60));
-    const rawResponse = await this.sendPrompt(prompt);
+    const rawResponse = await this.sendPrompt(prompt, "iterate");
     console.log("─".repeat(60));
 
     this.saveLastResponse(rawResponse);
@@ -1734,7 +1727,7 @@ Return the updated TrainingPlan JSON, then SUMMARY:.
 
     console.log("\n🤖 Revisiting training plan with LLM...");
     console.log("─".repeat(60));
-    let rawResponse = await this.sendPrompt(prompt);
+    let rawResponse = await this.sendPrompt(prompt, "revisitTrainingPlan");
     console.log("─".repeat(60));
 
     this.saveLastResponse(rawResponse);
@@ -1766,7 +1759,8 @@ Return the updated TrainingPlan JSON, then SUMMARY:.
           `\n⚠️  Invalid TrainingPlan response. Asking LLM for a corrected JSON-only response (attempt ${attempt + 1}/2)...`
         );
         rawResponse = await this.sendPrompt(
-          `Your previous response was invalid: ${error.message}. Return ONLY valid TrainingPlan JSON matching the original schema, then SUMMARY: on a new line.`
+          `Your previous response was invalid: ${error.message}. Return ONLY valid TrainingPlan JSON matching the original schema, then SUMMARY: on a new line.`,
+          "retry"
         );
         this.saveLastResponse(rawResponse);
       }
@@ -1803,7 +1797,7 @@ Return ONLY a JSON object with these fields:
 `.trim();
 
     console.log("\n📝 Generating weekly summary...");
-    const rawResponse = await this.sendPrompt(prompt);
+    const rawResponse = await this.sendPrompt(prompt, "appendWeekSummary");
 
     let summaryEntry: WeekSummary;
     try {
@@ -1850,7 +1844,7 @@ Apply the feedback and return ONLY the updated single workout as a JSON object (
 
     console.log("\n🤖 Adjusting workout...");
     console.log("─".repeat(60));
-    const rawResponse = await this.sendPrompt(prompt);
+    const rawResponse = await this.sendPrompt(prompt, "iterateSingleWorkout");
     console.log("─".repeat(60));
 
     this.saveLastResponse(rawResponse);
