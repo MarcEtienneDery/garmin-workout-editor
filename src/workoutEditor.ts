@@ -790,10 +790,7 @@ export class WorkoutEditor {
       };
     } catch (error: any) {
       console.error("❌ Failed to fetch workouts:", error.message);
-      return {
-        transformed: [],
-        raw: [],
-      };
+      throw error;
     }
   }
 

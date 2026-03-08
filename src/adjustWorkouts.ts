@@ -337,7 +337,8 @@ async function main(): Promise<void> {
     try {
       await workoutEditor.exportWorkouts(tempWorkoutsExportPath, true, false);
     } catch (e) {
-      console.warn(`⚠️  Could not sync workout library: ${(e as Error).message}`);
+      console.error(`❌ Could not sync workout library: ${(e as Error).message}`);
+      process.exit(1);
     }
   }
 
@@ -435,6 +436,7 @@ async function main(): Promise<void> {
       } catch (e) {
         console.error(`\n❌ Upload/schedule failed: ${(e as Error).message}`);
         console.error(`   You can retry manually: npm run manage-workouts -- --import-and-schedule ${outputPath}`);
+        process.exit(1);
       }
     }
   } else {
