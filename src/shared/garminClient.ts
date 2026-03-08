@@ -54,12 +54,11 @@ export class GarminClient {
 
     try {
       // Try to restore from cache first
-      const cachedCookies = this.tokenCache.loadToken(this.email);
-      if (cachedCookies) {
+      const cached = this.tokenCache.loadToken(this.email);
+      if (cached) {
         try {
-          // Attempt to restore cached session
-          const clientAny = this.client as any;
-          clientAny.cookies = cachedCookies;
+          // Restore OAuth tokens directly into the client
+          (this.client as any).loadToken(cached.oauth1Token, cached.oauth2Token);
 
           // Verify the session is still valid
           const userProfile = await this.client.getUserProfile();
@@ -83,12 +82,12 @@ export class GarminClient {
       const userProfile = await this.client.getUserProfile();
       console.log(`✅ Successfully authenticated as: ${userProfile.userName}`);
 
-      // Save cookies to cache
-      const clientAny = this.client as any;
-      if (clientAny.cookies) {
-        this.tokenCache.saveToken(this.email, clientAny.cookies);
-      } else {
-        console.warn("⚠️ Warning: Client cookies not available for caching");
+      // Save OAuth tokens to cache using the library's public exportToken() API
+      try {
+        const { oauth1, oauth2 } = (this.client as any).exportToken();
+        this.tokenCache.saveToken(this.email, oauth1, oauth2);
+      } catch {
+        console.warn("⚠️ Warning: OAuth tokens not available for caching");
       }
 
       return true;

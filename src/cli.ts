@@ -13,6 +13,15 @@ import {
 const DATA_DIR = path.join(process.cwd(), 'data');
 
 /**
+ * Print the equivalent npm run command for direct CLI use
+ */
+function printEquivalentCommand(npmScript: string, args: string[]): void {
+  const escaped = args.map((a) => (a.includes(' ') ? `"${a}"` : a));
+  const suffix = escaped.length > 0 ? ` -- ${escaped.join(' ')}` : '';
+  console.log(`\n💡 Next time you can run directly:\n   npm run ${npmScript}${suffix}\n`);
+}
+
+/**
  * Run an external entry point with the given arguments
  */
 async function runEntryPoint(
@@ -115,6 +124,7 @@ async function activityExportFlow(): Promise<void> {
   const args = buildProcessArgs('export-activities', answers);
   closePrompt();
 
+  printEquivalentCommand('export-activities', args);
   console.log('\n🚀 Running activity export...\n');
   await runEntryPoint('src/exportActivities.ts', args);
 }
@@ -175,6 +185,7 @@ async function workoutManagementFlow(): Promise<void> {
   const args = buildProcessArgs('manage-workouts', answers);
   closePrompt();
 
+  printEquivalentCommand('manage-workouts', args);
   console.log('\n🚀 Running workout management...\n');
   await runEntryPoint('src/manageWorkouts.ts', args);
 }
@@ -219,6 +230,7 @@ async function adjustWorkoutsFlow(): Promise<void> {
     const args = buildProcessArgs('adjust-workouts', answers);
     closePrompt();
 
+    printEquivalentCommand('adjust-workouts', args);
     console.log('\n🚀 Running training-plan revisit...\n');
     await runEntryPoint('src/adjustWorkouts.ts', args, 'tsx');
     return;
@@ -271,6 +283,20 @@ async function adjustWorkoutsFlow(): Promise<void> {
   const args = buildProcessArgs('adjust-workouts', answers);
   closePrompt();
 
+  // For fresh-fetch runs, the hint should use the default cache paths (where fresh data gets saved)
+  // so the next run works without needing Garmin credentials.
+  let hintArgs = args;
+  if (answers.cached === 'fresh') {
+    const hintAnswers = {
+      ...answers,
+      cached: undefined,
+      activitiesFile: activitiesCached,
+      workoutsFile: weeklyWorkoutsCached,
+      planFile: planCached,
+    };
+    hintArgs = buildProcessArgs('adjust-workouts', hintAnswers);
+  }
+  printEquivalentCommand('adjust-workouts', hintArgs);
   console.log('\n🚀 Running workout adjustment...\n');
   await runEntryPoint('src/adjustWorkouts.ts', args, 'tsx');
 }

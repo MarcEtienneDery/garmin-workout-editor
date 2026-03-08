@@ -2,7 +2,8 @@ import * as fs from "fs";
 import * as path from "path";
 
 interface CacheEntry {
-  cookies: any;
+  oauth1Token: any;
+  oauth2Token: any;
   timestamp: number;
   email: string;
 }
@@ -34,9 +35,10 @@ export class TokenCache {
   /**
    * Save session cookies to cache
    */
-  saveToken(email: string, cookies: any): void {
+  saveToken(email: string, oauth1Token: any, oauth2Token: any): void {
     const entry: CacheEntry = {
-      cookies,
+      oauth1Token,
+      oauth2Token,
       timestamp: Date.now(),
       email,
     };
@@ -54,7 +56,7 @@ export class TokenCache {
   /**
    * Load session cookies from cache
    */
-  loadToken(email: string): any | null {
+  loadToken(email: string): { oauth1Token: any; oauth2Token: any } | null {
     try {
       if (!fs.existsSync(this.cacheFile)) {
         return null;
@@ -85,7 +87,7 @@ export class TokenCache {
         `✓ Loaded cached token for ${email} (expires in ${daysRemaining} day${daysRemaining !== 1 ? "s" : ""})`
       );
 
-      return entry.cookies;
+      return { oauth1Token: entry.oauth1Token, oauth2Token: entry.oauth2Token };
     } catch (error: any) {
       console.warn(`⚠️ Failed to load token cache: ${error.message}`);
       return null;
