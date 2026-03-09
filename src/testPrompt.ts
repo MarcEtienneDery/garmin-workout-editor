@@ -125,7 +125,7 @@ async function main() {
     aerobicTrainingEffect: a.aerobicTrainingEffect,
     anaerobicTrainingEffect: a.anaerobicTrainingEffect,
     trainingEffectLabel: a.trainingEffectLabel,
-    selfEvaluationFeeling: a.selfEvaluationFeeling,
+    directWorkoutFeel: a.directWorkoutFeel,
     directWorkoutRpe: a.directWorkoutRpe,
     differenceBodyBattery: a.differenceBodyBattery,
     totalSets: a.totalSets,

@@ -1,4 +1,4 @@
-import GarminActivity, { ExtractedActivities } from "../shared/types";
+import { GarminActivity, ExtractedActivities } from "../shared/types";
 
 describe("Types", () => {
   describe("GarminActivity", () => {
@@ -29,7 +29,7 @@ describe("Types", () => {
         maxHR: 180,
         elevationGain: 100,
         aerobicTrainingEffect: 3.5,
-        selfEvaluationFeeling: 4,
+        directWorkoutFeel: 75,
       };
 
       expect(activity.avgHR).toBe(150);

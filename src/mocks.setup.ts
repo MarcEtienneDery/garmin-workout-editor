@@ -152,7 +152,6 @@ export const generateMockActivities = (limit: number): any[] => {
         differenceBodyBattery: seed.differenceBodyBattery ?? -Math.floor(Math.random() * 12) - 3,
         moderateIntensityMinutes: seed.moderateIntensityMinutes ?? Math.floor(Math.random() * 40),
         vigorousIntensityMinutes: seed.vigorousIntensityMinutes ?? Math.floor(Math.random() * 20),
-        selfEvaluationFeeling: seed.selfEvaluationFeeling,
         directWorkoutFeel: seed.directWorkoutFeel ?? seed.summaryDTO?.directWorkoutFeel,
         directWorkoutRpe: seed.directWorkoutRpe ?? seed.summaryDTO?.directWorkoutRpe,
       };
@@ -225,8 +224,7 @@ export const generateMockActivities = (limit: number): any[] => {
           : activityType === "running"
           ? "AEROBIC_BASE"
           : "UNKNOWN",
-      selfEvaluationFeeling: Math.floor(Math.random() * 5) + 1, // 1-5
-      directWorkoutFeel: Math.floor(Math.random() * 100),
+      directWorkoutFeel: Math.floor(Math.random() * 100) + 1,
       directWorkoutRpe: Math.floor(Math.random() * 20) + 1,
       differenceBodyBattery:
         activityType === "other"

@@ -393,10 +393,13 @@ async function main(): Promise<void> {
   console.log(`🤖 Initializing LLM session (model: ${modelName ?? process.env.COPILOT_MODEL ?? "gpt-5.2"})...`);
   await adjuster.createSession();
 
-  // ── Step 7: Initial analysis ──────────────────────────────────────────────
+  // ── Step 7: Two-phase LLM analysis ───────────────────────────────────────
   let analysisResult;
   try {
-    analysisResult = await adjuster.analyzeAndAdjust(context);
+    analysisResult = await adjuster.analyzeAndAdjustTwoPhase(context, (step) => {
+      console.log(`\n${step}`);
+      console.log("─".repeat(60));
+    });
   } catch (e) {
     console.error(`\n❌ LLM analysis failed: ${(e as Error).message}`);
     await adjuster.cleanup();

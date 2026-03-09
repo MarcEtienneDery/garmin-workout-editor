@@ -1,5 +1,5 @@
 // Slim activity structure focused on weekly planning metrics
-interface GarminActivity {
+export interface GarminActivity {
   // Identity
   id: string;
   workoutId?: number | string;  // Garmin workout template ID (when activity was based on a workout)
@@ -22,9 +22,8 @@ interface GarminActivity {
   trainingEffectLabel?: string;
   
   // Subjective Feedback
-  selfEvaluationFeeling?: number;    // 1-5 scale
-  directWorkoutFeel?: number;        // Garmin self-evaluation feel
-  directWorkoutRpe?: number;         // Garmin self-evaluation RPE
+  directWorkoutFeel?: number;        // How fresh: 1-100 (100=perfect, 50=avg, 1=very tired)
+  directWorkoutRpe?: number;         // How hard: 1-100 (100=super hard, 50=avg/good target, 1=too easy)
   
   // Recovery Cost
   differenceBodyBattery?: number;
@@ -99,12 +98,17 @@ export interface WorkoutStep {
 }
 
 
-// Minimal workout summary (for backward compatibility)
-export interface GarminWorkoutSummary {
-  workoutId: number | string;
+// Shared base for all workout-shaped objects
+interface WorkoutCore {
+  workoutId?: number | string;
   workoutName: string;
   workoutType?: string;
   description?: string;
+}
+
+// Minimal workout summary (for backward compatibility)
+export interface GarminWorkoutSummary extends WorkoutCore {
+  workoutId: number | string; // required for fetched workouts
 }
 
 // Detailed workout with full exercise information
@@ -115,11 +119,7 @@ export interface DetailedWorkout extends GarminWorkoutSummary {
   estimatedDurationSeconds?: number;
 }
 
-export interface PlannedWorkout {
-  workoutId?: number | string;
-  workoutName: string;
-  workoutType?: string;
-  description?: string;
+export interface PlannedWorkout extends WorkoutCore {
   distanceMeters?: number;
   scheduledDate?: string; // ISO date (YYYY-MM-DD)
   steps?: WorkoutStep[];  // Full exercise breakdown for import
@@ -170,6 +170,14 @@ export interface AdjustmentContext {
   trainingPlan: TrainingPlan;
 }
 
+// Result of Phase 1 weekly summary LLM call
+export interface WeeklySummaryResult {
+  summaryText: string;
+  phase: string;
+  weekInPhase: number;
+  readinessSignal: "high" | "moderate" | "low";
+}
+
 // Result returned from LLM workout adjustment
 export interface AdjustmentResult {
   adjustedPlan: WeeklyWorkoutPlan;
@@ -177,4 +185,3 @@ export interface AdjustmentResult {
   llmReasoning: string;
 }
 
-export default GarminActivity;

@@ -896,3 +896,238 @@ describe("sendPromptCopilotSdk timing", () => {
     }
   });
 });
+
+// ─── Two-phase LLM methods ────────────────────────────────────────────────────
+
+describe("matchActivityToWorkout", () => {
+  let adjuster: WorkoutAdjuster;
+
+  beforeEach(() => {
+    adjuster = new WorkoutAdjuster({ mockMode: true });
+  });
+
+  const workout = MINIMAL_PLAN.workouts[0]; // workoutId 123, scheduledDate 2026-02-23, strength_training
+
+  it("matches by workoutId", () => {
+    const result = (adjuster as any).matchActivityToWorkout(
+      workout,
+      MINIMAL_ACTIVITIES,
+      new Set()
+    );
+    expect(result?.id).toBe("123");
+  });
+
+  it("matches by same date and compatible type when workoutId differs", () => {
+    const activities: ExtractedActivities = {
+      ...MINIMAL_ACTIVITIES,
+      activities: [
+        {
+          id: "abc",
+          activityName: "Bench day",
+          activityType: "strength_training",
+          startTime: "2026-02-23 09:00:00",
+          duration: 3600,
+        },
+      ],
+    };
+    const w = { ...workout, workoutId: undefined };
+    const result = (adjuster as any).matchActivityToWorkout(w, activities, new Set());
+    expect(result?.id).toBe("abc");
+  });
+
+  it("matches by day-of-week when no exact date match", () => {
+    // activity is on a Monday (2026-02-16), workout is on a Monday (2026-02-23)
+    const w = { ...workout, workoutId: undefined };
+    const result = (adjuster as any).matchActivityToWorkout(
+      w,
+      MINIMAL_ACTIVITIES,
+      new Set()
+    );
+    expect(result?.id).toBe("123");
+  });
+
+  it("returns undefined when no activity is compatible", () => {
+    const activities: ExtractedActivities = {
+      ...MINIMAL_ACTIVITIES,
+      activities: [
+        {
+          id: "run1",
+          activityName: "Easy Run",
+          activityType: "running",
+          startTime: "2026-02-17 07:00:00",
+          duration: 1800,
+        },
+      ],
+    };
+    const result = (adjuster as any).matchActivityToWorkout(
+      workout,
+      activities,
+      new Set()
+    );
+    expect(result).toBeUndefined();
+  });
+
+  it("skips activities already in usedIds", () => {
+    const usedIds = new Set(["123"]);
+    const result = (adjuster as any).matchActivityToWorkout(
+      workout,
+      MINIMAL_ACTIVITIES,
+      usedIds
+    );
+    expect(result).toBeUndefined();
+  });
+});
+
+describe("getWeeklySummary (mock mode)", () => {
+  let adjuster: WorkoutAdjuster;
+
+  beforeEach(() => {
+    adjuster = new WorkoutAdjuster({ mockMode: true });
+  });
+
+  it("returns a WeeklySummaryResult without calling LLM in mock mode", async () => {
+    const result = await adjuster.getWeeklySummary(
+      MINIMAL_ACTIVITIES,
+      MINIMAL_TRAINING_PLAN
+    );
+    expect(result.summaryText).toContain("1 session");
+    expect(result.phase).toBe("Hypertrophy");
+    expect(result.weekInPhase).toBe(2);
+    expect(result.readinessSignal).toBe("moderate");
+  });
+
+  it("parses HIGH readiness signal from sendPrompt response", async () => {
+    const adjusterReal = new WorkoutAdjuster({ mockMode: false });
+    (adjusterReal as any).sendPrompt = jest
+      .fn()
+      .mockResolvedValue("- Completed all sessions.\n- Performance excellent.\n- HIGH");
+    const result = await adjusterReal.getWeeklySummary(
+      MINIMAL_ACTIVITIES,
+      MINIMAL_TRAINING_PLAN
+    );
+    expect(result.readinessSignal).toBe("high");
+    expect(result.summaryText).toContain("Completed all sessions");
+  });
+
+  it("defaults readinessSignal to moderate when not found", async () => {
+    const adjusterReal = new WorkoutAdjuster({ mockMode: false });
+    (adjusterReal as any).sendPrompt = jest
+      .fn()
+      .mockResolvedValue("- Some summary without a signal word.");
+    const result = await adjusterReal.getWeeklySummary(
+      MINIMAL_ACTIVITIES,
+      MINIMAL_TRAINING_PLAN
+    );
+    expect(result.readinessSignal).toBe("moderate");
+  });
+});
+
+describe("generateSingleWorkout (mock mode)", () => {
+  let adjuster: WorkoutAdjuster;
+
+  beforeEach(() => {
+    adjuster = new WorkoutAdjuster({ mockMode: true });
+  });
+
+  it("returns original workout unchanged in mock mode", async () => {
+    const result = await adjuster.generateSingleWorkout(
+      MINIMAL_PLAN.workouts[0],
+      { summaryText: "mock", phase: "Hypertrophy", weekInPhase: 2, readinessSignal: "moderate" },
+      undefined,
+      MINIMAL_TRAINING_PLAN
+    );
+    expect(result).toEqual(MINIMAL_PLAN.workouts[0]);
+  });
+
+  it("parses the PlannedWorkout JSON from LLM response", async () => {
+    const adjusterReal = new WorkoutAdjuster({ mockMode: false });
+    const modifiedWorkout = { ...MINIMAL_PLAN.workouts[0], workoutName: "Modified Bench" };
+    (adjusterReal as any).sendPrompt = jest
+      .fn()
+      .mockResolvedValue(`${JSON.stringify(modifiedWorkout, null, 2)}\nSUMMARY:\n- Bumped intensity.`);
+    const result = await adjusterReal.generateSingleWorkout(
+      MINIMAL_PLAN.workouts[0],
+      { summaryText: "good week", phase: "Hypertrophy", weekInPhase: 2, readinessSignal: "high" },
+      undefined,
+      MINIMAL_TRAINING_PLAN
+    );
+    expect(result.workoutName).toBe("Modified Bench");
+  });
+
+  it("falls back to original workout when JSON parse fails", async () => {
+    const adjusterReal = new WorkoutAdjuster({ mockMode: false });
+    (adjusterReal as any).sendPrompt = jest
+      .fn()
+      .mockResolvedValue("This is not JSON at all.\nSUMMARY:\n- Something.");
+    const original = MINIMAL_PLAN.workouts[0];
+    const result = await adjusterReal.generateSingleWorkout(
+      original,
+      { summaryText: "week", phase: "Hypertrophy", weekInPhase: 2, readinessSignal: "moderate" },
+      undefined,
+      MINIMAL_TRAINING_PLAN
+    );
+    expect(result).toEqual(original);
+  });
+});
+
+describe("analyzeAndAdjustTwoPhase (mock mode)", () => {
+  let adjuster: WorkoutAdjuster;
+
+  beforeEach(() => {
+    adjuster = new WorkoutAdjuster({ mockMode: true });
+  });
+
+  it("returns an AdjustmentResult with the workout plan", async () => {
+    const context = {
+      activities: MINIMAL_ACTIVITIES,
+      currentPlan: MINIMAL_PLAN,
+      trainingPlan: MINIMAL_TRAINING_PLAN,
+    };
+    const result = await adjuster.analyzeAndAdjustTwoPhase(context);
+    expect(result.adjustedPlan).toBeDefined();
+    expect(Array.isArray(result.adjustedPlan.workouts)).toBe(true);
+    expect(typeof result.changeSummary).toBe("string");
+    expect(typeof result.llmReasoning).toBe("string");
+  });
+
+  it("fires onProgress callback for phase 1 and each workout", async () => {
+    const progress: string[] = [];
+    const context = {
+      activities: MINIMAL_ACTIVITIES,
+      currentPlan: MINIMAL_PLAN,
+      trainingPlan: MINIMAL_TRAINING_PLAN,
+    };
+    await adjuster.analyzeAndAdjustTwoPhase(context, (step) => progress.push(step));
+    expect(progress.some((s) => s.includes("Step 7a"))).toBe(true);
+    expect(progress.some((s) => s.includes("Step 7b"))).toBe(true);
+    expect(progress.some((s) => s.includes("Monday Bench"))).toBe(true);
+  });
+
+  it("calls getWeeklySummary once then generateSingleWorkout per workout", async () => {
+    const summarySpy = jest.spyOn(adjuster as any, "getWeeklySummary");
+    const genSpy = jest.spyOn(adjuster as any, "generateSingleWorkout");
+    const context = {
+      activities: MINIMAL_ACTIVITIES,
+      currentPlan: MINIMAL_PLAN,
+      trainingPlan: MINIMAL_TRAINING_PLAN,
+    };
+    await adjuster.analyzeAndAdjustTwoPhase(context);
+    expect(summarySpy).toHaveBeenCalledTimes(1);
+    expect(genSpy).toHaveBeenCalledTimes(MINIMAL_PLAN.workouts.length);
+  });
+
+  it("falls back to original template when generateSingleWorkout throws", async () => {
+    jest
+      .spyOn(adjuster as any, "generateSingleWorkout")
+      .mockRejectedValue(new Error("LLM timeout"));
+    const context = {
+      activities: MINIMAL_ACTIVITIES,
+      currentPlan: MINIMAL_PLAN,
+      trainingPlan: MINIMAL_TRAINING_PLAN,
+    };
+    const result = await adjuster.analyzeAndAdjustTwoPhase(context);
+    // Should still return a plan with the original workout, not throw
+    expect(result.adjustedPlan.workouts).toHaveLength(MINIMAL_PLAN.workouts.length);
+    expect(result.adjustedPlan.workouts[0].workoutName).toBe("Monday Bench");
+  });
+});

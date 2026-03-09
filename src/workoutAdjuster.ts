@@ -5,13 +5,15 @@ import * as readline from "readline";
 import {
   AdjustmentContext,
   AdjustmentResult,
+  ExtractedActivities,
+  GarminActivity,
   TrainingPlan,
   WeeklyWorkoutPlan,
   PlannedWorkout,
   WorkoutStep,
   WeekSummary,
+  WeeklySummaryResult,
 } from "./shared/types";
-import { ExtractedActivities } from "./shared/types";
 
 const DEFAULT_MODEL = process.env.COPILOT_MODEL ?? "gpt-5.4";
 
@@ -598,8 +600,8 @@ SYSTEM RULES (FORMAT + SCHEMA):
 BUSINESS RULES (TRAINING ADJUSTMENTS):
 1. The primary driver of adjustments must be the TrainingPlan (goals, periodization phase, benchmarks, and constraints). Use previous-week activity performance only as a secondary signal.
 2. At the start of a new TrainingPlan or at the beginning of a phase (early weeks), place minimal weight on previous activities and follow the planned progression baseline.
-3. If an activity shows strong performance (low RPE, good body battery, training effect ≥ 4), progress the next workout modestly (+2.5–5% weight or +1–2 reps or –5 sec/km pace).
-4. If performance was poor (high RPE, low body battery < 20, missed sets), reduce load 5–10% or keep flat.
+3. If an activity shows strong performance (RPE ≤ 40, Feel ≥ 60, good body battery, training effect ≥ 4), progress the next workout modestly (+2.5–5% weight or +1–2 reps or –5 sec/km pace).
+4. If performance was poor (RPE ≥ 70, Feel ≤ 30, low body battery < 20, missed sets), reduce load 5–10% or keep flat.
 5. Respect the current periodization phase (hypertrophy = higher reps/volume, strength = lower reps/higher %).
 6. **STRICT CONSTRAINT: Never duplicate steps. Each exercise-stepOrder pair must be unique within a workout. Only modify existing step fields (weight, percentage, reps, rest time). Do not add new steps; return the input step count exactly as provided.**
 
@@ -1219,7 +1221,7 @@ WeeklyWorkoutPlan schema:
       aerobicTrainingEffect: a.aerobicTrainingEffect,
       anaerobicTrainingEffect: a.anaerobicTrainingEffect,
       trainingEffectLabel: a.trainingEffectLabel,
-      selfEvaluationFeeling: a.selfEvaluationFeeling,
+      directWorkoutFeel: a.directWorkoutFeel,
       directWorkoutRpe: a.directWorkoutRpe,
       differenceBodyBattery: a.differenceBodyBattery,
       totalSets: a.totalSets,
@@ -1885,6 +1887,324 @@ Apply the feedback and return ONLY the updated single workout as a JSON object (
       primaryExercise,
       baseSets
     );
+  }
+
+  // ── Two-phase LLM analysis ─────────────────────────────────────────────────
+
+  /**
+   * Match a PlannedWorkout to the closest GarminActivity from last week.
+   * Tiered strategy: workoutId → same date + type → same day-of-week + type → type only.
+   * Pass usedIds to prevent double-matching the same activity to two workouts.
+   */
+  private matchActivityToWorkout(
+    workout: PlannedWorkout,
+    activities: ExtractedActivities,
+    usedIds: Set<string>
+  ): GarminActivity | undefined {
+    const typeCompatible = (
+      actType: string,
+      workoutType: string | undefined
+    ): boolean => {
+      if (!workoutType) return true;
+      return actType === workoutType;
+    };
+
+    const available = activities.activities.filter((a) => !usedIds.has(a.id));
+
+    // 1. Same workoutId
+    if (workout.workoutId != null) {
+      const match = available.find(
+        (a) => a.workoutId != null && String(a.workoutId) === String(workout.workoutId)
+      );
+      if (match) return match;
+    }
+
+    // 2. Same date + compatible type
+    if (workout.scheduledDate) {
+      const match = available.find(
+        (a) =>
+          a.startTime.slice(0, 10) === workout.scheduledDate &&
+          typeCompatible(a.activityType, workout.workoutType)
+      );
+      if (match) return match;
+    }
+
+    // 3. Same day-of-week in the previous week + compatible type
+    if (workout.scheduledDate) {
+      const workoutDow = new Date(workout.scheduledDate).getUTCDay();
+      const match = available.find(
+        (a) =>
+          new Date(a.startTime).getUTCDay() === workoutDow &&
+          typeCompatible(a.activityType, workout.workoutType)
+      );
+      if (match) return match;
+    }
+
+    // 4. First available activity with matching type
+    return available.find((a) => typeCompatible(a.activityType, workout.workoutType));
+  }
+
+  /**
+   * Extract benchmark entries relevant to a specific workout's exercises.
+   * For strength workouts, matches step exerciseNames against strengthBenchmarks.
+   * For running workouts, returns runningBenchmarks.
+   */
+  private extractRelevantBenchmarks(
+    workout: PlannedWorkout,
+    trainingPlan: TrainingPlan
+  ): string {
+    const isRunning = workout.workoutType === "running";
+    if (isRunning) {
+      const rb = trainingPlan.runningBenchmarks;
+      if (!rb || Object.keys(rb).length === 0) return "";
+      return Object.entries(rb)
+        .map(([k, v]) => `  ${k}: ${JSON.stringify(v)}`)
+        .join("\n");
+    }
+
+    const exerciseNames = new Set<string>();
+    for (const step of workout.steps ?? []) {
+      if (step.exerciseName) exerciseNames.add(normalizeExerciseName(step.exerciseName) ?? "");
+      for (const sub of step.repeatSteps ?? []) {
+        if (sub.exerciseName) exerciseNames.add(normalizeExerciseName(sub.exerciseName) ?? "");
+      }
+    }
+
+    const sb = trainingPlan.strengthBenchmarks ?? {};
+    const lines: string[] = [];
+    for (const [key, val] of Object.entries(sb)) {
+      if (exerciseNames.has(normalizeExerciseName(key) ?? "")) {
+        lines.push(`  ${key}: ${val.oneRepMax} lbs 1RM (updated ${val.lastUpdated})`);
+      }
+    }
+    return lines.join("\n");
+  }
+
+  /**
+   * Phase 1: Send all activities + training plan to get a concise weekly summary.
+   * Returns plain-text summary with a readiness signal (HIGH/MODERATE/LOW).
+   */
+  async getWeeklySummary(
+    activities: ExtractedActivities,
+    trainingPlan: TrainingPlan
+  ): Promise<WeeklySummaryResult> {
+    const { currentPhase, weekInPhase, totalWeeksInPhase } = trainingPlan.periodization;
+
+    if (this.mockMode) {
+      return {
+        summaryText: [
+          `- Completed ${activities.totalActivities} session(s) this week.`,
+          `- Phase: ${currentPhase}, week ${weekInPhase}/${totalWeeksInPhase}.`,
+          `- Mock mode: no real LLM called.`,
+          `- MODERATE`,
+        ].join("\n"),
+        phase: currentPhase,
+        weekInPhase,
+        readinessSignal: "moderate",
+      };
+    }
+
+    // Top 5 benchmarks by most recently updated
+    const topBenchmarks = Object.entries(trainingPlan.strengthBenchmarks ?? {})
+      .sort((a, b) => b[1].lastUpdated.localeCompare(a[1].lastUpdated))
+      .slice(0, 5)
+      .map(([k, v]) => `  ${k}: ${v.oneRepMax} lbs 1RM`)
+      .join("\n");
+
+    const compactActs = this.compactActivities(activities);
+
+    const prompt = `
+## Task: Weekly Training Summary
+
+Produce a CONCISE plain-text summary (4-8 bullet points). Do NOT output JSON.
+
+Cover:
+- Overall training adherence (sessions completed vs missed)
+- Performance highlights and key metrics (top weights, paces, HR trends)
+- Fatigue and recovery signals (body battery drain, RPE, feel ratings)
+- Phase progress: are we on track for ${currentPhase} goals (week ${weekInPhase}/${totalWeeksInPhase})?
+- Readiness for next week: end your last bullet with the single word HIGH, MODERATE, or LOW
+
+## Training Plan Context
+Phase: ${currentPhase} — Week ${weekInPhase} of ${totalWeeksInPhase}
+Goals: ${trainingPlan.goals.primary}${topBenchmarks ? `\nTop benchmarks:\n${topBenchmarks}` : ""}
+
+## Last Week's Activities
+Week: ${activities.weekStart} to ${activities.weekEnd}
+Total: ${activities.totalActivities}
+
+${JSON.stringify(compactActs, null, 2)}
+`.trim();
+
+    console.log("\n🤖 Getting weekly summary...");
+    console.log("─".repeat(60));
+    const rawResponse = await this.sendPrompt(prompt, "getWeeklySummary");
+    console.log("─".repeat(60));
+
+    const readinessMatch = rawResponse.match(/\b(HIGH|MODERATE|LOW)\b/i);
+    const readinessSignal = readinessMatch
+      ? (readinessMatch[1].toLowerCase() as "high" | "moderate" | "low")
+      : "moderate";
+
+    return {
+      summaryText: rawResponse.trim(),
+      phase: currentPhase,
+      weekInPhase,
+      readinessSignal,
+    };
+  }
+
+  /**
+   * Phase 2: Generate an adjusted PlannedWorkout using the weekly summary,
+   * the matching last-week activity, and the workout template.
+   */
+  async generateSingleWorkout(
+    workout: PlannedWorkout,
+    weeklySummary: WeeklySummaryResult,
+    matchedActivity: GarminActivity | undefined,
+    trainingPlan: TrainingPlan
+  ): Promise<PlannedWorkout> {
+    if (this.mockMode) {
+      return workout;
+    }
+
+    const benchmarkSection = this.extractRelevantBenchmarks(workout, trainingPlan);
+    const { currentPhase, weekInPhase, totalWeeksInPhase } = trainingPlan.periodization;
+
+    const activitySection = matchedActivity
+      ? `Activity: ${matchedActivity.activityName} on ${matchedActivity.startTime.slice(0, 10)} (${matchedActivity.activityType})
+Duration: ${matchedActivity.duration}s | HR: ${matchedActivity.avgHR ?? "N/A"} | Feel(freshness 1-100): ${matchedActivity.directWorkoutFeel ?? "N/A"} | RPE(effort 1-100): ${matchedActivity.directWorkoutRpe ?? "N/A"}
+Body battery: ${matchedActivity.differenceBodyBattery ?? "N/A"} | Training effect: ${matchedActivity.aerobicTrainingEffect ?? "N/A"}
+${JSON.stringify((matchedActivity.exerciseSets ?? []).slice(0, 6), null, 2)}`
+      : "No matching activity found for this workout slot (may have been skipped or unlogged).";
+
+    const prompt = `
+## Task: Adjust a Single Workout
+
+Using the weekly context below, produce the adjusted version of this ONE workout.
+Output ONLY a valid PlannedWorkout JSON object (not wrapped in WeeklyWorkoutPlan), then on a new line: SUMMARY: followed by a 1-3 sentence explanation of changes.
+
+## Weekly Summary
+${weeklySummary.summaryText}
+
+Readiness: ${weeklySummary.readinessSignal.toUpperCase()}
+
+## Training Plan Excerpts
+Phase: ${currentPhase} — Week ${weekInPhase} of ${totalWeeksInPhase}
+Goals: ${trainingPlan.goals.primary}${benchmarkSection ? `\nRelevant benchmarks:\n${benchmarkSection}` : ""}
+
+## Matching Last-Week Activity
+${activitySection}
+
+## Workout Template to Adjust
+${JSON.stringify(workout, null, 2)}
+
+Adjust the workout according to the context. Return PlannedWorkout JSON then SUMMARY:.
+`.trim();
+
+    console.log(`\n🤖 Generating: ${workout.workoutName} (${workout.scheduledDate ?? "unscheduled"})...`);
+    console.log("─".repeat(60));
+    const rawResponse = await this.sendPrompt(prompt, "generateSingleWorkout");
+    console.log("─".repeat(60));
+
+    this.saveLastResponse(rawResponse);
+
+    const summaryMatch = rawResponse.match(/\nSUMMARY:([\s\S]*)$/m);
+    const summary = summaryMatch ? summaryMatch[1].trim() : "";
+    const jsonPortion = summaryMatch
+      ? rawResponse.slice(0, summaryMatch.index)
+      : rawResponse;
+
+    let parsed: unknown;
+    try {
+      parsed = extractJson(jsonPortion);
+    } catch {
+      console.warn(`⚠️  Could not parse LLM response for "${workout.workoutName}". Using original.`);
+      return workout;
+    }
+
+    if (summary) {
+      console.log("\n📝 Changes:");
+      console.log(summary);
+    }
+
+    const parsedWorkout = parsed as PlannedWorkout;
+    const primaryExercise = this.guessPrimaryExerciseName(workout);
+    if (!primaryExercise) return parsedWorkout;
+
+    const baseSets = this.countExerciseSets(workout.steps ?? [], primaryExercise);
+    if (baseSets <= 0) return parsedWorkout;
+
+    return this.ensureWorkoutExerciseSetMinimum(parsedWorkout, primaryExercise, baseSets);
+  }
+
+  /**
+   * Two-phase orchestrator: Phase 1 gets a weekly summary, Phase 2 generates
+   * each workout individually. More focused prompts than analyzeAndAdjust().
+   */
+  async analyzeAndAdjustTwoPhase(
+    context: AdjustmentContext,
+    onProgress?: (step: string) => void
+  ): Promise<AdjustmentResult> {
+    const { activities, currentPlan, trainingPlan } = context;
+
+    const hasScheduledDates = currentPlan.workouts.some((w) => w.scheduledDate != null);
+    let planToUse = currentPlan;
+    if (hasScheduledDates) {
+      const performedIds = this.extractWorkoutIds(activities);
+      planToUse = this.filterWorkoutsByIds(currentPlan, performedIds);
+      console.log(
+        `   Filtered workouts: ${currentPlan.workouts.length} → ${planToUse.workouts.length} (matching performed activities)`
+      );
+    }
+
+    const trimmedPlan = this.trimPlanForLLM(planToUse, { trainingPlan, limit: 7 });
+    const total = trimmedPlan.workouts.length;
+
+    // Phase 1: weekly summary
+    onProgress?.("Step 7a: Getting weekly summary...");
+    const weeklySummary = await this.getWeeklySummary(activities, trainingPlan);
+    console.log("\n--- Weekly Summary ---");
+    console.log(weeklySummary.summaryText);
+    console.log(`Readiness: ${weeklySummary.readinessSignal}`);
+
+    // Phase 2: per-workout generation
+    const adjustedWorkouts: PlannedWorkout[] = [];
+    const usedActivityIds = new Set<string>();
+
+    for (let i = 0; i < total; i++) {
+      const workout = trimmedPlan.workouts[i];
+      onProgress?.(`Step 7b: Generating workout ${i + 1}/${total}: ${workout.workoutName}...`);
+
+      const matched = this.matchActivityToWorkout(workout, activities, usedActivityIds);
+      if (matched) usedActivityIds.add(matched.id);
+
+      let adjusted: PlannedWorkout;
+      try {
+        adjusted = await this.generateSingleWorkout(workout, weeklySummary, matched, trainingPlan);
+      } catch (e) {
+        console.warn(`\n⚠️  Generation failed for "${workout.workoutName}": ${(e as Error).message}`);
+        console.warn(`   Using original template.`);
+        adjusted = workout;
+      }
+      adjustedWorkouts.push(adjusted);
+    }
+
+    const rawPlan: WeeklyWorkoutPlan = {
+      ...trimmedPlan,
+      source: "llm-adjusted",
+      workouts: adjustedWorkouts,
+    };
+
+    const withTrainingBaselines = this.applyMainLiftBaselinesFromTrainingPlan(trainingPlan, rawPlan);
+    const guardedPlan = this.applyPrimarySetFloorsFromBasePlan(trimmedPlan, withTrainingBaselines);
+    this.auditForDuplicatesWarning(guardedPlan);
+
+    return {
+      adjustedPlan: guardedPlan,
+      changeSummary: formatChangeSummary(trimmedPlan, guardedPlan),
+      llmReasoning: weeklySummary.summaryText,
+    };
   }
 
   /** Clean up the LLM session and client */

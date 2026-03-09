@@ -373,8 +373,8 @@ Each extracted activity includes comprehensive data organized into categories:
 - `minHR`: Minimum heart rate (bpm)
 
 ### Self Evaluation (requires --detailed flag)
-- `selfEvaluation`: Your workout rating/feeling (e.g., 1-5 scale)
-- `selfEvaluationFeeling`: Same as selfEvaluation - how you felt after the workout
+- `directWorkoutFeel`: How fresh you felt (1-100; 100=perfect, 50=avg, 1=very tired)
+- `directWorkoutRpe`: How hard the workout was (1-100; 100=super hard, 50=avg/good target, 1=too easy)
 
 ### Heart Rate Zones (Time in seconds)
 - `hrZone1Time`: Time in Zone 1 (recovery)

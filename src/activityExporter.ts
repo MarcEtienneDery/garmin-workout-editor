@@ -380,7 +380,6 @@ export class ActivityExporter {
         trainingEffectLabel: activity.trainingEffectLabel,
 
         // Subjective Feedback
-        selfEvaluationFeeling: activity.selfEvaluationFeeling,
         directWorkoutFeel:
           activity.directWorkoutFeel ?? activity.summaryDTO?.directWorkoutFeel,
         directWorkoutRpe:

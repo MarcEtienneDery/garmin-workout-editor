@@ -21,9 +21,8 @@ interface GarminActivity {
   trainingEffectLabel?: string;
   
   // Subjective Feedback
-  selfEvaluationFeeling?: number;    // 1-5 scale
-  directWorkoutFeel?: number;        // Garmin self-evaluation feel
-  directWorkoutRpe?: number;         // Garmin self-evaluation RPE
+  directWorkoutFeel?: number;        // How fresh: 1-100 (100=perfect, 50=avg, 1=very tired)
+  directWorkoutRpe?: number;         // How hard: 1-100 (100=super hard, 50=avg/good target, 1=too easy)
   
   // Recovery Cost
   differenceBodyBattery?: number;
