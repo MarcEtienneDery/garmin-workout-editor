@@ -112,6 +112,17 @@ export class GarminClient {
   }
 
   /**
+   * Fetch per-set exercise data for a strength activity.
+   * Uses the undocumented exerciseSets endpoint not exposed by the garmin-connect library.
+   */
+  async getActivityExerciseSets(activityId: number | string): Promise<any[]> {
+    const raw = await (this.client as any).client.get(
+      `https://connectapi.garmin.com/activity-service/activity/${activityId}/exerciseSets`
+    );
+    return raw?.exerciseSets ?? [];
+  }
+
+  /**
    * Clear the stored authentication token cache
    * Useful if you want to force a fresh login on next authentication
    */

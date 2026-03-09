@@ -253,6 +253,270 @@ describe("ActivityExporter", () => {
     });
   });
 
+  describe("Strength Set Consolidation (fullExerciseSets)", () => {
+    let transformActivities: (activities: any[]) => any[];
+
+    beforeEach(() => {
+      transformActivities = (exporter as any).transformActivities.bind(exporter);
+    });
+
+    const makeStrengthActivity = (fullExerciseSets: any[]) => ({
+      activityId: "1",
+      activityName: "Strength",
+      activityType: { typeKey: "strength_training" },
+      startTimeGMT: new Date().toISOString(),
+      duration: 3600,
+      averageHR: 110,
+      maxHR: 140,
+      totalSets: fullExerciseSets.length,
+      totalReps: 0,
+      fullExerciseSets,
+    });
+
+    const activeSet = (category: string, reps: number, weightTenthsGrams: number, name?: string) => ({
+      setType: "ACTIVE",
+      exercises: [{ category, name: name ?? null }],
+      repetitionCount: reps,
+      weight: weightTenthsGrams,
+    });
+
+    it("should combine consecutive same-exercise sets with uniform reps and weight into sets++", () => {
+      const activity = makeStrengthActivity([
+        activeSet("DEADLIFT", 5, 129276),  // ~285 lbs
+        activeSet("DEADLIFT", 5, 129276),
+        activeSet("DEADLIFT", 5, 129276),
+        activeSet("DEADLIFT", 5, 129276),
+      ]);
+
+      const result = transformActivities([activity])[0];
+
+      expect(result.exerciseSets).toHaveLength(1);
+      expect(result.exerciseSets[0]).toMatchObject({ sets: 4, reps: 5 });
+      expect(result.exerciseSets[0].repsList).toBeUndefined();
+      expect(result.exerciseSets[0].weightList).toBeUndefined();
+    });
+
+    it("should combine consecutive sets with changing weight into weightList", () => {
+      const activity = makeStrengthActivity([
+        activeSet("DEADLIFT", 10, 83916),  // ~185 lbs warmup
+        activeSet("DEADLIFT", 5, 129276),  // ~285 lbs
+        activeSet("DEADLIFT", 5, 129276),
+        activeSet("DEADLIFT", 5, 129276),
+        activeSet("DEADLIFT", 5, 129276),
+      ]);
+
+      const result = transformActivities([activity])[0];
+
+      expect(result.exerciseSets).toHaveLength(1);
+      const s = result.exerciseSets[0];
+      expect(s.sets).toBe(5);
+      expect(s.repsList).toEqual([10, 5, 5, 5, 5]);
+      expect(s.weightList).toEqual([185, 285, 285, 285, 285]);
+      expect(s.reps).toBeUndefined();
+      expect(s.weight).toBeUndefined();
+    });
+
+    it("should accumulate volume correctly when consolidating", () => {
+      const activity = makeStrengthActivity([
+        activeSet("BENCH_PRESS", 5, 129276),  // ~285 lbs
+        activeSet("BENCH_PRESS", 5, 129276),
+        activeSet("BENCH_PRESS", 5, 129276),
+      ]);
+
+      const result = transformActivities([activity])[0];
+      const set = result.exerciseSets[0];
+
+      expect(set.sets).toBe(3);
+      expect(set.volume).toBe(set.sets * set.reps * set.weight);
+    });
+
+    it("should not combine non-consecutive sets even if identical", () => {
+      const activity = makeStrengthActivity([
+        activeSet("DEADLIFT", 5, 129276),
+        activeSet("SQUAT", 5, 129276),
+        activeSet("DEADLIFT", 5, 129276),  // same as first but not consecutive
+      ]);
+
+      const result = transformActivities([activity])[0];
+
+      expect(result.exerciseSets).toHaveLength(3);
+    });
+
+    it("should combine consecutive same-exercise/same-weight sets with varying reps into repsList", () => {
+      const activity = makeStrengthActivity([
+        activeSet("SHOULDER_PRESS", 14, 49896),  // ~110 lbs
+        activeSet("SHOULDER_PRESS", 11, 49896),
+        activeSet("SHOULDER_PRESS", 10, 49896),
+      ]);
+
+      const result = transformActivities([activity])[0];
+
+      expect(result.exerciseSets).toHaveLength(1);
+      const s = result.exerciseSets[0];
+      expect(s.sets).toBe(3);
+      expect(s.reps).toBeUndefined();
+      expect(s.repsList).toEqual([14, 11, 10]);
+      expect(s.volume).toBe(14 * s.weight + 11 * s.weight + 10 * s.weight);
+    });
+
+    it("should combine consecutive sets with same exercise but different weights into weightList", () => {
+      const activity = makeStrengthActivity([
+        activeSet("DEADLIFT", 5, 83916),   // ~185 lbs
+        activeSet("DEADLIFT", 5, 129276),  // ~285 lbs
+      ]);
+
+      const result = transformActivities([activity])[0];
+
+      expect(result.exerciseSets).toHaveLength(1);
+      const s = result.exerciseSets[0];
+      expect(s.sets).toBe(2);
+      expect(s.reps).toBe(5);           // uniform reps → no repsList
+      expect(s.repsList).toBeUndefined();
+      expect(s.weight).toBeUndefined();
+      expect(s.weightList).toEqual([185, 285]);
+    });
+
+    it("should filter out non-ACTIVE set types", () => {
+      const activity = makeStrengthActivity([
+        { setType: "REST", exercises: [{ category: "DEADLIFT" }], repetitionCount: 0, weight: 0 },
+        activeSet("DEADLIFT", 5, 129276),
+        { setType: "WARMUP", exercises: [{ category: "DEADLIFT" }], repetitionCount: 5, weight: 83916 },
+        activeSet("DEADLIFT", 5, 129276),
+      ]);
+
+      const result = transformActivities([activity])[0];
+
+      expect(result.exerciseSets).toHaveLength(1);
+      expect(result.exerciseSets[0].sets).toBe(2);
+    });
+
+    it("should detect a 2-exercise superset and collapse into 2 tagged entries", () => {
+      // BENCH, CURL alternating 3 rounds
+      const activity = makeStrengthActivity([
+        activeSet("BENCH_PRESS", 12, 74844),
+        activeSet("CURL", 10, 31752),
+        activeSet("BENCH_PRESS", 11, 74844),
+        activeSet("CURL", 8, 31752),
+        activeSet("BENCH_PRESS", 11, 74844),
+        activeSet("CURL", 8, 31752),
+      ]);
+
+      const result = transformActivities([activity])[0];
+
+      expect(result.exerciseSets).toHaveLength(2);
+      const bench = result.exerciseSets[0];
+      const curl = result.exerciseSets[1];
+      expect(bench.sets).toBe(3);
+      expect(bench.repsList).toEqual([12, 11, 11]);
+      expect(bench.supersetGroup).toBe(curl.supersetGroup);
+      expect(curl.sets).toBe(3);
+      expect(curl.repsList).toEqual([10, 8, 8]);
+    });
+
+    it("should include partial last round in the superset", () => {
+      // BENCH, CURL, PLANK × 2 rounds, then partial 3rd round (BENCH, CURL only)
+      const activity = makeStrengthActivity([
+        activeSet("BENCH_PRESS", 12, 74844),
+        activeSet("CURL", 10, 31752),
+        activeSet("PLANK", 0, 0),
+        activeSet("BENCH_PRESS", 11, 74844),
+        activeSet("CURL", 8, 31752),
+        activeSet("PLANK", 0, 0),
+        activeSet("BENCH_PRESS", 11, 74844),
+        activeSet("CURL", 8, 31752),
+      ]);
+
+      const result = transformActivities([activity])[0];
+
+      expect(result.exerciseSets).toHaveLength(3);
+      const [bench, curl, plank] = result.exerciseSets;
+      expect(bench.sets).toBe(3);
+      expect(bench.repsList).toEqual([12, 11, 11]);
+      expect(curl.sets).toBe(3);
+      expect(plank.sets).toBe(2);  // only appeared in 2 of 3 rounds
+      expect(bench.supersetGroup).toBe(curl.supersetGroup);
+      expect(bench.supersetGroup).toBe(plank.supersetGroup);
+    });
+
+    it("should accumulate volume across superset rounds", () => {
+      const activity = makeStrengthActivity([
+        activeSet("BENCH_PRESS", 5, 74844),
+        activeSet("CURL", 10, 31752),
+        activeSet("BENCH_PRESS", 5, 74844),
+        activeSet("CURL", 10, 31752),
+      ]);
+
+      const result = transformActivities([activity])[0];
+      const bench = result.exerciseSets[0];
+      const curl = result.exerciseSets[1];
+
+      // uniform reps → no repsList
+      expect(bench.repsList).toBeUndefined();
+      expect(bench.sets).toBe(2);
+      expect(bench.volume).toBe(2 * 5 * bench.weight);
+      expect(curl.sets).toBe(2);
+      expect(curl.volume).toBe(2 * 10 * curl.weight);
+    });
+
+    it("should not detect a superset in fewer than 4 entries", () => {
+      const activity = makeStrengthActivity([
+        activeSet("BENCH_PRESS", 5, 74844),
+        activeSet("CURL", 10, 31752),
+        activeSet("BENCH_PRESS", 5, 74844),
+      ]);
+
+      const result = transformActivities([activity])[0];
+
+      // 3 entries, too short for superset detection
+      expect(result.exerciseSets).toHaveLength(3);
+      result.exerciseSets.forEach((s: any) => expect(s.supersetGroup).toBeUndefined());
+    });
+
+    it("should use exercise name (subcategory) over category for exerciseName", () => {
+      const activity = makeStrengthActivity([
+        activeSet("DEADLIFT", 5, 129276, "BARBELL_DEADLIFT"),
+      ]);
+
+      const result = transformActivities([activity])[0];
+
+      expect(result.exerciseSets[0].exerciseName).toBe("Barbell Deadlift");
+      expect(result.exerciseSets[0].category).toBe("DEADLIFT");
+    });
+
+    it("should fall back to category for exerciseName when name is null", () => {
+      const activity = makeStrengthActivity([
+        activeSet("DEADLIFT", 5, 129276, undefined),
+      ]);
+
+      const result = transformActivities([activity])[0];
+
+      expect(result.exerciseSets[0].exerciseName).toBe("Deadlift");
+    });
+
+    it("should fall back to summarizedExerciseSets when fullExerciseSets is absent", () => {
+      const activity = {
+        activityId: "2",
+        activityName: "Strength",
+        activityType: { typeKey: "strength_training" },
+        startTimeGMT: new Date().toISOString(),
+        duration: 3600,
+        averageHR: 110,
+        maxHR: 140,
+        totalSets: 4,
+        totalReps: 20,
+        summarizedExerciseSets: [
+          { category: "SQUAT", subCategory: "BARBELL_SQUAT", sets: 4, reps: 20, maxWeight: 90720, volume: 8000 },
+        ],
+      };
+
+      const result = transformActivities([activity])[0];
+
+      expect(result.exerciseSets.length).toBeGreaterThan(0);
+      // Fallback uses splitWarmupTopBackoffSets so names include suffixes
+      expect(result.exerciseSets.some((s: any) => s.exerciseName.includes("Barbell Squat"))).toBe(true);
+    });
+  });
+
   describe("Strength Set Splitting", () => {
     it("should split main lifts into warmup, top set, and backoff in order", () => {
       const split = (exporter as any).splitWarmupTopBackoffSets.bind(exporter);

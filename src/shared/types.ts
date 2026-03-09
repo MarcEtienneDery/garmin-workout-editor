@@ -47,9 +47,12 @@ export interface ExerciseSet {
   exerciseName: string;       // e.g., "Barbell Squat", "Bench Press", "Deadlift"
   category: string;           // e.g., "LEGS", "CHEST", "BACK"
   sets: number;
-  reps: number;               // reps per set
-  weight?: number;            // weight used (lbs)
-  volume?: number;            // total load (sets × reps × weight)
+  reps?: number;              // reps per set (absent when repsList is used)
+  repsList?: number[];        // per-set reps when they vary; mutually exclusive with reps
+  weight?: number;            // weight used (lbs); absent when weightList is used
+  weightList?: number[];      // per-set weight when it varies; mutually exclusive with weight
+  volume?: number;            // total load (sum of reps × weight per set)
+  supersetGroup?: number;     // shared integer ID for exercises performed as a superset
   // Interval stats (running)
   duration?: number;          // seconds
   distance?: number;          // km

@@ -256,6 +256,148 @@ export class ActivityExporter {
   }
 
   /**
+   * Full consolidation pipeline for per-set data from the exerciseSets endpoint.
+   * Phase 1+2: merge consecutive same-exercise/same-weight sets (identical reps → sets++, varying reps → repsList).
+   * Phase 3: detect repeating exercise-name cycles (supersets) and collapse each exercise within to one entry.
+   */
+  private consolidateSets(sets: ExerciseSet[]): ExerciseSet[] {
+    return this.detectAndMergeSupersets(this.mergeConsecutive(sets));
+  }
+
+  private mergeConsecutive(sets: ExerciseSet[]): ExerciseSet[] {
+    const result: ExerciseSet[] = [];
+    for (const s of sets) {
+      const prev = result[result.length - 1];
+      if (prev && prev.exerciseName === s.exerciseName) {
+        // reps
+        if (prev.repsList !== undefined) {
+          prev.repsList.push(s.reps ?? 0);
+        } else if (prev.reps !== s.reps) {
+          prev.repsList = Array(prev.sets).fill(prev.reps ?? 0);
+          prev.repsList.push(s.reps ?? 0);
+          prev.reps = undefined;
+        }
+        // weight
+        const prevW = prev.weight ?? 0;
+        const sW = s.weight ?? 0;
+        if (prev.weightList !== undefined) {
+          prev.weightList.push(sW);
+        } else if (prevW !== sW) {
+          prev.weightList = Array(prev.sets).fill(prevW);
+          prev.weightList.push(sW);
+          prev.weight = undefined;
+        }
+        prev.sets += 1;
+        prev.volume = (prev.volume ?? 0) + (s.volume ?? 0);
+      } else {
+        result.push({ ...s });
+      }
+    }
+    return result;
+  }
+
+  private detectAndMergeSupersets(sets: ExerciseSet[]): ExerciseSet[] {
+    if (sets.length < 4) return sets;
+
+    const names = sets.map((s) => s.exerciseName);
+    const groupIds = new Array<number>(names.length).fill(0);
+    let nextGroupId = 1;
+    let i = 0;
+
+    while (i < names.length) {
+      const maxCycleLen = Math.floor((names.length - i) / 2);
+      let advanced = false;
+      for (let L = 2; L <= maxCycleLen; L++) {
+        const cycle = names.slice(i, i + L);
+        let j = i + L;
+        let count = 1;
+        while (
+          j + L <= names.length &&
+          cycle.every((n, k) => names[j + k] === n)
+        ) {
+          count++;
+          j += L;
+        }
+        if (count >= 2) {
+          // include any partial cycle at the end
+          let extra = 0;
+          while (
+            extra < L &&
+            j + extra < names.length &&
+            names[j + extra] === cycle[extra]
+          ) extra++;
+          const end = j + extra;
+          const gid = nextGroupId++;
+          for (let k = i; k < end; k++) groupIds[k] = gid;
+          i = end;
+          advanced = true;
+          break;
+        }
+      }
+      if (!advanced) i++;
+    }
+
+    const result: ExerciseSet[] = [];
+    let idx = 0;
+    while (idx < sets.length) {
+      const gid = groupIds[idx];
+      if (gid === 0) {
+        result.push(sets[idx++]);
+      } else {
+        let end = idx;
+        while (end < sets.length && groupIds[end] === gid) end++;
+        result.push(...this.mergeSupersetGroup(sets.slice(idx, end), gid));
+        idx = end;
+      }
+    }
+    return result;
+  }
+
+  private mergeSupersetGroup(sets: ExerciseSet[], groupId: number): ExerciseSet[] {
+    const byName = new Map<string, { entry: ExerciseSet; allReps: number[]; allWeights: number[] }>();
+    const order: string[] = [];
+
+    for (const s of sets) {
+      const sReps = s.repsList ?? Array(s.sets).fill(s.reps ?? 0);
+      const sWeights = s.weightList ?? Array(s.sets).fill(s.weight ?? 0);
+      if (!byName.has(s.exerciseName)) {
+        order.push(s.exerciseName);
+        byName.set(s.exerciseName, {
+          entry: { ...s, supersetGroup: groupId },
+          allReps: sReps,
+          allWeights: sWeights,
+        });
+      } else {
+        const existing = byName.get(s.exerciseName)!;
+        existing.allReps.push(...sReps);
+        existing.allWeights.push(...sWeights);
+        existing.entry.sets += s.sets;
+        existing.entry.volume = (existing.entry.volume ?? 0) + (s.volume ?? 0);
+      }
+    }
+
+    return order.map((name) => {
+      const { entry, allReps, allWeights } = byName.get(name)!;
+      const result = { ...entry };
+      if (allReps.every((r) => r === allReps[0])) {
+        result.reps = allReps[0];
+        result.repsList = undefined;
+      } else {
+        result.reps = undefined;
+        result.repsList = allReps;
+      }
+      if (allWeights.every((w) => w === allWeights[0])) {
+        result.weight = allWeights[0];
+        result.weightList = undefined;
+      } else {
+        result.weight = undefined;
+        result.weightList = allWeights;
+      }
+      return result;
+    });
+  }
+
+  /**
    * Fetch recent activities from Garmin
    */
   async fetchActivities(
@@ -290,17 +432,29 @@ export class ActivityExporter {
               activityId: activity.activityId,
             });
 
+            const isStrength = activity.activityType?.typeKey === "strength_training";
+            let fullExerciseSets: any[] | undefined;
+            if (isStrength) {
+              try {
+                await new Promise((resolve) => setTimeout(resolve, 200));
+                fullExerciseSets = await this.garminClient.getActivityExerciseSets(activity.activityId);
+              } catch {
+                // fall back to summarizedExerciseSets
+              }
+            }
+
             // Merge basic activity data with detailed data
             detailedActivities.push({
               ...activity,
               ...details,
+              ...(fullExerciseSets !== undefined && { fullExerciseSets }),
             });
 
             console.log(`  ✓ ${i + 1}/${activities.length}: ${activity.activityName}`);
 
-            // Add delay to avoid rate limiting (1 second between requests)
+            // Add delay to avoid rate limiting (500ms between requests)
             if (i < activities.length - 1) {
-              await new Promise((resolve) => setTimeout(resolve, 1000));
+              await new Promise((resolve) => setTimeout(resolve, 500));
             }
           } catch (error: any) {
             console.warn(
@@ -411,13 +565,29 @@ export class ActivityExporter {
       // Add strength-specific fields
       if (activityType === "strength_training") {
         const exerciseSets: ExerciseSet[] = [];
-        const rawSets =
-          activity.summarizedExerciseSets || activity.exerciseSets || [];
 
-        rawSets.forEach((set: any) => {
-          const splitSets = this.splitWarmupTopBackoffSets(set);
-          exerciseSets.push(...splitSets);
-        });
+        if (activity.fullExerciseSets?.length > 0) {
+          // Per-set data from the exerciseSets endpoint: each entry is one set
+          const expanded: ExerciseSet[] = activity.fullExerciseSets
+            .filter((set: any) => set.setType === "ACTIVE")
+            .map((set: any) => ({
+              exerciseName: this.formatExerciseName(set.exercises?.[0]?.name ?? set.exercises?.[0]?.category ?? set.category),
+              category: set.exercises?.[0]?.category ?? set.category ?? "UNKNOWN",
+              sets: 1,
+              reps: set.repetitionCount ?? 0,
+              weight: this.convertGarminWeight(set.weight ?? 0),
+              volume: (set.repetitionCount ?? 0) * this.convertGarminWeight(set.weight ?? 0),
+            }));
+
+          exerciseSets.push(...this.consolidateSets(expanded));
+        } else {
+          const rawSets =
+            activity.summarizedExerciseSets || activity.exerciseSets || [];
+          rawSets.forEach((set: any) => {
+            const splitSets = this.splitWarmupTopBackoffSets(set);
+            exerciseSets.push(...splitSets);
+          });
+        }
 
         return {
           ...base,
