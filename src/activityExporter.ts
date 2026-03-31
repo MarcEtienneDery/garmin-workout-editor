@@ -1,7 +1,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import { ExtractedActivities, ExerciseSet } from "./shared/types";
-import { GarminClient } from "./shared/garminClient";
+import { GarminClient, GarminRawSet } from "./shared/garminClient";
 import {
   generateMockActivities,
   normalizeActivityType as normalizeMockActivityType,
@@ -433,7 +433,7 @@ export class ActivityExporter {
             });
 
             const isStrength = activity.activityType?.typeKey === "strength_training";
-            let fullExerciseSets: any[] | undefined;
+            let fullExerciseSets: GarminRawSet[] | undefined;
             if (isStrength) {
               try {
                 await new Promise((resolve) => setTimeout(resolve, 200));
@@ -568,11 +568,11 @@ export class ActivityExporter {
 
         if (activity.fullExerciseSets?.length > 0) {
           // Per-set data from the exerciseSets endpoint: each entry is one set
-          const expanded: ExerciseSet[] = activity.fullExerciseSets
-            .filter((set: any) => set.setType === "ACTIVE")
-            .map((set: any) => ({
-              exerciseName: this.formatExerciseName(set.exercises?.[0]?.name ?? set.exercises?.[0]?.category ?? set.category),
-              category: set.exercises?.[0]?.category ?? set.category ?? "UNKNOWN",
+          const expanded: ExerciseSet[] = (activity.fullExerciseSets as GarminRawSet[])
+            .filter((set) => set.setType === "ACTIVE")
+            .map((set) => ({
+              exerciseName: this.formatExerciseName(set.exercises[0]?.name ?? set.exercises[0]?.category ?? "UNKNOWN"),
+              category: set.exercises[0]?.category ?? "UNKNOWN",
               sets: 1,
               reps: set.repetitionCount ?? 0,
               weight: this.convertGarminWeight(set.weight ?? 0),

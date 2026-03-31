@@ -1595,6 +1595,7 @@ export class WorkoutEditor {
     const name = (exerciseName || "").toUpperCase();
     
     // Direct matches to known Garmin categories
+    if (name.includes("SPLIT_SQUAT") || name.includes("BULGARIAN")) return "LUNGE";
     if (name.includes("SQUAT")) return "SQUAT";
     if (name.includes("DEADLIFT") || name.includes("DEAD_LIFT")) return "DEADLIFT";
     if (name.includes("BENCH") || (name.includes("PRESS") && !name.includes("SHOULDER"))) return "BENCH_PRESS";

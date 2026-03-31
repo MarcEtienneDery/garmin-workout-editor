@@ -1,6 +1,25 @@
 import { GarminConnect } from "@flow-js/garmin-connect";
 import TokenCache from "./tokenCache";
 
+/** Single exercise entry within a raw Garmin set (top-ranked classification) */
+export interface GarminExerciseEntry {
+  category: string;
+  name: string | null;
+  probability?: number;
+}
+
+/** Raw exercise set row from /activity-service/activity/{id}/exerciseSets */
+export interface GarminRawSet {
+  setType: string;                    // "ACTIVE" | "REST" | "WARMUP" | etc.
+  exercises: GarminExerciseEntry[];
+  duration: number;
+  repetitionCount: number | null;
+  weight: number | null;
+  startTime: string;
+  wktStepIndex: number;
+  messageIndex: number;
+}
+
 /**
  * Shared Garmin client initialization and authentication
  */
@@ -115,10 +134,10 @@ export class GarminClient {
    * Fetch per-set exercise data for a strength activity.
    * Uses the undocumented exerciseSets endpoint not exposed by the garmin-connect library.
    */
-  async getActivityExerciseSets(activityId: number | string): Promise<any[]> {
+  async getActivityExerciseSets(activityId: number | string): Promise<GarminRawSet[]> {
     const raw = await (this.client as any).client.get(
       `https://connectapi.garmin.com/activity-service/activity/${activityId}/exerciseSets`
-    );
+    ) as { exerciseSets?: GarminRawSet[] } | undefined;
     return raw?.exerciseSets ?? [];
   }
 
