@@ -23,6 +23,7 @@
   - Activity sets: `maxWeight / 453.6` to lbs.
   - Workout steps: convert grams to lbs unless unit already `pound`.
 - Workout step flattening: `WorkoutEditor.flattenSteps()` expands nested `RepeatGroupDTO`; `mergeRestIntoExercises()` folds first rest into prior step.
+- `lap.button` endCondition: Use `endConditionValue: 0` in workout JSON. The validator exempts `lap.button` from the positive-value requirement. This creates open-ended steps the user ends manually on their watch.
 
 ## Developer Workflows (Canonical Commands)
 - Install/build: `npm install`, `npm run build`
@@ -45,3 +46,4 @@
 - Rate limiting is explicit in fetch loops (`setTimeout` delays in activity/workout detail fetches); preserve this behavior.
 - `WorkoutEditor` supports `transformAndSaveWorkouts()`, but `src/manageWorkouts.ts` currently does not expose a `--transform-only` execution path despite usage text mentioning it.
 - `adjustWorkouts.ts` can operate file-only (`--activities`, `--workouts`) or fetch fresh from Garmin.
+- `--upload <file>` uploads workouts **without scheduling**; `--import-and-schedule <file>` uploads **and** schedules. Use `--dry-run` with either to validate first. After upload, the JSON file is updated with new Garmin `workoutId` values.

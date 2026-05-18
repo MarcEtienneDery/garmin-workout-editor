@@ -27,7 +27,7 @@ function printEquivalentCommand(npmScript: string, args: string[]): void {
 async function runEntryPoint(
   entryPoint: string,
   args: string[],
-  executor: 'ts-node' | 'tsx' = 'ts-node'
+  executor: 'tsx' = 'tsx'
 ): Promise<void> {
   return new Promise((resolve, reject) => {
     const child = spawn(executor, [entryPoint, ...args], {

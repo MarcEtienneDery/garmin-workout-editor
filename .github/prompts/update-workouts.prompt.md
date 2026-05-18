@@ -1,8 +1,8 @@
 ---
-mode: agent
+agent: agent
 description: Use when updating this week's strength and running workouts from the latest Garmin activity data. Fetch last week's activities, review performance, adjust the maintenance workout file, validate it, and schedule the workouts in Garmin.
 tools:
-  ["run_in_terminal", "read_file", "apply_patch"]
+  [vscode, execute, read, agent, browser, edit, search, web, todo]
 ---
 
 # Update Weekly Workouts
@@ -29,7 +29,7 @@ Steps:
 Repository-specific expectations:
 
 - Primary workout file: `data/workouts-full-body-maintenance.json`
-- Activity export command: `npm run export-activities -- 10`
+- Activity export command: `npm run export-activities -- 15`
 - Validation command: `npm run manage-workouts -- --upload data/workouts-full-body-maintenance.json --dry-run --mock`
 - Upload command: `npm run manage-workouts -- --import-and-schedule data/workouts-full-body-maintenance.json`
 

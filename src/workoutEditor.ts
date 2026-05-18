@@ -1,5 +1,6 @@
 import * as fs from "fs";
 import * as path from "path";
+import exerciseCategoryMap from "./exercise-category-map.json";
 import {
   DetailedWorkout,
   GarminWorkoutSummary,
@@ -55,6 +56,8 @@ const VALID_TARGET_TYPES = [
   "cadence.zone",
   "open",
 ];
+
+const EXERCISE_CATEGORY_MAP = exerciseCategoryMap as Record<string, string>;
 
 /**
  * Workout management, import, export, and scheduling
@@ -116,8 +119,8 @@ export class WorkoutEditor {
       );
     }
 
-    // Required: endConditionValue (if endCondition is set)
-    if (step.endCondition && step.endConditionValue === undefined) {
+    // Required: endConditionValue (if endCondition is set, except lap.button)
+    if (step.endCondition && step.endCondition !== "lap.button" && step.endConditionValue === undefined) {
       throw new Error(
         `Step ${stepIndex}: Missing required field 'endConditionValue' when endCondition is '${step.endCondition}'`
       );
@@ -130,8 +133,8 @@ export class WorkoutEditor {
       );
     }
 
-    // Range validation: endConditionValue must be positive
-    if (step.endConditionValue !== undefined && step.endConditionValue <= 0) {
+    // Range validation: endConditionValue must be positive (except lap.button which uses 0)
+    if (step.endConditionValue !== undefined && step.endCondition !== "lap.button" && step.endConditionValue <= 0) {
       throw new Error(
         `Step ${stepIndex}: Field 'endConditionValue' must be positive, got ${step.endConditionValue}`
       );
@@ -208,6 +211,16 @@ export class WorkoutEditor {
       console.warn(
         `⚠️  Step ${stepIndex}: Missing 'exerciseName' for exercise step with ${step.weight ? 'weight' : 'reps'}. This may cause issues in Garmin.`
       );
+    }
+
+    // If exerciseName is present, it must map to a Garmin exercise category.
+    if (step.exerciseName) {
+      const { mapKey, category } = this.resolveExerciseCategory(step.exerciseName);
+      if (!category) {
+        throw new Error(
+          `Step ${stepIndex}: Unknown exerciseName '${step.exerciseName}' (normalized: '${mapKey}'). Add it to exercise-category-map.json before upload.`
+        );
+      }
     }
 
     // Reps validation
@@ -1227,6 +1240,17 @@ export class WorkoutEditor {
     console.log("📤 Uploading workouts to Garmin...\n");
     
     for (const workout of plan.workouts) {
+      if (workout.steps && workout.steps.length > 0) {
+        try {
+          this.validateWorkout(workout as DetailedWorkout);
+        } catch (error: any) {
+          console.error(
+            `❌ Skipping invalid structured workout '${workout.workoutName}': ${error.message}`
+          );
+          continue;
+        }
+      }
+
       // For running workouts WITHOUT structured steps, use simple addRunningWorkout
       // For workouts WITH structured steps (including heart rate zones), use full createWorkout
       if (workout.workoutType === "running" && workout.distanceMeters && 
@@ -1589,31 +1613,44 @@ export class WorkoutEditor {
   }
 
   /**
-   * Derive exercise category from exercise name
+   * Normalize arbitrary exercise names to Garmin map keys.
+   * Example: "Barbell Bench Press" -> "BARBELL_BENCH_PRESS"
+   */
+  private normalizeExerciseMapKey(exerciseName: string): string {
+    let key = exerciseName
+      .trim()
+      .toUpperCase()
+      .replace(/[^A-Z0-9]+/g, "_")
+      .replace(/_+/g, "_")
+      .replace(/^_+|_+$/g, "");
+
+    if (key && /^[0-9]/.test(key)) {
+      key = `_${key}`;
+    }
+
+    return key;
+  }
+
+  /**
+   * Resolve Garmin category and normalized key for an exercise name.
+   */
+  private resolveExerciseCategory(exerciseName: string): {
+    mapKey: string;
+    category: string | null;
+  } {
+    const mapKey = this.normalizeExerciseMapKey(exerciseName);
+    return {
+      mapKey,
+      category: EXERCISE_CATEGORY_MAP[mapKey] ?? null,
+    };
+  }
+
+  /**
+   * Derive exercise category from exercise name using authoritative Garmin lookup table.
+   * Source: src/exercise-category-map.json (parsed from Garmin's exercise picker HTML).
    */
   private getCategoryFromExerciseName(exerciseName: string): string | null {
-    const name = (exerciseName || "").toUpperCase();
-    
-    // Direct matches to known Garmin categories
-    if (name.includes("SPLIT_SQUAT") || name.includes("BULGARIAN")) return "LUNGE";
-    if (name.includes("SQUAT")) return "SQUAT";
-    if (name.includes("DEADLIFT") || name.includes("DEAD_LIFT")) return "DEADLIFT";
-    if (name.includes("BENCH") || (name.includes("PRESS") && !name.includes("SHOULDER"))) return "BENCH_PRESS";
-    if (name.includes("SHOULDER") && name.includes("PRESS")) return "SHOULDER_PRESS";
-    if (name.includes("ROW")) return "ROW";
-    if (name.includes("PULL") || name.includes("CHIN") || name.includes("LAT_PULLDOWN")) return "PULL_UP";
-    if (name.includes("LUNGE")) return "LUNGE";
-    if (name.includes("CALF")) return "CALF_RAISE";
-    if (name.includes("LATERAL_RAISE") || name.includes("LATERAL RAISE")) return "LATERAL_RAISE";
-    if (name.includes("CURL")) return "CURL";
-    if (name.includes("TRICEPS") || name.includes("TRICEP")) return "TRICEPS_EXTENSION";
-    if (name.includes("HIP") && name.includes("RAISE")) return "HIP_RAISE";
-    if (name.includes("PLANK")) return "PLANK";
-    if (name.includes("PLYO") || name.includes("JUMP") || name.includes("EXPLOSIVE")) return "PLYO";
-    if (name.includes("CARDIO") || name.includes("RUNNING") || name.includes("TREADMILL")) return "CARDIO";
-    
-    // Default to null if we can't determine the category
-    return null;
+    return this.resolveExerciseCategory(exerciseName).category;
   }
 
   /**
@@ -1779,14 +1816,15 @@ export class WorkoutEditor {
 
   /**
    * Upload a single workout to Garmin (delete existing if present, then create new)
+   * Returns the new workoutId on success, null on failure.
    */
-  async uploadWorkout(workout: DetailedWorkout, dryRun: boolean = false): Promise<boolean> {
+  async uploadWorkout(workout: DetailedWorkout, dryRun: boolean = false): Promise<number | null> {
     // Validate workout first
     try {
       this.validateWorkout(workout);
     } catch (error: any) {
       console.error(`❌ Validation failed: ${error.message}`);
-      return false;
+      return null;
     }
 
     if (dryRun) {
@@ -1819,7 +1857,7 @@ export class WorkoutEditor {
           console.log(`       ... and ${workout.steps.length - 3} more`);
         }
       }
-      return true;
+      return -1; // sentinel for dry-run success
     }
 
     // Authenticate
@@ -1856,12 +1894,11 @@ export class WorkoutEditor {
       const created = await client.createWorkout(garminWorkout);
       
       console.log(`     ✅ Created (New ID: ${created.workoutId})`);
-      console.log(`     💡 Run --export to sync new IDs back to your local file`);
       
-      return true;
+      return created.workoutId ?? null;
     } catch (error: any) {
       console.error(`     ❌ Upload failed: ${error.message}`);
-      return false;
+      return null;
     }
   }
 
@@ -1927,15 +1964,18 @@ export class WorkoutEditor {
     let successful = 0;
     let failed = 0;
     const failedWorkouts: string[] = [];
+    let idsUpdated = 0;
 
     for (let i = 0; i < workouts.length; i++) {
       const workout = workouts[i];
       console.log(`\n[${i + 1}/${workouts.length}] ${workout.workoutName}`);
       
-      const success = await this.uploadWorkout(workout, false);
+      const newId = await this.uploadWorkout(workout, false);
       
-      if (success) {
+      if (newId !== null) {
         successful++;
+        workout.workoutId = newId;
+        idsUpdated++;
       } else {
         failed++;
         failedWorkouts.push(workout.workoutName);
@@ -1945,6 +1985,16 @@ export class WorkoutEditor {
       if (i < workouts.length - 1) {
         await new Promise((resolve) => setTimeout(resolve, 1000));
       }
+    }
+
+    // Write updated IDs back to source file
+    if (idsUpdated > 0) {
+      if (Array.isArray(data)) {
+        fs.writeFileSync(inputPath, JSON.stringify(workouts, null, 2));
+      } else {
+        fs.writeFileSync(inputPath, JSON.stringify({ ...data, workouts }, null, 2));
+      }
+      console.log(`\n📝 Updated ${idsUpdated} workout ID(s) in ${inputPath}`);
     }
 
     console.log("\n" + "=".repeat(50));
@@ -1960,6 +2010,45 @@ export class WorkoutEditor {
     console.log("=".repeat(50) + "\n");
 
     return { successful, failed, failedWorkouts };
+  }
+
+  /**
+   * Send workouts to a connected Garmin device.
+   * Requires a deviceId (from getDevices) and an array of workouts with workoutId/workoutName.
+   */
+  async sendWorkoutsToDevice(
+    workouts: { workoutId: number; workoutName: string }[],
+    deviceId?: number
+  ): Promise<void> {
+    const authenticated = await this.garminClient.ensureAuthenticated();
+    if (!authenticated) {
+      throw new Error("Failed to authenticate with Garmin");
+    }
+
+    let targetDeviceId = deviceId;
+
+    if (!targetDeviceId) {
+      // Auto-detect: pick the first active device
+      console.log("🔍 Looking up registered devices...");
+      const devices = await this.garminClient.getDevices();
+      if (!devices || devices.length === 0) {
+        throw new Error("No registered devices found on your Garmin account");
+      }
+
+      // Prefer a device that looks like a watch (has deviceTypePk, not a bike computer etc.)
+      const device = devices[0];
+      targetDeviceId = device.deviceId;
+      console.log(`📱 Using device: ${device.displayName || device.deviceId}`);
+    }
+
+    const validWorkouts = workouts.filter((w) => w.workoutId);
+    if (validWorkouts.length === 0) {
+      throw new Error("No workouts with valid IDs to send");
+    }
+
+    console.log(`📡 Sending ${validWorkouts.length} workout(s) to device ${targetDeviceId}...`);
+    await this.garminClient.sendToDevice(targetDeviceId!, validWorkouts);
+    console.log(`✅ Sent ${validWorkouts.length} workout(s) to device`);
   }
 }
 

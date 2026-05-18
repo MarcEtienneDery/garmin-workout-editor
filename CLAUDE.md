@@ -49,6 +49,7 @@ The AI adjustment workflow loads activities and workouts from file or fetches fr
   - Activity exercise sets: `maxWeight / 453.6` (grams → lbs)
   - Workout steps: convert grams → lbs unless unit is already `pound`
 - **Workout step flattening:** `WorkoutEditor.flattenSteps()` expands nested `RepeatGroupDTO`; `mergeRestIntoExercises()` folds first rest into prior step.
+- **`lap.button` endCondition:** Use `endConditionValue: 0` in workout JSON. The validator exempts `lap.button` from the positive-value requirement. This is the idiomatic way to create open-ended steps the user ends manually on their watch.
 - **Rate limiting:** `setTimeout` delays are intentional in activity/workout detail fetch loops; preserve them.
 
 ## Testing Patterns
@@ -61,3 +62,10 @@ The AI adjustment workflow loads activities and workouts from file or fetches fr
 
 - `WorkoutEditor.transformAndSaveWorkouts()` exists but `src/manageWorkouts.ts` does not expose a `--transform-only` flag despite usage text suggesting it does.
 - Auth via email/password can fail with Garmin 2FA; session-cookie auth is documented in the README.
+
+## Workout Upload vs Schedule
+
+- `--upload <file>` uploads (creates/replaces) workouts **without scheduling** them. Use `--dry-run` to validate first.
+- `--import-and-schedule <file>` uploads **and** schedules workouts based on `scheduledDate` fields.
+- `--schedule <file>` schedules already-uploaded workouts from a plan file.
+- After upload, the JSON file is automatically updated with new Garmin `workoutId` values.

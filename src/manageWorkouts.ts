@@ -26,6 +26,7 @@ async function main() {
   const importAndSchedule = process.argv.includes("--import-and-schedule");
   const uploadWorkouts = process.argv.includes("--upload");
   const uploadSingle = process.argv.includes("--upload-single");
+  const sendToDevice = process.argv.includes("--send-to-device");
   const startNewPlan = process.argv.includes("--start-new-plan");
   const saveRaw = process.argv.includes("--raw");
   const dryRun = process.argv.includes("--dry-run");
@@ -54,6 +55,8 @@ async function main() {
     path.join(__dirname, "../data/training-plan.json");
   const uploadInputPath = getArgValue("--upload");
   const uploadWorkoutId = getArgValue("--upload-single");
+  const sendToDevicePath = getArgValue("--send-to-device");
+  const deviceIdArg = getArgValue("--device-id");
 
   console.log("🏋️  Garmin Workout Manager");
   console.log("===========================\n");
@@ -183,9 +186,6 @@ async function main() {
           process.exit(1);
         } else {
           console.log("\n✅ All workouts uploaded successfully!");
-          console.log("\n💡 Next steps:");
-          console.log("   1. Run: npm run manage-workouts -- --export");
-          console.log("   2. This will sync the new workout IDs to your local file");
         }
       }
       return;
@@ -214,17 +214,51 @@ async function main() {
         process.exit(1);
       }
 
-      const success = await editor.uploadWorkout(workout, dryRun);
+      const newId = await editor.uploadWorkout(workout, dryRun);
       
-      if (!dryRun && !success) {
+      if (!dryRun && newId === null) {
         console.log("\n❌ Workout upload failed");
         process.exit(1);
-      } else if (!dryRun) {
+      } else if (!dryRun && newId !== null && newId !== -1) {
+        // Write updated ID back to source file
+        workout.workoutId = newId;
+        const updatedWorkouts = Array.isArray(data) ? workouts : { ...data, workouts };
+        require("fs").writeFileSync(workoutsPath, JSON.stringify(updatedWorkouts, null, 2));
+        console.log(`\n📝 Updated workout ID to ${newId} in ${workoutsPath}`);
         console.log("\n✅ Workout uploaded successfully!");
-        console.log("\n💡 Next steps:");
-        console.log("   1. Run: npm run manage-workouts -- --export");
-        console.log("   2. This will sync the new workout ID to your local file");
       }
+      return;
+    }
+
+    if (sendToDevice) {
+      if (!sendToDevicePath) {
+        console.error("❌ Error: Missing file path for --send-to-device");
+        console.error("Usage: npm run manage-workouts -- --send-to-device <path> [--device-id <id>]");
+        process.exit(1);
+      }
+
+      const fileContent = fs.readFileSync(sendToDevicePath, "utf-8");
+      const data = JSON.parse(fileContent);
+      let workouts = Array.isArray(data) ? data : data.workouts;
+
+      if (!workouts || workouts.length === 0) {
+        console.error("❌ Error: No workouts found in file");
+        process.exit(1);
+      }
+
+      // Filter to only workouts flagged with sendToDevice: true
+      const flagged = workouts.filter((w: any) => w.sendToDevice);
+      const toSend = flagged.length > 0 ? flagged : workouts;
+
+      if (flagged.length > 0) {
+        console.log(`📋 Found ${flagged.length} workout(s) flagged with sendToDevice\n`);
+      } else {
+        console.log(`📋 No sendToDevice flags found — sending all ${toSend.length} workout(s)\n`);
+      }
+
+      const deviceId = deviceIdArg ? Number(deviceIdArg) : undefined;
+      await editor.sendWorkoutsToDevice(toSend, deviceId);
+      console.log("\n✅ Workouts sent to device successfully!");
       return;
     }
 
@@ -263,6 +297,9 @@ async function main() {
     console.log(
       "  npm run manage-workouts -- --upload-single <id>            Upload single workout by ID"
     );
+    console.log(
+      "  npm run manage-workouts -- --send-to-device <path>         Send workouts to watch/device"
+    );
     console.log("\nOptions:");
     console.log("  --output <path>              Set workout export output path");
     console.log(
@@ -272,6 +309,7 @@ async function main() {
     console.log("  --week-start <YYYY-MM-DD>    Override week start date (transform only)");
     console.log("  --week-end <YYYY-MM-DD>      Override week end date (transform only)");
     console.log("  --file <path>                Specify workouts file (for --upload-single)");
+    console.log("  --device-id <id>             Target device ID (for --send-to-device, auto-detects if omitted)");
     console.log("  --dry-run                    Validate and preview without uploading");
     console.log("  --mock                       Use mock data for testing");
     console.log("  --raw                        Save raw API response for debugging");

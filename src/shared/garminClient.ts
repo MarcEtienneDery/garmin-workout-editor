@@ -142,6 +142,40 @@ export class GarminClient {
   }
 
   /**
+   * Send workouts to a connected device.
+   * Uses the undocumented device-message endpoint that the Garmin Connect UI uses for "Send to Device".
+   */
+  async sendToDevice(
+    deviceId: number,
+    workouts: { workoutId: number; workoutName: string }[]
+  ): Promise<void> {
+    const messages = workouts.map((w) => ({
+      deviceId,
+      messageUrl: `workout-service/workout/FIT/${w.workoutId}`,
+      messageType: "workouts",
+      messageName: w.workoutName,
+      groupName: null,
+      priority: 1,
+      fileType: "FIT",
+      metaDataId: w.workoutId,
+    }));
+
+    await (this.client as any).client.post(
+      "https://connectapi.garmin.com/device-service/devicemessage/messages",
+      messages
+    );
+  }
+
+  /**
+   * Get the user's registered devices.
+   */
+  async getDevices(): Promise<any[]> {
+    return (this.client as any).client.get(
+      "https://connectapi.garmin.com/device-service/deviceregistration/devices"
+    );
+  }
+
+  /**
    * Clear the stored authentication token cache
    * Useful if you want to force a fresh login on next authentication
    */

@@ -121,6 +121,46 @@ describe("WorkoutEditor", () => {
     });
   });
 
+  describe("Exercise Category Validation", () => {
+    it("should reject workout steps with unknown exercise names", () => {
+      const workout: any = {
+        workoutName: "Unknown Exercise Test",
+        steps: [
+          {
+            stepType: "exercise",
+            exerciseName: "NOT_A_REAL_EXERCISE",
+            endCondition: "reps",
+            endConditionValue: 8,
+            reps: 8,
+            targetType: "no.target",
+          },
+        ],
+      };
+
+      expect(() => (editor as any).validateWorkout(workout)).toThrow(
+        "Unknown exerciseName"
+      );
+    });
+
+    it("should accept exercise names that normalize to JSON map keys", () => {
+      const workout: any = {
+        workoutName: "Normalized Exercise Test",
+        steps: [
+          {
+            stepType: "exercise",
+            exerciseName: "Barbell Bench Press",
+            endCondition: "reps",
+            endConditionValue: 8,
+            reps: 8,
+            targetType: "no.target",
+          },
+        ],
+      };
+
+      expect(() => (editor as any).validateWorkout(workout)).not.toThrow();
+    });
+  });
+
   describe("Date Manipulation", () => {
     it("should shift dates correctly", () => {
       const shiftDate = (editor as any).shiftDate.bind(editor);

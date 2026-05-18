@@ -1758,6 +1758,31 @@ describe("Workout Upload Cycle Integration Tests", () => {
       expect(zoneStep.targetValueOne).toBeDefined();
       expect(zoneStep.targetValueTwo).toBeDefined();
     });
+
+    it("should normalize cooldown open targetType to no.target on upload payload", async () => {
+      const workout: DetailedWorkout = {
+        workoutId: 999001,
+        workoutName: "Cooldown target normalization",
+        workoutType: "running",
+        steps: [
+          {
+            stepType: "cooldown",
+            targetType: "open",
+            endCondition: "time",
+            endConditionValue: 300,
+            durationSeconds: 300,
+            stepOrder: 1,
+          },
+        ],
+      };
+
+      const garminWorkout = (editor as any).buildGarminWorkoutDetail(workout);
+      const cooldownStep = garminWorkout.workoutSegments[0].workoutSteps[0];
+
+      expect(cooldownStep.stepType.stepTypeKey).toBe("cooldown");
+      expect(cooldownStep.targetType.workoutTargetTypeKey).toBe("no.target");
+      expect(cooldownStep.targetType.workoutTargetTypeId).toBe(1);
+    });
   });
 
   describe("Running Workout Upload Cycle - Run interval Tuesday", () => {
