@@ -9,8 +9,10 @@ import {
   buildProcessArgs,
   closePrompt,
 } from './shared/cliHelpers';
+import { getAvailableProfiles } from './shared/profileLoader';
 
-const DATA_DIR = path.join(process.cwd(), 'data');
+let DATA_DIR = path.join(process.cwd(), 'data');
+let selectedProfile: string = '';
 
 /**
  * Print the equivalent npm run command for direct CLI use
@@ -78,7 +80,7 @@ async function activityExportFlow(): Promise<void> {
     answers.isTransformOnly = true;
     transformFilePath = await promptText(
       'Path to raw activities file',
-      'data/activities-raw.json'
+      path.join(DATA_DIR, 'activities-raw.json')
     );
     answers.transformFilePath = transformFilePath;
 
@@ -117,10 +119,11 @@ async function activityExportFlow(): Promise<void> {
   }
 
   // Output path
-  const outputPath = await promptText('Output file path', 'data/activities.json');
+  const outputPath = await promptText('Output file path', path.join(DATA_DIR, 'activities.json'));
   answers.outputPath = outputPath;
 
   // Build and run
+  answers.profile = selectedProfile;
   const args = buildProcessArgs('export-activities', answers);
   closePrompt();
 
@@ -155,13 +158,13 @@ async function workoutManagementFlow(): Promise<void> {
 
   // For operations that need a file
   if (operation === 'schedule' || operation === 'upload' || operation === 'copy-next-week') {
-    const workoutFile = await promptText('Workout file path', 'data/workouts.json');
+    const workoutFile = await promptText('Workout file path', path.join(DATA_DIR, 'workouts.json'));
     answers.workoutFile = workoutFile;
   }
 
   if (operation === 'start-new-plan') {
-    const workoutPlanFile = await promptText('Workout plan file path', 'data/next-week.workouts.tmp.json');
-    const trainingPlanFile = await promptText('Training plan file path', 'data/training-plan.json');
+    const workoutPlanFile = await promptText('Workout plan file path', path.join(DATA_DIR, 'next-week.workouts.tmp.json'));
+    const trainingPlanFile = await promptText('Training plan file path', path.join(DATA_DIR, 'training-plan.json'));
     answers.workoutFile = workoutPlanFile;
     answers.planFile = trainingPlanFile;
   }
@@ -176,12 +179,13 @@ async function workoutManagementFlow(): Promise<void> {
   if (operation === 'template' || operation === 'export' || operation === 'copy-next-week') {
     const outputPath = await promptText(
       'Output file path',
-      operation === 'template' ? 'data/next-week.workouts.json' : 'data/workouts.json'
+      operation === 'template' ? path.join(DATA_DIR, 'next-week.workouts.json') : path.join(DATA_DIR, 'workouts.json')
     );
     answers.outputPath = outputPath;
   }
 
   // Build and run
+  answers.profile = selectedProfile;
   const args = buildProcessArgs('manage-workouts', answers);
   closePrompt();
 
@@ -227,6 +231,7 @@ async function adjustWorkoutsFlow(): Promise<void> {
     if (notes) answers.reviewNotes = notes;
     answers.outputPath = outputPath;
 
+    answers.profile = selectedProfile;
     const args = buildProcessArgs('adjust-workouts', answers);
     closePrompt();
 
@@ -259,7 +264,7 @@ async function adjustWorkoutsFlow(): Promise<void> {
   answers.week = week;
 
   if (useCache) {
-    console.log('💡 Tip: prefer a weekly workout plan file (for example data/next-week.workouts.tmp.json).');
+    console.log(`💡 Tip: prefer a weekly workout plan file (for example ${path.join(DATA_DIR, 'next-week.workouts.tmp.json')}).`);
     const activitiesFile = await promptText('Activities file path', activitiesCached);
     const workoutsFile = await promptText('Workouts file path (weekly plan recommended)', defaultWorkoutsFile);
     const planFile = await promptText('Training plan file path', planCached);
@@ -276,10 +281,11 @@ async function adjustWorkoutsFlow(): Promise<void> {
   if (dryRun) answers.dryRun = true;
 
   // Output path
-  const outputPath = await promptText('Output file path', 'data/workouts-adjusted.json');
+  const outputPath = await promptText('Output file path', path.join(DATA_DIR, 'workouts-adjusted.json'));
   answers.outputPath = outputPath;
 
   // Build and run
+  answers.profile = selectedProfile;
   const args = buildProcessArgs('adjust-workouts', answers);
   closePrompt();
 
@@ -302,10 +308,48 @@ async function adjustWorkoutsFlow(): Promise<void> {
 }
 
 /**
+ * Profile selection — must happen before any workflow
+ */
+async function selectProfile(): Promise<string> {
+  const profiles = getAvailableProfiles();
+
+  if (profiles.length === 0) {
+    console.error('\n❌ No profiles found.');
+    console.error('   Create .env.<name> files (e.g., .env.MED, .env.Julie) in the project root.');
+    console.error('   Each file should contain GARMIN_EMAIL and GARMIN_PASSWORD.');
+    process.exit(1);
+  }
+
+  if (profiles.length === 1) {
+    console.log(`\n👤 Using profile: ${profiles[0]}`);
+    return profiles[0];
+  }
+
+  const choice = await promptChoice(
+    'Select profile:',
+    profiles.map((p) => ({ label: p, value: p })),
+    0
+  );
+
+  return choice;
+}
+
+/**
  * Main menu
  */
 async function mainMenu(): Promise<void> {
   console.log('\n🏃 Garmin Workout Editor\n');
+
+  // Profile selection first
+  selectedProfile = await selectProfile();
+  DATA_DIR = path.join(process.cwd(), 'data', selectedProfile);
+
+  // Ensure profile data dir exists
+  if (!fs.existsSync(DATA_DIR)) {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+  }
+
+  console.log(`\n📂 Data directory: ${DATA_DIR}\n`);
   console.log('Select an operation:\n');
 
   const operation = await promptChoice(

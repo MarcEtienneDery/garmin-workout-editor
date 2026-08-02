@@ -233,6 +233,7 @@ export function buildProcessArgs(
 
   // Common flags
   if (answers.mock) args.push('--mock');
+  if (answers.profile) args.push('--profile', answers.profile);
 
   return args;
 }

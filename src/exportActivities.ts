@@ -2,15 +2,22 @@ import * as dotenv from "dotenv";
 import * as path from "path";
 import { GarminClient } from "./shared/garminClient";
 import ActivityExporter from "./activityExporter";
+import { requireProfile, getProfileArg } from "./shared/profileLoader";
 
-// Load environment variables
+// Load base env (for non-profile vars like GITHUB_TOKEN)
 dotenv.config();
 
 async function main() {
   const mockMode =
     process.env.MOCK_MODE === "true" || process.argv.includes("--mock");
-  const email = process.env.GARMIN_EMAIL;
-  const password = process.env.GARMIN_PASSWORD;
+
+  // Load profile (required unless mock mode)
+  const profile = requireProfile(mockMode);
+  const email = profile.email;
+  const password = profile.password;
+  const dataDir = profile.dataDir;
+
+  console.log(`👤 Profile: ${profile.name}`);
 
   const getArgValue = (flag: string): string | undefined => {
     const index = process.argv.indexOf(flag);
@@ -50,10 +57,10 @@ async function main() {
     return;
   }
 
-  if (!email || !password) {
+  if (!mockMode && (!email || !password)) {
     console.error("❌ Error: Credentials are required");
     console.error(
-      "Please provide GARMIN_EMAIL and GARMIN_PASSWORD in .env"
+      "Please provide GARMIN_EMAIL and GARMIN_PASSWORD in .env.<profile>"
     );
     process.exit(1);
   }
@@ -79,7 +86,7 @@ async function main() {
   }
 
   // Get limit from positional arguments, excluding flags and their values
-  const flagsWithValues = new Set(["--type", "--week-start", "--week-end", "--output", "--transform-only"]);
+  const flagsWithValues = new Set(["--type", "--week-start", "--week-end", "--output", "--transform-only", "--profile"]);
   const args: string[] = [];
   const rawArgs = process.argv.slice(2);
   for (let i = 0; i < rawArgs.length; i++) {
@@ -92,7 +99,7 @@ async function main() {
   }
   const limit = parseInt(args[0] || "20");
   const outputPath =
-    args[1] || path.join(__dirname, "../data/activities.json");
+    args[1] || getArgValue("--output") || path.join(dataDir, "activities.json");
 
   console.log("🚀 Garmin Activity Exporter");
   console.log("===========================\n");
@@ -124,7 +131,7 @@ async function main() {
     console.log(`📅 Filtering from: ${customWeekStart}${customWeekEnd ? ` → ${customWeekEnd}` : " onwards"}\n`);
   }
 
-  const garminClient = new GarminClient(email, password, mockMode);
+  const garminClient = new GarminClient(email, password, mockMode, dataDir);
   const exporter = new ActivityExporter(garminClient);
 
   const success = await exporter.extract(

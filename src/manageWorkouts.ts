@@ -3,15 +3,22 @@ import * as path from "path";
 import * as fs from "fs";
 import { GarminClient } from "./shared/garminClient";
 import WorkoutEditor from "./workoutEditor";
+import { requireProfile } from "./shared/profileLoader";
 
-// Load environment variables
+// Load base env (for non-profile vars)
 dotenv.config();
 
 async function main() {
-  const email = process.env.GARMIN_EMAIL;
-  const password = process.env.GARMIN_PASSWORD;
   const mockMode =
     process.env.MOCK_MODE === "true" || process.argv.includes("--mock");
+
+  // Load profile (required unless mock mode)
+  const profile = requireProfile(mockMode);
+  const email = profile.email;
+  const password = profile.password;
+  const dataDir = profile.dataDir;
+
+  console.log(`👤 Profile: ${profile.name}`);
 
   const getArgValue = (flag: string): string | undefined => {
     const index = process.argv.indexOf(flag);
@@ -34,17 +41,17 @@ async function main() {
   if (!mockMode && !startNewPlan && (!email || !password)) {
     console.error("❌ Error: Credentials are required");
     console.error(
-      "Please provide GARMIN_EMAIL and GARMIN_PASSWORD in .env"
+      "Please provide GARMIN_EMAIL and GARMIN_PASSWORD in .env.<profile>"
     );
     process.exit(1);
   }
 
   const workoutsOutputPath =
     getArgValue("--output") ||
-    path.join(__dirname, "../data/workouts.json");
+    path.join(dataDir, "workouts.json");
   const templateOutputPath =
     getArgValue("--template-output") ||
-    path.join(__dirname, "../data/next-week.workouts.tmp.json");
+    path.join(dataDir, "next-week.workouts.tmp.json");
   const planInputPath =
     getArgValue("--schedule") ||
     getArgValue("--copy-next-week") ||
@@ -52,7 +59,7 @@ async function main() {
   const startNewPlanWorkoutPath = getArgValue("--start-new-plan");
   const trainingPlanPath =
     getArgValue("--plan") ||
-    path.join(__dirname, "../data/training-plan.json");
+    path.join(dataDir, "training-plan.json");
   const uploadInputPath = getArgValue("--upload");
   const uploadWorkoutId = getArgValue("--upload-single");
   const sendToDevicePath = getArgValue("--send-to-device");
@@ -70,7 +77,8 @@ async function main() {
   const garminClient = new GarminClient(
     email ?? "dummy@example.com",
     password ?? "dummy",
-    mockMode
+    mockMode,
+    dataDir
   );
   const editor = new WorkoutEditor(garminClient);
 

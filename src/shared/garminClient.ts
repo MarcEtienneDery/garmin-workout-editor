@@ -30,11 +30,11 @@ export class GarminClient {
   private mockMode: boolean;
   private tokenCache: TokenCache;
 
-  constructor(email: string, password: string, mockMode: boolean = false) {
+  constructor(email: string, password: string, mockMode: boolean = false, dataDir?: string) {
     this.email = email;
     this.password = password;
     this.mockMode = mockMode;
-    this.tokenCache = new TokenCache();
+    this.tokenCache = new TokenCache(dataDir || "data");
     this.client = new GarminConnect({
       username: email,
       password: password,

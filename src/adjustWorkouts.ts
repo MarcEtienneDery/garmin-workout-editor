@@ -33,6 +33,7 @@ import {
   perWorkoutReviewLoop,
 } from "./workoutAdjuster";
 import { AdjustmentContext, TrainingPlan, WeeklyWorkoutPlan } from "./shared/types";
+import { requireProfile } from "./shared/profileLoader";
 
 dotenv.config();
 
@@ -171,12 +172,17 @@ async function promptWeekChoice(): Promise<{ lastWeek: boolean; thisWeek: boolea
 async function main(): Promise<void> {
   const mockMode =
     process.env.MOCK_MODE === "true" || hasFlag("--mock");
-  const email = process.env.GARMIN_EMAIL;
-  const password = process.env.GARMIN_PASSWORD;
+
+  // Load profile (required unless mock mode)
+  const profile = requireProfile(mockMode);
+  const email = profile.email;
+  const password = profile.password;
+  const dataDir = profile.dataDir;
   const revisitPlan = hasFlag("--revisit-plan");
 
   console.log("🏋️  Garmin Workout Adjuster (AI-powered)");
   console.log("=========================================\n");
+  console.log(`👤 Profile: ${profile.name}\n`);
 
   if (mockMode) console.log("🔄 Running in MOCK mode (no Garmin API, no LLM)\n");
 
@@ -184,7 +190,7 @@ async function main(): Promise<void> {
   if (hasFlag("--init-plan")) {
     const planOutput =
       getArgValue("--plan") ??
-      path.join(__dirname, "../data/training-plan.json");
+      path.join(dataDir, "training-plan.json");
     initTrainingPlan(planOutput);
     return;
   }
@@ -198,6 +204,7 @@ async function main(): Promise<void> {
   if (!revisitPlan && !mockMode && needsGarmin && (!email || !password)) {
     console.error("❌ Error: GARMIN_EMAIL and GARMIN_PASSWORD are required.");
     console.error("   Use --activities and --workouts to load from files instead.");
+    console.error("   Or check your .env.<profile> file.");
     printUsage();
     process.exit(1);
   }
@@ -205,13 +212,13 @@ async function main(): Promise<void> {
   // ── Paths ────────────────────────────────────────────────────────────────
   const trainingPlanPath =
     getArgValue("--plan") ??
-    path.join(__dirname, "../data/training-plan.json");
+    path.join(dataDir, "training-plan.json");
   const outputPath =
     getArgValue("--output") ??
-    path.join(__dirname, "../data/workouts-adjusted.json");
-  const tempActivitiesPath = path.join(__dirname, "../data/activities.json");
-  const tempWorkoutsPath = path.join(__dirname, "../data/next-week.workouts.tmp.json");
-  const tempWorkoutsExportPath = path.join(__dirname, "../data/workouts.json");
+    path.join(dataDir, "workouts-adjusted.json");
+  const tempActivitiesPath = path.join(dataDir, "activities.json");
+  const tempWorkoutsPath = path.join(dataDir, "next-week.workouts.tmp.json");
+  const tempWorkoutsExportPath = path.join(dataDir, "workouts.json");
   const modelName = getArgValue("--model");
   const dryRun = hasFlag("--dry-run");
 
@@ -304,7 +311,8 @@ async function main(): Promise<void> {
   const garminClient = new GarminClient(
     email ?? "dummy@example.com",
     password ?? "dummy",
-    mockMode
+    mockMode,
+    dataDir
   );
   const activityExporter = new ActivityExporter(garminClient);
   const workoutEditor = new WorkoutEditor(garminClient);
