@@ -206,6 +206,30 @@ describe("WorkoutEditor", () => {
       expect(copied.workouts[0].scheduledDate).toBe("2026-02-09");
       expect(copied.source).toBe("copy-last-week");
     });
+
+    it("should handle a list of dates in scheduledDate when copying to next week", async () => {
+      const originalPlan = {
+        generatedAt: "2026-02-01T00:00:00.000Z",
+        weekStart: "2026-02-01",
+        weekEnd: "2026-02-07",
+        workouts: [
+          {
+            workoutId: 1,
+            workoutName: "Multi-day Workout",
+            scheduledDate: ["2026-02-02", "2026-02-04"],
+          },
+        ],
+      };
+
+      const inputPath = path.join(tempDir, "original_multi.json");
+      const outputPath = path.join(tempDir, "copied_multi.json");
+      fs.writeFileSync(inputPath, JSON.stringify(originalPlan, null, 2));
+
+      await editor.copyWorkoutPlanToNextWeek(inputPath, outputPath);
+
+      const copied = JSON.parse(fs.readFileSync(outputPath, "utf-8"));
+      expect(copied.workouts[0].scheduledDate).toEqual(["2026-02-09", "2026-02-11"]);
+    });
   });
 
   describe("Start New Training Plan", () => {

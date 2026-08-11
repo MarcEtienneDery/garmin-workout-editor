@@ -446,7 +446,11 @@ class GarminExtractor {
       source: "copy-last-week",
       workouts: plan.workouts.map((workout) => ({
         ...workout,
-        scheduledDate: workout.scheduledDate ? this.shiftDate(workout.scheduledDate, 7) : undefined,
+        scheduledDate: workout.scheduledDate
+          ? Array.isArray(workout.scheduledDate)
+            ? workout.scheduledDate.map((d) => this.shiftDate(d, 7))
+            : this.shiftDate(workout.scheduledDate, 7)
+          : undefined,
       })),
     };
 
@@ -480,38 +484,44 @@ class GarminExtractor {
         continue;
       }
 
-      const scheduleDate = new Date(workout.scheduledDate);
-      if (Number.isNaN(scheduleDate.getTime())) {
-        console.warn(`⚠️  Invalid scheduledDate for workout: ${workout.workoutName}`);
-        continue;
-      }
+      const dates = Array.isArray(workout.scheduledDate)
+        ? workout.scheduledDate
+        : [workout.scheduledDate];
 
-      let workoutId = workout.workoutId;
-
-      if (!workoutId && workout.workoutType === "running" && workout.distanceMeters) {
-        try {
-          const created = await this.clientAny.addRunningWorkout?.(
-            workout.workoutName,
-            workout.distanceMeters,
-            workout.description || ""
-          );
-          workoutId = created?.workoutId;
-        } catch (error: any) {
-          console.warn(`⚠️  Failed to create running workout: ${workout.workoutName} (${error.message})`);
+      for (const dateStr of dates) {
+        const scheduleDate = new Date(dateStr);
+        if (Number.isNaN(scheduleDate.getTime())) {
+          console.warn(`⚠️  Invalid scheduledDate for workout: ${workout.workoutName} (${dateStr})`);
           continue;
         }
-      }
 
-      if (!workoutId) {
-        console.warn(`⚠️  Missing workoutId for workout: ${workout.workoutName}`);
-        continue;
-      }
+        let workoutId = workout.workoutId;
 
-      try {
-        await this.clientAny.scheduleWorkout({ workoutId }, scheduleDate);
-        console.log(`✅ Scheduled workout: ${workout.workoutName} on ${workout.scheduledDate}`);
-      } catch (error: any) {
-        console.warn(`⚠️  Failed to schedule workout: ${workout.workoutName} (${error.message})`);
+        if (!workoutId && workout.workoutType === "running" && workout.distanceMeters) {
+          try {
+            const created = await this.clientAny.addRunningWorkout?.(
+              workout.workoutName,
+              workout.distanceMeters,
+              workout.description || ""
+            );
+            workoutId = created?.workoutId;
+          } catch (error: any) {
+            console.warn(`⚠️  Failed to create running workout: ${workout.workoutName} (${error.message})`);
+            continue;
+          }
+        }
+
+        if (!workoutId) {
+          console.warn(`⚠️  Missing workoutId for workout: ${workout.workoutName}`);
+          continue;
+        }
+
+        try {
+          await this.clientAny.scheduleWorkout({ workoutId }, scheduleDate);
+          console.log(`✅ Scheduled workout: ${workout.workoutName} on ${dateStr}`);
+        } catch (error: any) {
+          console.warn(`⚠️  Failed to schedule workout: ${workout.workoutName} on ${dateStr} (${error.message})`);
+        }
       }
     }
   }

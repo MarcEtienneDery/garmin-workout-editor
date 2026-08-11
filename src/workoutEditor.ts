@@ -1027,7 +1027,9 @@ export class WorkoutEditor {
       workouts: plan.workouts.map((workout) => ({
         ...workout,
         scheduledDate: workout.scheduledDate
-          ? this.shiftDate(workout.scheduledDate, 7)
+          ? Array.isArray(workout.scheduledDate)
+            ? workout.scheduledDate.map((d) => this.shiftDate(d, 7))
+            : this.shiftDate(workout.scheduledDate, 7)
           : undefined,
       })),
     };
@@ -1140,76 +1142,82 @@ export class WorkoutEditor {
         continue;
       }
 
-      const scheduleDate = new Date(workout.scheduledDate);
-      if (Number.isNaN(scheduleDate.getTime())) {
-        console.warn(
-          `⚠️  Invalid scheduledDate for workout: ${workout.workoutName}`
-        );
-        continue;
-      }
+      const dates = Array.isArray(workout.scheduledDate)
+        ? workout.scheduledDate
+        : [workout.scheduledDate];
 
-      let workoutId = workout.workoutId;
-
-      if (
-        !workoutId &&
-        workout.workoutType === "running" &&
-        workout.distanceMeters
-      ) {
-        try {
-          const created = await client.addRunningWorkout?.(
-            workout.workoutName,
-            workout.distanceMeters,
-            workout.description || ""
-          );
-          workoutId = created?.workoutId;
-        } catch (error: any) {
+      for (const dateStr of dates) {
+        const scheduleDate = new Date(dateStr);
+        if (Number.isNaN(scheduleDate.getTime())) {
           console.warn(
-            `⚠️  Failed to create running workout: ${workout.workoutName} (${error.message})`
+            `⚠️  Invalid scheduledDate for workout: ${workout.workoutName} (${dateStr})`
           );
           continue;
         }
-      }
 
-      if (!workoutId) {
-        console.warn(
-          `⚠️  Missing workoutId for workout: ${workout.workoutName}`
-        );
-        continue;
-      }
+        let workoutId = workout.workoutId;
 
-      try {
-        await client.scheduleWorkout({ workoutId }, scheduleDate);
-        console.log(
-          `✅ Scheduled workout: ${workout.workoutName} on ${workout.scheduledDate}`
-        );
-      } catch (error: any) {
-        const errorMsg = (error.message || "").toLowerCase();
-        const errorBody = JSON.stringify(error).toLowerCase();
-        
-        // Check for 404 (workout not found/already deleted) - skip silently
-        if (errorMsg.includes("404") || errorBody.includes("not found")) {
-          console.log(
-            `ℹ️  Skipped workout not found in Garmin (already deleted): ${workout.workoutName}`
+        if (
+          !workoutId &&
+          workout.workoutType === "running" &&
+          workout.distanceMeters
+        ) {
+          try {
+            const created = await client.addRunningWorkout?.(
+              workout.workoutName,
+              workout.distanceMeters,
+              workout.description || ""
+            );
+            workoutId = created?.workoutId;
+          } catch (error: any) {
+            console.warn(
+              `⚠️  Failed to create running workout: ${workout.workoutName} (${error.message})`
+            );
+            continue;
+          }
+        }
+
+        if (!workoutId) {
+          console.warn(
+            `⚠️  Missing workoutId for workout: ${workout.workoutName}`
           );
           continue;
         }
-        
-        // Check for 409 Conflict or "already scheduled" patterns
-        if (errorMsg.includes("409") || errorMsg.includes("conflict") || 
-            errorMsg.includes("already") || errorBody.includes("already")) {
+
+        try {
+          await client.scheduleWorkout({ workoutId }, scheduleDate);
           console.log(
-            `✅ Workout already scheduled on this date: ${workout.workoutName} on ${workout.scheduledDate}`
+            `✅ Scheduled workout: ${workout.workoutName} on ${dateStr}`
           );
-          continue;
+        } catch (error: any) {
+          const errorMsg = (error.message || "").toLowerCase();
+          const errorBody = JSON.stringify(error).toLowerCase();
+          
+          // Check for 404 (workout not found/already deleted) - skip silently
+          if (errorMsg.includes("404") || errorBody.includes("not found")) {
+            console.log(
+              `ℹ️  Skipped workout not found in Garmin (already deleted): ${workout.workoutName}`
+            );
+            continue;
+          }
+          
+          // Check for 409 Conflict or "already scheduled" patterns
+          if (errorMsg.includes("409") || errorMsg.includes("conflict") || 
+              errorMsg.includes("already") || errorBody.includes("already")) {
+            console.log(
+              `✅ Workout already scheduled on this date: ${workout.workoutName} on ${dateStr}`
+            );
+            continue;
+          }
+          
+          if (process.env.DEBUG_WORKOUTS) {
+            console.log(`[DEBUG] Schedule error details: ${JSON.stringify(error)}`);
+          }
+          
+          console.warn(
+            `⚠️  Failed to schedule workout: ${workout.workoutName} on ${dateStr} (${error.message})`
+          );
         }
-        
-        if (process.env.DEBUG_WORKOUTS) {
-          console.log(`[DEBUG] Schedule error details: ${JSON.stringify(error)}`);
-        }
-        
-        console.warn(
-          `⚠️  Failed to schedule workout: ${workout.workoutName} (${error.message})`
-        );
       }
     }
   }
@@ -1340,56 +1348,62 @@ export class WorkoutEditor {
         continue;
       }
 
-      const scheduleDate = new Date(workout.scheduledDate);
-      if (Number.isNaN(scheduleDate.getTime())) {
-        console.warn(
-          `⚠️  Invalid scheduledDate for workout: ${workout.workoutName}`
-        );
-        continue;
-      }
+      const dates = Array.isArray(workout.scheduledDate)
+        ? workout.scheduledDate
+        : [workout.scheduledDate];
 
-      const workoutId = workout.workoutId;
-
-      if (!workoutId) {
-        console.warn(
-          `⚠️  Missing workoutId for workout: ${workout.workoutName}`
-        );
-        continue;
-      }
-
-      try {
-        await client.scheduleWorkout({ workoutId }, scheduleDate);
-        console.log(
-          `✅ Scheduled workout: ${workout.workoutName} on ${workout.scheduledDate}`
-        );
-      } catch (error: any) {
-        const errorMsg = (error.message || "").toLowerCase();
-        const errorBody = JSON.stringify(error).toLowerCase();
-        
-        // Check for 404 (workout not found/already deleted)
-        if (errorMsg.includes("404") || errorBody.includes("not found")) {
-          console.log(
-            `ℹ️  Skipped workout not found in Garmin (already deleted): ${workout.workoutName}`
+      for (const dateStr of dates) {
+        const scheduleDate = new Date(dateStr);
+        if (Number.isNaN(scheduleDate.getTime())) {
+          console.warn(
+            `⚠️  Invalid scheduledDate for workout: ${workout.workoutName} (${dateStr})`
           );
           continue;
         }
-        
-        // Check for "already scheduled" patterns (409 Conflict, or message containing keywords)
-        if (errorMsg.includes("409") || errorMsg.includes("conflict") || 
-            errorMsg.includes("already") || errorBody.includes("already")) {
-          console.log(
-            `✅ Workout already scheduled on this date: ${workout.workoutName} on ${workout.scheduledDate}`
+
+        const workoutId = workout.workoutId;
+
+        if (!workoutId) {
+          console.warn(
+            `⚠️  Missing workoutId for workout: ${workout.workoutName}`
           );
           continue;
         }
-        
-        if (process.env.DEBUG_WORKOUTS) {
-          console.log(`[DEBUG] Schedule error details: ${JSON.stringify(error)}`);
+
+        try {
+          await client.scheduleWorkout({ workoutId }, scheduleDate);
+          console.log(
+            `✅ Scheduled workout: ${workout.workoutName} on ${dateStr}`
+          );
+        } catch (error: any) {
+          const errorMsg = (error.message || "").toLowerCase();
+          const errorBody = JSON.stringify(error).toLowerCase();
+          
+          // Check for 404 (workout not found/already deleted)
+          if (errorMsg.includes("404") || errorBody.includes("not found")) {
+            console.log(
+              `ℹ️  Skipped workout not found in Garmin (already deleted): ${workout.workoutName}`
+            );
+            continue;
+          }
+          
+          // Check for "already scheduled" patterns (409 Conflict, or message containing keywords)
+          if (errorMsg.includes("409") || errorMsg.includes("conflict") || 
+              errorMsg.includes("already") || errorBody.includes("already")) {
+            console.log(
+              `✅ Workout already scheduled on this date: ${workout.workoutName} on ${dateStr}`
+            );
+            continue;
+          }
+          
+          if (process.env.DEBUG_WORKOUTS) {
+            console.log(`[DEBUG] Schedule error details: ${JSON.stringify(error)}`);
+          }
+          
+          console.warn(
+            `⚠️  Failed to schedule workout: ${workout.workoutName} on ${dateStr} (${error.message})`
+          );
         }
-        
-        console.warn(
-          `⚠️  Failed to schedule workout: ${workout.workoutName} (${error.message})`
-        );
       }
     }
   }

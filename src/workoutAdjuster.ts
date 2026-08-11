@@ -192,6 +192,23 @@ interface WeeklySelectionTarget {
   tokens: string[];
 }
 
+function sameScheduledDate(
+  aDate?: string | string[],
+  bDate?: string | string[]
+): boolean {
+  if (!aDate || !bDate) return false;
+  const aArr = Array.isArray(aDate) ? aDate : [aDate];
+  const bArr = Array.isArray(bDate) ? bDate : [bDate];
+  if (aArr.length !== bArr.length) return false;
+  return aArr.every((d, i) => d === bArr[i]);
+}
+
+function formatScheduledDate(date?: string | string[]): string {
+  if (!date) return "unscheduled";
+  if (Array.isArray(date)) return date.join(", ");
+  return date;
+}
+
 function workoutIdentityMatches(
   a: PlannedWorkout | undefined,
   b: PlannedWorkout
@@ -206,7 +223,7 @@ function workoutIdentityMatches(
     a.workoutName === b.workoutName &&
     a.scheduledDate &&
     b.scheduledDate &&
-    a.scheduledDate === b.scheduledDate
+    sameScheduledDate(a.scheduledDate, b.scheduledDate)
   ) {
     return true;
   }
@@ -236,7 +253,7 @@ function findMatchingWorkoutIndex(
       (workout, index) =>
         !isUsed(index) &&
         workout.workoutName === target.workoutName &&
-        workout.scheduledDate === target.scheduledDate
+        sameScheduledDate(workout.scheduledDate, target.scheduledDate)
     );
     if (byNameDate !== -1) return byNameDate;
   }
@@ -385,9 +402,7 @@ function diffSteps(oldSteps: WorkoutStep[], newSteps: WorkoutStep[]): StepDiffOp
   return mergedOps;
 }
 
-function formatScheduledDate(date: string | undefined): string {
-  return date ?? "unscheduled";
-}
+
 
 function buildStepDiffLines(
   oldSteps: WorkoutStep[],
@@ -458,13 +473,13 @@ export function formatChangeSummary(
     }
 
     if (!oldW) {
-      lines.push(`  ✚ NEW: ${newW.workoutName} (${newW.scheduledDate ?? "no date"})`);
+      lines.push(`  ✚ NEW: ${newW.workoutName} (${formatScheduledDate(newW.scheduledDate)})`);
       continue;
     }
 
     const changedLines: string[] = [];
 
-    if (oldW.scheduledDate !== newW.scheduledDate) {
+    if (!sameScheduledDate(oldW.scheduledDate, newW.scheduledDate)) {
       changedLines.push(
         `  Date: ${formatScheduledDate(oldW.scheduledDate)} → ${formatScheduledDate(newW.scheduledDate)}`
       );
@@ -475,7 +490,7 @@ export function formatChangeSummary(
     changedLines.push(...buildStepDiffLines(oldSteps, newSteps, "→"));
 
     if (changedLines.length > 0) {
-      lines.push(`\n📋 ${newW.workoutName} (${newW.scheduledDate ?? "no date"})`);
+      lines.push(`\n📋 ${newW.workoutName} (${formatScheduledDate(newW.scheduledDate)})`);
       lines.push(...changedLines);
     }
   }
@@ -1139,11 +1154,12 @@ WeeklyWorkoutPlan schema:
     if (scheduled.length > 0) {
       // Filter to workouts within the plan's week range
       const inRange = plan.weekStart
-        ? scheduled.filter(
-            (w) =>
-              w.scheduledDate! >= plan.weekStart &&
-              w.scheduledDate! <= plan.weekEnd
-          )
+        ? scheduled.filter((w) => {
+            const dates = Array.isArray(w.scheduledDate)
+              ? w.scheduledDate
+              : [w.scheduledDate!];
+            return dates.some((d) => d >= plan.weekStart && d <= plan.weekEnd);
+          })
         : scheduled;
       const workouts = inRange.length > 0 ? inRange : scheduled.slice(0, limit);
       return { ...plan, workouts };
@@ -1921,9 +1937,12 @@ Apply the feedback and return ONLY the updated single workout as a JSON object (
 
     // 2. Same date + compatible type
     if (workout.scheduledDate) {
+      const dates = Array.isArray(workout.scheduledDate)
+        ? workout.scheduledDate
+        : [workout.scheduledDate];
       const match = available.find(
         (a) =>
-          a.startTime.slice(0, 10) === workout.scheduledDate &&
+          dates.includes(a.startTime.slice(0, 10)) &&
           typeCompatible(a.activityType, workout.workoutType)
       );
       if (match) return match;
@@ -1931,10 +1950,13 @@ Apply the feedback and return ONLY the updated single workout as a JSON object (
 
     // 3. Same day-of-week in the previous week + compatible type
     if (workout.scheduledDate) {
-      const workoutDow = new Date(workout.scheduledDate).getUTCDay();
+      const dates = Array.isArray(workout.scheduledDate)
+        ? workout.scheduledDate
+        : [workout.scheduledDate];
+      const workoutDows = dates.map((d) => new Date(d).getUTCDay());
       const match = available.find(
         (a) =>
-          new Date(a.startTime).getUTCDay() === workoutDow &&
+          workoutDows.includes(new Date(a.startTime).getUTCDay()) &&
           typeCompatible(a.activityType, workout.workoutType)
       );
       if (match) return match;

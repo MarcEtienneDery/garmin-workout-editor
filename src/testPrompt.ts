@@ -103,10 +103,15 @@ async function main() {
     ...workoutPlan,
     workouts: workoutPlan.workouts.filter((w) => {
       if (!w.scheduledDate) return false;
-      const scheduled = new Date(w.scheduledDate);
       const weekStart = new Date(workoutPlan.weekStart);
       const weekEnd = new Date(workoutPlan.weekEnd);
-      return scheduled >= weekStart && scheduled <= weekEnd;
+      const dates = Array.isArray(w.scheduledDate)
+        ? w.scheduledDate
+        : [w.scheduledDate];
+      return dates.some((d) => {
+        const scheduled = new Date(d);
+        return scheduled >= weekStart && scheduled <= weekEnd;
+      });
     }),
   };
 

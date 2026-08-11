@@ -79,7 +79,7 @@ export interface PlannedWorkout {
   workoutType?: string;
   description?: string;
   distanceMeters?: number;
-  scheduledDate?: string; // ISO date (YYYY-MM-DD)
+  scheduledDate?: string | string[]; // ISO date (YYYY-MM-DD) or list of ISO dates
 }
 
 export interface WeeklyWorkoutPlan {

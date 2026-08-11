@@ -120,11 +120,12 @@ export interface DetailedWorkout extends GarminWorkoutSummary {
   totalSets?: number;
   totalReps?: number;
   estimatedDurationSeconds?: number;
+  scheduledDate?: string | string[]; // ISO date (YYYY-MM-DD) or list of ISO dates
 }
 
 export interface PlannedWorkout extends WorkoutCore {
   distanceMeters?: number;
-  scheduledDate?: string; // ISO date (YYYY-MM-DD)
+  scheduledDate?: string | string[]; // ISO date (YYYY-MM-DD) or list of ISO dates
   steps?: WorkoutStep[];  // Full exercise breakdown for import
 }
 
