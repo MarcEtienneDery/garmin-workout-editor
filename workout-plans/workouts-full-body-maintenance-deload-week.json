@@ -1,0 +1,515 @@
+{
+  "generatedAt": "2026-06-06T00:00:00.000Z",
+  "weekStart": "2026-06-08",
+  "weekEnd": "2026-06-14",
+  "source": "time-constrained-strength-maintenance-with-running-deload",
+  "notes": "Deload week generated from full-body maintenance template. Goal is recovery while maintaining movement quality: reduce main lift intensity to ~74-78% and cut total set volume by roughly 30-40%. Keep commute runs fixed at 4 km with lower quality-run intensity. Long run target deloaded by ~30% (10 km target instead of progression).",
+  "workouts": [
+    {
+      "workoutName": "Long Run (Deload)",
+      "workoutType": "running",
+      "description": "Deload long run for recovery week. Press lap to end the main block when target distance is reached. Current target: 10 km at easy effort. Keep HR in 132-145 bpm zone; use short walk resets if HR drifts above range.",
+      "scheduledDate": "2026-06-14",
+      "steps": [
+        {
+          "stepType": "warmup",
+          "targetType": "heart.rate.zone",
+          "targetValueOne": 125,
+          "targetValueTwo": 136,
+          "endCondition": "time",
+          "endConditionValue": 300,
+          "durationSeconds": 300,
+          "stepOrder": 1
+        },
+        {
+          "stepType": "interval",
+          "targetType": "heart.rate.zone",
+          "targetValueOne": 132,
+          "targetValueTwo": 145,
+          "endCondition": "lap.button",
+          "endConditionValue": 0,
+          "stepOrder": 2
+        },
+        {
+          "stepType": "cooldown",
+          "targetType": "no.target",
+          "endCondition": "lap.button",
+          "endConditionValue": 0,
+          "stepOrder": 3
+        }
+      ],
+      "sendToDevice": true,
+      "workoutId": 1591432894
+    },
+    {
+      "sendToDevice": true,
+      "workoutName": "Full Body A (Deload)",
+      "workoutType": "strength_training",
+      "scheduledDate": "2026-06-08",
+      "steps": [
+        {
+          "stepType": "warmup",
+          "exerciseName": "CARDIO",
+          "targetType": "no.target",
+          "endCondition": "lap.button",
+          "endConditionValue": 300,
+          "durationSeconds": 300,
+          "stepOrder": 1
+        },
+        {
+          "stepType": "interval",
+          "exerciseName": "BARBELL_FRONT_SQUAT",
+          "targetType": "no.target",
+          "endCondition": "reps",
+          "endConditionValue": 5,
+          "reps": 5,
+          "weight": 165,
+          "stepOrder": 2,
+          "numberOfRepeats": 2,
+          "repeatGroupIndex": 0,
+          "restTimeSeconds": 90
+        },
+        {
+          "stepType": "interval",
+          "exerciseName": "BARBELL_BACK_SQUAT",
+          "targetType": "no.target",
+          "endCondition": "reps",
+          "endConditionValue": 3,
+          "reps": 3,
+          "weight": 225,
+          "weightPercentage": 74,
+          "benchmarkKey": "BARBELL_BACK_SQUAT",
+          "stepOrder": 3,
+          "numberOfRepeats": 2,
+          "repeatGroupIndex": 1,
+          "restTimeSeconds": 150
+        },
+        {
+          "stepType": "interval",
+          "exerciseName": "BARBELL_BENCH_PRESS",
+          "targetType": "no.target",
+          "endCondition": "reps",
+          "endConditionValue": 2,
+          "reps": 2,
+          "weight": 205,
+          "weightPercentage": 77,
+          "benchmarkKey": "BARBELL_BENCH_PRESS",
+          "stepOrder": 4,
+          "numberOfRepeats": 2,
+          "repeatGroupIndex": 2,
+          "restTimeSeconds": 120
+        },
+        {
+          "stepType": "interval",
+          "exerciseName": "CHEST_SUPPORTED_DUMBBELL_ROW",
+          "targetType": "no.target",
+          "endCondition": "reps",
+          "endConditionValue": 8,
+          "reps": 8,
+          "weight": 100,
+          "stepOrder": 5,
+          "numberOfRepeats": 2,
+          "repeatGroupIndex": 3,
+          "restTimeSeconds": 75
+        },
+        {
+          "stepType": "interval",
+          "exerciseName": "SINGLE_LEG_ROMANIAN_DEADLIFT_WITH_DUMBBELL",
+          "targetType": "no.target",
+          "endCondition": "reps",
+          "endConditionValue": 6,
+          "reps": 6,
+          "weight": 70,
+          "stepOrder": 6,
+          "numberOfRepeats": 2,
+          "repeatGroupIndex": 4,
+          "restTimeSeconds": 75
+        },
+        {
+          "stepType": "interval",
+          "exerciseName": "FACE_PULL",
+          "targetType": "no.target",
+          "endCondition": "reps",
+          "endConditionValue": 12,
+          "reps": 12,
+          "stepOrder": 7,
+          "numberOfRepeats": 2,
+          "repeatGroupIndex": 5,
+          "restTimeSeconds": 45
+        }
+      ],
+      "workoutId": 1591432914
+    },
+    {
+      "workoutName": "Office Commute To Office (Deload)",
+      "workoutType": "running",
+      "description": "Unscheduled 4 km commute run for deload week. Keep smooth form and controlled effort; do not force pace in the first kilometer.",
+      "estimatedDurationSeconds": 1440,
+      "steps": [
+        {
+          "stepType": "warmup",
+          "targetType": "heart.rate.zone",
+          "targetValueOne": 132,
+          "targetValueTwo": 142,
+          "endCondition": "distance",
+          "endConditionValue": 500,
+          "distanceMeters": 500,
+          "stepOrder": 1
+        },
+        {
+          "stepType": "interval",
+          "targetType": "heart.rate.zone",
+          "targetValueOne": 155,
+          "targetValueTwo": 165,
+          "endCondition": "distance",
+          "endConditionValue": 3000,
+          "distanceMeters": 3000,
+          "stepOrder": 2
+        },
+        {
+          "stepType": "cooldown",
+          "targetType": "no.target",
+          "endCondition": "distance",
+          "endConditionValue": 500,
+          "distanceMeters": 500,
+          "stepOrder": 3
+        }
+      ],
+      "sendToDevice": true,
+      "workoutId": 1591432934
+    },
+    {
+      "workoutName": "Office Commute From Office (Deload)",
+      "workoutType": "running",
+      "description": "Unscheduled 4 km return commute run for deload week. Stay on the low end of target if legs feel heavy and prioritize relaxed mechanics.",
+      "estimatedDurationSeconds": 1440,
+      "steps": [
+        {
+          "stepType": "warmup",
+          "targetType": "heart.rate.zone",
+          "targetValueOne": 132,
+          "targetValueTwo": 142,
+          "endCondition": "distance",
+          "endConditionValue": 500,
+          "distanceMeters": 500,
+          "stepOrder": 1
+        },
+        {
+          "stepType": "interval",
+          "targetType": "heart.rate.zone",
+          "targetValueOne": 155,
+          "targetValueTwo": 165,
+          "endCondition": "distance",
+          "endConditionValue": 3000,
+          "distanceMeters": 3000,
+          "stepOrder": 2
+        },
+        {
+          "stepType": "cooldown",
+          "targetType": "no.target",
+          "endCondition": "distance",
+          "endConditionValue": 500,
+          "distanceMeters": 500,
+          "stepOrder": 3
+        }
+      ],
+      "sendToDevice": true,
+      "workoutId": 1591432962
+    },
+    {
+      "sendToDevice": true,
+      "workoutName": "Full Body B (Deload)",
+      "workoutType": "strength_training",
+      "scheduledDate": "2026-06-12",
+      "steps": [
+        {
+          "stepType": "warmup",
+          "exerciseName": "CARDIO",
+          "targetType": "no.target",
+          "endCondition": "lap.button",
+          "endConditionValue": 300,
+          "durationSeconds": 300,
+          "stepOrder": 1
+        },
+        {
+          "stepType": "interval",
+          "exerciseName": "BARBELL_HANG_POWER_CLEAN",
+          "targetType": "no.target",
+          "endCondition": "reps",
+          "endConditionValue": 2,
+          "reps": 2,
+          "weight": 125,
+          "stepOrder": 2,
+          "numberOfRepeats": 2,
+          "repeatGroupIndex": 0,
+          "restTimeSeconds": 90
+        },
+        {
+          "stepType": "interval",
+          "exerciseName": "BARBELL_DEADLIFT",
+          "targetType": "no.target",
+          "endCondition": "reps",
+          "endConditionValue": 2,
+          "reps": 2,
+          "weight": 285,
+          "weightPercentage": 77,
+          "benchmarkKey": "BARBELL_DEADLIFT",
+          "stepOrder": 3,
+          "numberOfRepeats": 2,
+          "repeatGroupIndex": 1,
+          "restTimeSeconds": 150
+        },
+        {
+          "stepType": "interval",
+          "exerciseName": "BARBELL_SHOULDER_PRESS",
+          "targetType": "no.target",
+          "endCondition": "reps",
+          "endConditionValue": 2,
+          "reps": 2,
+          "weight": 115,
+          "stepOrder": 4,
+          "numberOfRepeats": 2,
+          "repeatGroupIndex": 2,
+          "restTimeSeconds": 120
+        },
+        {
+          "stepType": "interval",
+          "exerciseName": "SINGLE_ARM_NEUTRAL_GRIP_DUMBBELL_ROW",
+          "targetType": "no.target",
+          "endCondition": "reps",
+          "endConditionValue": 8,
+          "reps": 8,
+          "weight": 70,
+          "stepOrder": 5,
+          "numberOfRepeats": 2,
+          "repeatGroupIndex": 3,
+          "restTimeSeconds": 75
+        },
+        {
+          "stepType": "interval",
+          "exerciseName": "NEUTRAL_GRIP_DUMBBELL_BENCH_PRESS",
+          "targetType": "no.target",
+          "endCondition": "reps",
+          "endConditionValue": 8,
+          "reps": 8,
+          "weight": 140,
+          "stepOrder": 6,
+          "numberOfRepeats": 2,
+          "repeatGroupIndex": 4,
+          "restTimeSeconds": 75
+        },
+        {
+          "stepType": "interval",
+          "exerciseName": "BACK_FOOT_ELEVATED_DUMBBELL_SPLIT_SQUAT",
+          "targetType": "no.target",
+          "endCondition": "reps",
+          "endConditionValue": 8,
+          "reps": 8,
+          "weight": 50,
+          "stepOrder": 7,
+          "numberOfRepeats": 2,
+          "repeatGroupIndex": 5,
+          "restTimeSeconds": 60
+        }
+      ],
+      "workoutId": 1591432980
+    },
+    {
+      "workoutName": "Dumbbell Upper Body Circuit (Deload)",
+      "workoutType": "strength_training",
+      "description": "Complementary upper-body circuit kept in deload week with reduced rounds and effort. Use two 30 lb dumbbells and keep 2-3 reps in reserve.",
+      "estimatedDurationSeconds": 600,
+      "steps": [
+        {
+          "stepType": "warmup",
+          "exerciseName": "ARM_CIRCLES",
+          "targetType": "no.target",
+          "endCondition": "time",
+          "endConditionValue": 60,
+          "durationSeconds": 60,
+          "stepOrder": 1
+        },
+        {
+          "stepType": "interval",
+          "exerciseName": "WEIGHTED_CHIN_UP",
+          "targetType": "no.target",
+          "endCondition": "reps",
+          "endConditionValue": 6,
+          "reps": 6,
+          "weight": 20,
+          "stepOrder": 2,
+          "numberOfRepeats": 2,
+          "repeatGroupIndex": 0,
+          "restTimeSeconds": 45
+        },
+        {
+          "stepType": "interval",
+          "exerciseName": "DUMBBELL_LATERAL_RAISE",
+          "targetType": "no.target",
+          "endCondition": "reps",
+          "endConditionValue": 12,
+          "reps": 12,
+          "weight": 50,
+          "stepOrder": 3,
+          "numberOfRepeats": 2,
+          "repeatGroupIndex": 1,
+          "restTimeSeconds": 20
+        },
+        {
+          "stepType": "interval",
+          "exerciseName": "INCLINE_REVERSE_FLYE",
+          "targetType": "no.target",
+          "endCondition": "reps",
+          "endConditionValue": 12,
+          "reps": 12,
+          "weight": 50,
+          "stepOrder": 4,
+          "numberOfRepeats": 2,
+          "repeatGroupIndex": 1,
+          "restTimeSeconds": 20
+        },
+        {
+          "stepType": "interval",
+          "exerciseName": "DUMBBELL_BICEPS_CURL",
+          "targetType": "no.target",
+          "endCondition": "reps",
+          "endConditionValue": 10,
+          "reps": 10,
+          "weight": 50,
+          "stepOrder": 5,
+          "numberOfRepeats": 2,
+          "repeatGroupIndex": 1,
+          "restTimeSeconds": 20
+        },
+        {
+          "stepType": "interval",
+          "exerciseName": "SINGLE_ARM_DUMBBELL_OVERHEAD_TRICEPS_EXTENSION",
+          "targetType": "no.target",
+          "endCondition": "reps",
+          "endConditionValue": 10,
+          "reps": 10,
+          "weight": 25,
+          "stepOrder": 6,
+          "numberOfRepeats": 2,
+          "repeatGroupIndex": 1,
+          "restTimeSeconds": 20
+        },
+        {
+          "stepType": "cooldown",
+          "exerciseName": "HANGING_L_SIT",
+          "targetType": "no.target",
+          "endCondition": "time",
+          "endConditionValue": 30,
+          "durationSeconds": 30,
+          "stepOrder": 7,
+          "numberOfRepeats": 2,
+          "repeatGroupIndex": 2,
+          "restTimeSeconds": 30
+        }
+      ],
+      "sendToDevice": true,
+      "workoutId": 1591433012
+    },
+    {
+      "workoutName": "Bodyweight Strength Maintenance Circuit (Deload)",
+      "workoutType": "strength_training",
+      "description": "Fallback bodyweight circuit for non-training days in deload week. Keep effort at RPE 6 and leave 3 reps in reserve.",
+      "estimatedDurationSeconds": 600,
+      "steps": [
+        {
+          "stepType": "warmup",
+          "exerciseName": "ARM_CIRCLES",
+          "targetType": "no.target",
+          "endCondition": "time",
+          "endConditionValue": 60,
+          "durationSeconds": 60,
+          "stepOrder": 1
+        },
+        {
+          "stepType": "interval",
+          "exerciseName": "CHIN_UP",
+          "targetType": "no.target",
+          "endCondition": "reps",
+          "endConditionValue": 8,
+          "reps": 8,
+          "stepOrder": 2,
+          "numberOfRepeats": 2,
+          "repeatGroupIndex": 0,
+          "restTimeSeconds": 30
+        },
+        {
+          "stepType": "interval",
+          "exerciseName": "INVERTED_SHOULDER_PRESS",
+          "targetType": "no.target",
+          "endCondition": "reps",
+          "endConditionValue": 10,
+          "reps": 10,
+          "stepOrder": 3,
+          "numberOfRepeats": 2,
+          "repeatGroupIndex": 0,
+          "restTimeSeconds": 20
+        },
+        {
+          "stepType": "interval",
+          "exerciseName": "PISTOL_SQUAT",
+          "targetType": "no.target",
+          "endCondition": "reps",
+          "endConditionValue": 5,
+          "reps": 5,
+          "stepOrder": 4,
+          "numberOfRepeats": 2,
+          "repeatGroupIndex": 0,
+          "restTimeSeconds": 20
+        },
+        {
+          "stepType": "interval",
+          "exerciseName": "PUSH_UP",
+          "targetType": "no.target",
+          "endCondition": "reps",
+          "endConditionValue": 15,
+          "reps": 15,
+          "stepOrder": 5,
+          "numberOfRepeats": 2,
+          "repeatGroupIndex": 0,
+          "restTimeSeconds": 20
+        },
+        {
+          "stepType": "cooldown",
+          "exerciseName": "DEAD_BUG",
+          "targetType": "no.target",
+          "endCondition": "reps",
+          "endConditionValue": 10,
+          "reps": 10,
+          "stepOrder": 6,
+          "numberOfRepeats": 2,
+          "repeatGroupIndex": 2
+        },
+        {
+          "stepType": "cooldown",
+          "exerciseName": "SIDE_PLANK",
+          "targetType": "no.target",
+          "endCondition": "time",
+          "endConditionValue": 25,
+          "durationSeconds": 25,
+          "stepOrder": 7,
+          "numberOfRepeats": 2,
+          "repeatGroupIndex": 2
+        },
+        {
+          "stepType": "cooldown",
+          "exerciseName": "SIDE_PLANK",
+          "targetType": "no.target",
+          "endCondition": "time",
+          "endConditionValue": 25,
+          "durationSeconds": 25,
+          "stepOrder": 8,
+          "numberOfRepeats": 2,
+          "repeatGroupIndex": 2,
+          "restTimeSeconds": 30
+        }
+      ],
+      "sendToDevice": true,
+      "workoutId": 1591433038
+    }
+  ]
+}
