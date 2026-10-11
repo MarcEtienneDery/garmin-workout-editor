@@ -3,7 +3,7 @@
   "weekStart": "2026-10-12",
   "weekEnd": "2026-11-08",
   "source": "4day-cut-hypertrophy",
-  "notes": "4-week lean-out block for Nov 8. 2 lifts + 2 runs + 1 optional lift day. Big lifts moved to 5-8 reps (heavy deadlift replaced by the Romanian deadlift, 3x8). Runs: 8 km over/under (3 x 1 km over/under at threshold) on Tuesday and a 13.8 km Zone 2 run on Saturday (matching the Jun 28 long run); deload week shortens both. Front squat and hang power clean dropped to free recovery for hypertrophy volume. Week 3 (Oct 26) is a deload. Start loads come from training-plan.json 1RMs (squat 306, bench 266) and recent sessions; the RDL has no history, so its start load is a conservative guess, set conservatively after a month with little barbell work. Pair with a 300-500 kcal deficit, ~2 g/kg protein and 8-10k steps. NOT SCHEDULED: no scheduledDate on any workout. Suggested weekly layout: Mon Full Body A, Tue 8km Over/Under, Wed Full Body B, Fri Day 5 (optional), Sat Zone 2 run; weeks start Oct 12, Oct 19, Oct 26 (deload), Nov 2. Use --upload to create the workouts without scheduling.",
+  "notes": "4-week lean-out block for Nov 8. 2 lifts + 2 runs + 1 optional lift day. Big lifts moved to 5-8 reps (heavy deadlift replaced by the Romanian deadlift, 3x8). Runs: 8 km over/under (3 x 1 km over/under at threshold) on Wednesday and a 13.8 km Zone 2 run on Saturday (matching the Jun 28 long run); deload week shortens both. Front squat and hang power clean dropped to free recovery for hypertrophy volume. Week 3 (Oct 26) is a deload. Start loads come from training-plan.json 1RMs (squat 306, bench 266) and recent sessions; the RDL has no history, so its start load is a conservative guess, set conservatively after a month with little barbell work. Pair with a 300-500 kcal deficit, ~2 g/kg protein and 8-10k steps. NOT SCHEDULED: no scheduledDate on any workout. Suggested weekly layout: Mon Full Body A, Tue rest, Wed 8km Over/Under, Thu rest, Fri Full Body B, Sat Zone 2 run, Sun Day 5 (optional); weeks start Oct 12, Oct 19, Oct 26 (deload), Nov 2. Use --upload to create the workouts without scheduling.",
   "workouts": [
     {
       "workoutName": "Full Body A - Squat + Bench (W1)",
@@ -1176,7 +1176,7 @@
     {
       "workoutName": "Day 5 Optional - Arms, Delts + Upper Chest",
       "workoutType": "strength_training",
-      "description": "OPTIONAL: skip it if sleep or recovery is poor, especially before Saturday's run. ~45 min of arms, side delts, upper chest and abs. Home-gym version: dumbbells plus a band for face pulls. Loads are starting estimates; adjust to 1-2 reps in reserve.",
+      "description": "OPTIONAL Sunday session after the long run: skip it if sleep or recovery is poor or the legs are wrecked. Upper body only, so it stays clear of Monday's squats. ~45 min of arms, side delts, upper chest and abs. Home-gym version: dumbbells plus a band for face pulls. Loads are starting estimates; adjust to 1-2 reps in reserve.",
       "sendToDevice": true,
       "steps": [
         {
@@ -1270,7 +1270,7 @@
     {
       "workoutName": "Day 5 Optional - Arms, Delts + Upper Chest (W3 Deload)",
       "workoutType": "strength_training",
-      "description": "Deload version: 2 sets per exercise, same loads. OPTIONAL: skip it if sleep or recovery is poor, especially before Saturday's run. ~45 min of arms, side delts, upper chest and abs. Home-gym version: dumbbells plus a band for face pulls. Loads are starting estimates; adjust to 1-2 reps in reserve.",
+      "description": "Deload version: 2 sets per exercise, same loads. OPTIONAL Sunday session after the long run: skip it if sleep or recovery is poor or the legs are wrecked. Upper body only, so it stays clear of Monday's squats. ~45 min of arms, side delts, upper chest and abs. Home-gym version: dumbbells plus a band for face pulls. Loads are starting estimates; adjust to 1-2 reps in reserve.",
       "sendToDevice": true,
       "steps": [
         {
