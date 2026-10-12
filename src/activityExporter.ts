@@ -8,6 +8,29 @@ import {
 } from "./mocks.setup";
 
 /**
+ * ISO date (YYYY-MM-DD) of the Monday that starts a window covering the current
+ * week plus the previous (n - 1) weeks, in UTC. getLastNWeeksStart(4) is the
+ * start of the "last 4 weeks" window used by --last-4-weeks.
+ */
+export function getLastNWeeksStart(n: number): string {
+  const now = new Date();
+  const utcDay = now.getUTCDay();
+  const daysSinceMonday = utcDay === 0 ? 6 : utcDay - 1;
+  const start = new Date(now);
+  start.setUTCDate(now.getUTCDate() - daysSinceMonday - (n - 1) * 7);
+  start.setUTCHours(0, 0, 0, 0);
+  return start.toISOString().split("T")[0];
+}
+
+export interface BuildActivitiesOptions {
+  filterToLastWeek?: boolean;
+  filterToThisWeek?: boolean;
+  typeFilter?: string;
+  customWeekStart?: string;
+  customWeekEnd?: string;
+}
+
+/**
  * Activity extraction and management for Garmin activities
  */
 export class ActivityExporter {
@@ -709,6 +732,78 @@ export class ActivityExporter {
   }
 
   /**
+   * Filter and transform raw activities into the ExtractedActivities shape
+   * (no file I/O). Shared by saveActivitiesToFile() and the MCP server.
+   */
+  buildExtractedActivities(
+    activities: any[],
+    options: BuildActivitiesOptions = {}
+  ): ExtractedActivities {
+    const {
+      filterToLastWeek = false,
+      filterToThisWeek = false,
+      typeFilter,
+      customWeekStart,
+      customWeekEnd,
+    } = options;
+
+    let filteredActivities = activities;
+    let weekStart: Date;
+    let weekEnd: Date;
+
+    if (customWeekStart) {
+      weekStart = new Date(customWeekStart);
+      weekStart.setUTCHours(0, 0, 0, 0);
+      weekEnd = customWeekEnd
+        ? new Date(customWeekEnd)
+        : new Date(); // default to now
+      if (customWeekEnd) weekEnd.setUTCHours(23, 59, 59, 999);
+      filteredActivities = this.filterActivitiesByDateRange(
+        activities,
+        weekStart,
+        customWeekEnd ? weekEnd : undefined
+      );
+      console.log(
+        `📅 Filtering to date range: ${weekStart.toISOString().split("T")[0]} → ${
+          customWeekEnd ? weekEnd.toISOString().split("T")[0] : "now"
+        }`
+      );
+    } else if (filterToThisWeek) {
+      const thisWeekDates = this.getThisWeekDates();
+      weekStart = thisWeekDates.weekStart;
+      weekEnd = thisWeekDates.weekEnd;
+      filteredActivities = this.filterThisWeekActivities(activities);
+    } else if (filterToLastWeek) {
+      const lastWeekDates = this.getLastWeekDates();
+      weekStart = lastWeekDates.weekStart;
+      weekEnd = lastWeekDates.weekEnd;
+      filteredActivities = this.filterLastWeekActivities(activities);
+    } else {
+      const lastWeekDates = this.getLastWeekDates();
+      weekStart = lastWeekDates.weekStart;
+      weekEnd = lastWeekDates.weekEnd;
+    }
+
+    let transformed = this.transformActivities(filteredActivities);
+
+    if (typeFilter) {
+      const before = transformed.length;
+      transformed = this.filterActivitiesByType(transformed, typeFilter);
+      console.log(
+        `🏃 Filtered by type "${typeFilter}": ${transformed.length} of ${before} activities`
+      );
+    }
+
+    return {
+      extractedAt: new Date().toISOString(),
+      weekStart: weekStart.toISOString().split("T")[0],
+      weekEnd: weekEnd.toISOString().split("T")[0],
+      totalActivities: transformed.length,
+      activities: transformed,
+    };
+  }
+
+  /**
    * Save activities to JSON file
    */
   async saveActivitiesToFile(
@@ -722,60 +817,13 @@ export class ActivityExporter {
     customWeekEnd?: string
   ): Promise<void> {
     try {
-      let filteredActivities = activities;
-      let weekStart: Date;
-      let weekEnd: Date;
-
-      if (customWeekStart) {
-        weekStart = new Date(customWeekStart);
-        weekStart.setUTCHours(0, 0, 0, 0);
-        weekEnd = customWeekEnd
-          ? new Date(customWeekEnd)
-          : new Date(); // default to now
-        if (customWeekEnd) weekEnd.setUTCHours(23, 59, 59, 999);
-        filteredActivities = this.filterActivitiesByDateRange(
-          activities,
-          weekStart,
-          customWeekEnd ? weekEnd : undefined
-        );
-        console.log(
-          `📅 Filtering to date range: ${weekStart.toISOString().split("T")[0]} → ${
-            customWeekEnd ? weekEnd.toISOString().split("T")[0] : "now"
-          }`
-        );
-      } else if (filterToThisWeek) {
-        const thisWeekDates = this.getThisWeekDates();
-        weekStart = thisWeekDates.weekStart;
-        weekEnd = thisWeekDates.weekEnd;
-        filteredActivities = this.filterThisWeekActivities(activities);
-      } else if (filterToLastWeek) {
-        const lastWeekDates = this.getLastWeekDates();
-        weekStart = lastWeekDates.weekStart;
-        weekEnd = lastWeekDates.weekEnd;
-        filteredActivities = this.filterLastWeekActivities(activities);
-      } else {
-        const lastWeekDates = this.getLastWeekDates();
-        weekStart = lastWeekDates.weekStart;
-        weekEnd = lastWeekDates.weekEnd;
-      }
-
-      let transformed = this.transformActivities(filteredActivities);
-
-      if (typeFilter) {
-        const before = transformed.length;
-        transformed = this.filterActivitiesByType(transformed, typeFilter);
-        console.log(
-          `🏃 Filtered by type "${typeFilter}": ${transformed.length} of ${before} activities`
-        );
-      }
-
-      const data: ExtractedActivities = {
-        extractedAt: new Date().toISOString(),
-        weekStart: weekStart.toISOString().split("T")[0],
-        weekEnd: weekEnd.toISOString().split("T")[0],
-        totalActivities: transformed.length,
-        activities: transformed,
-      };
+      const data = this.buildExtractedActivities(activities, {
+        filterToLastWeek,
+        filterToThisWeek,
+        typeFilter,
+        customWeekStart,
+        customWeekEnd,
+      });
 
       // Ensure directory exists
       const dir = path.dirname(outputPath);

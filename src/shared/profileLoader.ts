@@ -9,15 +9,37 @@ export interface ProfileConfig {
   dataDir: string;
 }
 
-const PROJECT_ROOT = path.resolve(__dirname, "../..");
+export const PROJECT_ROOT = path.resolve(__dirname, "../..");
 const PROFILE_NAME_REGEX = /^[a-zA-Z0-9_-]+$/;
 
 /**
- * Discover available profiles by scanning for .env.<name> files in the project root.
+ * Directory holding the .env.<profile> files. Defaults to the project root;
+ * override with GARMIN_PROFILES_DIR (e.g. a read-only /config volume in Docker).
+ */
+export function getProfilesDir(): string {
+  return process.env.GARMIN_PROFILES_DIR
+    ? path.resolve(process.env.GARMIN_PROFILES_DIR)
+    : PROJECT_ROOT;
+}
+
+/**
+ * Root directory for per-profile data (data/<profile>/). Defaults to
+ * <project>/data; override with GARMIN_DATA_DIR (e.g. a /data volume in Docker).
+ */
+export function getDataRoot(): string {
+  return process.env.GARMIN_DATA_DIR
+    ? path.resolve(process.env.GARMIN_DATA_DIR)
+    : path.join(PROJECT_ROOT, "data");
+}
+
+/**
+ * Discover available profiles by scanning for .env.<name> files in the profiles directory.
  * Excludes .env.example.
  */
 export function getAvailableProfiles(): string[] {
-  const files = fs.readdirSync(PROJECT_ROOT);
+  const profilesDir = getProfilesDir();
+  if (!fs.existsSync(profilesDir)) return [];
+  const files = fs.readdirSync(profilesDir);
   const profiles: string[] = [];
   for (const file of files) {
     if (file.startsWith(".env.") && file !== ".env.example") {
@@ -41,7 +63,7 @@ export function loadProfile(name: string): ProfileConfig {
     );
   }
 
-  const envFile = path.join(PROJECT_ROOT, `.env.${name}`);
+  const envFile = path.join(getProfilesDir(), `.env.${name}`);
   if (!fs.existsSync(envFile)) {
     const available = getAvailableProfiles();
     const list = available.length > 0
@@ -64,7 +86,7 @@ export function loadProfile(name: string): ProfileConfig {
     );
   }
 
-  const dataDir = path.join(PROJECT_ROOT, "data", name);
+  const dataDir = path.join(getDataRoot(), name);
 
   // Ensure the profile data directory exists
   if (!fs.existsSync(dataDir)) {
@@ -82,6 +104,22 @@ export function loadProfile(name: string): ProfileConfig {
 }
 
 /**
+ * Dummy profile for mock mode; does not require a .env file.
+ */
+export function getMockProfile(): ProfileConfig {
+  const dataDir = path.join(getDataRoot(), "mock");
+  if (!fs.existsSync(dataDir)) {
+    fs.mkdirSync(dataDir, { recursive: true });
+  }
+  return {
+    name: "mock",
+    email: "mock@example.com",
+    password: "mock",
+    dataDir,
+  };
+}
+
+/**
  * Resolve the --profile flag from process.argv, or throw with guidance.
  * In mock mode, returns a dummy profile that doesn't require a .env file.
  */
@@ -90,16 +128,7 @@ export function requireProfile(mockMode: boolean = false): ProfileConfig {
 
   if (mockMode && !profileArg) {
     // In mock mode, allow running without a profile for testing
-    const dataDir = path.join(PROJECT_ROOT, "data", "mock");
-    if (!fs.existsSync(dataDir)) {
-      fs.mkdirSync(dataDir, { recursive: true });
-    }
-    return {
-      name: "mock",
-      email: "mock@example.com",
-      password: "mock",
-      dataDir,
-    };
+    return getMockProfile();
   }
 
   if (!profileArg) {

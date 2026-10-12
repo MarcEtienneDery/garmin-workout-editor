@@ -1,7 +1,7 @@
 import * as dotenv from "dotenv";
 import * as path from "path";
 import { GarminClient } from "./shared/garminClient";
-import ActivityExporter from "./activityExporter";
+import ActivityExporter, { getLastNWeeksStart } from "./activityExporter";
 import { requireProfile, getProfileArg } from "./shared/profileLoader";
 
 // Load base env (for non-profile vars like GITHUB_TOKEN)
@@ -76,13 +76,7 @@ async function main() {
   let customWeekStart = getArgValue("--week-start");
   let customWeekEnd = getArgValue("--week-end");
   if (last4WeeksOnly && !customWeekStart) {
-    const now = new Date();
-    const utcDay = now.getUTCDay();
-    const daysSinceMonday = utcDay === 0 ? 6 : utcDay - 1;
-    const monday4WeeksAgo = new Date(now);
-    monday4WeeksAgo.setUTCDate(now.getUTCDate() - daysSinceMonday - 21);
-    monday4WeeksAgo.setUTCHours(0, 0, 0, 0);
-    customWeekStart = monday4WeeksAgo.toISOString().split("T")[0];
+    customWeekStart = getLastNWeeksStart(4);
   }
 
   // Get limit from positional arguments, excluding flags and their values
