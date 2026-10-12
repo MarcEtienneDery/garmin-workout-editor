@@ -282,6 +282,78 @@ npm run manage-workouts -- --export --mock
 npm run manage-workouts -- --generate-template --mock
 ```
 
+## MCP Server (claude.ai / Claude Desktop)
+
+An MCP server exposes this repo's functionality to Claude, so the model can review last week's activities, edit your plan files, validate them, and (after you confirm) upload and schedule workouts on Garmin. Claude does the analysis itself; the Copilot-based `adjust-workouts` flow is not part of the MCP.
+
+### Tools
+
+| Group | Tools |
+|---|---|
+| Garmin reads | `list_profiles`, `get_activities`, `list_workouts`, `get_workout`, `export_workouts`, `list_devices` |
+| Plan files | `list_plan_files`, `read_plan_file`, `write_plan_file`, `upsert_plan_workout`, `validate_plan`, `list_exercise_names` |
+| Garmin writes | `upload_workouts`, `upload_single_workout`, `schedule_plan`, `upload_and_schedule_plan`, `send_to_device` |
+
+There is also an `update_weekly_workouts` prompt that walks through the weekly review. Plan files are addressed as `workout-plans/<name>.json` or `data/<profile>/<name>.json`; only `.json` files under those two roots are reachable (never dotfiles such as the token cache).
+
+Garmin write tools are marked destructive so the client asks before running them, and the server instructions tell Claude to get your explicit confirmation first. Uploads delete and recreate any workout that already has a `workoutId` and write the new IDs back into the plan file.
+
+Not exposed yet: `--generate-template`, `--copy-next-week`, `--start-new-plan`.
+
+### Run it in Docker (e.g. on a NAS)
+
+Run this from a checkout of the repo on the NAS. `./workout-plans` already holds the tracked plans and is mounted as-is.
+
+```bash
+mkdir -p config data
+cp .env.MED config/                      # one .env.<profile> per Garmin account
+echo "MCP_AUTH_TOKEN=$(openssl rand -hex 32)" >> .env
+docker compose up -d --build
+```
+
+Volumes (see `docker-compose.yml`):
+
+| Mount | Purpose |
+|---|---|
+| `./config:/config:ro` | `.env.<profile>` files with the Garmin credentials |
+| `./data:/data` | per-profile token cache, `activities.json`, `training-plan.json` |
+| `./workout-plans:/plans` | plan files; uploads write new workout IDs back here |
+
+The container runs as `PUID:PGID` (default 1000:1000), so `data/` and `workout-plans/` must be writable by that user. Set `PUID`/`PGID` in `.env` to match your NAS user. The port is published on `127.0.0.1:8787` only; set `MCP_BIND=0.0.0.0` to allow LAN clients. `GET /healthz` is the unauthenticated health check.
+
+### Make it reachable from claude.ai
+
+claude.ai connects from the internet, so the server needs a public HTTPS URL. Either put it behind your NAS reverse proxy (Let's Encrypt), or use the bundled Cloudflare Tunnel:
+
+```bash
+# Cloudflare dashboard: create a tunnel, add a public hostname -> http://garmin-mcp:8787
+echo "TUNNEL_TOKEN=<tunnel token>" >> .env
+docker compose --profile tunnel up -d
+```
+
+Then in claude.ai (or Claude Desktop): **Settings → Connectors → Add custom connector**, with URL
+
+```
+https://<your-hostname>/mcp/<MCP_AUTH_TOKEN>
+```
+
+The token is the only credential, so anyone with that URL can change your Garmin account. It is compared in constant time, never logged by the server, and wrong tokens get a plain 404. Reverse proxies and tunnels may log request paths; rotate the token (edit `.env`, `docker compose up -d`) if it leaks. For clients that can send headers, `POST /mcp` with `Authorization: Bearer <token>` also works.
+
+Notes:
+- The first call after a restart logs in to Garmin; the OAuth token is cached in `data/<profile>/.garmin-token-cache.json` for 7 days. If a fresh login fails (2FA accounts), log in once on a machine where it works and copy that file into `./data/<profile>/`.
+- Bulk uploads are slow (about a second per workout plus Garmin round trips), and the 14–20 workout plans can take a minute or more. If a client or proxy times out, upload per workout with `upload_single_workout`.
+- Garmin calls are serialized, one at a time.
+
+### Local development
+
+```bash
+npm run mcp -- --mock                    # stdio, for the MCP Inspector
+MCP_AUTH_TOKEN=$(openssl rand -hex 32) npm run mcp:http -- --mock --port 8787
+npx @modelcontextprotocol/inspector      # then connect to http://127.0.0.1:8787/mcp/<token>
+```
+
+`--mock` (or `MOCK_MODE=true`) serves mock data and refuses every Garmin write except `dryRun` validation. Use `--profile <name>` or `GARMIN_PROFILE` to choose the default account. `GARMIN_PROFILES_DIR`, `GARMIN_DATA_DIR` and `WORKOUT_PLANS_DIR` relocate the credentials, data and plan directories (the Docker image sets them to `/config`, `/data`, `/plans`).
+
 ## Testing
 
 ### Run all tests

@@ -1,0 +1,45 @@
+# MCP server for claude.ai / Claude Desktop.
+#
+#   1. From a checkout of the repo (./workout-plans already holds your plans):
+#      mkdir -p config data
+#      cp .env.MED config/            # one .env.<profile> per Garmin account
+#   2. echo "MCP_AUTH_TOKEN=$(openssl rand -hex 32)" >> .env     # compose reads .env
+#   3. docker compose up -d --build
+#   4. (optional public URL)  docker compose --profile tunnel up -d
+#
+# Add the connector with the URL  https://<your-host>/mcp/<MCP_AUTH_TOKEN>
+
+services:
+  garmin-mcp:
+    build: .
+    image: garmin-workout-editor-mcp:latest
+    container_name: garmin-mcp
+    restart: unless-stopped
+    # Run as the owner of ./data and ./workout-plans (Synology/QNAP users are rarely uid 1000).
+    user: "${PUID:-1000}:${PGID:-1000}"
+    environment:
+      MCP_AUTH_TOKEN: ${MCP_AUTH_TOKEN:?Set MCP_AUTH_TOKEN in .env (openssl rand -hex 32)}
+      GARMIN_PROFILE: ${GARMIN_PROFILE:-}
+    ports:
+      # Loopback by default: a reverse proxy on the NAS (or the tunnel below) reaches it.
+      # Set MCP_BIND=0.0.0.0 to also allow LAN clients.
+      - "${MCP_BIND:-127.0.0.1}:${MCP_PORT:-8787}:8787"
+    volumes:
+      - ./config:/config:ro            # .env.<profile> files (Garmin credentials)
+      - ./data:/data                   # token cache, activities.json, training-plan.json
+      - ./workout-plans:/plans         # plan files; uploads write new workoutIds back here
+
+  # Optional: stable public HTTPS hostname through a Cloudflare Tunnel.
+  # Create the tunnel in the Cloudflare dashboard, point its public hostname at
+  # http://garmin-mcp:8787 and put the tunnel token in .env as TUNNEL_TOKEN.
+  cloudflared:
+    profiles: ["tunnel"]
+    image: cloudflare/cloudflared:2026.10.0
+    container_name: garmin-mcp-tunnel
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      # Empty default: compose interpolates inactive profiles too, so don't make this required.
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:-}
+    depends_on:
+      - garmin-mcp

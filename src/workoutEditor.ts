@@ -24,7 +24,7 @@ import {
 } from "@flow-js/garmin-connect";
 
 // Valid stepType values (from Garmin API)
-const VALID_STEP_TYPES = [
+export const VALID_STEP_TYPES = [
   "warmup",
   "cooldown",
   "interval",
@@ -33,10 +33,10 @@ const VALID_STEP_TYPES = [
   "exercise",
   "repeat",
   "other",
-];
+] as const;
 
 // Valid endCondition values (from Garmin API)
-const VALID_END_CONDITIONS = [
+export const VALID_END_CONDITIONS = [
   "reps",
   "time",
   "distance",
@@ -44,10 +44,10 @@ const VALID_END_CONDITIONS = [
   "iterations",
   "calories",
   "heart.rate",
-];
+] as const;
 
 // Valid targetType values (from Garmin API)
-const VALID_TARGET_TYPES = [
+export const VALID_TARGET_TYPES = [
   "no.target",
   "heart.rate.zone",
   "pace.zone",
@@ -55,7 +55,7 @@ const VALID_TARGET_TYPES = [
   "power.zone",
   "cadence.zone",
   "open",
-];
+] as const;
 
 const EXERCISE_CATEGORY_MAP = exerciseCategoryMap as Record<string, string>;
 
@@ -73,21 +73,21 @@ export class WorkoutEditor {
    * Type guard for valid stepType
    */
   private isValidStepType(value: any): boolean {
-    return typeof value === "string" && VALID_STEP_TYPES.includes(value);
+    return typeof value === "string" && ((VALID_STEP_TYPES) as readonly string[]).includes(value);
   }
 
   /**
    * Type guard for valid endCondition
    */
   private isValidEndCondition(value: any): boolean {
-    return typeof value === "string" && VALID_END_CONDITIONS.includes(value);
+    return typeof value === "string" && ((VALID_END_CONDITIONS) as readonly string[]).includes(value);
   }
 
   /**
    * Type guard for valid targetType
    */
   private isValidTargetType(value: any): boolean {
-    return typeof value === "string" && VALID_TARGET_TYPES.includes(value);
+    return typeof value === "string" && ((VALID_TARGET_TYPES) as readonly string[]).includes(value);
   }
 
   /**
@@ -319,7 +319,7 @@ export class WorkoutEditor {
    * Strict validation for a single workout
    * Throws immediately on validation errors
    */
-  private validateWorkout(workout: DetailedWorkout): void {
+  validateWorkout(workout: DetailedWorkout): void {
     // Required: workoutName
     if (!workout.workoutName || typeof workout.workoutName !== "string") {
       throw new Error(
@@ -350,7 +350,7 @@ export class WorkoutEditor {
    * Validate multiple workouts for upload and collect all errors
    * Returns array of error messages (empty if all valid)
    */
-  private validateWorkoutsForUpload(workouts: DetailedWorkout[]): string[] {
+  validateWorkoutsForUpload(workouts: DetailedWorkout[]): string[] {
     const errors: string[] = [];
 
     workouts.forEach((workout, index) => {
@@ -400,7 +400,7 @@ export class WorkoutEditor {
     return date.toISOString().split("T")[0];
   }
 
-  private validateWorkoutPlan(plan: WeeklyWorkoutPlan): void {
+  validateWorkoutPlan(plan: WeeklyWorkoutPlan): void {
     if (
       !plan ||
       !plan.weekStart ||
@@ -645,6 +645,29 @@ export class WorkoutEditor {
       );
       return null;
     }
+  }
+
+  /**
+   * Fetch a single workout by ID and transform it into DetailedWorkout format.
+   * Returns null if the workout can't be found.
+   */
+  async fetchWorkout(workoutId: number | string): Promise<DetailedWorkout | null> {
+    if (this.garminClient.isMockMode()) {
+      const workouts = await this.fetchWorkouts(true);
+      return (
+        workouts.find((w) => String(w.workoutId) === String(workoutId)) ?? null
+      );
+    }
+
+    const authenticated = await this.garminClient.ensureAuthenticated();
+    if (!authenticated) {
+      throw new Error("Failed to authenticate with Garmin");
+    }
+
+    const details = await this.fetchWorkoutDetails(workoutId);
+    if (!details) return null;
+
+    return this.transformSingleWorkout(details);
   }
 
   /**

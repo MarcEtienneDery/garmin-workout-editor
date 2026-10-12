@@ -1,0 +1,15 @@
+node_modules
+dist
+coverage
+data
+workout-plans
+.env
+.env.*
+.git
+.claude
+.github
+.vscode
+*.log
+docker-compose.yml
+Dockerfile
+.dockerignore
