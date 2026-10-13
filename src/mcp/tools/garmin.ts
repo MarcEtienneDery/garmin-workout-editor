@@ -64,7 +64,7 @@ export function registerGarminTools(server: McpServer): void {
     {
       title: "Get recent Garmin activities",
       description:
-        "Fetch recent activities from Garmin, reduced to the slim planning format (duration, HR, training effect, RPE/feel, running intervals, strength sets with weights in lbs). Also saves them to data/<profile>/activities.json. `limit` is how many of the most recent activities are fetched BEFORE the date filter, so make it large enough to cover the period. With includeDetails it takes about 1 second per activity.",
+        "Fetch recent ACTIVITIES (completed sessions the athlete actually did; read-only history, not planned workouts) from Garmin, reduced to the slim planning format (duration, HR, training effect, RPE/feel, running intervals, strength sets with weights in lbs). Also saves them to data/<profile>/activities.json. `limit` is how many of the most recent activities are fetched BEFORE the date filter, so make it large enough to cover the period. With includeDetails it takes about 1 second per activity.",
       inputSchema: {
         profile: profileArg,
         limit: z.number().int().min(1).max(100).default(20),
@@ -120,7 +120,7 @@ export function registerGarminTools(server: McpServer): void {
     {
       title: "List Garmin workouts",
       description:
-        "List workouts in the Garmin Connect workout library (id, name, type, description; the first 100). Fast. Use get_workout for a workout's steps.",
+        "List WORKOUTS (planned sessions, not completed activities) in the Garmin Connect workout library, not local plan files (id, name, type, description; the first 100). Fast. Use get_workout for a workout's steps.",
       inputSchema: { profile: profileArg },
       annotations: READ_GARMIN,
     },
@@ -148,7 +148,7 @@ export function registerGarminTools(server: McpServer): void {
     {
       title: "Get one Garmin workout",
       description:
-        "Fetch a single workout from Garmin by id, transformed to the plan format (flat steps with repeat groups, rest folded into the previous step, weights in lbs).",
+        "Fetch a single planned WORKOUT from the Garmin Connect library by id (not an activity), transformed to the plan format (flat steps with repeat groups, rest folded into the previous step, weights in lbs).",
       inputSchema: {
         profile: profileArg,
         workoutId: z.union([z.number(), z.string()]),
@@ -172,7 +172,7 @@ export function registerGarminTools(server: McpServer): void {
     {
       title: "Export all Garmin workouts",
       description:
-        "Fetch every workout (up to 100) with full step details and save them as stored data (default data/<profile>/workouts.json). Returns the path and count, not the contents; read it with read_plan. Slow: about 0.5 s per workout.",
+        "Fetch every planned WORKOUT in the Garmin Connect library (up to 100) with full step details and save a snapshot as stored data (default data/<profile>/workouts.json). It is a read-only copy, not an editable plan in workout-plans/. Returns the path and count, not the contents; read it with read_plan. Slow: about 0.5 s per workout.",
       inputSchema: {
         profile: profileArg,
         outputPath: z.string().optional().describe('Logical .json path under "data/" or "workout-plans/".'),
@@ -391,7 +391,7 @@ export function registerGarminTools(server: McpServer): void {
     {
       title: "Send workouts to a Garmin watch",
       description:
-        'Send workouts from a plan (already uploaded, i.e. with a workoutId) to a connected device. Only workouts flagged "sendToDevice": true are sent; if none are flagged, all workouts in the file are sent. The device defaults to the first registered one (see list_devices). Confirm with the user first.',
+        'Send workouts from a plan (already uploaded to Garmin, i.e. step after upload; schedule_plan is separate, i.e. with a workoutId) to a connected device. Only workouts flagged "sendToDevice": true are sent; if none are flagged, all workouts in the file are sent. The device defaults to the first registered one (see list_devices). Confirm with the user first.',
       inputSchema: {
         profile: profileArg,
         path: planPath,

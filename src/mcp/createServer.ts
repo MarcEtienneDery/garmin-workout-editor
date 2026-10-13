@@ -8,6 +8,13 @@ import { registerPlanTools } from "./tools/plans";
 
 const INSTRUCTIONS = `Tools to review Garmin training data and manage Garmin Connect workouts, for one or more Garmin profiles.
 
+Concepts (they are different things; do not mix them up):
+- Activity: something the athlete DID — a completed run or strength session recorded by the watch (get_activities). Read-only history with actual duration, heart rate, training effect, RPE/feel, running intervals and the real sets/reps/weights performed. Cached in data/<profile>/activities.json.
+- Workout: something the athlete is TO DO — one planned session (name, type, flat list of steps, optional scheduledDate). Workouts live in the Garmin Connect workout library (list_workouts, get_workout; each has a workoutId) and inside plan files. Editing a workout in a plan file changes nothing on Garmin until it is uploaded.
+- Plan: a JSON file holding a set of workouts (usually one week: generatedAt, weekStart, weekEnd, notes, workouts[]) in workout-plans/*.json. This is the editable draft: you change it with upsert_plan_workout/write_plan, check it with validate_plan, then push it to Garmin with the upload/schedule tools. Do not confuse it with data/<profile>/training-plan.json, which is the long-term training plan: goals, phase/periodization, constraints. Read it for context; it is not uploaded.
+- Profile: one Garmin account. Its stored data lives in data/<profile>/ (activities.json, workouts.json, training-plan.json). Tools take an optional profile; list_profiles shows what exists.
+- Flow of data: activity (what happened) -> informs edits to the plan (what to do next) -> upload creates Garmin workouts (workoutId written back to the plan) -> schedule puts them on the calendar by scheduledDate -> send_to_device pushes them to the watch. Completed workouts then show up as new activities.
+
 Typical weekly flow:
 1. get_activities (period "last-week") to see what was actually done.
 2. read_plan on the current plan (workout-plans/*.json) and on data/<profile>/training-plan.json for goals and phase.
