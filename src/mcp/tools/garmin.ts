@@ -14,7 +14,7 @@ import {
   toLogicalPath,
   writeJsonAtomic,
 } from "../context";
-import { extractWorkouts } from "./planFiles";
+import { extractWorkouts } from "./plans";
 
 const profileArg = z
   .string()
@@ -170,9 +170,9 @@ export function registerGarminTools(server: McpServer): void {
   server.registerTool(
     "export_workouts",
     {
-      title: "Export all Garmin workouts to a file",
+      title: "Export all Garmin workouts",
       description:
-        "Fetch every workout (up to 100) with full step details and save them to a file (default data/<profile>/workouts.json). Returns the path and count, not the contents; read the file with read_plan_file. Slow: about 0.5 s per workout.",
+        "Fetch every workout (up to 100) with full step details and save them as stored data (default data/<profile>/workouts.json). Returns the path and count, not the contents; read it with read_plan. Slow: about 0.5 s per workout.",
       inputSchema: {
         profile: profileArg,
         outputPath: z.string().optional().describe('Logical .json path under "data/" or "workout-plans/".'),
@@ -228,7 +228,7 @@ export function registerGarminTools(server: McpServer): void {
     {
       title: "Upload workouts to Garmin",
       description:
-        "Upload every workout in a plan/array file to Garmin Connect WITHOUT scheduling them. Each workout that already has a workoutId is deleted and recreated, and the new workoutIds are written back to the file. Confirm with the user first. Use dryRun=true to validate only (nothing is sent).",
+        "Upload every workout in a plan to Garmin Connect WITHOUT scheduling them. Each workout that already has a workoutId is deleted and recreated, and the new workoutIds are written back to the plan. Confirm with the user first. Use dryRun=true to validate only (nothing is sent).",
       inputSchema: {
         profile: profileArg,
         path: planPath,
@@ -252,7 +252,7 @@ export function registerGarminTools(server: McpServer): void {
             ...result,
             note: dryRun
               ? "Validation only; nothing was uploaded."
-              : "New workoutIds were written back to the file.",
+              : "New workoutIds were written back to the plan.",
           };
         },
         { serialize: true }
@@ -264,7 +264,7 @@ export function registerGarminTools(server: McpServer): void {
     {
       title: "Upload one workout to Garmin",
       description:
-        "Upload a single workout from a plan/array file (matched by workoutId or exact workoutName), without scheduling. An existing Garmin workout with that id is deleted and recreated, and the new workoutId is written back to the file. Confirm with the user first.",
+        "Upload a single workout from a plan (matched by workoutId or exact workoutName), without scheduling. An existing Garmin workout with that id is deleted and recreated, and the new workoutId is written back to the plan. Confirm with the user first.",
       inputSchema: {
         profile: profileArg,
         path: planPath,
@@ -312,7 +312,7 @@ export function registerGarminTools(server: McpServer): void {
     {
       title: "Schedule an uploaded plan on the Garmin calendar",
       description:
-        "Schedule the workouts of a plan file on the Garmin calendar using their scheduledDate and existing workoutId (nothing is uploaded; workouts without a workoutId are skipped, except distance-only runs which are created). Confirm with the user first. The log shows per-workout outcomes.",
+        "Schedule the workouts of a plan on the Garmin calendar using their scheduledDate and existing workoutId (nothing is uploaded; workouts without a workoutId are skipped, except distance-only runs which are created). Confirm with the user first. The log shows per-workout outcomes.",
       inputSchema: { profile: profileArg, path: planPath },
       annotations: WRITE_GARMIN,
     },
@@ -346,7 +346,7 @@ export function registerGarminTools(server: McpServer): void {
     {
       title: "Upload a plan to Garmin and schedule it",
       description:
-        "Upload every workout in a plan file (existing ones with a workoutId are deleted and recreated) and then schedule them on the Garmin calendar by scheduledDate. New workoutIds are written back to the plan file. Run validate_plan first and get the user's explicit confirmation before calling this.",
+        "Upload every workout in a plan (existing ones with a workoutId are deleted and recreated) and then schedule them on the Garmin calendar by scheduledDate. New workoutIds are written back to the plan file. Run validate_plan first and get the user's explicit confirmation before calling this.",
       inputSchema: { profile: profileArg, path: planPath },
       annotations: WRITE_GARMIN,
     },
@@ -391,7 +391,7 @@ export function registerGarminTools(server: McpServer): void {
     {
       title: "Send workouts to a Garmin watch",
       description:
-        'Send workouts from a plan/array file (already uploaded, i.e. with a workoutId) to a connected device. Only workouts flagged "sendToDevice": true are sent; if none are flagged, all workouts in the file are sent. The device defaults to the first registered one (see list_devices). Confirm with the user first.',
+        'Send workouts from a plan (already uploaded, i.e. with a workoutId) to a connected device. Only workouts flagged "sendToDevice": true are sent; if none are flagged, all workouts in the file are sent. The device defaults to the first registered one (see list_devices). Confirm with the user first.',
       inputSchema: {
         profile: profileArg,
         path: planPath,

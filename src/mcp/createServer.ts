@@ -4,13 +4,13 @@ import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { PROJECT_ROOT } from "../shared/profileLoader";
 import { registerGarminTools } from "./tools/garmin";
-import { registerPlanFileTools } from "./tools/planFiles";
+import { registerPlanTools } from "./tools/plans";
 
 const INSTRUCTIONS = `Tools to review Garmin training data and manage Garmin Connect workouts, for one or more Garmin profiles.
 
 Typical weekly flow:
 1. get_activities (period "last-week") to see what was actually done.
-2. read_plan_file on the current plan (workout-plans/*.json) and on data/<profile>/training-plan.json for goals and phase.
+2. read_plan on the current plan (workout-plans/*.json) and on data/<profile>/training-plan.json for goals and phase.
 3. Make conservative, evidence-based changes with upsert_plan_workout (look exercise names up with list_exercise_names), then validate_plan.
 4. Summarize the proposed changes and the validation result to the user.
 
@@ -26,12 +26,12 @@ function readVersion(): string {
 }
 
 export function buildWeeklyUpdatePrompt(planFile?: string, profile?: string): string {
-  const plan = planFile ?? "the current workout plan file (list_plan_files shows what exists)";
+  const plan = planFile ?? "the current workout plan (list_plans shows what exists)";
   const profileNote = profile ? ` Use profile "${profile}".` : "";
   return `Update this week's strength and running workouts from the latest Garmin activity data.${profileNote}
 
 1. Call get_activities for last week and review actual performance: strength loads, reps, missed sets and time-constrained accessories; running duration, distance, heart rate and perceived effort when available.
-2. Read ${plan} and the profile's training-plan.json (read_plan_file) for the plan, goals and periodization phase.
+2. Read ${plan} and the profile's training-plan.json (read_plan) for the plan, goals and periodization phase.
 3. Update the plan for the current week with upsert_plan_workout. Keep changes conservative and evidence-based:
    - increase loads only when last week was clearly below target effort and execution was complete
    - reduce or hold volume when execution was incomplete because of fatigue or time
@@ -50,7 +50,7 @@ export function createServer(): McpServer {
   );
 
   registerGarminTools(server);
-  registerPlanFileTools(server);
+  registerPlanTools(server);
 
   server.registerPrompt(
     "update_weekly_workouts",

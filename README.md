@@ -284,14 +284,14 @@ npm run manage-workouts -- --generate-template --mock
 
 ## MCP Server (claude.ai / Claude Desktop)
 
-An MCP server exposes this repo's functionality to Claude, so the model can review last week's activities, edit your plan files, validate them, and (after you confirm) upload and schedule workouts on Garmin. Claude does the analysis itself; the Copilot-based `adjust-workouts` flow is not part of the MCP.
+An MCP server exposes this repo's functionality to Claude, so the model can review last week's activities, edit your plans, validate them, and (after you confirm) upload and schedule workouts on Garmin. Claude does the analysis itself; the Copilot-based `adjust-workouts` flow is not part of the MCP.
 
 ### Tools
 
 | Group | Tools |
 |---|---|
 | Garmin reads | `list_profiles`, `get_activities`, `list_workouts`, `get_workout`, `export_workouts`, `list_devices` |
-| Plan files | `list_plan_files`, `read_plan_file`, `write_plan_file`, `upsert_plan_workout`, `validate_plan`, `list_exercise_names` |
+| Plans | `list_plans`, `read_plan`, `write_plan`, `upsert_plan_workout`, `validate_plan`, `list_exercise_names` |
 | Garmin writes | `upload_workouts`, `upload_single_workout`, `schedule_plan`, `upload_and_schedule_plan`, `send_to_device` |
 
 There is also an `update_weekly_workouts` prompt that walks through the weekly review. Plan files are addressed as `workout-plans/<name>.json` or `data/<profile>/<name>.json`; only `.json` files under those two roots are reachable (never dotfiles such as the token cache).

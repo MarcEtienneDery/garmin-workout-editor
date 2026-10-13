@@ -25,10 +25,10 @@ const EXPECTED_TOOLS = [
   "get_workout",
   "list_devices",
   "list_exercise_names",
-  "list_plan_files",
+  "list_plans",
   "list_profiles",
   "list_workouts",
-  "read_plan_file",
+  "read_plan",
   "schedule_plan",
   "send_to_device",
   "upload_and_schedule_plan",
@@ -36,7 +36,7 @@ const EXPECTED_TOOLS = [
   "upload_workouts",
   "upsert_plan_workout",
   "validate_plan",
-  "write_plan_file",
+  "write_plan",
 ];
 
 const STRENGTH_WORKOUT = {
@@ -143,10 +143,10 @@ describe("MCP server (mock mode, in-memory transport)", () => {
   it("marks Garmin writes destructive and reads read-only", async () => {
     const { tools } = await client.listTools();
     const byName = Object.fromEntries(tools.map((t) => [t.name, t]));
-    for (const name of ["upload_workouts", "upload_and_schedule_plan", "schedule_plan", "send_to_device", "write_plan_file"]) {
+    for (const name of ["upload_workouts", "upload_and_schedule_plan", "schedule_plan", "send_to_device", "write_plan"]) {
       expect(byName[name].annotations?.destructiveHint).toBe(true);
     }
-    for (const name of ["list_workouts", "get_activities", "validate_plan", "read_plan_file"]) {
+    for (const name of ["list_workouts", "get_activities", "validate_plan", "read_plan"]) {
       expect(byName[name].annotations?.readOnlyHint).toBe(true);
     }
   });
@@ -191,7 +191,7 @@ describe("MCP server (mock mode, in-memory transport)", () => {
 
   it("lists plan files from the overridden directories", async () => {
     writePlan("listed.json", []);
-    const out = await callTool(client, "list_plan_files");
+    const out = await callTool(client, "list_plans");
     expect(out.value["workout-plans"].map((f: any) => f.path)).toContain("workout-plans/listed.json");
     expect(out.value.data.map((f: any) => f.path)).toContain("data/mock/activities.json");
   });
@@ -312,27 +312,27 @@ describe("MCP server (mock mode, in-memory transport)", () => {
     });
   });
 
-  describe("read/write_plan_file", () => {
+  describe("read/write_plan", () => {
     it("round-trips content and reports whether it overwrote", async () => {
-      const first = await callTool(client, "write_plan_file", {
+      const first = await callTool(client, "write_plan", {
         path: "data/mock/training-plan.json",
         content: { version: "1.0", periodization: { currentPhase: "Hypertrophy" } },
       });
       expect(first.value).toMatchObject({ path: "data/mock/training-plan.json", overwritten: false });
       expect(first.value.validation).toBeUndefined();
 
-      const second = await callTool(client, "write_plan_file", {
+      const second = await callTool(client, "write_plan", {
         path: "data/mock/training-plan.json",
         content: { version: "2.0" },
       });
       expect(second.value.overwritten).toBe(true);
 
-      const read = await callTool(client, "read_plan_file", { path: "data/mock/training-plan.json" });
+      const read = await callTool(client, "read_plan", { path: "data/mock/training-plan.json" });
       expect(read.value.content).toEqual({ version: "2.0" });
     });
 
     it("writes workout arrays but returns their validation result", async () => {
-      const out = await callTool(client, "write_plan_file", {
+      const out = await callTool(client, "write_plan", {
         path: "workout-plans/written.json",
         content: [{ workoutName: "No Steps", workoutType: "strength_training" }],
       });
@@ -347,7 +347,7 @@ describe("MCP server (mock mode, in-memory transport)", () => {
     });
 
     it("reports a missing file clearly", async () => {
-      const out = await callTool(client, "read_plan_file", { path: "workout-plans/nope.json" });
+      const out = await callTool(client, "read_plan", { path: "workout-plans/nope.json" });
       expect(out.isError).toBe(true);
       expect(out.text).toContain("File not found");
     });
@@ -366,7 +366,7 @@ describe("MCP server (mock mode, in-memory transport)", () => {
       "package.json",
       "data\\..\\..\\x.json",
     ])("rejects %s", async (bad) => {
-      const out = await callTool(client, "read_plan_file", { path: bad });
+      const out = await callTool(client, "read_plan", { path: bad });
       expect(out.isError).toBe(true);
     });
 
@@ -376,7 +376,7 @@ describe("MCP server (mock mode, in-memory transport)", () => {
       fs.writeFileSync(path.join(outside, "secret.json"), "{}");
       fs.symlinkSync(outside, path.join(plansDir, "linked"));
 
-      const out = await callTool(client, "read_plan_file", { path: "workout-plans/linked/secret.json" });
+      const out = await callTool(client, "read_plan", { path: "workout-plans/linked/secret.json" });
       expect(out.isError).toBe(true);
       expect(() => resolveDataPath("workout-plans/linked/secret.json")).toThrow(/escapes/);
     });

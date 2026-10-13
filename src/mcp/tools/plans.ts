@@ -260,13 +260,13 @@ function listJsonFiles(dir: string, logicalPrefix: string): FileEntry[] {
     .sort((a, b) => a.path.localeCompare(b.path));
 }
 
-export function registerPlanFileTools(server: McpServer): void {
+export function registerPlanTools(server: McpServer): void {
   server.registerTool(
-    "list_plan_files",
+    "list_plans",
     {
-      title: "List plan files",
+      title: "List plans",
       description:
-        "List the JSON files the other file tools can reach: workout plans under workout-plans/ and per-profile data under data/<profile>/ (activities.json, workouts.json, training-plan.json, ...). Each entry includes metadata about its content (for plans: dates, source, notes preview, workout count/types/names, uploaded and scheduled counts).",
+        "List the stored plans and data the other plan tools can reach: workout plans under workout-plans/ and per-profile data under data/<profile>/ (activities.json, workouts.json, training-plan.json, ...). Each entry includes metadata about its content (for plans: dates, source, notes preview, workout count/types/names, uploaded and scheduled counts).",
       inputSchema: {
         profile: z.string().optional().describe("Only list data/<profile>/. Omit to list every profile."),
       },
@@ -296,11 +296,11 @@ export function registerPlanFileTools(server: McpServer): void {
   );
 
   server.registerTool(
-    "read_plan_file",
+    "read_plan",
     {
-      title: "Read plan file",
+      title: "Read plan",
       description:
-        'Read a JSON file, e.g. "workout-plans/workouts-full-body-maintenance.json" or "data/MED/training-plan.json", and return its parsed content.',
+        'Read a plan or stored data, e.g. "workout-plans/workouts-full-body-maintenance.json" or "data/MED/training-plan.json", and return its parsed content.',
       inputSchema: {
         path: z.string().describe('Logical path starting with "workout-plans/" or "data/".'),
       },
@@ -314,11 +314,11 @@ export function registerPlanFileTools(server: McpServer): void {
   );
 
   server.registerTool(
-    "write_plan_file",
+    "write_plan",
     {
-      title: "Write plan file",
+      title: "Write plan",
       description:
-        "Create or overwrite a JSON file with the given content. Workout plans/arrays are validated afterwards; the file is written even if validation reports errors, so check `validation`. To change a single workout, prefer upsert_plan_workout.\n\n" +
+        "Create or overwrite a plan with the given content. Workout plans/arrays are validated afterwards; the plan is saved even if validation reports errors, so check `validation`. To change a single workout, prefer upsert_plan_workout.\n\n" +
         WORKOUT_FORMAT,
       inputSchema: {
         path: z.string().describe('Logical path starting with "workout-plans/" or "data/", ending in .json.'),
@@ -346,10 +346,10 @@ export function registerPlanFileTools(server: McpServer): void {
     {
       title: "Add or replace a workout in a plan",
       description:
-        "Replace one workout in a plan file (matched by matchName, else by workoutId, else by workoutName) or append it if there is no match. The rest of the file is untouched. The workout is validated first and nothing is written if validation fails.\n\n" +
+        "Replace one workout in a plan (matched by matchName, else by workoutId, else by workoutName) or append it if there is no match. The rest of the plan is untouched. The workout is validated first and nothing is written if validation fails.\n\n" +
         WORKOUT_FORMAT,
       inputSchema: {
-        path: z.string().describe('Existing plan file, e.g. "workout-plans/workouts-full-body-maintenance.json".'),
+        path: z.string().describe('Existing plan, e.g. "workout-plans/workouts-full-body-maintenance.json".'),
         workout: plannedWorkoutSchema,
         matchName: z.string().optional().describe("Name of the existing workout to replace; use it when renaming."),
       },
@@ -392,9 +392,9 @@ export function registerPlanFileTools(server: McpServer): void {
   server.registerTool(
     "validate_plan",
     {
-      title: "Validate plan file",
+      title: "Validate plan",
       description:
-        "Validate a workout plan/array file with the same checks used before upload (step fields, exercise names, repeat/rest fields, dates). No Garmin calls. Returns errors, warnings and a per-workout summary (workoutId, steps, scheduledDate). Distance-only running workouts without steps are accepted (kind \"simple-running\").",
+        "Validate a workout plan with the same checks used before upload (step fields, exercise names, repeat/rest fields, dates). No Garmin calls. Returns errors, warnings and a per-workout summary (workoutId, steps, scheduledDate). Distance-only running workouts without steps are accepted (kind \"simple-running\").",
       inputSchema: {
         path: z.string().describe('Logical path starting with "workout-plans/" or "data/".'),
       },
