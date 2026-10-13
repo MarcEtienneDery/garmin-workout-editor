@@ -190,6 +190,57 @@ interface FileEntry {
   path: string;
   sizeBytes: number;
   modified: string;
+  [summary: string]: unknown;
+}
+
+const MAX_SUMMARY_BYTES = 20 * 1024 * 1024;
+const NOTES_PREVIEW_CHARS = 300;
+
+/** Cheap description of a JSON file's content so callers can pick a file without reading each one. */
+function summarizeJsonFile(fullPath: string, sizeBytes: number): Record<string, unknown> {
+  if (sizeBytes > MAX_SUMMARY_BYTES) return { summaryError: "file too large to summarize" };
+  try {
+    const data: unknown = JSON.parse(fs.readFileSync(fullPath, "utf8"));
+    if (Array.isArray(data)) return { kind: "array", itemCount: data.length };
+    if (data === null || typeof data !== "object") return { kind: typeof data };
+    const obj = data as Record<string, unknown>;
+    const summary: Record<string, unknown> = {};
+    if (Array.isArray(obj.workouts)) {
+      const workouts = obj.workouts as Array<Record<string, unknown>>;
+      const dates = workouts
+        .flatMap((w) => (Array.isArray(w.scheduledDate) ? w.scheduledDate : [w.scheduledDate]))
+        .filter((d): d is string => typeof d === "string")
+        .sort();
+      const types: Record<string, number> = {};
+      for (const w of workouts) {
+        const t = typeof w.workoutType === "string" ? w.workoutType : "unknown";
+        types[t] = (types[t] ?? 0) + 1;
+      }
+      summary.kind = "workout-plan";
+      for (const k of ["generatedAt", "weekStart", "weekEnd", "source"]) {
+        if (obj[k] !== undefined) summary[k] = obj[k];
+      }
+      if (typeof obj.notes === "string") {
+        summary.notes =
+          obj.notes.length > NOTES_PREVIEW_CHARS ? `${obj.notes.slice(0, NOTES_PREVIEW_CHARS)}…` : obj.notes;
+      }
+      summary.workoutCount = workouts.length;
+      summary.workoutTypes = types;
+      summary.uploadedCount = workouts.filter((w) => w.workoutId !== undefined).length;
+      summary.scheduledCount = dates.length;
+      if (dates.length) summary.scheduledRange = [dates[0], dates[dates.length - 1]];
+      summary.workoutNames = workouts.map((w) => w.workoutName).filter((n) => typeof n === "string");
+    } else {
+      summary.kind = "object";
+      summary.keys = Object.keys(obj).slice(0, 30);
+      const arrays: Record<string, number> = {};
+      for (const [k, v] of Object.entries(obj)) if (Array.isArray(v)) arrays[k] = v.length;
+      if (Object.keys(arrays).length) summary.arrayLengths = arrays;
+    }
+    return summary;
+  } catch (err) {
+    return { summaryError: `not valid JSON: ${(err as Error).message}` };
+  }
 }
 
 function listJsonFiles(dir: string, logicalPrefix: string): FileEntry[] {
@@ -203,6 +254,7 @@ function listJsonFiles(dir: string, logicalPrefix: string): FileEntry[] {
         path: `${logicalPrefix}/${e.name}`,
         sizeBytes: stat.size,
         modified: stat.mtime.toISOString(),
+        ...summarizeJsonFile(path.join(dir, e.name), stat.size),
       };
     })
     .sort((a, b) => a.path.localeCompare(b.path));
@@ -214,7 +266,7 @@ export function registerPlanFileTools(server: McpServer): void {
     {
       title: "List plan files",
       description:
-        "List the JSON files the other file tools can reach: workout plans under workout-plans/ and per-profile data under data/<profile>/ (activities.json, workouts.json, training-plan.json, ...).",
+        "List the JSON files the other file tools can reach: workout plans under workout-plans/ and per-profile data under data/<profile>/ (activities.json, workouts.json, training-plan.json, ...). Each entry includes metadata about its content (for plans: dates, source, notes preview, workout count/types/names, uploaded and scheduled counts).",
       inputSchema: {
         profile: z.string().optional().describe("Only list data/<profile>/. Omit to list every profile."),
       },
