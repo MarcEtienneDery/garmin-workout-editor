@@ -30,9 +30,11 @@
   aside h2 { font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--dim); margin:0; padding:10px 10px 4px; }
   .file { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:0 8px; padding:5px 10px; cursor:pointer; border-left:2px solid transparent; }
   .file > span:first-child { grid-column:1 / -1; overflow-wrap:anywhere; }
+  .file .wact { align-self:center; }
   .file:hover { background:#2d2d2e; }
   .file.active { background:#37373d; border-left-color:var(--accent); }
-  .file small { display:block; color:var(--dim); min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .file small { display:flex; flex-wrap:wrap; column-gap:8px; color:var(--dim); min-width:0; }
+  .file small span { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   #editor { min-width:0; min-height:0; }
   .row { display:flex; gap:6px; align-items:center; padding:4px 10px; border-bottom:1px solid #2f2f2f; }
   .row .name { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; cursor:pointer; }
@@ -392,10 +394,12 @@ async function refreshFiles() {
     for (const f of list) {
       const d = document.createElement("div");
       d.className = "file" + (current && current.path === f.path ? " active" : "");
-      const meta = [f.workoutCount != null ? f.workoutCount + " workouts" : null, f.weekStart].filter(Boolean).join(" · ");
       d.innerHTML = `<span></span><small></small><span class="wact"></span>`;
       d.children[0].textContent = f.path.split("/").pop();
-      d.children[1].textContent = meta;
+      // the count and the date are separate pieces so a narrow sidebar wraps the date instead of cutting it off
+      for (const text of [f.workoutCount != null ? f.workoutCount + " workouts" : null, f.weekStart].filter(Boolean)) {
+        const part = document.createElement("span"); part.textContent = text; d.children[1].append(part);
+      }
       for (const a of fileActions(f)) {
         const b = document.createElement("button");
         b.innerHTML = ICONS[a.icon]; b.title = a.title; b.setAttribute("aria-label", a.title);
