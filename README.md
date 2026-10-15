@@ -282,6 +282,21 @@ npm run manage-workouts -- --export --mock
 npm run manage-workouts -- --generate-template --mock
 ```
 
+## Plan Editor (web UI)
+
+A small local website to manage plan files: a Monaco JSON editor (with schema autocompletion) plus CRUD.
+
+```bash
+npm run web          # http://127.0.0.1:8788
+```
+
+- **Files**: create, duplicate, rename and delete plans in `workout-plans/` and `data/<profile>/` (the same files the MCP plan tools reach).
+- **Workouts panel**: add, duplicate and delete individual workouts, or click one to jump to it in the editor.
+- **Validation**: the same pre-upload checks as `validate_plan`, run as you type; saving is never blocked by validation errors. `Ctrl/Cmd+S` saves.
+- **Safe writes**: atomic saves, and a save is refused (409) if the file changed on disk since you opened it (e.g. edited through the MCP server).
+- **Config**: `WEB_PORT` (8788), `WEB_HOST` (127.0.0.1). Binding to a non-loopback host requires `WEB_AUTH_TOKEN` (HTTP Basic auth: any user, the token as password).
+- It edits files only; uploading to Garmin still goes through the CLI or MCP tools.
+
 ## MCP Server (claude.ai / Claude Desktop)
 
 An MCP server exposes this repo's functionality to Claude, so the model can review last week's activities, edit your plans, validate them, and (after you confirm) upload and schedule workouts on Garmin. Claude does the analysis itself; the Copilot-based `adjust-workouts` flow is not part of the MCP.

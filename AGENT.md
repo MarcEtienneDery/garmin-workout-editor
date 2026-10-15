@@ -24,6 +24,7 @@ No linter; TypeScript strict mode is the gate. Run `npx tsc --noEmit` and the re
 | AI-assisted adjustment | `src/adjustWorkouts.ts`, `src/workoutAdjuster.ts` |
 | Garmin client, types, profiles | `src/shared/` (`garminClient.ts`, `types.ts`, `profileLoader.ts`) |
 | MCP server | `src/mcp/` (`createServer.ts`, `tools/garmin.ts`, `tools/plans.ts`) |
+| Plan editor web UI | `src/web/` (`server.ts`, `public/index.html`; Monaco served from node_modules) |
 | Plans (JSON) | `workout-plans/` |
 | Per-profile data | `data/<profile>/` |
 

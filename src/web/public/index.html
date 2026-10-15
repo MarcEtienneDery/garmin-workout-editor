@@ -1,0 +1,297 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Plan Editor</title>
+<style>
+  :root { --bg:#1e1e1e; --panel:#252526; --line:#3c3c3c; --fg:#d4d4d4; --dim:#8b8b8b; --accent:#0e7ad1; --ok:#4ec9b0; --warn:#d7ba7d; --err:#f48771; }
+  * { box-sizing:border-box; }
+  html,body { height:100%; margin:0; }
+  body { background:var(--bg); color:var(--fg); font:13px/1.4 system-ui,sans-serif; display:grid; grid-template-rows:auto 1fr; }
+  header { display:flex; gap:6px; align-items:center; padding:6px 10px; background:var(--panel); border-bottom:1px solid var(--line); flex-wrap:wrap; }
+  header h1 { font-size:13px; margin:0 8px 0 0; }
+  #current { color:var(--dim); margin-left:auto; }
+  #current b { color:var(--fg); }
+  button { background:#333; color:var(--fg); border:1px solid var(--line); border-radius:3px; padding:4px 10px; cursor:pointer; font:inherit; }
+  button:hover:not(:disabled) { background:#3d3d3d; }
+  button:disabled { opacity:.4; cursor:default; }
+  button.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+  button.danger:hover:not(:disabled) { background:#7a2b22; }
+  main { display:grid; grid-template-columns:240px 1fr 300px; min-height:0; }
+  aside { background:var(--panel); overflow:auto; min-height:0; }
+  #files { border-right:1px solid var(--line); }
+  #side { border-left:1px solid var(--line); }
+  aside h2 { font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--dim); margin:0; padding:10px 10px 4px; }
+  .file { padding:5px 10px; cursor:pointer; border-left:2px solid transparent; }
+  .file:hover { background:#2d2d2e; }
+  .file.active { background:#37373d; border-left-color:var(--accent); }
+  .file small { display:block; color:var(--dim); }
+  #editor { min-width:0; min-height:0; }
+  .row { display:flex; gap:6px; align-items:center; padding:4px 10px; border-bottom:1px solid #2f2f2f; }
+  .row .name { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; cursor:pointer; }
+  .row .name:hover { text-decoration:underline; }
+  .row small { color:var(--dim); }
+  .row button { padding:1px 6px; }
+  .msg { padding:2px 10px; }
+  .msg.err { color:var(--err); } .msg.warn { color:var(--warn); } .msg.ok { color:var(--ok); }
+  #toast { position:fixed; bottom:14px; left:50%; transform:translateX(-50%); background:#333; border:1px solid var(--line); padding:8px 14px; border-radius:4px; display:none; max-width:80vw; }
+  .empty { color:var(--dim); padding:10px; }
+  @media (max-width:900px) { main { grid-template-columns:1fr; grid-template-rows:auto 1fr auto; } aside { max-height:30vh; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Plan Editor</h1>
+  <button id="new">+ New</button>
+  <button id="save" class="primary" disabled>Save</button>
+  <button id="validate" disabled>Validate</button>
+  <button id="format" disabled>Format</button>
+  <button id="reload" disabled>Reload</button>
+  <button id="dup" disabled>Duplicate</button>
+  <button id="rename" disabled>Rename</button>
+  <button id="delete" class="danger" disabled>Delete</button>
+  <span id="current">No file open</span>
+</header>
+<main>
+  <aside id="files"></aside>
+  <div id="editor"></div>
+  <aside id="side">
+    <h2>Workouts</h2>
+    <div id="outline"><div class="empty">Open a plan.</div></div>
+    <h2>Validation</h2>
+    <div id="problems"><div class="empty">Nothing to report.</div></div>
+  </aside>
+</main>
+<div id="toast"></div>
+
+<script src="/vendor/monaco/loader.js"></script>
+<script>
+const $ = (id) => document.getElementById(id);
+let editor, monaco;
+let files = [];
+let current = null;        // { path, mtimeMs }
+let savedText = "";
+let validateTimer;
+
+// ── API ────────────────────────────────────────────────────────────────
+async function api(method, url, body) {
+  const res = await fetch(url, {
+    method,
+    headers: { "Content-Type": "application/json", "X-Requested-With": "plan-editor" },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || res.statusText);
+  return data;
+}
+const fileUrl = (p) => "/api/file?path=" + encodeURIComponent(p);
+
+function toast(text, ms = 3500) {
+  const t = $("toast"); t.textContent = text; t.style.display = "block";
+  clearTimeout(toast.t); toast.t = setTimeout(() => (t.style.display = "none"), ms);
+}
+const guard = (fn) => async (...a) => { try { await fn(...a); } catch (e) { toast(e.message, 6000); } };
+
+// ── File list ──────────────────────────────────────────────────────────
+const isDirty = () => current && editor.getValue() !== savedText;
+
+async function refreshFiles() {
+  files = (await api("GET", "/api/files")).files;
+  const groups = {};
+  for (const f of files) (groups[f.path.split("/").slice(0, -1).join("/")] ||= []).push(f);
+  const el = $("files"); el.innerHTML = "";
+  for (const [dir, list] of Object.entries(groups)) {
+    const h = document.createElement("h2"); h.textContent = dir; el.append(h);
+    for (const f of list) {
+      const d = document.createElement("div");
+      d.className = "file" + (current && current.path === f.path ? " active" : "");
+      const meta = [f.workoutCount != null ? f.workoutCount + " workouts" : null, f.weekStart].filter(Boolean).join(" · ");
+      d.innerHTML = `<span></span><small></small>`;
+      d.firstChild.textContent = f.path.split("/").pop();
+      d.lastChild.textContent = meta;
+      d.onclick = guard(() => openFile(f.path));
+      el.append(d);
+    }
+  }
+  if (!files.length) el.innerHTML = '<div class="empty">No plans yet.</div>';
+}
+
+async function openFile(p) {
+  if (current && current.path !== p && isDirty() && !confirm("Discard unsaved changes?")) return;
+  const f = await api("GET", fileUrl(p));
+  current = { path: f.path, mtimeMs: f.mtimeMs };
+  savedText = f.text;
+  editor.setValue(f.text);
+  editor.setScrollTop(0);
+  setButtons();
+  refreshFiles();
+  runValidate();
+}
+
+function setButtons() {
+  const on = !!current;
+  for (const id of ["save", "validate", "format", "reload", "dup", "rename", "delete"]) $(id).disabled = !on;
+  $("current").innerHTML = on ? `<b></b>${isDirty() ? " ●" : ""}` : "No file open";
+  if (on) $("current").firstChild.textContent = current.path;
+}
+
+// ── Actions ────────────────────────────────────────────────────────────
+const save = guard(async () => {
+  if (!current) return;
+  const text = editor.getValue();
+  const r = await api("PUT", fileUrl(current.path), { text, mtimeMs: current.mtimeMs });
+  current.mtimeMs = r.mtimeMs; savedText = text;
+  showValidation(r.validation); setButtons(); refreshFiles();
+  toast("Saved");
+});
+
+const newFile = guard(async () => {
+  let name = prompt('New file name (in workout-plans/), or a full path like "data/MED/x.json":', "workouts-new.json");
+  if (!name) return;
+  if (!/^(workout-plans|data)\//.test(name)) name = "workout-plans/" + name;
+  if (!name.endsWith(".json")) name += ".json";
+  const today = new Date().toISOString().slice(0, 10);
+  const text = JSON.stringify({ generatedAt: new Date().toISOString(), weekStart: today, weekEnd: today, notes: "", workouts: [newWorkout("New workout")] }, null, 2) + "\n";
+  await api("PUT", fileUrl(name), { text, create: true });
+  await openFile(name);
+});
+
+const duplicate = guard(async () => {
+  const name = prompt("Duplicate as:", current.path.replace(/\.json$/, "-copy.json"));
+  if (!name) return;
+  // Strip workoutIds so a copy never overwrites the original workouts on Garmin.
+  let text = editor.getValue();
+  try {
+    const data = JSON.parse(text);
+    const list = Array.isArray(data) ? data : data.workouts;
+    if (Array.isArray(list) && list.some((w) => w && w.workoutId !== undefined) && confirm("Remove workoutId from the copy? (recommended: re-uploading it would otherwise replace the original workouts on Garmin)")) {
+      list.forEach((w) => w && delete w.workoutId);
+      text = JSON.stringify(data, null, 2) + "\n";
+    }
+  } catch {}
+  await api("PUT", fileUrl(name), { text, create: true });
+  await openFile(name);
+});
+
+const rename = guard(async () => {
+  const to = prompt("Rename to:", current.path);
+  if (!to || to === current.path) return;
+  if (isDirty()) await save();
+  const r = await api("POST", "/api/rename", { from: current.path, to });
+  current.path = r.to; current.mtimeMs = r.mtimeMs; setButtons(); refreshFiles();
+});
+
+const remove = guard(async () => {
+  if (!confirm(`Delete ${current.path}? This cannot be undone.`)) return;
+  await api("DELETE", fileUrl(current.path));
+  current = null; savedText = ""; editor.setValue(""); setButtons(); renderOutline(); showValidation(null); refreshFiles();
+  toast("Deleted");
+});
+
+const reload = guard(async () => {
+  if (isDirty() && !confirm("Discard unsaved changes?")) return;
+  const p = current.path; current = null; await openFile(p);
+});
+
+function format() {
+  try { editor.setValue(JSON.stringify(JSON.parse(editor.getValue()), null, 2) + "\n"); }
+  catch (e) { toast("Cannot format: " + e.message); }
+}
+
+// ── Validation + outline ───────────────────────────────────────────────
+function showValidation(v, parseError) {
+  const el = $("problems"); el.innerHTML = "";
+  const add = (cls, text) => { const d = document.createElement("div"); d.className = "msg " + cls; d.textContent = text; el.append(d); };
+  if (parseError) add("err", parseError);
+  else if (!v) add("ok", "Valid JSON (not a workout file, no further checks).");
+  else {
+    v.errors.forEach((m) => add("err", m));
+    v.warnings.forEach((m) => add("warn", m));
+    if (v.valid && !v.warnings.length) add("ok", `Valid — ${v.workoutCount} workouts.`);
+  }
+}
+
+async function runValidate() {
+  if (!current) return;
+  try { showValidation((await api("POST", "/api/validate", { text: editor.getValue() })).validation); }
+  catch (e) { showValidation(null, e.message); }
+}
+
+function parsed() { try { return JSON.parse(editor.getValue()); } catch { return null; } }
+const workoutsOf = (d) => (Array.isArray(d) ? d : d && Array.isArray(d.workouts) ? d.workouts : null);
+
+function newWorkout(name) {
+  return { workoutName: name, workoutType: "strength_training", description: "", sendToDevice: true,
+    steps: [{ stepType: "interval", targetType: "no.target", endCondition: "reps", endConditionValue: 10, reps: 10, exerciseName: "BARBELL_BENCH_PRESS", stepOrder: 1 }] };
+}
+
+function mutate(fn) {
+  const data = parsed(); const list = workoutsOf(data);
+  if (!list) return toast("Fix the JSON first.");
+  fn(list);
+  editor.executeEdits("outline", [{ range: editor.getModel().getFullModelRange(), text: JSON.stringify(data, null, 2) + "\n" }]);
+  editor.pushUndoStop();
+}
+
+function renderOutline() {
+  const el = $("outline"); el.innerHTML = "";
+  const list = workoutsOf(parsed());
+  if (!current || !list) { el.innerHTML = `<div class="empty">${current ? "Not a workout plan." : "Open a plan."}</div>`; return; }
+  list.forEach((w, i) => {
+    const row = document.createElement("div"); row.className = "row";
+    const date = Array.isArray(w?.scheduledDate) ? w.scheduledDate.join(", ") : w?.scheduledDate || "";
+    row.innerHTML = `<span class="name"></span><small></small><button title="Duplicate">⧉</button><button title="Delete" class="danger">✕</button>`;
+    const [name, small, dup, del] = row.children;
+    name.textContent = w?.workoutName ?? "(unnamed)";
+    small.textContent = [w?.steps ? w.steps.length + " steps" : "", date, w?.workoutId ? "↑" : ""].filter(Boolean).join(" ");
+    name.onclick = () => {
+      const m = editor.getModel().findMatches('"workoutName"\\s*:\\s*' + JSON.stringify(w.workoutName).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), false, true, true, null, false);
+      if (m.length) { editor.revealLineInCenter(m[0].range.startLineNumber); editor.setPosition(m[0].range.getStartPosition()); editor.focus(); }
+    };
+    dup.onclick = () => mutate((l) => { const c = structuredClone(l[i]); delete c.workoutId; c.workoutName += " (copy)"; l.splice(i + 1, 0, c); });
+    del.onclick = () => confirm(`Remove "${w?.workoutName}" from the plan?`) && mutate((l) => l.splice(i, 1));
+    el.append(row);
+  });
+  const add = document.createElement("div"); add.className = "row";
+  add.innerHTML = "<button>+ Add workout</button>";
+  add.firstChild.onclick = () => { const n = prompt("Workout name:", "New workout"); if (n) mutate((l) => l.push(newWorkout(n))); };
+  el.append(add);
+}
+
+// ── Boot ───────────────────────────────────────────────────────────────
+const MONACO_BASE = location.origin + "/vendor/monaco/";
+require.config({ paths: { vs: "/vendor/monaco" } });
+// Workers can't resolve a relative base URL, so bootstrap them through a blob with absolute paths.
+self.MonacoEnvironment = {
+  getWorkerUrl: () => URL.createObjectURL(new Blob(
+    [`self.MonacoEnvironment={baseUrl:${JSON.stringify(MONACO_BASE)}};importScripts(${JSON.stringify(MONACO_BASE + "base/worker/workerMain.js")});require.config({paths:{vs:${JSON.stringify(MONACO_BASE.slice(0, -1))}}});`],
+    { type: "text/javascript" })),
+};
+require(["vs/editor/editor.main"], async (m) => {
+  monaco = m;
+  editor = monaco.editor.create($("editor"), {
+    value: "", language: "json", theme: "vs-dark", automaticLayout: true,
+    minimap: { enabled: false }, tabSize: 2, formatOnPaste: true, scrollBeyondLastLine: false,
+  });
+  try {
+    const schema = await api("GET", "/api/schema");
+    monaco.languages.json.jsonDefaults.setDiagnosticsOptions({
+      validate: true, allowComments: false,
+      schemas: [{ uri: "plan-schema.json", fileMatch: ["*"], schema }],
+    });
+  } catch {}
+  editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, save);
+  editor.onDidChangeModelContent(() => {
+    setButtons(); renderOutline();
+    clearTimeout(validateTimer); validateTimer = setTimeout(runValidate, 600);
+  });
+  $("save").onclick = save; $("new").onclick = newFile; $("validate").onclick = runValidate;
+  $("format").onclick = format; $("reload").onclick = reload; $("dup").onclick = duplicate;
+  $("rename").onclick = rename; $("delete").onclick = remove;
+  window.addEventListener("beforeunload", (e) => { if (isDirty()) e.preventDefault(); });
+});
+guard(refreshFiles)();
+</script>
+</body>
+</html>
