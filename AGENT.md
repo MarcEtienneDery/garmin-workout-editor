@@ -53,7 +53,7 @@ Data flow is fetch, transform, save. Avoid extending the legacy files `src/types
 
 ## Deployment
 
-The MCP server runs in Docker on the NAS as `garmin-mcp`, defined in `~/docker/garmin.yml`. It builds from `/home/medery/git/garmin-workout-editor` and mounts its `workout-plans/` as `/plans`. To deploy `main`:
+The MCP server runs in Docker on the NAS as `garmin-mcp`, defined in `~/docker/garmin.yml`; the plan editor runs beside it as `garmin-web` (same image, `node dist/web/server.js`, needs `WEB_AUTH_TOKEN`). It builds from `/home/medery/git/garmin-workout-editor` and mounts its `workout-plans/` as `/plans`. To deploy `main`:
 
 ```bash
 git -C /home/medery/git/garmin-workout-editor fetch origin && git -C /home/medery/git/garmin-workout-editor merge --ff-only origin/main

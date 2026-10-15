@@ -237,11 +237,12 @@ function serveStatic(pathname: string, res: http.ServerResponse): void {
     res.writeHead(404, { "Content-Type": "text/plain" });
     return void res.end("Not found");
   }
+  const content = fs.readFileSync(full); // read first: a failure must still be able to send a 500
   res.writeHead(200, {
     "Content-Type": MIME[path.extname(full)] ?? "application/octet-stream",
     "Cache-Control": "no-cache",
   });
-  res.end(fs.readFileSync(full));
+  res.end(content);
 }
 
 async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, url: URL): Promise<void> {
@@ -353,6 +354,7 @@ export function startWebServer(options: WebServerOptions): Promise<http.Server> 
       }
       await handleApi(req, res, url);
     } catch (error) {
+      if (res.headersSent) return void res.destroy();
       if (error instanceof HttpError) return send(res, error.status, { error: error.message });
       console.error("[web] error:", error);
       send(res, 500, { error: "Internal error" });

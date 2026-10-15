@@ -336,6 +336,8 @@ Volumes (see `docker-compose.yml`):
 
 The container runs as `PUID:PGID` (default 1000:1000), so `data/` and `workout-plans/` must be writable by that user. Set `PUID`/`PGID` in `.env` to match your NAS user. The port is published on `127.0.0.1:8787` only; set `MCP_BIND=0.0.0.0` to allow LAN clients. `GET /healthz` is the unauthenticated health check.
 
+The same compose file also starts `garmin-web`, the [plan editor](#plan-editor-web-ui) (shared image, `/plans` and `/data` mounts, no Garmin credentials). It needs `WEB_AUTH_TOKEN` in `.env` (`echo "WEB_AUTH_TOKEN=$(openssl rand -hex 16)" >> .env`) and is published on `127.0.0.1:8788`; set `WEB_BIND=0.0.0.0` for LAN access. Sign in with any user name and the token as password.
+
 ### Make it reachable from claude.ai
 
 claude.ai connects from the internet, so the server needs a public HTTPS URL. Either put it behind your NAS reverse proxy (Let's Encrypt), or use the bundled Cloudflare Tunnel:

@@ -1,13 +1,15 @@
-# MCP server for claude.ai / Claude Desktop.
+# MCP server for claude.ai / Claude Desktop, plus the plan editor web UI.
 #
 #   1. From a checkout of the repo (./workout-plans already holds your plans):
 #      mkdir -p config data
 #      cp .env.MED config/            # one .env.<profile> per Garmin account
 #   2. echo "MCP_AUTH_TOKEN=$(openssl rand -hex 32)" >> .env     # compose reads .env
+#      echo "WEB_AUTH_TOKEN=$(openssl rand -hex 16)" >> .env     # plan editor password
 #   3. docker compose up -d --build
 #   4. (optional public URL)  docker compose --profile tunnel up -d
 #
 # Add the connector with the URL  https://<your-host>/mcp/<MCP_AUTH_TOKEN>
+# Plan editor: http://<host>:8788  (any user name, WEB_AUTH_TOKEN as password)
 
 services:
   garmin-mcp:
@@ -28,6 +30,31 @@ services:
       - ./config:/config:ro            # .env.<profile> files (Garmin credentials)
       - ./data:/data                   # token cache, activities.json, training-plan.json
       - ./workout-plans:/plans         # plan files; uploads write new workoutIds back here
+
+  # Plan editor (Monaco JSON editor + CRUD on the plan files). Same image as garmin-mcp;
+  # it only edits files, so it needs no Garmin credentials (/config).
+  garmin-web:
+    image: garmin-workout-editor-mcp:latest
+    container_name: garmin-web
+    restart: unless-stopped
+    user: "${PUID:-1000}:${PGID:-1000}"
+    command: ["node", "dist/web/server.js"]
+    environment:
+      WEB_AUTH_TOKEN: ${WEB_AUTH_TOKEN:?Set WEB_AUTH_TOKEN in .env (openssl rand -hex 16)}
+    ports:
+      # Loopback by default; set WEB_BIND=0.0.0.0 to allow LAN clients.
+      - "${WEB_BIND:-127.0.0.1}:${WEB_PORT:-8788}:8788"
+    volumes:
+      - ./data:/data
+      - ./workout-plans:/plans
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8788/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    depends_on:
+      - garmin-mcp   # builds the shared image
 
   # Optional: stable public HTTPS hostname through a Cloudflare Tunnel.
   # Create the tunnel in the Cloudflare dashboard, point its public hostname at
