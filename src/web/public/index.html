@@ -28,10 +28,11 @@
   #files { border-right:1px solid var(--line); }
   #side { border-left:1px solid var(--line); }
   aside h2 { font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--dim); margin:0; padding:10px 10px 4px; }
-  .file { padding:5px 10px; cursor:pointer; border-left:2px solid transparent; }
+  .file { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:0 8px; padding:5px 10px; cursor:pointer; border-left:2px solid transparent; }
+  .file > span:first-child { grid-column:1 / -1; overflow-wrap:anywhere; }
   .file:hover { background:#2d2d2e; }
   .file.active { background:#37373d; border-left-color:var(--accent); }
-  .file small { display:block; color:var(--dim); }
+  .file small { display:block; color:var(--dim); min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   #editor { min-width:0; min-height:0; }
   .row { display:flex; gap:6px; align-items:center; padding:4px 10px; border-bottom:1px solid #2f2f2f; }
   .row .name { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; cursor:pointer; }
@@ -77,11 +78,11 @@
   .wrow .n { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .wrow small { grid-column:1; color:var(--dim); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; align-self:center; }
   .wact { grid-column:2; display:flex; gap:2px; justify-self:end; }
-  .wact button { background:none; border:0; padding:3px 5px; line-height:0; color:var(--dim); }
-  .wact button:hover:not(:disabled) { background:#3d3d3d; color:var(--fg); }
-  .wact button.danger:hover:not(:disabled) { background:#7a2b22; color:#fff; }
-  .wact button:disabled { opacity:.25; }
-  .wact svg { width:15px; height:15px; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
+  .wact button, .row button.ico { background:none; border:0; padding:3px 5px; line-height:0; color:var(--dim); }
+  .wact button:hover:not(:disabled), .row button.ico:hover:not(:disabled) { background:#3d3d3d; color:var(--fg); }
+  .wact button.danger:hover:not(:disabled), .row button.ico.danger:hover:not(:disabled) { background:#7a2b22; color:#fff; }
+  .wact button:disabled, .row button.ico:disabled { opacity:.25; }
+  .wact svg, .row button.ico svg { width:15px; height:15px; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
   #wbody { padding:12px 16px 24px; }
   #wbody h3 { margin:16px 0 6px; font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--dim); }
   #wbody .meta { color:var(--dim); }
@@ -153,6 +154,7 @@
     .row .name { flex:1 1 30%; font-size:15px; }
     .row small { order:3; flex-basis:100%; margin-top:-4px; }
     .row button { min-width:44px; min-height:40px; padding:0 10px; font-size:16px; }
+    .row button.ico { min-width:38px; padding:0; }
     .msg { padding:8px 12px; font-size:14px; }
     .empty { padding:16px 12px; font-size:14px; }
     #toast { max-width:92vw; font-size:14px; }
@@ -169,7 +171,7 @@
     .wrow { padding:12px 14px; font-size:15px; }
     .wrow small { font-size:12px; }
     .wact button { min-width:40px; min-height:40px; padding:0; }
-    .wact svg { width:20px; height:20px; }
+    .wact svg, .row button.ico svg { width:20px; height:20px; }
     .chip { font-size:12px; }
     .row .chip { min-width:30px; text-align:center; font-size:15px; line-height:22px; }
     #wbody { padding:12px 14px 24px; font-size:15px; }
@@ -391,9 +393,16 @@ async function refreshFiles() {
       const d = document.createElement("div");
       d.className = "file" + (current && current.path === f.path ? " active" : "");
       const meta = [f.workoutCount != null ? f.workoutCount + " workouts" : null, f.weekStart].filter(Boolean).join(" · ");
-      d.innerHTML = `<span></span><small></small>`;
-      d.firstChild.textContent = f.path.split("/").pop();
-      d.lastChild.textContent = meta;
+      d.innerHTML = `<span></span><small></small><span class="wact"></span>`;
+      d.children[0].textContent = f.path.split("/").pop();
+      d.children[1].textContent = meta;
+      for (const a of fileActions(f)) {
+        const b = document.createElement("button");
+        b.innerHTML = ICONS[a.icon]; b.title = a.title; b.setAttribute("aria-label", a.title);
+        if (a.danger) b.className = "danger";
+        b.onclick = (e) => { e.stopPropagation(); guard(a.run)(); };
+        d.children[2].append(b);
+      }
       d.onclick = guard(() => openFile(f.path));
       el.append(d);
     }
@@ -403,6 +412,28 @@ async function refreshFiles() {
     const who = document.createElement("div"); who.className = "empty"; who.textContent = "Signed in as " + garmin.user.name;
     el.prepend(who);
   }
+}
+
+/** The buttons beside a plan file: the Garmin actions (plan files only), duplicate and delete. */
+function fileActions(f) {
+  const acts = [];
+  if (garmin.enabled && isPlanFile(f)) {
+    acts.push(
+      { icon: "upload", title: "Upload the plan to Garmin", run: () => garminFile(f.path, "upload") },
+      { icon: "calendar", title: "Schedule the plan on the Garmin calendar", run: () => garminFile(f.path, "schedule") },
+      { icon: "watch", title: "Send the plan to the watch", run: () => garminFile(f.path, "send") },
+    );
+  }
+  acts.push({ icon: "clone", title: "Duplicate the file", run: () => duplicate(f.path) }, { icon: "delete", title: "Delete the file", run: () => remove(f.path), danger: true });
+  return acts;
+}
+
+/** Run a toolbar Garmin action on a file from the list: that file is opened first, since the actions work on the open plan. */
+async function garminFile(path, action) {
+  if (garminBusy) return;
+  if (!current || current.path !== path) await openFile(path);
+  if (!current || current.path !== path) return; // declined to discard the open file's changes
+  await garminRun(action);
 }
 
 async function openFile(p) {
@@ -452,11 +483,11 @@ const newFile = guard(async () => {
   await openFile(name);
 });
 
-const duplicate = guard(async () => {
-  const name = prompt("Duplicate as:", current.path.replace(/\.json$/, "-copy.json"));
+const duplicate = guard(async (path = current.path) => {
+  const name = prompt("Duplicate as:", path.replace(/\.json$/, "-copy.json"));
   if (!name) return;
   // Strip workoutIds so a copy never overwrites the original workouts on Garmin.
-  let text = editor.getValue();
+  let text = current && current.path === path ? editor.getValue() : (await api("GET", fileUrl(path))).text;
   try {
     const data = JSON.parse(text);
     const list = Array.isArray(data) ? data : data.workouts;
@@ -477,10 +508,11 @@ const rename = guard(async () => {
   current.path = r.to; current.mtimeMs = r.mtimeMs; setButtons(); refreshFiles();
 });
 
-const remove = guard(async () => {
-  if (!confirm(`Delete ${current.path}? This cannot be undone.`)) return;
-  await api("DELETE", fileUrl(current.path));
-  current = null; savedText = ""; editor.setValue(""); setButtons(); renderOutline(); showValidation(null); refreshFiles(); setTab("files");
+const remove = guard(async (path = current.path) => {
+  if (!confirm(`Delete ${path}? This cannot be undone.`)) return;
+  await api("DELETE", fileUrl(path));
+  if (current && current.path === path) { current = null; savedText = ""; editor.setValue(""); setButtons(); renderOutline(); showValidation(null); setTab("files"); }
+  refreshFiles();
   toast("Deleted");
 });
 
@@ -504,7 +536,7 @@ async function loadGarmin() {
   for (const name of garmin.profiles) sel.add(new Option(name, name));
   if (garmin.defaultProfile) sel.value = garmin.defaultProfile;
   setButtons();
-  if (garmin.user && !garmin.user.admin) refreshFiles();
+  refreshFiles(); // the file rows show the Garmin buttons only once Garmin is known to be available
   refreshSync();
 }
 
@@ -593,6 +625,15 @@ async function reloadFromDisk(mtimeMs) {
 }
 
 // ── Validation + outline ───────────────────────────────────────────────
+const ICONS = {
+  upload: '<svg viewBox="0 0 24 24"><path d="M12 16V4M6 10l6-6 6 6M4 20h16"/></svg>',
+  download: '<svg viewBox="0 0 24 24"><path d="M12 4v12M6 10l6 6 6-6M4 20h16"/></svg>',
+  clone: '<svg viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg>',
+  delete: '<svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>',
+  calendar: '<svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M8 3v4M16 3v4"/></svg>',
+  watch: '<svg viewBox="0 0 24 24"><rect x="7" y="6" width="10" height="12" rx="3"/><path d="M9 6l1-3h4l1 3M9 18l1 3h4l1-3"/></svg>',
+};
+
 function showValidation(v, parseError) {
   const el = $("problems"); el.innerHTML = "";
   const add = (cls, text) => { const d = document.createElement("div"); d.className = "msg " + cls; d.textContent = text; el.append(d); };
@@ -678,6 +719,47 @@ function renderSyncBar(list) {
   $("syncSummary").textContent = sync?.error ? "Garmin: " + sync.error : parts.length ? "Garmin: " + parts.join(" · ") : "Garmin: checking…";
 }
 
+/** Outline row buttons: upload workout #i to Garmin, or pull Garmin's version into it. Works on the saved file, like the toolbar actions. */
+async function planRowGarmin(i, action, state) {
+  if (!current || garminBusy) return;
+  if (isDirty()) {
+    if (!confirm("Save your changes before running this on Garmin?")) return;
+    await save();
+    if (isDirty()) return;
+  }
+  const w = (workoutsOf(parsed()) || [])[i];
+  if (!w) return;
+  const profile = planProfile(), label = w.workoutName ?? "(unnamed)";
+  garminBusy = true; setButtons(); renderOutline();
+  try {
+    let r;
+    if (action === "upload") {
+      const v = (await api("POST", "/api/validate", { text: JSON.stringify([w]) })).validation;
+      if (v && v.errors.length) { showActivity(`✗ ${label} not uploaded`, "err", v.errors); return toast("Fix the validation errors before uploading.", 6000); }
+      r = await pushWorkout(w, [{ path: current.path, index: i, mtimeMs: current.mtimeMs }], profile, state === "modified");
+      if (!r) return;
+      showActivity(`✓ Uploaded "${label}" (${profile})`, "ok", [], r.log);
+      toast("Uploaded to Garmin");
+    } else {
+      const q = new URLSearchParams({ id: w.workoutId }); if (profile) q.set("profile", profile);
+      const found = await api("GET", "/api/garmin/workout?" + q);
+      const p = found.plans.find((x) => x.path === current.path && x.index === i);
+      if (!p || !p.differences.length) return toast("Already up to date.");
+      r = await pullInto(found.workout, p);
+      if (!r) return;
+    }
+    const changed = (r.changed || []).find((c) => c.path === current.path);
+    if (changed) await reloadFromDisk(changed.mtimeMs);
+    refreshSync(true);
+  } catch (e) {
+    const d = e.data || {};
+    showActivity(`✗ ${action === "upload" ? "Upload" : "Download"} failed`, "err", [e.message, ...(d.errors || [])], d.log);
+    throw e;
+  } finally {
+    garminBusy = false; setButtons(); renderOutline();
+  }
+}
+
 /** Put the editor's cursor on a workout of the open plan. */
 function revealWorkout(w) {
   setTab("editor"); editor.layout();
@@ -693,8 +775,13 @@ function renderOutline() {
   list.forEach((w, i) => {
     const row = document.createElement("div"); row.className = "row";
     const date = Array.isArray(w?.scheduledDate) ? w.scheduledDate.join(", ") : w?.scheduledDate || "";
-    row.innerHTML = `<span class="name"></span><small></small><button title="Duplicate">⧉</button><button title="Delete" class="danger">✕</button>`;
-    const [name, small, dup, del] = row.children;
+    row.innerHTML = `<span class="name"></span><small></small>`;
+    const [name, small] = row.children;
+    const addButton = (icon, title, enabled, onclick, cls = "ico") => {
+      const b = document.createElement("button");
+      b.className = cls; b.innerHTML = ICONS[icon]; b.title = title; b.setAttribute("aria-label", title); b.disabled = !enabled; b.onclick = onclick;
+      row.append(b);
+    };
     name.textContent = w?.workoutName ?? "(unnamed)";
     small.textContent = [w?.steps ? w.steps.length + " steps" : "", date, garmin.enabled ? "" : w?.workoutId ? "↑" : ""].filter(Boolean).join(" ");
     if (garmin.enabled) {
@@ -708,8 +795,14 @@ function renderOutline() {
       row.prepend(chip);
     }
     name.onclick = () => revealWorkout(w);
-    dup.onclick = () => mutate((l) => { const c = structuredClone(l[i]); delete c.workoutId; c.workoutName += " (copy)"; l.splice(i + 1, 0, c); });
-    del.onclick = () => confirm(`Remove "${w?.workoutName}" from the plan?`) && mutate((l) => l.splice(i, 1));
+    if (garmin.enabled) {
+      const state = syncOf(i, w)?.state;
+      const up = ["modified", "not-uploaded", "missing"].includes(state);
+      addButton("upload", up ? "Upload this workout to Garmin" : `Upload: ${state === "synced" ? "already up to date" : "still checking"}`, up && !garminBusy, guard(() => planRowGarmin(i, "upload", state)));
+      addButton("download", state === "modified" ? "Download Garmin's version into this workout" : `Download: ${state === "synced" ? "already up to date" : "not on Garmin"}`, state === "modified" && !garminBusy, guard(() => planRowGarmin(i, "download", state)));
+    }
+    addButton("clone", "Duplicate", true, () => mutate((l) => { const c = structuredClone(l[i]); delete c.workoutId; c.workoutName += " (copy)"; l.splice(i + 1, 0, c); }));
+    addButton("delete", "Remove from the plan", true, () => confirm(`Remove "${w?.workoutName}" from the plan?`) && mutate((l) => l.splice(i, 1)), "ico danger");
     el.append(row);
   });
   const add = document.createElement("div"); add.className = "row";
@@ -968,12 +1061,6 @@ async function openPlanWorkout(path, w) {
 }
 
 // ── Row buttons: upload, download, clone, delete ──
-const ICONS = {
-  upload: '<svg viewBox="0 0 24 24"><path d="M12 16V4M6 10l6-6 6 6M4 20h16"/></svg>',
-  download: '<svg viewBox="0 0 24 24"><path d="M12 4v12M6 10l6 6 6-6M4 20h16"/></svg>',
-  clone: '<svg viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg>',
-  delete: '<svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>',
-};
 
 /** Upload puts the plan's version on Garmin; download brings Garmin's version into a plan. Each is offered only when it would change something. */
 function rowActions(row) {
@@ -999,9 +1086,9 @@ const uploadRow = async (d) => {
   const p = d.plans.find((x) => x.differences.length) || d.plans[0];
   if (!p) throw new Error("Only on Garmin: no plan has this workout.");
   if (d.garmin) return pushPlanVersion(p);
-  const schedule = upcoming(p.workout).length > 0;
-  if (!confirmUpload(p.workout, { replacing: false, plans: d.plans, schedule })) return; // not on Garmin (yet): a new upload
-  const r = await api("PUT", "/api/garmin/workout", { workoutId: p.workout.workoutId, workout: p.workout, plans: d.plans.map(planRef), upload: true, schedule, profile: W.profile, confirm: true });
+  // Not on Garmin (yet): a new upload.
+  const r = await pushWorkout(p.workout, d.plans, W.profile, false);
+  if (!r) return;
   toast("Uploaded to Garmin");
   await afterChange(r, `g:${r.workoutId}`);
 };
@@ -1114,8 +1201,8 @@ async function openWorkoutDialog(mode, workout, opts = {}) {
 }
 
 /** The confirmation text for putting a workout on Garmin; the API insists on it being confirmed. */
-function confirmUpload(workout, { replacing, plans, schedule }) {
-  const lines = [replacing ? `Replace "${workout.workoutName}" on Garmin?` : `Upload "${workout.workoutName}" to Garmin?`, `Garmin profile: ${W.profile}`, ""];
+function confirmUpload(workout, { replacing, plans, schedule, profile = W.profile }) {
+  const lines = [replacing ? `Replace "${workout.workoutName}" on Garmin?` : `Upload "${workout.workoutName}" to Garmin?`, `Garmin profile: ${profile}`, ""];
   if (replacing) lines.push("Garmin deletes the old workout and creates a new one, so its workoutId changes.");
   if (plans.length) lines.push(`${plans.length === 1 ? "The plan entry" : plans.length + " plan entries"} in ${[...new Set(plans.map((p) => p.path))].join(", ")} will get the new id.`);
   lines.push(schedule ? "Its upcoming scheduled dates are added to the Garmin calendar again." : "Its calendar entries are not re-created.");
@@ -1174,23 +1261,33 @@ async function afterChange(result, selectKey) {
   refreshFiles();
 }
 
-const pushPlanVersion = async (p) => {
-  const d = W.detail, workout = p.workout;
+/** Put a plan workout on Garmin (replacing the one with its workoutId) and record the new id in the plan entries `plans`. null when declined. */
+async function pushWorkout(workout, plans, profile, replacing) {
   const schedule = upcoming(workout).length > 0;
-  if (!confirmUpload(workout, { replacing: true, plans: d.plans, schedule })) return;
-  const r = await api("PUT", "/api/garmin/workout", { workoutId: d.garmin.workoutId, workout, plans: d.plans.map(planRef), upload: true, schedule, profile: W.profile, confirm: true });
+  if (!confirmUpload(workout, { replacing, plans, schedule, profile })) return null;
+  return api("PUT", "/api/garmin/workout", { workoutId: workout.workoutId, workout, plans: plans.map(planRef), upload: true, schedule, profile, confirm: true });
+}
+
+/** Replace the plan entry `p` with Garmin's version `g` (scheduledDate, sendToDevice and distanceMeters stay). null when declined. */
+async function pullInto(g, p) {
+  if (!confirm(`Replace "${g.workoutName}" in ${p.path} with the version from Garmin?\n\nIts scheduledDate and sendToDevice stay as they are. This only changes the plan file.`)) return null;
+  const workout = { ...g };
+  for (const k of ["scheduledDate", "sendToDevice", "distanceMeters"]) if (p.workout[k] !== undefined) workout[k] = p.workout[k];
+  const r = await api("PUT", "/api/garmin/workout", { workoutId: g.workoutId, workout, plans: [planRef(p)] });
+  toast("The plan now has Garmin's version");
+  return r;
+}
+
+const pushPlanVersion = async (p) => {
+  const r = await pushWorkout(p.workout, W.detail.plans, W.profile, true);
+  if (!r) return;
   toast("Garmin now has the plan's version");
   await afterChange(r, `g:${r.workoutId}`);
 };
 
 const pullGarminVersion = async (p) => {
-  const d = W.detail;
-  if (!confirm(`Replace "${d.garmin.workoutName}" in ${p.path} with the version from Garmin?\n\nIts scheduledDate and sendToDevice stay as they are. This only changes the plan file.`)) return;
-  const workout = { ...d.garmin };
-  for (const k of ["scheduledDate", "sendToDevice", "distanceMeters"]) if (p.workout[k] !== undefined) workout[k] = p.workout[k];
-  const r = await api("PUT", "/api/garmin/workout", { workoutId: d.garmin.workoutId, workout, plans: [planRef(p)] });
-  toast("The plan now has Garmin's version");
-  await afterChange(r, W.selected);
+  const r = await pullInto(W.detail.garmin, p);
+  if (r) await afterChange(r, W.selected);
 };
 
 const deleteSelected = async () => {
@@ -1270,8 +1367,8 @@ require(["vs/editor/editor.main"], async (m) => {
     clearTimeout(validateTimer); validateTimer = setTimeout(runValidate, 600);
   });
   $("save").onclick = save; $("new").onclick = newFile; $("validate").onclick = runValidate;
-  $("format").onclick = format; $("reload").onclick = reload; $("dup").onclick = duplicate;
-  $("rename").onclick = rename; $("delete").onclick = remove;
+  $("format").onclick = format; $("reload").onclick = reload; $("dup").onclick = () => duplicate();
+  $("rename").onclick = rename; $("delete").onclick = () => remove();
   $("menu").onclick = toggleMenu;
   for (const [id, action] of Object.entries(GARMIN_ACTIONS)) $(id).onclick = guard(() => garminRun(action));
   $("actions").addEventListener("click", (e) => e.target.closest("button") && document.body.classList.remove("menu-open"));
