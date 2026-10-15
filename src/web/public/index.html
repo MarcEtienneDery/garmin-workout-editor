@@ -2,16 +2,19 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+<meta name="theme-color" content="#252526">
 <title>Plan Editor</title>
 <style>
   :root { --bg:#1e1e1e; --panel:#252526; --line:#3c3c3c; --fg:#d4d4d4; --dim:#8b8b8b; --accent:#0e7ad1; --ok:#4ec9b0; --warn:#d7ba7d; --err:#f48771; }
   * { box-sizing:border-box; }
   html,body { height:100%; margin:0; }
-  body { background:var(--bg); color:var(--fg); font:13px/1.4 system-ui,sans-serif; display:grid; grid-template-rows:auto 1fr; }
-  header { display:flex; gap:6px; align-items:center; padding:6px 10px; background:var(--panel); border-bottom:1px solid var(--line); flex-wrap:wrap; }
+  body { height:100dvh; background:var(--bg); color:var(--fg); font:13px/1.4 system-ui,sans-serif; display:grid; grid-template-rows:auto minmax(0,1fr) auto; -webkit-tap-highlight-color:transparent; }
+  header { position:relative; display:flex; gap:6px; align-items:center; padding:6px 10px; background:var(--panel); border-bottom:1px solid var(--line); flex-wrap:wrap; }
   header h1 { font-size:13px; margin:0 8px 0 0; }
-  #current { color:var(--dim); margin-left:auto; }
+  #current { color:var(--dim); margin-left:auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #actions { display:contents; }
+  #menu, #tabbar { display:none; }
   #current b { color:var(--fg); }
   button { background:#333; color:var(--fg); border:1px solid var(--line); border-radius:3px; padding:4px 10px; cursor:pointer; font:inherit; }
   button:hover:not(:disabled) { background:#3d3d3d; }
@@ -19,7 +22,7 @@
   button.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
   button.danger:hover:not(:disabled) { background:#7a2b22; }
   main { display:grid; grid-template-columns:240px 1fr 300px; min-height:0; }
-  aside { background:var(--panel); overflow:auto; min-height:0; }
+  aside { background:var(--panel); overflow:auto; min-height:0; overscroll-behavior:contain; }
   #files { border-right:1px solid var(--line); }
   #side { border-left:1px solid var(--line); }
   aside h2 { font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--dim); margin:0; padding:10px 10px 4px; }
@@ -35,39 +38,106 @@
   .row button { padding:1px 6px; }
   .msg { padding:2px 10px; }
   .msg.err { color:var(--err); } .msg.warn { color:var(--warn); } .msg.ok { color:var(--ok); }
-  #toast { position:fixed; bottom:14px; left:50%; transform:translateX(-50%); background:#333; border:1px solid var(--line); padding:8px 14px; border-radius:4px; display:none; max-width:80vw; }
+  #toast { position:fixed; bottom:calc(14px + var(--tabbar-h, 0px) + env(safe-area-inset-bottom)); left:50%; transform:translateX(-50%); background:#333; border:1px solid var(--line); padding:8px 14px; border-radius:4px; display:none; max-width:80vw; }
   .empty { color:var(--dim); padding:10px; }
-  @media (max-width:900px) { main { grid-template-columns:1fr; grid-template-rows:auto 1fr auto; } aside { max-height:30vh; } }
+
+  /* ── Mobile: one pane at a time, switched from a bottom tab bar ── */
+  @media (max-width:900px) {
+    :root { --tabbar-h:52px; }
+    header { padding:6px 10px; padding-top:calc(6px + env(safe-area-inset-top)); flex-wrap:nowrap; gap:8px; }
+    header h1 { display:none; }
+    button { min-height:40px; padding:6px 14px; font-size:14px; }
+    #current { flex:1; margin:0; font-size:14px; }
+    #menu { display:block; min-width:40px; font-size:20px; line-height:1; padding:0; }
+    body.menu-open #menu { background:var(--accent); border-color:var(--accent); color:#fff; }
+    #actions { display:none; position:absolute; z-index:10; top:100%; left:0; right:0; padding:10px; gap:8px; grid-template-columns:1fr 1fr;
+      background:var(--panel); border-bottom:1px solid var(--line); box-shadow:0 8px 16px rgba(0,0,0,.5); }
+    body.menu-open #actions { display:grid; }
+
+    main { display:block; position:relative; overflow:hidden; }
+    #files, #editor, #side { width:100%; height:100%; border:0; }
+    body:not([data-tab="files"]) #files,
+    body:not([data-tab="editor"]) #editor,
+    body[data-tab="files"] #side, body[data-tab="editor"] #side { display:none; }
+    body[data-tab="outline"] #problemsPane, body[data-tab="problems"] #outlinePane { display:none; }
+    aside h2 { padding:14px 12px 6px; font-size:12px; }
+    #side h2 { display:none; }
+    .file { padding:12px 14px; font-size:15px; border-bottom:1px solid #2f2f2f; }
+    .file small { font-size:12px; margin-top:2px; }
+    .row { padding:8px 12px; gap:8px; flex-wrap:wrap; min-height:48px; }
+    .row .name { flex:1 1 60%; font-size:15px; }
+    .row small { order:3; flex-basis:100%; margin-top:-4px; }
+    .row button { min-width:44px; min-height:40px; padding:0 10px; font-size:16px; }
+    .msg { padding:8px 12px; font-size:14px; }
+    .empty { padding:16px 12px; font-size:14px; }
+    #toast { max-width:92vw; font-size:14px; }
+
+    #tabbar { display:grid; grid-template-columns:repeat(4,1fr); background:var(--panel); border-top:1px solid var(--line); padding-bottom:env(safe-area-inset-bottom); }
+    #tabbar button { border:0; border-radius:0; background:none; height:var(--tabbar-h); padding:4px 0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; font-size:11px; color:var(--dim); }
+    #tabbar button span { font-size:18px; line-height:1; }
+    #tabbar button[aria-selected="true"] { color:var(--fg); box-shadow:inset 0 2px 0 var(--accent); }
+    #tabbar .badge { font-size:10px; min-width:16px; padding:0 4px; border-radius:8px; background:var(--warn); color:#000; margin-left:4px; }
+    #tabbar .badge.err { background:var(--err); }
+    #tabbar .badge:empty { display:none; }
+    body.kbd #tabbar { display:none; }
+  }
 </style>
 </head>
 <body>
 <header>
   <h1>Plan Editor</h1>
-  <button id="new">+ New</button>
   <button id="save" class="primary" disabled>Save</button>
-  <button id="validate" disabled>Validate</button>
-  <button id="format" disabled>Format</button>
-  <button id="reload" disabled>Reload</button>
-  <button id="dup" disabled>Duplicate</button>
-  <button id="rename" disabled>Rename</button>
-  <button id="delete" class="danger" disabled>Delete</button>
+  <div id="actions">
+    <button id="new">+ New</button>
+    <button id="validate" disabled>Validate</button>
+    <button id="format" disabled>Format</button>
+    <button id="reload" disabled>Reload</button>
+    <button id="dup" disabled>Duplicate</button>
+    <button id="rename" disabled>Rename</button>
+    <button id="delete" class="danger" disabled>Delete</button>
+  </div>
   <span id="current">No file open</span>
+  <button id="menu" aria-label="More actions" aria-expanded="false">⋯</button>
 </header>
 <main>
   <aside id="files"></aside>
   <div id="editor"></div>
   <aside id="side">
-    <h2>Workouts</h2>
-    <div id="outline"><div class="empty">Open a plan.</div></div>
-    <h2>Validation</h2>
-    <div id="problems"><div class="empty">Nothing to report.</div></div>
+    <div id="outlinePane">
+      <h2>Workouts</h2>
+      <div id="outline"><div class="empty">Open a plan.</div></div>
+    </div>
+    <div id="problemsPane">
+      <h2>Validation</h2>
+      <div id="problems"><div class="empty">Nothing to report.</div></div>
+    </div>
   </aside>
 </main>
+<nav id="tabbar" role="tablist">
+  <button role="tab" data-tab="files"><span>📁</span>Files</button>
+  <button role="tab" data-tab="editor"><span>✎</span>Editor</button>
+  <button role="tab" data-tab="outline"><span>☰</span>Workouts</button>
+  <button role="tab" data-tab="problems"><span>⚠</span>Checks<b class="badge" id="badge"></b></button>
+</nav>
 <div id="toast"></div>
 
 <script src="/vendor/monaco/loader.js"></script>
 <script>
 const $ = (id) => document.getElementById(id);
+const mobileQuery = matchMedia("(max-width: 900px)");
+
+// ── Mobile navigation (tabs + actions menu; the desktop layout ignores both) ──
+function setTab(tab) {
+  document.body.dataset.tab = tab;
+  document.body.classList.remove("menu-open");
+  $("menu").setAttribute("aria-expanded", "false");
+  document.querySelectorAll("#tabbar button").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.tab === tab)));
+  if (editor) requestAnimationFrame(() => editor.layout());
+}
+function toggleMenu() {
+  const open = document.body.classList.toggle("menu-open");
+  $("menu").setAttribute("aria-expanded", String(open));
+}
 let editor, monaco;
 let files = [];
 let current = null;        // { path, mtimeMs }
@@ -121,6 +191,7 @@ async function openFile(p) {
   if (current && current.path !== p && isDirty() && !confirm("Discard unsaved changes?")) return;
   const f = await api("GET", fileUrl(p));
   current = { path: f.path, mtimeMs: f.mtimeMs };
+  setTab("editor");
   savedText = f.text;
   editor.setValue(f.text);
   editor.setScrollTop(0);
@@ -185,7 +256,7 @@ const rename = guard(async () => {
 const remove = guard(async () => {
   if (!confirm(`Delete ${current.path}? This cannot be undone.`)) return;
   await api("DELETE", fileUrl(current.path));
-  current = null; savedText = ""; editor.setValue(""); setButtons(); renderOutline(); showValidation(null); refreshFiles();
+  current = null; savedText = ""; editor.setValue(""); setButtons(); renderOutline(); showValidation(null); refreshFiles(); setTab("files");
   toast("Deleted");
 });
 
@@ -203,6 +274,8 @@ function format() {
 function showValidation(v, parseError) {
   const el = $("problems"); el.innerHTML = "";
   const add = (cls, text) => { const d = document.createElement("div"); d.className = "msg " + cls; d.textContent = text; el.append(d); };
+  const errors = parseError ? 1 : v ? v.errors.length : 0, warnings = v ? v.warnings.length : 0;
+  $("badge").textContent = errors + warnings || ""; $("badge").classList.toggle("err", errors > 0);
   if (parseError) add("err", parseError);
   else if (!v) add("ok", "Valid JSON (not a workout file, no further checks).");
   else {
@@ -246,6 +319,7 @@ function renderOutline() {
     name.textContent = w?.workoutName ?? "(unnamed)";
     small.textContent = [w?.steps ? w.steps.length + " steps" : "", date, w?.workoutId ? "↑" : ""].filter(Boolean).join(" ");
     name.onclick = () => {
+      setTab("editor"); editor.layout();
       const m = editor.getModel().findMatches('"workoutName"\\s*:\\s*' + JSON.stringify(w.workoutName).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), false, true, true, null, false);
       if (m.length) { editor.revealLineInCenter(m[0].range.startLineNumber); editor.setPosition(m[0].range.getStartPosition()); editor.focus(); }
     };
@@ -268,12 +342,22 @@ self.MonacoEnvironment = {
     [`self.MonacoEnvironment={baseUrl:${JSON.stringify(MONACO_BASE)}};importScripts(${JSON.stringify(MONACO_BASE + "base/worker/workerMain.js")});require.config({paths:{vs:${JSON.stringify(MONACO_BASE.slice(0, -1))}}});`],
     { type: "text/javascript" })),
 };
+function monacoLayoutOptions() {
+  return mobileQuery.matches
+    ? { fontSize: 14, wordWrap: "on", lineNumbers: "off", glyphMargin: false, lineDecorationsWidth: 6, renderLineHighlight: "none", padding: { top: 8, bottom: 8 }, scrollbar: { verticalScrollbarSize: 8 } }
+    : { fontSize: 13, wordWrap: "off", lineNumbers: "on", glyphMargin: true, lineDecorationsWidth: 10, renderLineHighlight: "line", padding: { top: 0, bottom: 0 }, scrollbar: { verticalScrollbarSize: 14 } };
+}
 require(["vs/editor/editor.main"], async (m) => {
   monaco = m;
   editor = monaco.editor.create($("editor"), {
     value: "", language: "json", theme: "vs-dark", automaticLayout: true,
     minimap: { enabled: false }, tabSize: 2, formatOnPaste: true, scrollBeyondLastLine: false,
+    ...monacoLayoutOptions(),
   });
+  mobileQuery.addEventListener("change", () => editor.updateOptions(monacoLayoutOptions()));
+  // The on-screen keyboard needs the room: hide the tab bar while typing.
+  editor.onDidFocusEditorText(() => document.body.classList.toggle("kbd", mobileQuery.matches));
+  editor.onDidBlurEditorText(() => document.body.classList.remove("kbd"));
   try {
     const schema = await api("GET", "/api/schema");
     monaco.languages.json.jsonDefaults.setDiagnosticsOptions({
@@ -289,8 +373,12 @@ require(["vs/editor/editor.main"], async (m) => {
   $("save").onclick = save; $("new").onclick = newFile; $("validate").onclick = runValidate;
   $("format").onclick = format; $("reload").onclick = reload; $("dup").onclick = duplicate;
   $("rename").onclick = rename; $("delete").onclick = remove;
+  $("menu").onclick = toggleMenu;
+  $("actions").addEventListener("click", (e) => e.target.closest("button") && document.body.classList.remove("menu-open"));
+  document.querySelectorAll("#tabbar button").forEach((b) => (b.onclick = () => setTab(b.dataset.tab)));
   window.addEventListener("beforeunload", (e) => { if (isDirty()) e.preventDefault(); });
 });
+setTab("files");
 guard(refreshFiles)();
 </script>
 </body>
