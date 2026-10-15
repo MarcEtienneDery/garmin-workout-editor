@@ -7,13 +7,11 @@
  *   npm run store -- restore <path> [revisionId]     # last revision by default; also brings back a deleted document
  *   npm run store -- trash                           # deleted documents that can be restored
  *   npm run store -- owner <path> <profile|shared>   # who sees a plan under workout-plans/
- *   npm run store -- import [--overwrite]            # load WORKOUT_PLANS_DIR/*.json and GARMIN_DATA_DIR/<profile>/*.json
  *   npm run store -- export <dir>                    # write every document back out as a file
  *
  * In the container: docker exec garmin-mcp node dist/storeCli.js <command>
  */
-import { getDataRoot, getPlansDir } from "./shared/profileLoader";
-import { StoreError, closeStore, exportFiles, getStore, importFiles, normalizeLogicalPath } from "./shared/store";
+import { StoreError, closeStore, exportFiles, getStore, normalizeLogicalPath } from "./shared/store";
 
 const when = (ms: number) => new Date(ms).toISOString().replace("T", " ").slice(0, 19);
 
@@ -30,7 +28,7 @@ export function runStoreCli(args: string[], out: (line: string) => void): number
     case "list": {
       const metas = store.list(rest[0] ?? "");
       for (const m of metas) out(`${m.path}\tv${m.version}\t${m.size} B\t${when(m.updatedAt)}\t${m.source}${m.owner && !m.path.startsWith("data/") ? `\towner ${m.owner}` : ""}`);
-      out(`${metas.length} document(s) in the ${store.kind} store (${store.location})`);
+      out(`${metas.length} document(s) in the store (${store.location})`);
       return 0;
     }
     case "history": {
@@ -74,20 +72,14 @@ export function runStoreCli(args: string[], out: (line: string) => void): number
       out(`${target} is now ${meta.owner ? `owned by ${meta.owner}` : "shared"}`);
       return 0;
     }
-    case "import": {
-      const { done, skipped } = importFiles(store, { plansDir: getPlansDir(), dataRoot: getDataRoot() }, { overwrite: rest.includes("--overwrite") });
-      done.forEach((p) => out(`imported ${p}`));
-      skipped.forEach((p) => out(`kept ${p} (already in the store; --overwrite replaces it)`));
-      return 0;
-    }
     case "export": {
       if (!rest[0]) throw new Error("export: missing <dir>");
-      const { done } = exportFiles(store, rest[0]);
-      out(`Wrote ${done.length} file(s) under ${rest[0]}`);
+      const written = exportFiles(store, rest[0]);
+      out(`Wrote ${written.length} file(s) under ${rest[0]}`);
       return 0;
     }
     default:
-      out("Usage: store <list [prefix] | history <path> | show <path> [id] | restore <path> [id] | trash | owner <path> <profile|shared> | import [--overwrite] | export <dir>>");
+      out("Usage: store <list [prefix] | history <path> | show <path> [id] | restore <path> [id] | trash | owner <path> <profile|shared> | export <dir>>");
       return command ? 2 : 0;
   }
 }

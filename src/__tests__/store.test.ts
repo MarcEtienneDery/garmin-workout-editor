@@ -1,18 +1,7 @@
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
-import {
-  FileStore,
-  KEEP_REVISIONS,
-  SqliteStore,
-  StoreError,
-  closeStore,
-  exportFiles,
-  getStore,
-  importFiles,
-  normalizeLogicalPath,
-  type Store,
-} from "../shared/store";
+import { KEEP_REVISIONS, SqliteStore, StoreError, closeStore, exportFiles, getStore, normalizeLogicalPath } from "../shared/store";
 import { runStoreCli } from "../storeCli";
 
 const plan = (name: string, extra: object = {}) =>
@@ -37,14 +26,13 @@ describe("logical paths", () => {
   });
 });
 
-// The behavior both backends promise.
-describe.each(["sqlite", "files"] as const)("%s store", (kind) => {
+describe("documents", () => {
   let dir: string;
-  let store: Store;
+  let store: SqliteStore;
 
   beforeEach(() => {
-    dir = fs.mkdtempSync(path.join(os.tmpdir(), `store-${kind}-`));
-    store = kind === "sqlite" ? SqliteStore.open(path.join(dir, "garmin.db")) : new FileStore(path.join(dir, "plans"), path.join(dir, "data"));
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), "store-docs-"));
+    store = SqliteStore.open(path.join(dir, "garmin.db"));
   });
   afterEach(() => {
     store.close();
@@ -98,7 +86,7 @@ describe.each(["sqlite", "files"] as const)("%s store", (kind) => {
   });
 });
 
-describe("sqlite store", () => {
+describe("history, ownership and sharing", () => {
   let dir: string;
   let store: SqliteStore;
   const file = () => path.join(dir, "garmin.db");
@@ -196,89 +184,46 @@ describe("sqlite store", () => {
     expect(store.get("workout-plans/a.json")?.text).toBe(plan("one"));
     expect(store.put("workout-plans/a.json", plan("two")).version).toBe(2); // and the store is still usable
   });
-
-  it("runs a one-time step once", () => {
-    let runs = 0;
-    expect(store.runOnce("x", () => runs++)).toBe(true);
-    expect(store.runOnce("x", () => runs++)).toBe(false);
-    expect(runs).toBe(1);
-  });
 });
 
-describe("moving between files and the store", () => {
+describe("export", () => {
   let dir: string;
-  const saved = { plans: process.env.WORKOUT_PLANS_DIR, data: process.env.GARMIN_DATA_DIR, store: process.env.GARMIN_STORE, path: process.env.GARMIN_STORE_PATH };
+  const saved = { data: process.env.GARMIN_DATA_DIR, path: process.env.GARMIN_STORE_PATH };
   const restore = (name: string, value: string | undefined) => (value === undefined ? delete process.env[name] : (process.env[name] = value));
 
   beforeEach(() => {
-    jest.spyOn(console, "error").mockImplementation(() => undefined); // the import announces itself
-    dir = fs.mkdtempSync(path.join(os.tmpdir(), "store-import-"));
-    fs.mkdirSync(path.join(dir, "plans"));
-    fs.mkdirSync(path.join(dir, "data", "MED"), { recursive: true });
-    fs.writeFileSync(path.join(dir, "plans", "a.json"), plan("A"));
-    fs.writeFileSync(path.join(dir, "plans", "notes.txt"), "not a plan");
-    fs.writeFileSync(path.join(dir, "data", "MED", "workouts.json"), "[]");
-    fs.writeFileSync(path.join(dir, "data", "MED", ".garmin-token-cache.json"), "secret");
-    process.env.WORKOUT_PLANS_DIR = path.join(dir, "plans");
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), "store-export-"));
     process.env.GARMIN_DATA_DIR = path.join(dir, "data");
-    delete process.env.GARMIN_STORE;
     delete process.env.GARMIN_STORE_PATH;
   });
   afterEach(() => {
-    jest.restoreAllMocks();
     closeStore();
-    restore("WORKOUT_PLANS_DIR", saved.plans);
     restore("GARMIN_DATA_DIR", saved.data);
-    restore("GARMIN_STORE", saved.store);
     restore("GARMIN_STORE_PATH", saved.path);
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
-  it("imports the old files once, when the database is first created, and never touches them", () => {
+  it("creates the database in the data directory, and writes the documents back out as files", () => {
     const store = getStore();
-    expect(store.kind).toBe("sqlite");
-    expect(store.list().map((m) => m.path)).toEqual(["data/MED/workouts.json", "workout-plans/a.json"]); // no token cache, no .txt
-    expect(store.head("workout-plans/a.json")).toMatchObject({ source: "import", owner: null });
+    expect(store.location).toBe(path.join(dir, "data", "garmin.db"));
+    expect(store.list()).toEqual([]);
 
-    store.put("workout-plans/a.json", plan("edited"));
-    store.remove("data/MED/workouts.json");
-    closeStore();
-    const again = getStore();
-    expect(again.get("workout-plans/a.json")?.text).toBe(plan("edited")); // not imported a second time
-    expect(again.head("data/MED/workouts.json")).toBeUndefined();
-    expect(fs.readFileSync(path.join(dir, "plans", "a.json"), "utf8")).toBe(plan("A"));
-  });
-
-  it("keeps what the store has unless told to overwrite", () => {
-    const store = getStore();
-    store.put("workout-plans/a.json", plan("edited"));
-    const dirs = { plansDir: path.join(dir, "plans"), dataRoot: path.join(dir, "data") };
-    expect(importFiles(store, dirs)).toEqual({ done: [], skipped: ["workout-plans/a.json", "data/MED/workouts.json"] });
-    expect(importFiles(store, dirs, { overwrite: true }).done).toContain("workout-plans/a.json");
-    expect(store.get("workout-plans/a.json")?.text).toBe(plan("A"));
-  });
-
-  it("writes the documents back out as files", () => {
-    const store = getStore();
+    store.put("workout-plans/a.json", plan("A"));
+    store.put("data/MED/workouts.json", "[]");
     const out = path.join(dir, "out");
-    expect(exportFiles(store, out).done.sort()).toEqual(["data/MED/workouts.json", "workout-plans/a.json"]);
+    expect(exportFiles(store, out).sort()).toEqual(["data/MED/workouts.json", "workout-plans/a.json"]);
     expect(fs.readFileSync(path.join(out, "workout-plans", "a.json"), "utf8")).toBe(plan("A"));
-    expect(fs.existsSync(path.join(out, "data", "MED", ".garmin-token-cache.json"))).toBe(false);
   });
 
-  it("can still use the files directly", () => {
-    process.env.GARMIN_STORE = "files";
-    const store = getStore();
-    expect(store.kind).toBe("files");
-    expect(store.get("workout-plans/a.json")?.text).toBe(plan("A"));
-    store.put("workout-plans/b.json", "[]", { create: true });
-    expect(fs.existsSync(path.join(dir, "plans", "b.json"))).toBe(true);
+  it("follows GARMIN_STORE_PATH", () => {
+    process.env.GARMIN_STORE_PATH = path.join(dir, "elsewhere", "x.db");
+    expect(getStore().location).toBe(path.join(dir, "elsewhere", "x.db"));
   });
 });
 
 describe("store command line", () => {
   let dir: string;
-  const saved = { plans: process.env.WORKOUT_PLANS_DIR, data: process.env.GARMIN_DATA_DIR, store: process.env.GARMIN_STORE };
+  const saved = { data: process.env.GARMIN_DATA_DIR, path: process.env.GARMIN_STORE_PATH };
   const restore = (name: string, value: string | undefined) => (value === undefined ? delete process.env[name] : (process.env[name] = value));
   const run = (...args: string[]) => {
     const lines: string[] = [];
@@ -287,19 +232,14 @@ describe("store command line", () => {
   };
 
   beforeEach(() => {
-    jest.spyOn(console, "error").mockImplementation(() => undefined);
     dir = fs.mkdtempSync(path.join(os.tmpdir(), "store-cli-"));
-    fs.mkdirSync(path.join(dir, "plans"));
-    process.env.WORKOUT_PLANS_DIR = path.join(dir, "plans");
     process.env.GARMIN_DATA_DIR = path.join(dir, "data");
-    delete process.env.GARMIN_STORE;
+    delete process.env.GARMIN_STORE_PATH;
   });
   afterEach(() => {
-    jest.restoreAllMocks();
     closeStore();
-    restore("WORKOUT_PLANS_DIR", saved.plans);
     restore("GARMIN_DATA_DIR", saved.data);
-    restore("GARMIN_STORE", saved.store);
+    restore("GARMIN_STORE_PATH", saved.path);
     fs.rmSync(dir, { recursive: true, force: true });
   });
 

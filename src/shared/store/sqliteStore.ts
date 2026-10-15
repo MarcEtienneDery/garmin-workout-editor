@@ -1,10 +1,10 @@
 import * as fs from "fs";
 import * as path from "path";
 import { profileOfPath, summarizeText } from "./paths";
-import { StoreError, type DocMeta, type PutOptions, type RevisionMeta, type Store, type StoredDoc } from "./types";
+import { StoreError, type DocMeta, type PutOptions, type RevisionMeta, type StoredDoc } from "./types";
 
-// node:sqlite ships with Node (22.13+), so the image needs no native module. It is loaded lazily:
-// the file backend must keep working on a Node without it.
+// node:sqlite ships with Node (22.13+), so the image needs no native module. @types/node 20 has no
+// typings for it, hence the small interfaces below and the typed require in open().
 interface Row {
   [column: string]: any;
 }
@@ -43,10 +43,6 @@ CREATE TABLE IF NOT EXISTS revisions (
   source   TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS revisions_by_path ON revisions (path, id);
-CREATE TABLE IF NOT EXISTS meta (
-  key   TEXT PRIMARY KEY,
-  value TEXT NOT NULL
-);
 `;
 
 const META_COLUMNS = "path, owner, size, version, updated_at, source, summary";
@@ -68,12 +64,12 @@ const toRevision = (r: Row): RevisionMeta => ({ id: r.id, version: r.version, sa
  * IMMEDIATE transaction, so concurrent writers queue instead of overwriting each other, and the
  * rollback journal keeps the database a single, copy-safe file between writes.
  */
-export class SqliteStore implements Store {
-  readonly kind = "sqlite";
+export class SqliteStore {
   private depth = 0;
 
   private constructor(
     private readonly db: Database,
+    /** Where it lives, for logs. */
     readonly location: string
   ) {}
 
@@ -112,6 +108,7 @@ export class SqliteStore implements Store {
     return this.db.prepare("SELECT * FROM documents WHERE path = ?").get(documentPath);
   }
 
+  /** Metadata of the documents whose path starts with `prefix` (all by default), ordered by path. */
   list(prefix = ""): DocMeta[] {
     return this.db
       .prepare(`SELECT ${META_COLUMNS} FROM documents WHERE substr(path, 1, ?) = ? ORDER BY path`)
@@ -129,10 +126,12 @@ export class SqliteStore implements Store {
     return r && { ...toMeta(r), text: r.text };
   }
 
+  /** Create or replace. Saving the text that is already there changes nothing. */
   put(documentPath: string, text: string, options: PutOptions = {}): DocMeta {
     return this.tx(() => this.write(documentPath, text, options));
   }
 
+  /** Read-modify-write that no other writer can interleave with. `change` must be synchronous. */
   update(documentPath: string, change: (text: string) => string, options: { source?: string } = {}): DocMeta {
     return this.tx(() => {
       const current = this.row(documentPath);
@@ -144,7 +143,7 @@ export class SqliteStore implements Store {
   private write(documentPath: string, text: string, options: PutOptions): DocMeta {
     const current = this.row(documentPath);
     const source = options.source ?? "unknown";
-    const now = options.updatedAt ?? Date.now();
+    const now = Date.now();
     const summary = JSON.stringify(summarizeText(text));
     const size = Buffer.byteLength(text);
 
@@ -218,6 +217,7 @@ export class SqliteStore implements Store {
     });
   }
 
+  /** Earlier versions, newest first. */
   history(documentPath: string, limit = 50): RevisionMeta[] {
     return this.db
       .prepare("SELECT id, version, saved_at, source, size FROM revisions WHERE path = ? ORDER BY id DESC LIMIT ?")
@@ -230,6 +230,7 @@ export class SqliteStore implements Store {
     return r && { ...toRevision(r), text: r.text };
   }
 
+  /** Documents that were deleted and can still be restored from their last revision. */
   deleted(): (RevisionMeta & { path: string })[] {
     return this.db
       .prepare(
@@ -240,16 +241,6 @@ export class SqliteStore implements Store {
       )
       .all()
       .map((r) => ({ ...toRevision(r), path: r.path }));
-  }
-
-  /** Run `fn` once for the lifetime of the database (the first caller wins, across processes). */
-  runOnce(key: string, fn: () => void): boolean {
-    return this.tx(() => {
-      if (this.db.prepare("SELECT 1 AS done FROM meta WHERE key = ?").get(key)) return false;
-      fn();
-      this.db.prepare("INSERT INTO meta (key, value) VALUES (?, ?)").run(key, new Date().toISOString());
-      return true;
-    });
   }
 
   close(): void {

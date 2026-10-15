@@ -33,17 +33,6 @@ export function getDataRoot(): string {
 }
 
 /**
- * Folder with the plan files of the old file layout (workout-plans/). Defaults to <project>/workout-plans;
- * override with WORKOUT_PLANS_DIR (e.g. a /plans volume in Docker). Only the file backend and the one-time
- * import into the database read it.
- */
-export function getPlansDir(): string {
-  return process.env.WORKOUT_PLANS_DIR
-    ? path.resolve(process.env.WORKOUT_PLANS_DIR)
-    : path.join(PROJECT_ROOT, "workout-plans");
-}
-
-/**
  * Discover available profiles by scanning for .env.<name> files in the profiles directory.
  * Excludes .env.example.
  */

@@ -6,7 +6,7 @@
  *
  * HTTP mode requires MCP_AUTH_TOKEN (>= 32 chars). Configuration also comes from
  * MCP_PORT, MCP_HOST, GARMIN_PROFILE, MOCK_MODE and the directory overrides
- * GARMIN_PROFILES_DIR / GARMIN_DATA_DIR / WORKOUT_PLANS_DIR.
+ * GARMIN_PROFILES_DIR / GARMIN_DATA_DIR / GARMIN_STORE_PATH.
  */
 import "./consoleRedirect"; // must stay first: keeps stdout clean
 

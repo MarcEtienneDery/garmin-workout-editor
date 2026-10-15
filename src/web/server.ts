@@ -852,7 +852,7 @@ if (require.main === module) {
   const host = process.env.WEB_HOST ?? "127.0.0.1";
   const port = Number(process.env.WEB_PORT ?? 8788);
   startWebServer({ host, port, token: process.env.WEB_AUTH_TOKEN || undefined })
-    .then(() => console.log(`Plan editor on http://${host}:${port}  (store: ${store().kind}, ${store().location})`))
+    .then(() => console.log(`Plan editor on http://${host}:${port}  (store: ${store().location})`))
     .catch((error) => {
       console.error(error.message);
       process.exit(1);

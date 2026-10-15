@@ -61,7 +61,6 @@ const STRENGTH_WORKOUT = {
 
 let tmpRoot: string;
 let dataDir: string;
-let plansDir: string;
 const stored = (logical: string) => getStore().get(logical)?.text;
 const saved: Record<string, string | undefined> = {};
 
@@ -72,14 +71,11 @@ beforeAll(() => {
 
   tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "garmin-mcp-test-"));
   dataDir = path.join(tmpRoot, "data");
-  plansDir = path.join(tmpRoot, "plans");
-  fs.mkdirSync(plansDir, { recursive: true });
 
-  for (const key of ["GARMIN_DATA_DIR", "WORKOUT_PLANS_DIR", "GARMIN_PROFILES_DIR"]) {
+  for (const key of ["GARMIN_DATA_DIR", "GARMIN_PROFILES_DIR"]) {
     saved[key] = process.env[key];
   }
   process.env.GARMIN_DATA_DIR = dataDir;
-  process.env.WORKOUT_PLANS_DIR = plansDir;
   process.env.GARMIN_PROFILES_DIR = path.join(tmpRoot, "config"); // does not exist yet
 
   configureMcp({ mock: true, defaultProfile: undefined });

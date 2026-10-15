@@ -1,7 +1,6 @@
 # MCP server (Streamable HTTP) and plan editor web UI for garmin-workout-editor.
 # One image, two entrypoints: dist/mcp/server.js (default CMD) and dist/web/server.js.
 # Secrets and data are NOT baked in: mount them at /config and /data (garmin.db lives in /data).
-# /plans is only read, once, to import plan files into a new database.
 
 FROM node:22-slim AS build
 WORKDIR /app
@@ -19,16 +18,15 @@ ENV NODE_ENV=production \
     WEB_HOST=0.0.0.0 \
     WEB_PORT=8788 \
     GARMIN_PROFILES_DIR=/config \
-    GARMIN_DATA_DIR=/data \
-    WORKOUT_PLANS_DIR=/plans
+    GARMIN_DATA_DIR=/data
 
 COPY --from=build /app/package.json ./
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 
-# /data must be writable by the runtime user (the database, the token cache); /config and
-# /plans only need to be readable.
-RUN mkdir -p /config /data /plans && chown node:node /data /plans
+# /data must be writable by the runtime user (the database, the token cache); /config only
+# needs to be readable.
+RUN mkdir -p /config /data && chown node:node /data
 USER node
 
 EXPOSE 8787 8788

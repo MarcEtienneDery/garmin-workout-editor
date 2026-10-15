@@ -1,7 +1,7 @@
 /**
  * The document store behind plans and per-profile data. A document is a JSON text addressed by a
  * logical path ("workout-plans/x.json", "data/<profile>/x.json"); the MCP tools, the web editor and
- * the CLI all go through this interface, so the backend (SQLite, or plain files) is a deployment choice.
+ * the CLI all go through SqliteStore.
  */
 
 export type StoreErrorCode = "not_found" | "exists" | "conflict" | "invalid_path";
@@ -28,10 +28,10 @@ export interface DocMeta {
   /** The profile that owns it; null = shared. data/<profile>/ documents always belong to <profile>. */
   owner: string | null;
   size: number;
-  /** Opaque token that changes with every save; compare it for equality, never for order across backends. */
+  /** Counts the saves of this path; compare it for equality to detect that someone else saved. */
   version: number;
   updatedAt: number;
-  /** Who saved this version: "web", "mcp", "cli", "import", "restore". */
+  /** Who saved this version: "web", "mcp", "cli", "restore". */
   source: string;
   summary: DocSummary;
 }
@@ -59,29 +59,4 @@ export interface PutOptions {
   source?: string;
   /** Owner of a new document under workout-plans/. Ignored when it already exists. */
   owner?: string | null;
-  /** Keep this timestamp instead of now (used when importing files). */
-  updatedAt?: number;
-}
-
-export interface Store {
-  readonly kind: "sqlite" | "files";
-  /** Where it lives, for logs. */
-  readonly location: string;
-  /** Metadata of the documents whose path starts with `prefix` (all by default), ordered by path. */
-  list(prefix?: string): DocMeta[];
-  head(path: string): DocMeta | undefined;
-  get(path: string): StoredDoc | undefined;
-  /** Create or replace. Saving the text that is already there changes nothing. */
-  put(path: string, text: string, options?: PutOptions): DocMeta;
-  /** Read-modify-write that no other writer can interleave with. `change` must be synchronous. */
-  update(path: string, change: (text: string) => string, options?: { source?: string }): DocMeta;
-  remove(path: string, options?: { expectedVersion?: number; source?: string }): void;
-  rename(from: string, to: string): DocMeta;
-  setOwner(path: string, owner: string | null): DocMeta;
-  /** Earlier versions, newest first. The file backend keeps none. */
-  history(path: string, limit?: number): RevisionMeta[];
-  revision(path: string, id: number): (RevisionMeta & { text: string }) | undefined;
-  /** Documents that were deleted and can still be restored from their last revision. */
-  deleted(): (RevisionMeta & { path: string })[];
-  close(): void;
 }

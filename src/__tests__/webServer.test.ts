@@ -34,7 +34,6 @@ describe("web plan editor", () => {
   let dir: string;
   let server: http.Server;
   let base: string;
-  const prevPlans = process.env.WORKOUT_PLANS_DIR;
   const prevData = process.env.GARMIN_DATA_DIR;
   const prevProfiles = process.env.GARMIN_PROFILES_DIR;
   const prevDefault = process.env.GARMIN_PROFILE;
@@ -47,9 +46,7 @@ describe("web plan editor", () => {
 
   beforeEach(async () => {
     dir = fs.mkdtempSync(path.join(os.tmpdir(), "web-test-"));
-    fs.mkdirSync(path.join(dir, "plans"));
     fs.mkdirSync(path.join(dir, "data"));
-    process.env.WORKOUT_PLANS_DIR = path.join(dir, "plans"); // empty: nothing to import
     process.env.GARMIN_DATA_DIR = path.join(dir, "data");
     process.env.GARMIN_PROFILES_DIR = path.join(dir, "config");
     delete process.env.GARMIN_PROFILE;
@@ -64,7 +61,6 @@ describe("web plan editor", () => {
     await new Promise((r) => server.close(r));
     closeStore();
     fs.rmSync(dir, { recursive: true, force: true });
-    if (prevPlans === undefined) delete process.env.WORKOUT_PLANS_DIR; else process.env.WORKOUT_PLANS_DIR = prevPlans;
     if (prevData === undefined) delete process.env.GARMIN_DATA_DIR; else process.env.GARMIN_DATA_DIR = prevData;
     if (prevProfiles === undefined) delete process.env.GARMIN_PROFILES_DIR; else process.env.GARMIN_PROFILES_DIR = prevProfiles;
     if (prevDefault === undefined) delete process.env.GARMIN_PROFILE; else process.env.GARMIN_PROFILE = prevDefault;

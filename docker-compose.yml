@@ -29,7 +29,6 @@ services:
     volumes:
       - ./config:/config:ro            # .env.<profile> files (Garmin credentials)
       - ./data:/data                   # garmin.db (plans and data) and the token cache
-      - ./workout-plans:/plans:ro      # read once: imported into garmin.db when it is first created; drop it afterwards
 
   # Plan editor (Monaco JSON editor + CRUD on the stored plans, plus upload / schedule / send
   # buttons). Same image as garmin-mcp; /config is only used by those Garmin buttons.
@@ -48,7 +47,6 @@ services:
     volumes:
       - ./config:/config:ro            # same credentials as garmin-mcp (enables the Garmin buttons)
       - ./data:/data
-      - ./workout-plans:/plans:ro
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8788/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 30s

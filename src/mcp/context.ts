@@ -117,8 +117,6 @@ export function getValidatorEditor(): WorkoutEditor {
 
 // ─── Documents (plans and per-profile data) ─────────────────────────────────
 
-export { getPlansDir } from "../shared/profileLoader";
-
 /**
  * Canonical logical path ("workout-plans/x.json", "data/MED/x.json") of a tool-supplied path.
  * Only .json documents under the two roots exist; hidden segments and ".." are rejected.
