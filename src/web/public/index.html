@@ -202,6 +202,10 @@ async function refreshFiles() {
     }
   }
   if (!files.length) el.innerHTML = '<div class="empty">No plans yet.</div>';
+  if (garmin.user && !garmin.user.admin) {
+    const who = document.createElement("div"); who.className = "empty"; who.textContent = "Signed in as " + garmin.user.name;
+    el.prepend(who);
+  }
 }
 
 async function openFile(p) {
@@ -302,6 +306,7 @@ async function loadGarmin() {
   for (const name of garmin.profiles) sel.add(new Option(name, name));
   if (garmin.defaultProfile) sel.value = garmin.defaultProfile;
   setButtons();
+  if (garmin.user && !garmin.user.admin) refreshFiles();
 }
 
 function showActivity(title, cls, lines, log) {

@@ -294,10 +294,11 @@ npm run web          # http://127.0.0.1:8788
 - **Workouts panel**: add, duplicate and delete individual workouts, or click one to jump to it in the editor.
 - **Validation**: the same pre-upload checks as `validate_plan`, run as you type; saving is never blocked by validation errors. `Ctrl/Cmd+S` saves.
 - **Safe writes**: atomic saves, and a save is refused (409) if the file changed on disk since you opened it (e.g. edited through the MCP server).
-- **Config**: `WEB_PORT` (8788), `WEB_HOST` (127.0.0.1). Binding to a non-loopback host requires `WEB_AUTH_TOKEN` (HTTP Basic auth: any user, the token as password).
+- **Config**: `WEB_PORT` (8788), `WEB_HOST` (127.0.0.1). Binding to a non-loopback host requires `WEB_AUTH_TOKEN` or at least one profile `WEB_PASSWORD` (below).
+- **Logins** (HTTP Basic): add `WEB_PASSWORD=<password>` to a profile's `.env.<profile>` and sign in with the profile name as user name. That login sees only `data/<profile>/` plus the shared `workout-plans/`, and its Garmin buttons always act as that profile. `WEB_AUTH_TOKEN` (any user name, the token as password) stays the admin login with access to everything. Passwords are read on every request, so edits apply without a restart; browsers cache the login, so use a private window to switch user. Generate one with `openssl rand -hex 16`.
 - **Garmin buttons**: *Upload*, *Schedule*, *Upload + schedule* and *Send to watch* run the same code as the MCP tools `upload_workouts`, `schedule_plan`, `upload_and_schedule_plan` and `send_to_device`. Each one saves the file first, shows what it will do (workouts with a `workoutId` are deleted and recreated) and asks for confirmation; uploads are refused while validation has errors. New `workoutId`s are written back and the editor reloads them, and the Garmin log appears under *Checks → Garmin*.
 - The buttons need the Garmin credentials: the `.env.<profile>` files in `GARMIN_PROFILES_DIR` (Docker: mount `./config` at `/config:ro`). Without a profile (or in mock mode) they stay disabled. Plans under `data/<profile>/` use that profile; for `workout-plans/` a profile picker appears when you have several.
-- Anyone with `WEB_AUTH_TOKEN` can change your Garmin account from here; use HTTPS (reverse proxy or tunnel) if the editor is reachable beyond your LAN.
+- Anyone with `WEB_AUTH_TOKEN` (or a profile's `WEB_PASSWORD`, for that profile) can change that Garmin account from here; use HTTPS (reverse proxy or tunnel) if the editor is reachable beyond your LAN.
 - Works on phones: below 900px it switches to one pane at a time (Files / Editor / Workouts / Checks) with the actions in a ⋯ menu.
 
 ## MCP Server (claude.ai / Claude Desktop)

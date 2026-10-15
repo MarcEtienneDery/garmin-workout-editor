@@ -95,6 +95,7 @@ export function loadProfile(name: string): ProfileConfig {
 
   // Also set any other env vars from the profile file (e.g., GITHUB_TOKEN)
   for (const [key, value] of Object.entries(parsed)) {
+    if (key === "WEB_PASSWORD") continue; // the web editor reads it per profile; never share it process-wide
     if (!process.env[key]) {
       process.env[key] = value;
     }

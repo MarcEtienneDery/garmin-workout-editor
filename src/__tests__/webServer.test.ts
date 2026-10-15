@@ -56,12 +56,15 @@ describe("web plan editor", () => {
     if (prevProfiles === undefined) delete process.env.GARMIN_PROFILES_DIR; else process.env.GARMIN_PROFILES_DIR = prevProfiles;
     if (prevDefault === undefined) delete process.env.GARMIN_PROFILE; else process.env.GARMIN_PROFILE = prevDefault;
   });
-  const addProfile = (name: string) =>
-    fs.writeFileSync(path.join(dir, "config", `.env.${name}`), "GARMIN_EMAIL=a@b.c\nGARMIN_PASSWORD=x\n");
+  const addProfile = (name: string, webPassword?: string) =>
+    fs.writeFileSync(
+      path.join(dir, "config", `.env.${name}`),
+      `GARMIN_EMAIL=a@b.c\nGARMIN_PASSWORD=x\n${webPassword ? `WEB_PASSWORD=${webPassword}\n` : ""}`
+    );
 
   const call = async (method: string, url: string, body?: unknown, headers = H) => {
     const res = await fetch(base + url, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
-    return { status: res.status, json: (await res.json()) as any };
+    return { status: res.status, json: (await res.json().catch(() => ({}))) as any };
   };
   const q = (p: string) => `/api/file?path=${encodeURIComponent(p)}`;
 
@@ -194,6 +197,75 @@ describe("web plan editor", () => {
       expect(r.status).toBe(502);
       expect(r.json.error).toMatch(/authenticate/);
       expect(typeof r.json.mtimeMs).toBe("number");
+    });
+  });
+  describe("per-profile logins", () => {
+    const basic = (user: string, pass: string) => ({ Authorization: "Basic " + Buffer.from(`${user}:${pass}`).toString("base64") });
+    const as = (user: string, pass: string) => (method: string, url: string, body?: unknown) =>
+      call(method, url, body, { ...H, ...basic(user, pass) });
+
+    beforeEach(() => {
+      addProfile("MED", "med-pw");
+      addProfile("SAM", "sam-pw");
+      for (const name of ["MED", "SAM"]) {
+        fs.mkdirSync(path.join(dir, "data", name));
+        fs.writeFileSync(path.join(dir, "data", name, "w.json"), JSON.stringify(plan));
+      }
+    });
+
+    it("requires a login as soon as a profile has a WEB_PASSWORD, and checks it against that profile", async () => {
+      expect((await call("GET", "/api/files")).status).toBe(401);
+      expect((await as("MED", "sam-pw")("GET", "/api/files")).status).toBe(401);
+      expect((await as("NOPE", "med-pw")("GET", "/api/files")).status).toBe(401);
+      expect((await as("MED", "med-pw")("GET", "/api/files")).status).toBe(200);
+    });
+
+    it("limits a profile login to its own data folder and the shared plans", async () => {
+      const med = as("MED", "med-pw");
+      const files = (await med("GET", "/api/files")).json.files.map((f: any) => f.path);
+      expect(files).toEqual(["data/MED/w.json", "workout-plans/a.json"]);
+
+      expect((await med("GET", q("data/MED/w.json"))).status).toBe(200);
+      expect((await med("GET", q("data/SAM/w.json"))).status).toBe(403);
+      expect((await med("PUT", q("data/SAM/new.json"), { text: "{}", create: true })).status).toBe(403);
+      expect((await med("DELETE", q("data/SAM/w.json"))).status).toBe(403);
+      expect((await med("POST", "/api/rename", { from: "workout-plans/a.json", to: "data/SAM/a.json" })).status).toBe(403);
+      expect(fs.existsSync(path.join(dir, "data", "SAM", "w.json"))).toBe(true);
+    });
+
+    it("runs Garmin actions as the logged-in profile, whatever the request says", async () => {
+      const med = as("MED", "med-pw");
+      const info = (await med("GET", "/api/garmin")).json;
+      expect(info).toEqual(expect.objectContaining({ profiles: ["MED"], defaultProfile: "MED", user: { admin: false, name: "MED" } }));
+
+      const body = { action: "upload", path: "workout-plans/a.json", profile: "SAM", confirm: true };
+      expect((await med("POST", "/api/garmin/action", body)).status).toBe(200);
+      expect(g.uploadPlan).toHaveBeenLastCalledWith("MED", "workout-plans/a.json");
+      expect((await med("POST", "/api/garmin/action", { ...body, path: "data/SAM/w.json" })).status).toBe(403);
+    });
+
+    it("keeps the token as an admin login and picks up password edits without a restart", async () => {
+      const secured = await startWebServer({ host: "127.0.0.1", port: 0, token: "admin-token" });
+      const url = `http://127.0.0.1:${(secured.address() as AddressInfo).port}/api/files`;
+      const get = async (user: string, pass: string) => (await fetch(url, { headers: basic(user, pass) })).status;
+
+      expect(await get("anyone", "admin-token")).toBe(200);
+      const adminFiles = (await (await fetch(url, { headers: basic("anyone", "admin-token") })).json()) as any;
+      expect(adminFiles.files.map((f: any) => f.path)).toEqual(["data/MED/w.json", "data/SAM/w.json", "workout-plans/a.json"]);
+
+      expect(await get("MED", "med-pw")).toBe(200);
+      addProfile("MED", "rotated");
+      expect(await get("MED", "med-pw")).toBe(401);
+      expect(await get("MED", "rotated")).toBe(200);
+      await new Promise((r) => secured.close(r));
+    });
+
+    it("allows a non-loopback bind with only profile passwords", async () => {
+      const open = await startWebServer({ host: "0.0.0.0", port: 0 });
+      await new Promise((r) => open.close(r));
+      fs.rmSync(path.join(dir, "config"), { recursive: true });
+      fs.mkdirSync(path.join(dir, "config"));
+      expect(() => startWebServer({ host: "0.0.0.0", port: 0 })).toThrow(/WEB_AUTH_TOKEN/);
     });
   });
 });

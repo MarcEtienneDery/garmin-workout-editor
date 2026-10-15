@@ -11,13 +11,18 @@
  * The Garmin actions (upload / schedule / send to device) reuse the MCP tool
  * bodies, so they need the profile credentials (GARMIN_PROFILES_DIR) and are
  * disabled when no profile is configured or in mock mode.
+ *
+ * Logins (HTTP Basic): user = a profile name, password = WEB_PASSWORD from that
+ * profile's .env.<profile> -> sees only data/<profile>/ (plus the shared
+ * workout-plans/) and its Garmin actions run as that profile. WEB_AUTH_TOKEN
+ * as the password (any user name) is the admin login with full access.
  */
 import * as fs from "fs";
 import * as http from "http";
 import * as path from "path";
 import { createHash, timingSafeEqual } from "crypto";
 import * as dotenv from "dotenv";
-import { PROJECT_ROOT, getAvailableProfiles, getDataRoot } from "../shared/profileLoader";
+import { PROJECT_ROOT, getAvailableProfiles, getDataRoot, getProfilesDir } from "../shared/profileLoader";
 import {
   getPlansDir,
   getSettings,
@@ -67,6 +72,30 @@ export const isLoopback = (host: string): boolean =>
   host === "127.0.0.1" || host === "::1" || host === "localhost";
 
 const sha256 = (v: string) => createHash("sha256").update(v).digest();
+const sameSecret = (a: string, b: string) => timingSafeEqual(sha256(a), sha256(b));
+
+/** Who is calling: the admin (token, or no auth configured) or a single profile. */
+export type Principal = { admin: true; profile?: undefined } | { admin: false; profile: string };
+const ADMIN: Principal = { admin: true };
+
+/** WEB_PASSWORD from a profile's .env file; read per request so edits apply without a restart. */
+function profileWebPassword(name: string): string | undefined {
+  try {
+    const file = path.join(getProfilesDir(), `.env.${name}`);
+    return dotenv.parse(fs.readFileSync(file, "utf8")).WEB_PASSWORD || undefined;
+  } catch {
+    return undefined;
+  }
+}
+const profilesWithWebPassword = (): string[] => getAvailableProfiles().filter((p) => profileWebPassword(p));
+
+/** A profile login may only reach its own data/<profile>/ folder (workout-plans/ is shared). */
+function assertScope(who: Principal, logical: string): void {
+  if (who.admin || !logical.startsWith("data/")) return;
+  if (!logical.startsWith(`data/${who.profile}/`)) {
+    throw new HttpError(403, `${logical} belongs to another profile.`);
+  }
+}
 
 function send(res: http.ServerResponse, status: number, body: unknown): void {
   res.writeHead(status, { "Content-Type": "application/json", "Cache-Control": "no-store" });
@@ -158,12 +187,12 @@ function jsonFilesIn(dir: string): string[] {
     .map((e) => path.join(dir, e.name));
 }
 
-function listFiles(): FileInfo[] {
+function listFiles(who: Principal): FileInfo[] {
   const dataRoot = getDataRoot();
   const profileDirs = fs.existsSync(dataRoot)
     ? fs
         .readdirSync(dataRoot, { withFileTypes: true })
-        .filter((e) => e.isDirectory() && PROFILE_DIR_REGEX.test(e.name))
+        .filter((e) => e.isDirectory() && PROFILE_DIR_REGEX.test(e.name) && (who.admin || e.name === who.profile))
         .map((e) => path.join(dataRoot, e.name))
     : [];
   return [getPlansDir(), ...profileDirs]
@@ -235,14 +264,18 @@ function workoutSchema() {
 const GARMIN_ACTIONS = ["upload", "schedule", "upload_schedule", "send"] as const;
 type GarminAction = (typeof GARMIN_ACTIONS)[number];
 
-function garminInfo() {
-  const profiles = getAvailableProfiles();
+function garminInfo(who: Principal) {
+  const all = getAvailableProfiles();
+  const profiles = who.admin ? all : all.filter((p) => p === who.profile);
   const mock = getSettings().mock;
   return {
     enabled: profiles.length > 0 && !mock,
     mock,
     profiles,
-    defaultProfile: getSettings().defaultProfile ?? (profiles.length === 1 ? profiles[0] : null),
+    user: who.admin ? { admin: true } : { admin: false, name: who.profile },
+    defaultProfile: who.admin
+      ? (getSettings().defaultProfile ?? (profiles.length === 1 ? profiles[0] : null))
+      : who.profile,
     reason: mock
       ? "Mock mode: Garmin writes are disabled."
       : profiles.length === 0
@@ -252,7 +285,11 @@ function garminInfo() {
 }
 
 /** data/<PROFILE>/... files belong to that profile; plans in workout-plans/ need an explicit or default one. */
-function profileFor(logical: string, requested: unknown): string {
+function profileFor(who: Principal, logical: string, requested: unknown): string {
+  if (!who.admin) {
+    if (!getAvailableProfiles().includes(who.profile)) throw new HttpError(400, `Unknown Garmin profile "${who.profile}".`);
+    return who.profile; // a profile login always acts as itself
+  }
   const owner = /^data\/([^/]+)\//.exec(logical)?.[1];
   const name = owner ?? (typeof requested === "string" && requested ? requested : undefined);
   let resolved: string;
@@ -265,8 +302,8 @@ function profileFor(logical: string, requested: unknown): string {
   return resolved;
 }
 
-async function garminAction(body: any): Promise<{ status: number; payload: unknown }> {
-  const info = garminInfo();
+async function garminAction(body: any, who: Principal): Promise<{ status: number; payload: unknown }> {
+  const info = garminInfo(who);
   if (!info.enabled) throw new HttpError(409, info.reason ?? "Garmin actions are disabled.");
   if (!GARMIN_ACTIONS.includes(body.action)) throw new HttpError(400, `Unknown action "${body.action}".`);
   // The UI shows what will happen and asks first; the API insists on it so a stray request can't change the account.
@@ -274,8 +311,9 @@ async function garminAction(body: any): Promise<{ status: number; payload: unkno
   const action = body.action as GarminAction;
 
   const { logical, absolute } = resolveOr400(body.path);
+  assertScope(who, logical);
   if (!fs.existsSync(absolute)) throw new HttpError(404, `File not found: ${logical}`);
-  const profile = profileFor(logical, body.profile);
+  const profile = profileFor(who, logical, body.profile);
 
   if (action === "upload" || action === "upload_schedule") {
     const validation = validateText(fs.readFileSync(absolute, "utf8")) as { errors: string[] } | null;
@@ -339,19 +377,24 @@ function serveStatic(pathname: string, res: http.ServerResponse): void {
   res.end(content);
 }
 
-async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, url: URL): Promise<void> {
+async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, url: URL, who: Principal): Promise<void> {
   const route = `${req.method} ${url.pathname}`;
   const queryPath = url.searchParams.get("path");
+  const scoped = (logicalPath: unknown) => {
+    const resolved = resolveOr400(logicalPath);
+    assertScope(who, resolved.logical);
+    return resolved;
+  };
 
   switch (route) {
     case "GET /api/files":
-      return send(res, 200, { files: listFiles() });
+      return send(res, 200, { files: listFiles(who) });
 
     case "GET /api/schema":
       return send(res, 200, workoutSchema());
 
     case "GET /api/file": {
-      const { logical, absolute } = resolveOr400(queryPath);
+      const { logical, absolute } = scoped(queryPath);
       if (!fs.existsSync(absolute)) throw new HttpError(404, `File not found: ${logical}`);
       return send(res, 200, {
         path: logical,
@@ -364,7 +407,7 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
       // Body: { text, mtimeMs? } to update (409 if the file changed on disk since mtimeMs),
       //       { text, create: true } to create (409 if it already exists).
       const body = await readBody(req);
-      const { logical, absolute } = resolveOr400(queryPath);
+      const { logical, absolute } = scoped(queryPath);
       parseOr400(body.text);
       const exists = fs.existsSync(absolute);
       if (body.create && exists) throw new HttpError(409, `${logical} already exists`);
@@ -381,7 +424,7 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
     }
 
     case "DELETE /api/file": {
-      const { logical, absolute } = resolveOr400(queryPath);
+      const { logical, absolute } = scoped(queryPath);
       if (!fs.existsSync(absolute)) throw new HttpError(404, `File not found: ${logical}`);
       fs.unlinkSync(absolute);
       return send(res, 200, { path: logical, deleted: true });
@@ -389,8 +432,8 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
 
     case "POST /api/rename": {
       const body = await readBody(req);
-      const from = resolveOr400(body.from);
-      const to = resolveOr400(body.to);
+      const from = scoped(body.from);
+      const to = scoped(body.to);
       if (!fs.existsSync(from.absolute)) throw new HttpError(404, `File not found: ${from.logical}`);
       if (fs.existsSync(to.absolute)) throw new HttpError(409, `${to.logical} already exists`);
       fs.mkdirSync(path.dirname(to.absolute), { recursive: true });
@@ -399,19 +442,19 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
     }
 
     case "GET /api/garmin":
-      return send(res, 200, garminInfo());
+      return send(res, 200, garminInfo(who));
 
     case "GET /api/garmin/devices": {
-      const info = garminInfo();
+      const info = garminInfo(who);
       if (!info.enabled) throw new HttpError(409, info.reason ?? "Garmin actions are disabled.");
-      const profile = profileFor(queryPath && /^data\/[^/]+\//.test(queryPath) ? queryPath : "", url.searchParams.get("profile"));
+      const profile = profileFor(who, queryPath && /^data\/[^/]+\//.test(queryPath) ? queryPath : "", url.searchParams.get("profile"));
       const outcome = await runCaptured(() => listDevices(profile));
       if (!outcome.ok) throw new HttpError(502, outcome.error instanceof Error ? outcome.error.message : String(outcome.error));
       return send(res, 200, outcome.value);
     }
 
     case "POST /api/garmin/action": {
-      const { status, payload } = await garminAction(await readBody(req));
+      const { status, payload } = await garminAction(await readBody(req), who);
       return send(res, status, payload);
     }
 
@@ -426,17 +469,25 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
 }
 
 export function startWebServer(options: WebServerOptions): Promise<http.Server> {
-  if (!isLoopback(options.host) && !options.token) {
-    throw new Error("WEB_AUTH_TOKEN is required when binding to a non-loopback host.");
+  if (!isLoopback(options.host) && !options.token && profilesWithWebPassword().length === 0) {
+    throw new Error("WEB_AUTH_TOKEN (or a WEB_PASSWORD in a profile .env file) is required when binding to a non-loopback host.");
   }
-  const expected = options.token ? sha256(options.token) : undefined;
+  // Checked per request: WEB_PASSWORD edits in a profile file apply without a restart.
+  const authRequired = () => !!options.token || profilesWithWebPassword().length > 0;
 
-  const authorized = (header: string | undefined): boolean => {
-    if (!expected) return true;
+  const authenticate = (header: string | undefined): Principal | null => {
+    if (!authRequired()) return ADMIN;
     const m = /^Basic\s+(.+)$/i.exec(header ?? "");
-    if (!m) return false;
+    if (!m) return null;
     const decoded = Buffer.from(m[1], "base64").toString("utf8");
-    return timingSafeEqual(sha256(decoded.slice(decoded.indexOf(":") + 1)), expected);
+    const colon = decoded.indexOf(":");
+    const user = colon < 0 ? "" : decoded.slice(0, colon);
+    const secret = decoded.slice(colon + 1);
+
+    const profilePassword = user && getAvailableProfiles().includes(user) ? profileWebPassword(user) : undefined;
+    if (profilePassword && sameSecret(secret, profilePassword)) return { admin: false, profile: user };
+    if (options.token && sameSecret(secret, options.token)) return ADMIN;
+    return null;
   };
 
   const server = http.createServer(async (req, res) => {
@@ -448,11 +499,12 @@ export function startWebServer(options: WebServerOptions): Promise<http.Server> 
         return void res.end("ok");
       }
       // Without a token on loopback, reject foreign Host headers (DNS rebinding).
-      if (!expected && !/^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(req.headers.host ?? "")) {
+      if (!authRequired() && !/^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(req.headers.host ?? "")) {
         res.writeHead(403, { "Content-Type": "text/plain" });
         return void res.end("Forbidden host");
       }
-      if (!authorized(req.headers.authorization)) {
+      const who = authenticate(req.headers.authorization);
+      if (!who) {
         res.writeHead(401, { "WWW-Authenticate": 'Basic realm="Plan editor"' });
         return void res.end("Authentication required");
       }
@@ -463,7 +515,7 @@ export function startWebServer(options: WebServerOptions): Promise<http.Server> 
       if (req.method !== "GET" && req.headers["x-requested-with"] !== "plan-editor") {
         throw new HttpError(403, "Missing X-Requested-With header");
       }
-      await handleApi(req, res, url);
+      await handleApi(req, res, url, who);
     } catch (error) {
       if (res.headersSent) return void res.destroy();
       if (error instanceof HttpError) return send(res, error.status, { error: error.message });
