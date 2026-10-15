@@ -24,7 +24,7 @@ No linter; TypeScript strict mode is the gate. Run `npx tsc --noEmit` and the re
 | AI-assisted adjustment | `src/adjustWorkouts.ts`, `src/workoutAdjuster.ts` |
 | Garmin client, types, profiles | `src/shared/` (`garminClient.ts`, `types.ts`, `profileLoader.ts`) |
 | MCP server | `src/mcp/` (`createServer.ts`, `tools/garmin.ts`, `tools/plans.ts`) |
-| Plan editor web UI | `src/web/` (`server.ts`, `public/index.html`; Monaco served from node_modules) |
+| Plan editor web UI | `src/web/` (`server.ts`, `public/index.html`; Monaco served from node_modules). Its Garmin buttons call the shared action functions in `src/mcp/tools/garmin.ts` |
 | Plans (JSON) | `workout-plans/` |
 | Per-profile data | `data/<profile>/` |
 
@@ -53,7 +53,7 @@ Data flow is fetch, transform, save. Avoid extending the legacy files `src/types
 
 ## Deployment
 
-The MCP server runs in Docker on the NAS as `garmin-mcp`, defined in `~/docker/garmin.yml`; the plan editor runs beside it as `garmin-web` (same image, `node dist/web/server.js`, needs `WEB_AUTH_TOKEN`). It builds from `/home/medery/git/garmin-workout-editor` and mounts its `workout-plans/` as `/plans`. To deploy `main`:
+The MCP server runs in Docker on the NAS as `garmin-mcp`, defined in `~/docker/garmin.yml`; the plan editor runs beside it as `garmin-web` (same image, `node dist/web/server.js`, needs `WEB_AUTH_TOKEN`, and `/config` mounted for its Garmin buttons). It builds from `/home/medery/git/garmin-workout-editor` and mounts its `workout-plans/` as `/plans`. To deploy `main`:
 
 ```bash
 git -C /home/medery/git/garmin-workout-editor fetch origin && git -C /home/medery/git/garmin-workout-editor merge --ff-only origin/main

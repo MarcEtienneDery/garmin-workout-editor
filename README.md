@@ -284,7 +284,7 @@ npm run manage-workouts -- --generate-template --mock
 
 ## Plan Editor (web UI)
 
-A small local website to manage plan files: a Monaco JSON editor (with schema autocompletion) plus CRUD.
+A small website to manage plan files: a Monaco JSON editor (with schema autocompletion) plus CRUD, and buttons to upload, schedule and send plans to your watch.
 
 ```bash
 npm run web          # http://127.0.0.1:8788
@@ -295,7 +295,10 @@ npm run web          # http://127.0.0.1:8788
 - **Validation**: the same pre-upload checks as `validate_plan`, run as you type; saving is never blocked by validation errors. `Ctrl/Cmd+S` saves.
 - **Safe writes**: atomic saves, and a save is refused (409) if the file changed on disk since you opened it (e.g. edited through the MCP server).
 - **Config**: `WEB_PORT` (8788), `WEB_HOST` (127.0.0.1). Binding to a non-loopback host requires `WEB_AUTH_TOKEN` (HTTP Basic auth: any user, the token as password).
-- It edits files only; uploading to Garmin still goes through the CLI or MCP tools.
+- **Garmin buttons**: *Upload*, *Schedule*, *Upload + schedule* and *Send to watch* run the same code as the MCP tools `upload_workouts`, `schedule_plan`, `upload_and_schedule_plan` and `send_to_device`. Each one saves the file first, shows what it will do (workouts with a `workoutId` are deleted and recreated) and asks for confirmation; uploads are refused while validation has errors. New `workoutId`s are written back and the editor reloads them, and the Garmin log appears under *Checks → Garmin*.
+- The buttons need the Garmin credentials: the `.env.<profile>` files in `GARMIN_PROFILES_DIR` (Docker: mount `./config` at `/config:ro`). Without a profile (or in mock mode) they stay disabled. Plans under `data/<profile>/` use that profile; for `workout-plans/` a profile picker appears when you have several.
+- Anyone with `WEB_AUTH_TOKEN` can change your Garmin account from here; use HTTPS (reverse proxy or tunnel) if the editor is reachable beyond your LAN.
+- Works on phones: below 900px it switches to one pane at a time (Files / Editor / Workouts / Checks) with the actions in a ⋯ menu.
 
 ## MCP Server (claude.ai / Claude Desktop)
 
@@ -336,7 +339,7 @@ Volumes (see `docker-compose.yml`):
 
 The container runs as `PUID:PGID` (default 1000:1000), so `data/` and `workout-plans/` must be writable by that user. Set `PUID`/`PGID` in `.env` to match your NAS user. The port is published on `127.0.0.1:8787` only; set `MCP_BIND=0.0.0.0` to allow LAN clients. `GET /healthz` is the unauthenticated health check.
 
-The same compose file also starts `garmin-web`, the [plan editor](#plan-editor-web-ui) (shared image, `/plans` and `/data` mounts, no Garmin credentials). It needs `WEB_AUTH_TOKEN` in `.env` (`echo "WEB_AUTH_TOKEN=$(openssl rand -hex 16)" >> .env`) and is published on `127.0.0.1:8788`; set `WEB_BIND=0.0.0.0` for LAN access. Sign in with any user name and the token as password.
+The same compose file also starts `garmin-web`, the [plan editor](#plan-editor-web-ui) (shared image; `/plans`, `/data` and `/config` mounts, the last one for the Garmin buttons). It needs `WEB_AUTH_TOKEN` in `.env` (`echo "WEB_AUTH_TOKEN=$(openssl rand -hex 16)" >> .env`) and is published on `127.0.0.1:8788`; set `WEB_BIND=0.0.0.0` for LAN access. Sign in with any user name and the token as password.
 
 ### Make it reachable from claude.ai
 

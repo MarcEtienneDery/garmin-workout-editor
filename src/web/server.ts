@@ -7,15 +7,34 @@
  * Reaches the same files as the MCP plan tools ("workout-plans/*.json" and
  * "data/<profile>/*.json") through the same path guard. Non-loopback binds
  * require WEB_AUTH_TOKEN (HTTP Basic auth: any user name, the token as password).
+ *
+ * The Garmin actions (upload / schedule / send to device) reuse the MCP tool
+ * bodies, so they need the profile credentials (GARMIN_PROFILES_DIR) and are
+ * disabled when no profile is configured or in mock mode.
  */
 import * as fs from "fs";
 import * as http from "http";
 import * as path from "path";
 import { createHash, timingSafeEqual } from "crypto";
 import * as dotenv from "dotenv";
-import { PROJECT_ROOT, getDataRoot } from "../shared/profileLoader";
-import { getPlansDir, resolveDataPath, toLogicalPath } from "../mcp/context";
+import { PROJECT_ROOT, getAvailableProfiles, getDataRoot } from "../shared/profileLoader";
+import {
+  getPlansDir,
+  getSettings,
+  resolveDataPath,
+  resolveProfileName,
+  runCaptured,
+  toLogicalPath,
+} from "../mcp/context";
+import { installConsoleRedirect } from "../mcp/logCapture";
 import { validatePlanData } from "../mcp/tools/plans";
+import {
+  listDevices,
+  schedulePlan,
+  sendPlanToDevice,
+  uploadAndSchedulePlan,
+  uploadPlan,
+} from "../mcp/tools/garmin";
 import {
   VALID_END_CONDITIONS,
   VALID_STEP_TYPES,
@@ -211,6 +230,81 @@ function workoutSchema() {
   };
 }
 
+// ── Garmin actions ──────────────────────────────────────────────────────────
+
+const GARMIN_ACTIONS = ["upload", "schedule", "upload_schedule", "send"] as const;
+type GarminAction = (typeof GARMIN_ACTIONS)[number];
+
+function garminInfo() {
+  const profiles = getAvailableProfiles();
+  const mock = getSettings().mock;
+  return {
+    enabled: profiles.length > 0 && !mock,
+    mock,
+    profiles,
+    defaultProfile: getSettings().defaultProfile ?? (profiles.length === 1 ? profiles[0] : null),
+    reason: mock
+      ? "Mock mode: Garmin writes are disabled."
+      : profiles.length === 0
+        ? "No Garmin profiles configured (mount the .env.<profile> files at GARMIN_PROFILES_DIR)."
+        : null,
+  };
+}
+
+/** data/<PROFILE>/... files belong to that profile; plans in workout-plans/ need an explicit or default one. */
+function profileFor(logical: string, requested: unknown): string {
+  const owner = /^data\/([^/]+)\//.exec(logical)?.[1];
+  const name = owner ?? (typeof requested === "string" && requested ? requested : undefined);
+  let resolved: string;
+  try {
+    resolved = resolveProfileName(name);
+  } catch (error) {
+    throw new HttpError(400, (error as Error).message);
+  }
+  if (!getAvailableProfiles().includes(resolved)) throw new HttpError(400, `Unknown Garmin profile "${resolved}".`);
+  return resolved;
+}
+
+async function garminAction(body: any): Promise<{ status: number; payload: unknown }> {
+  const info = garminInfo();
+  if (!info.enabled) throw new HttpError(409, info.reason ?? "Garmin actions are disabled.");
+  if (!GARMIN_ACTIONS.includes(body.action)) throw new HttpError(400, `Unknown action "${body.action}".`);
+  // The UI shows what will happen and asks first; the API insists on it so a stray request can't change the account.
+  if (body.confirm !== true) throw new HttpError(400, "Confirmation required (confirm: true).");
+  const action = body.action as GarminAction;
+
+  const { logical, absolute } = resolveOr400(body.path);
+  if (!fs.existsSync(absolute)) throw new HttpError(404, `File not found: ${logical}`);
+  const profile = profileFor(logical, body.profile);
+
+  if (action === "upload" || action === "upload_schedule") {
+    const validation = validateText(fs.readFileSync(absolute, "utf8")) as { errors: string[] } | null;
+    if (validation && validation.errors.length > 0) {
+      return { status: 422, payload: { error: "Fix the validation errors before uploading.", errors: validation.errors } };
+    }
+  }
+  const deviceId = Number.isInteger(body.deviceId) ? (body.deviceId as number) : undefined;
+
+  const outcome = await runCaptured<unknown>(() => {
+    switch (action) {
+      case "upload":
+        return uploadPlan(profile, logical);
+      case "schedule":
+        return schedulePlan(profile, logical);
+      case "upload_schedule":
+        return uploadAndSchedulePlan(profile, logical);
+      case "send":
+        return sendPlanToDevice(profile, logical, deviceId);
+    }
+  });
+  const mtimeMs = fs.existsSync(absolute) ? fs.statSync(absolute).mtimeMs : undefined;
+  if (!outcome.ok) {
+    const message = outcome.error instanceof Error ? outcome.error.message : String(outcome.error);
+    return { status: 502, payload: { error: message, log: outcome.log, profile, mtimeMs } };
+  }
+  return { status: 200, payload: { action, profile, result: outcome.value, log: outcome.log, mtimeMs } };
+}
+
 const MIME: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
@@ -304,6 +398,23 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
       return send(res, 200, { from: from.logical, to: to.logical, mtimeMs: fs.statSync(to.absolute).mtimeMs });
     }
 
+    case "GET /api/garmin":
+      return send(res, 200, garminInfo());
+
+    case "GET /api/garmin/devices": {
+      const info = garminInfo();
+      if (!info.enabled) throw new HttpError(409, info.reason ?? "Garmin actions are disabled.");
+      const profile = profileFor(queryPath && /^data\/[^/]+\//.test(queryPath) ? queryPath : "", url.searchParams.get("profile"));
+      const outcome = await runCaptured(() => listDevices(profile));
+      if (!outcome.ok) throw new HttpError(502, outcome.error instanceof Error ? outcome.error.message : String(outcome.error));
+      return send(res, 200, outcome.value);
+    }
+
+    case "POST /api/garmin/action": {
+      const { status, payload } = await garminAction(await readBody(req));
+      return send(res, status, payload);
+    }
+
     case "POST /api/validate": {
       const body = await readBody(req);
       return send(res, 200, { validation: validateText(body.text) });
@@ -369,6 +480,7 @@ export function startWebServer(options: WebServerOptions): Promise<http.Server> 
 
 if (require.main === module) {
   dotenv.config({ path: path.join(PROJECT_ROOT, ".env") });
+  installConsoleRedirect(); // capture the editor's console output for the Garmin action log
   const host = process.env.WEB_HOST ?? "127.0.0.1";
   const port = Number(process.env.WEB_PORT ?? 8788);
   startWebServer({ host, port, token: process.env.WEB_AUTH_TOKEN || undefined })

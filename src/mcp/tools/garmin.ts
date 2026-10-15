@@ -40,6 +40,110 @@ function sameId(a: unknown, b: unknown): boolean {
   return a !== undefined && a !== null && b !== undefined && b !== null && String(a) === String(b);
 }
 
+// ── Garmin write/read actions, shared by the MCP tools and the web editor ───
+// Callers wrap these in runTool / runCaptured to serialize and capture logs.
+
+export async function listDevices(profile?: string) {
+  const session = getSession(profile);
+  if (session.mock) return { devices: [], note: "Mock mode: no devices." };
+  await requireAuth(session);
+  const devices = await session.garminClient.getDevices();
+  return {
+    devices: (devices ?? []).map((d: any) => ({
+      deviceId: d.deviceId,
+      displayName: d.displayName,
+      deviceTypePk: d.deviceTypePk,
+    })),
+  };
+}
+
+export async function uploadPlan(profile: string | undefined, logicalPath: string, dryRun = false) {
+  const session = getSession(profile);
+  if (!dryRun) assertLive(session, "upload_workouts");
+  const result = await session.editor.uploadWorkoutsFromFile(resolveDataPath(logicalPath), dryRun);
+  return {
+    path: logicalPath,
+    dryRun,
+    status: result.failed === 0 ? "ok" : result.successful === 0 ? "failed" : "partial",
+    ...result,
+    note: dryRun ? "Validation only; nothing was uploaded." : "New workoutIds were written back to the plan.",
+  };
+}
+
+export async function schedulePlan(profile: string | undefined, logicalPath: string) {
+  const session = getSession(profile);
+  assertLive(session, "schedule_plan");
+  const plan = await session.editor.importWorkoutPlan(resolveDataPath(logicalPath));
+
+  const attempted = plan.workouts.flatMap((w) =>
+    [w.scheduledDate ?? []].flat().map((date) => ({
+      workoutName: w.workoutName,
+      workoutId: w.workoutId,
+      date,
+    }))
+  );
+  await session.editor.scheduleWorkoutPlan(plan);
+  return {
+    path: logicalPath,
+    attempted,
+    note: "These were attempted; the log lists which were scheduled, skipped or failed.",
+  };
+}
+
+export async function uploadAndSchedulePlan(profile: string | undefined, logicalPath: string) {
+  const session = getSession(profile);
+  assertLive(session, "upload_and_schedule_plan");
+
+  const absolute = resolveDataPath(logicalPath);
+  const plan = await session.editor.importWorkoutPlan(absolute);
+  const before = plan.workouts.map((w) => w.workoutId);
+
+  let changed = false;
+  try {
+    await session.editor.uploadAndScheduleWorkoutPlan(plan);
+  } finally {
+    // Persist new ids even if a later step threw, so the next run replaces
+    // the right workouts instead of creating duplicates.
+    changed = plan.workouts.some((w, i) => String(w.workoutId) !== String(before[i]));
+    if (changed) writeJsonAtomic(absolute, plan);
+  }
+
+  return {
+    path: logicalPath,
+    writtenBack: changed,
+    workouts: plan.workouts.map((w, i) => ({
+      workoutName: w.workoutName,
+      workoutId: w.workoutId,
+      uploaded: String(w.workoutId) !== String(before[i]),
+      scheduledDate: w.scheduledDate,
+    })),
+    note: "uploaded=false means the workout was not (re)created; see the log.",
+  };
+}
+
+export async function sendPlanToDevice(profile: string | undefined, logicalPath: string, deviceId?: number) {
+  const session = getSession(profile);
+  assertLive(session, "send_to_device");
+
+  const data = readJsonFile(resolveDataPath(logicalPath), logicalPath);
+  const { workouts } = extractWorkouts(data);
+  if (workouts.length === 0) throw new Error("No workouts found in file.");
+
+  const flagged = workouts.filter((w) => w?.sendToDevice);
+  const toSend = flagged.length > 0 ? flagged : workouts;
+
+  await session.editor.sendWorkoutsToDevice(
+    toSend.map((w) => ({ workoutId: Number(w.workoutId), workoutName: w.workoutName })),
+    deviceId
+  );
+  return {
+    path: logicalPath,
+    usedSendToDeviceFlag: flagged.length > 0,
+    requested: toSend.map((w) => w.workoutName),
+    note: "Workouts without a workoutId are skipped; see the log.",
+  };
+}
+
 export function registerGarminTools(server: McpServer): void {
   // ── Reads ─────────────────────────────────────────────────────────────────
 
@@ -204,19 +308,7 @@ export function registerGarminTools(server: McpServer): void {
     },
     ({ profile }) =>
       runTool(
-        async () => {
-          const session = getSession(profile);
-          if (session.mock) return { devices: [], note: "Mock mode: no devices." };
-          await requireAuth(session);
-          const devices = await session.garminClient.getDevices();
-          return {
-            devices: (devices ?? []).map((d: any) => ({
-              deviceId: d.deviceId,
-              displayName: d.displayName,
-              deviceTypePk: d.deviceTypePk,
-            })),
-          };
-        },
+        () => listDevices(profile),
         { serialize: true }
       )
   );
@@ -238,23 +330,7 @@ export function registerGarminTools(server: McpServer): void {
     },
     ({ profile, path: logicalPath, dryRun }) =>
       runTool(
-        async () => {
-          const session = getSession(profile);
-          if (!dryRun) assertLive(session, "upload_workouts");
-          const result = await session.editor.uploadWorkoutsFromFile(
-            resolveDataPath(logicalPath),
-            dryRun
-          );
-          return {
-            path: logicalPath,
-            dryRun,
-            status: result.failed === 0 ? "ok" : result.successful === 0 ? "failed" : "partial",
-            ...result,
-            note: dryRun
-              ? "Validation only; nothing was uploaded."
-              : "New workoutIds were written back to the plan.",
-          };
-        },
+        () => uploadPlan(profile, logicalPath, dryRun),
         { serialize: true }
       )
   );
@@ -318,25 +394,7 @@ export function registerGarminTools(server: McpServer): void {
     },
     ({ profile, path: logicalPath }) =>
       runTool(
-        async () => {
-          const session = getSession(profile);
-          assertLive(session, "schedule_plan");
-          const plan = await session.editor.importWorkoutPlan(resolveDataPath(logicalPath));
-
-          const attempted = plan.workouts.flatMap((w) =>
-            [w.scheduledDate ?? []].flat().map((date) => ({
-              workoutName: w.workoutName,
-              workoutId: w.workoutId,
-              date,
-            }))
-          );
-          await session.editor.scheduleWorkoutPlan(plan);
-          return {
-            path: logicalPath,
-            attempted,
-            note: "These were attempted; the log lists which were scheduled, skipped or failed.",
-          };
-        },
+        () => schedulePlan(profile, logicalPath),
         { serialize: true }
       )
   );
@@ -352,36 +410,7 @@ export function registerGarminTools(server: McpServer): void {
     },
     ({ profile, path: logicalPath }) =>
       runTool(
-        async () => {
-          const session = getSession(profile);
-          assertLive(session, "upload_and_schedule_plan");
-
-          const absolute = resolveDataPath(logicalPath);
-          const plan = await session.editor.importWorkoutPlan(absolute);
-          const before = plan.workouts.map((w) => w.workoutId);
-
-          let changed = false;
-          try {
-            await session.editor.uploadAndScheduleWorkoutPlan(plan);
-          } finally {
-            // Persist new ids even if a later step threw, so the next run replaces
-            // the right workouts instead of creating duplicates.
-            changed = plan.workouts.some((w, i) => String(w.workoutId) !== String(before[i]));
-            if (changed) writeJsonAtomic(absolute, plan);
-          }
-
-          return {
-            path: logicalPath,
-            writtenBack: changed,
-            workouts: plan.workouts.map((w, i) => ({
-              workoutName: w.workoutName,
-              workoutId: w.workoutId,
-              uploaded: String(w.workoutId) !== String(before[i]),
-              scheduledDate: w.scheduledDate,
-            })),
-            note: "uploaded=false means the workout was not (re)created; see the log.",
-          };
-        },
+        () => uploadAndSchedulePlan(profile, logicalPath),
         { serialize: true }
       )
   );
@@ -401,28 +430,7 @@ export function registerGarminTools(server: McpServer): void {
     },
     ({ profile, path: logicalPath, deviceId }) =>
       runTool(
-        async () => {
-          const session = getSession(profile);
-          assertLive(session, "send_to_device");
-
-          const data = readJsonFile(resolveDataPath(logicalPath), logicalPath);
-          const { workouts } = extractWorkouts(data);
-          if (workouts.length === 0) throw new Error("No workouts found in file.");
-
-          const flagged = workouts.filter((w) => w?.sendToDevice);
-          const toSend = flagged.length > 0 ? flagged : workouts;
-
-          await session.editor.sendWorkoutsToDevice(
-            toSend.map((w) => ({ workoutId: Number(w.workoutId), workoutName: w.workoutName })),
-            deviceId
-          );
-          return {
-            path: logicalPath,
-            usedSendToDeviceFlag: flagged.length > 0,
-            requested: toSend.map((w) => w.workoutName),
-            note: "Workouts without a workoutId are skipped; see the log.",
-          };
-        },
+        () => sendPlanToDevice(profile, logicalPath, deviceId),
         { serialize: true }
       )
   );

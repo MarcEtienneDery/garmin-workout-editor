@@ -13,7 +13,7 @@ import {
 } from "../shared/profileLoader";
 import WorkoutEditor from "../workoutEditor";
 import ActivityExporter from "../activityExporter";
-import { captureLogs } from "./logCapture";
+import { captureLogs, CaptureOutcome } from "./logCapture";
 
 // ─── Settings ───────────────────────────────────────────────────────────────
 
@@ -230,6 +230,11 @@ function withLock<T>(fn: () => Promise<T>): Promise<T> {
   const run = lockTail.then(fn);
   lockTail = run.catch(() => undefined);
   return run;
+}
+
+/** Like runTool's serialized path, for non-MCP callers (the web editor): returns the outcome and captured log. */
+export function runCaptured<T>(fn: () => Promise<T>): Promise<CaptureOutcome<T>> {
+  return withLock(() => captureLogs(fn));
 }
 
 function errorMessage(error: unknown): string {

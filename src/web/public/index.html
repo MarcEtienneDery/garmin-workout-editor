@@ -40,6 +40,11 @@
   .msg.err { color:var(--err); } .msg.warn { color:var(--warn); } .msg.ok { color:var(--ok); }
   #toast { position:fixed; bottom:calc(14px + var(--tabbar-h, 0px) + env(safe-area-inset-bottom)); left:50%; transform:translateX(-50%); background:#333; border:1px solid var(--line); padding:8px 14px; border-radius:4px; display:none; max-width:80vw; }
   .empty { color:var(--dim); padding:10px; }
+  button.garmin { border-color:#4a6a8a; }
+  button.garmin:hover:not(:disabled) { background:#27425e; }
+  #profile { background:#333; color:var(--fg); border:1px solid var(--line); border-radius:3px; padding:4px 6px; font:inherit; }
+  #activity { padding:0 0 10px; }
+  #activity pre { margin:0; padding:4px 10px; white-space:pre-wrap; word-break:break-word; font:12px/1.4 ui-monospace,monospace; color:var(--dim); }
 
   /* ── Mobile: one pane at a time, switched from a bottom tab bar ── */
   @media (max-width:900px) {
@@ -52,7 +57,9 @@
     body.menu-open #menu { background:var(--accent); border-color:var(--accent); color:#fff; }
     #actions { display:none; position:absolute; z-index:10; top:100%; left:0; right:0; padding:10px; gap:8px; grid-template-columns:1fr 1fr;
       background:var(--panel); border-bottom:1px solid var(--line); box-shadow:0 8px 16px rgba(0,0,0,.5); }
-    body.menu-open #actions { display:grid; }
+    body.menu-open #actions { display:grid; max-height:75dvh; overflow:auto; }
+    #profile { grid-column:1 / -1; min-height:40px; font-size:14px; }
+    #activity pre { padding:4px 12px; font-size:12px; }
 
     main { display:block; position:relative; overflow:hidden; }
     #files, #editor, #side { width:100%; height:100%; border:0; }
@@ -95,6 +102,11 @@
     <button id="dup" disabled>Duplicate</button>
     <button id="rename" disabled>Rename</button>
     <button id="delete" class="danger" disabled>Delete</button>
+    <select id="profile" title="Garmin profile" hidden></select>
+    <button id="gUpload" class="garmin" disabled>↑ Upload</button>
+    <button id="gSchedule" class="garmin" disabled>📅 Schedule</button>
+    <button id="gBoth" class="garmin" disabled>↑📅 Upload + schedule</button>
+    <button id="gSend" class="garmin" disabled>⌚ Send to watch</button>
   </div>
   <span id="current">No file open</span>
   <button id="menu" aria-label="More actions" aria-expanded="false">⋯</button>
@@ -110,6 +122,8 @@
     <div id="problemsPane">
       <h2>Validation</h2>
       <div id="problems"><div class="empty">Nothing to report.</div></div>
+      <h2>Garmin</h2>
+      <div id="activity"><div class="empty">No Garmin action run yet.</div></div>
     </div>
   </aside>
 </main>
@@ -143,6 +157,9 @@ let files = [];
 let current = null;        // { path, mtimeMs }
 let savedText = "";
 let validateTimer;
+let garmin = { enabled: false, profiles: [], defaultProfile: null, reason: null };
+let garminBusy = false;
+const profileOwner = () => current && (/^data\/([^/]+)\//.exec(current.path) || [])[1];
 
 // ── API ────────────────────────────────────────────────────────────────
 async function api(method, url, body) {
@@ -152,7 +169,7 @@ async function api(method, url, body) {
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || res.statusText);
+  if (!res.ok) throw Object.assign(new Error(data.error || res.statusText), { data });
   return data;
 }
 const fileUrl = (p) => "/api/file?path=" + encodeURIComponent(p);
@@ -203,6 +220,11 @@ async function openFile(p) {
 function setButtons() {
   const on = !!current;
   for (const id of ["save", "validate", "format", "reload", "dup", "rename", "delete"]) $(id).disabled = !on;
+  for (const id of Object.keys(GARMIN_ACTIONS)) {
+    $(id).disabled = !on || !garmin.enabled || garminBusy;
+    $(id).title = garmin.enabled ? "" : garmin.reason || "Garmin actions are unavailable";
+  }
+  $("profile").hidden = !(on && garmin.enabled && garmin.profiles.length > 1 && !profileOwner());
   $("current").innerHTML = on ? `<b></b>${isDirty() ? " ●" : ""}` : "No file open";
   if (on) $("current").firstChild.textContent = current.path;
 }
@@ -268,6 +290,101 @@ const reload = guard(async () => {
 function format() {
   try { editor.setValue(JSON.stringify(JSON.parse(editor.getValue()), null, 2) + "\n"); }
   catch (e) { toast("Cannot format: " + e.message); }
+}
+
+// ── Garmin actions (upload / schedule / send to watch) ─────────────────
+const GARMIN_ACTIONS = { gUpload: "upload", gSchedule: "schedule", gBoth: "upload_schedule", gSend: "send" };
+const ACTION_LABEL = { upload: "Upload", schedule: "Schedule", upload_schedule: "Upload + schedule", send: "Send to watch" };
+
+async function loadGarmin() {
+  try { garmin = await api("GET", "/api/garmin"); } catch { return; }
+  const sel = $("profile"); sel.innerHTML = "";
+  for (const name of garmin.profiles) sel.add(new Option(name, name));
+  if (garmin.defaultProfile) sel.value = garmin.defaultProfile;
+  setButtons();
+}
+
+function showActivity(title, cls, lines, log) {
+  const el = $("activity"); el.innerHTML = "";
+  const head = document.createElement("div"); head.className = "msg " + cls; head.textContent = title; el.append(head);
+  for (const l of lines || []) { const d = document.createElement("div"); d.className = "msg"; d.textContent = l; el.append(d); }
+  if (log) { const pre = document.createElement("pre"); pre.textContent = log; el.append(pre); }
+}
+
+function summaryOf(action, r) {
+  const res = r.result || {};
+  if (action === "upload") return [`${res.successful} uploaded, ${res.failed} failed` + (res.failedWorkouts?.length ? ": " + res.failedWorkouts.join(", ") : "")];
+  if (action === "schedule") return [`${res.attempted?.length ?? 0} date(s) attempted`];
+  if (action === "upload_schedule") return [`${(res.workouts || []).filter((w) => w.uploaded).length}/${(res.workouts || []).length} workouts uploaded` + (res.writtenBack ? "; new ids saved to the file" : "")];
+  return [`Requested: ${(res.requested || []).join(", ")}`];
+}
+
+async function garminRun(action) {
+  if (!current || garminBusy) return;
+  // The actions work on the file on disk, so save first.
+  if (isDirty()) {
+    if (!confirm("Save your changes before running this on Garmin?")) return;
+    await save();
+    if (isDirty()) return;
+  }
+  const validation = (await api("POST", "/api/validate", { text: editor.getValue() })).validation;
+  if (validation && validation.errors.length && action.startsWith("upload")) {
+    showValidation(validation); setTab("problems");
+    return toast(`Fix the ${validation.errors.length} validation error(s) before uploading.`, 6000);
+  }
+  const list = workoutsOf(parsed()) || [];
+  const profile = profileOwner() || (garmin.profiles.length > 1 ? $("profile").value : garmin.profiles[0]);
+  const withId = list.filter((w) => w && w.workoutId !== undefined).length;
+  const dates = list.reduce((n, w) => n + (w && w.scheduledDate !== undefined ? [].concat(w.scheduledDate).length : 0), 0);
+  const flagged = list.filter((w) => w && w.sendToDevice);
+  const lines = [`${ACTION_LABEL[action]} — ${current.path}`, `Garmin profile: ${profile}`, ""];
+  if (action !== "schedule" && action !== "send") {
+    lines.push(`Uploads ${list.length} workout(s). ${withId} already have a workoutId and will be DELETED and RECREATED on Garmin; the new ids are saved into this file.`);
+  }
+  if (action === "schedule" || action === "upload_schedule") {
+    lines.push(`Schedules ${dates} date(s) on the Garmin calendar` + (action === "schedule" ? " using existing workoutIds (workouts without one are skipped)." : "."));
+  }
+  if (action === "send") {
+    lines.push(`Sends ${(flagged.length || list.length)} workout(s)` + (flagged.length ? ' flagged "sendToDevice"' : " (none flagged, so all)") + ` to your watch. Workouts without a workoutId are skipped (${list.length - withId} without).`);
+  }
+  if (validation && validation.warnings.length) lines.push("", `${validation.warnings.length} validation warning(s) — see Checks.`);
+  lines.push("", "This changes your Garmin account. Continue?");
+  if (!confirm(lines.join("\n"))) return;
+
+  let deviceId;
+  if (action === "send") {
+    const q = new URLSearchParams({ path: current.path }); if (profile) q.set("profile", profile);
+    const devices = (await api("GET", "/api/garmin/devices?" + q)).devices || [];
+    if (devices.length > 1) {
+      const pick = prompt("Send to which device?\n" + devices.map((d, i) => `${i + 1}) ${d.displayName}`).join("\n"), "1");
+      const d = devices[Number(pick) - 1];
+      if (!d) return;
+      deviceId = d.deviceId;
+    }
+  }
+
+  garminBusy = true; setButtons();
+  toast(`${ACTION_LABEL[action]}… this can take a minute.`, 60000);
+  try {
+    const r = await api("POST", "/api/garmin/action", { action, path: current.path, profile, deviceId, confirm: true });
+    showActivity(`✓ ${ACTION_LABEL[action]} (${r.profile})`, "ok", summaryOf(action, r), r.log);
+    toast(`${ACTION_LABEL[action]} done`);
+    await reloadFromDisk(r.mtimeMs);
+  } catch (e) {
+    const d = e.data || {};
+    showActivity(`✗ ${ACTION_LABEL[action]} failed`, "err", [e.message, ...(d.errors || [])], d.log);
+    toast(e.message, 8000);
+    await reloadFromDisk(d.mtimeMs);
+  } finally {
+    garminBusy = false; setButtons(); setTab("problems");
+  }
+}
+
+/** Uploads write new workoutIds into the file: pull them into the editor when it changed on disk. */
+async function reloadFromDisk(mtimeMs) {
+  if (!current || mtimeMs === undefined || mtimeMs === current.mtimeMs) return;
+  const top = editor.getScrollTop(), p = current.path;
+  current = null; await openFile(p); editor.setScrollTop(top);
 }
 
 // ── Validation + outline ───────────────────────────────────────────────
@@ -374,12 +491,14 @@ require(["vs/editor/editor.main"], async (m) => {
   $("format").onclick = format; $("reload").onclick = reload; $("dup").onclick = duplicate;
   $("rename").onclick = rename; $("delete").onclick = remove;
   $("menu").onclick = toggleMenu;
+  for (const [id, action] of Object.entries(GARMIN_ACTIONS)) $(id).onclick = guard(() => garminRun(action));
   $("actions").addEventListener("click", (e) => e.target.closest("button") && document.body.classList.remove("menu-open"));
   document.querySelectorAll("#tabbar button").forEach((b) => (b.onclick = () => setTab(b.dataset.tab)));
   window.addEventListener("beforeunload", (e) => { if (isDirty()) e.preventDefault(); });
 });
 setTab("files");
 guard(refreshFiles)();
+loadGarmin();
 </script>
 </body>
 </html>
