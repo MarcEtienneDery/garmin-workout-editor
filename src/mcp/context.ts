@@ -1,16 +1,9 @@
-import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { GarminClient } from "../shared/garminClient";
-import {
-  PROJECT_ROOT,
-  ProfileConfig,
-  getAvailableProfiles,
-  getDataRoot,
-  getMockProfile,
-  loadProfile,
-} from "../shared/profileLoader";
+import { ProfileConfig, getAvailableProfiles, getMockProfile, loadProfile } from "../shared/profileLoader";
+import { type DocMeta, StoreError, getStore, normalizeLogicalPath } from "../shared/store";
 import WorkoutEditor from "../workoutEditor";
 import ActivityExporter from "../activityExporter";
 import { captureLogs, CaptureOutcome } from "./logCapture";
@@ -122,103 +115,57 @@ export function getValidatorEditor(): WorkoutEditor {
   return validatorEditor;
 }
 
-// ─── File access guard ──────────────────────────────────────────────────────
+// ─── Documents (plans and per-profile data) ─────────────────────────────────
 
-export function getPlansDir(): string {
-  return process.env.WORKOUT_PLANS_DIR
-    ? path.resolve(process.env.WORKOUT_PLANS_DIR)
-    : path.join(PROJECT_ROOT, "workout-plans");
-}
-
-function rootFor(logicalRoot: "data" | "workout-plans"): string {
-  return logicalRoot === "data" ? getDataRoot() : getPlansDir();
-}
-
-function nearestExistingRealpath(target: string): string {
-  let current = target;
-  while (!fs.existsSync(current)) {
-    const parent = path.dirname(current);
-    if (parent === current) break;
-    current = parent;
-  }
-  return fs.realpathSync(current);
-}
+export { getPlansDir } from "../shared/profileLoader";
 
 /**
- * Map a tool-supplied logical path ("workout-plans/x.json", "data/MED/x.json")
- * to an absolute file path. Only .json files under the two roots are reachable;
- * dotfiles (token cache, .env*) and anything escaping the roots are rejected.
+ * Canonical logical path ("workout-plans/x.json", "data/MED/x.json") of a tool-supplied path.
+ * Only .json documents under the two roots exist; hidden segments and ".." are rejected.
  */
-export function resolveDataPath(logicalPath: string): string {
-  if (logicalPath.includes("\0")) throw new Error("Invalid path");
-  const normalized = logicalPath.replace(/\\/g, "/").replace(/^\.\//, "");
-
-  const match = /^(workout-plans|data)\/(.+)$/.exec(normalized);
-  if (!match) {
-    throw new Error(
-      `Path must start with "workout-plans/" or "data/" (got "${logicalPath}").`
-    );
-  }
-  const logicalRoot = match[1] as "data" | "workout-plans";
-  const rest = match[2];
-
-  const segments = rest.split("/");
-  if (segments.some((s) => s === "" || s === "." || s === ".." || s.startsWith("."))) {
-    throw new Error(`Path "${logicalPath}" is not allowed (no "..", empty or hidden segments).`);
-  }
-  if (!rest.endsWith(".json")) {
-    throw new Error(`Only .json files are accessible (got "${logicalPath}").`);
-  }
-
-  const base = rootFor(logicalRoot);
-  const full = path.resolve(base, rest);
-  const rel = path.relative(base, full);
-  if (rel.startsWith("..") || path.isAbsolute(rel)) {
-    throw new Error(`Path "${logicalPath}" escapes ${logicalRoot}/.`);
-  }
-
-  // Symlinks inside the volume must not lead outside it.
-  const realBase = nearestExistingRealpath(base);
-  const realFull = nearestExistingRealpath(full);
-  if (realFull !== realBase && !realFull.startsWith(realBase + path.sep)) {
-    throw new Error(`Path "${logicalPath}" escapes ${logicalRoot}/.`);
-  }
-
-  return full;
-}
-
-/** Inverse of resolveDataPath, for results shown to the model. */
-export function toLogicalPath(absolute: string): string {
-  for (const logicalRoot of ["data", "workout-plans"] as const) {
-    const rel = path.relative(rootFor(logicalRoot), absolute);
-    if (rel && !rel.startsWith("..") && !path.isAbsolute(rel)) {
-      return `${logicalRoot}/${rel.split(path.sep).join("/")}`;
-    }
-  }
-  return path.basename(absolute);
-}
-
-/** Write JSON via a temp file + rename so a crash can't leave a truncated plan. */
-export function writeJsonAtomic(absolute: string, data: unknown): void {
-  fs.mkdirSync(path.dirname(absolute), { recursive: true });
-  const tmp = `${absolute}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(data, null, 2), "utf-8");
-  fs.renameSync(tmp, absolute);
-}
-
-export function readJsonFile(absolute: string, logicalPath: string): unknown {
-  let text: string;
+export function logicalPath(input: string): string {
   try {
-    text = fs.readFileSync(absolute, "utf-8");
-  } catch (error: any) {
-    if (error.code === "ENOENT") throw new Error(`File not found: ${logicalPath}`);
+    return normalizeLogicalPath(input);
+  } catch (error) {
+    if (error instanceof StoreError) throw new Error(error.message);
     throw error;
   }
+}
+
+/** The parsed content of a stored document. */
+export function readJsonDoc(logical: string): unknown {
+  const doc = getStore().get(logical);
+  if (!doc) throw new Error(`File not found: ${logical}`);
   try {
-    return JSON.parse(text);
+    return JSON.parse(doc.text);
   } catch (error: any) {
-    throw new Error(`${logicalPath} is not valid JSON: ${error.message}`);
+    throw new Error(`${logical} is not valid JSON: ${error.message}`);
   }
+}
+
+const jsonText = (data: unknown): string => JSON.stringify(data, null, 2);
+
+/** Create or replace a stored document; the previous version stays in its history. */
+export function writeJsonDoc(logical: string, data: unknown, source = "mcp"): DocMeta {
+  return getStore().put(logical, jsonText(data), { source });
+}
+
+/** Read, change and save a document as one step, so another writer cannot slip in between. */
+export function updateJsonDoc(logical: string, change: (data: any) => void, source = "mcp"): DocMeta {
+  return getStore().update(
+    logical,
+    (text) => {
+      let data: unknown;
+      try {
+        data = JSON.parse(text);
+      } catch (error: any) {
+        throw new Error(`${logical} is not valid JSON: ${error.message}`);
+      }
+      change(data);
+      return jsonText(data);
+    },
+    { source }
+  );
 }
 
 // ─── Tool execution ─────────────────────────────────────────────────────────

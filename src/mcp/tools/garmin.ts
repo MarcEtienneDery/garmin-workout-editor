@@ -1,18 +1,16 @@
-import * as fs from "fs";
-import * as path from "path";
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { getLastNWeeksStart } from "../../activityExporter";
 import { getAvailableProfiles } from "../../shared/profileLoader";
+import { getStore } from "../../shared/store";
 import {
   assertLive,
   getSession,
   getSettings,
-  readJsonFile,
-  resolveDataPath,
+  logicalPath as checkedPath,
+  readJsonDoc,
   runTool,
-  toLogicalPath,
-  writeJsonAtomic,
+  writeJsonDoc,
 } from "../context";
 import type { DetailedWorkout } from "../../shared/types";
 import type { SyncStatus } from "../../shared/workoutSync";
@@ -42,6 +40,12 @@ function sameId(a: unknown, b: unknown): boolean {
   return a !== undefined && a !== null && b !== undefined && b !== null && String(a) === String(b);
 }
 
+function storedText(logical: string): string {
+  const doc = getStore().get(logical);
+  if (!doc) throw new Error(`File not found: ${logical}`);
+  return doc.text;
+}
+
 // ── Garmin write/read actions, shared by the MCP tools and the web editor ───
 // Callers wrap these in runTool / runCaptured to serialize and capture logs.
 
@@ -62,9 +66,12 @@ export async function listDevices(profile?: string) {
 export async function uploadPlan(profile: string | undefined, logicalPath: string, dryRun = false) {
   const session = getSession(profile);
   if (!dryRun) assertLive(session, "upload_workouts");
-  const result = await session.editor.uploadWorkoutsFromFile(resolveDataPath(logicalPath), dryRun);
+  const logical = checkedPath(logicalPath);
+  const doc = getStore().get(logical);
+  if (!doc) throw new Error(`File not found: ${logical}`);
+  const result = await session.editor.uploadWorkoutsFromText(doc.text, dryRun, (updated) => getStore().put(logical, updated, { source: "mcp" }), logical);
   return {
-    path: logicalPath,
+    path: logical,
     dryRun,
     status: result.failed === 0 ? "ok" : result.successful === 0 ? "failed" : "partial",
     ...result,
@@ -75,7 +82,8 @@ export async function uploadPlan(profile: string | undefined, logicalPath: strin
 export async function schedulePlan(profile: string | undefined, logicalPath: string) {
   const session = getSession(profile);
   assertLive(session, "schedule_plan");
-  const plan = await session.editor.importWorkoutPlan(resolveDataPath(logicalPath));
+  const logical = checkedPath(logicalPath);
+  const plan = session.editor.parseWorkoutPlan(storedText(logical));
 
   const attempted = plan.workouts.flatMap((w) =>
     [w.scheduledDate ?? []].flat().map((date) => ({
@@ -86,7 +94,7 @@ export async function schedulePlan(profile: string | undefined, logicalPath: str
   );
   await session.editor.scheduleWorkoutPlan(plan);
   return {
-    path: logicalPath,
+    path: logical,
     attempted,
     note: "These were attempted; the log lists which were scheduled, skipped or failed.",
   };
@@ -96,8 +104,8 @@ export async function uploadAndSchedulePlan(profile: string | undefined, logical
   const session = getSession(profile);
   assertLive(session, "upload_and_schedule_plan");
 
-  const absolute = resolveDataPath(logicalPath);
-  const plan = await session.editor.importWorkoutPlan(absolute);
+  const logical = checkedPath(logicalPath);
+  const plan = session.editor.parseWorkoutPlan(storedText(logical));
   const before = plan.workouts.map((w) => w.workoutId);
 
   let changed = false;
@@ -107,11 +115,11 @@ export async function uploadAndSchedulePlan(profile: string | undefined, logical
     // Persist new ids even if a later step threw, so the next run replaces
     // the right workouts instead of creating duplicates.
     changed = plan.workouts.some((w, i) => String(w.workoutId) !== String(before[i]));
-    if (changed) writeJsonAtomic(absolute, plan);
+    if (changed) writeJsonDoc(logical, plan);
   }
 
   return {
-    path: logicalPath,
+    path: logical,
     writtenBack: changed,
     workouts: plan.workouts.map((w, i) => ({
       workoutName: w.workoutName,
@@ -127,7 +135,7 @@ export async function sendPlanToDevice(profile: string | undefined, logicalPath:
   const session = getSession(profile);
   assertLive(session, "send_to_device");
 
-  const data = readJsonFile(resolveDataPath(logicalPath), logicalPath);
+  const data = readJsonDoc(checkedPath(logicalPath));
   const { workouts } = extractWorkouts(data);
   if (workouts.length === 0) throw new Error("No workouts found in file.");
 
@@ -355,9 +363,9 @@ export function registerGarminTools(server: McpServer): void {
             customWeekEnd: weekEnd,
           });
 
-          const out = path.join(session.profile.dataDir, "activities.json");
-          writeJsonAtomic(out, data);
-          return { savedTo: toLogicalPath(out), fetched: raw.length, ...data };
+          const out = `data/${session.profile.name}/activities.json`;
+          writeJsonDoc(out, data);
+          return { savedTo: out, fetched: raw.length, ...data };
         },
         { serialize: true }
       )
@@ -431,12 +439,11 @@ export function registerGarminTools(server: McpServer): void {
       runTool(
         async () => {
           const session = getSession(profile);
-          const out = outputPath
-            ? resolveDataPath(outputPath)
-            : path.join(session.profile.dataDir, "workouts.json");
-          await session.editor.exportWorkouts(out, true);
-          const count = (JSON.parse(fs.readFileSync(out, "utf-8")) as unknown[]).length;
-          return { savedTo: toLogicalPath(out), count };
+          const out = outputPath ? checkedPath(outputPath) : `data/${session.profile.name}/workouts.json`;
+          const workouts = await session.editor.fetchWorkouts(true);
+          writeJsonDoc(out, workouts);
+          console.log(`✅ Workouts saved to ${out}`);
+          return { savedTo: out, count: workouts.length };
         },
         { serialize: true }
       )
@@ -503,25 +510,25 @@ export function registerGarminTools(server: McpServer): void {
           const session = getSession(profile);
           if (!dryRun) assertLive(session, "upload_single_workout");
 
-          const absolute = resolveDataPath(logicalPath);
-          const data = readJsonFile(absolute, logicalPath);
+          const logical = checkedPath(logicalPath);
+          const data = readJsonDoc(logical);
           const { workouts } = extractWorkouts(data);
 
           const matches = workouts.filter((w) =>
             workoutId !== undefined ? sameId(w?.workoutId, workoutId) : w?.workoutName === workoutName
           );
-          if (matches.length === 0) throw new Error(`No matching workout found in ${logicalPath}.`);
+          if (matches.length === 0) throw new Error(`No matching workout found in ${logical}.`);
           if (matches.length > 1) throw new Error(`${matches.length} workouts match; use workoutId to pick one.`);
 
           const workout = matches[0];
           const previousWorkoutId = workout.workoutId;
           const newId = await session.editor.uploadWorkout(workout, dryRun);
           if (newId === null) throw new Error("Upload failed (see log).");
-          if (dryRun) return { path: logicalPath, workoutName: workout.workoutName, dryRun: true, valid: true };
+          if (dryRun) return { path: logical, workoutName: workout.workoutName, dryRun: true, valid: true };
 
           workout.workoutId = newId;
-          writeJsonAtomic(absolute, data);
-          return { path: logicalPath, workoutName: workout.workoutName, previousWorkoutId, workoutId: newId };
+          writeJsonDoc(logical, data);
+          return { path: logical, workoutName: workout.workoutName, previousWorkoutId, workoutId: newId };
         },
         { serialize: true }
       )

@@ -11,7 +11,8 @@ import type * as http from "http";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { createServer } from "../mcp/createServer";
-import { configureMcp, resolveDataPath, toLogicalPath } from "../mcp/context";
+import { configureMcp, logicalPath } from "../mcp/context";
+import { closeStore, getStore } from "../shared/store";
 import { installConsoleRedirect } from "../mcp/logCapture";
 import { startHttpServer } from "../mcp/http";
 import { getLastNWeeksStart } from "../activityExporter";
@@ -61,6 +62,7 @@ const STRENGTH_WORKOUT = {
 let tmpRoot: string;
 let dataDir: string;
 let plansDir: string;
+const stored = (logical: string) => getStore().get(logical)?.text;
 const saved: Record<string, string | undefined> = {};
 
 beforeAll(() => {
@@ -88,12 +90,13 @@ afterAll(() => {
     if (value === undefined) delete process.env[key];
     else process.env[key] = value;
   }
+  closeStore();
   fs.rmSync(tmpRoot, { recursive: true, force: true });
   jest.restoreAllMocks();
 });
 
 function writePlan(name: string, content: unknown): string {
-  fs.writeFileSync(path.join(plansDir, name), JSON.stringify(content, null, 2));
+  getStore().put(`workout-plans/${name}`, JSON.stringify(content, null, 2), { source: "test" });
   return `workout-plans/${name}`;
 }
 
@@ -174,7 +177,7 @@ describe("MCP server (mock mode, in-memory transport)", () => {
     expect(activities.isError).toBe(false);
     expect(activities.value.savedTo).toBe("data/mock/activities.json");
     expect(activities.value.totalActivities).toBeGreaterThan(0);
-    expect(fs.existsSync(path.join(dataDir, "mock", "activities.json"))).toBe(true);
+    expect(getStore().head("data/mock/activities.json")).toBeDefined();
     // Console output of the exporter is returned with the result.
     expect(activities.log).toContain("Fetching last 8 activities");
   });
@@ -265,7 +268,7 @@ describe("MCP server (mock mode, in-memory transport)", () => {
       });
       expect(replaced.value).toMatchObject({ action: "replaced", workoutCount: 2, index: 1 });
 
-      const onDisk = JSON.parse(fs.readFileSync(path.join(plansDir, "upsert.json"), "utf-8"));
+      const onDisk = JSON.parse(stored("workout-plans/upsert.json")!);
       expect(onDisk.notes).toBe("keep me");
       expect(onDisk.workouts).toHaveLength(2);
       expect(onDisk.workouts[1].description).toBe("v2");
@@ -279,13 +282,13 @@ describe("MCP server (mock mode, in-memory transport)", () => {
         workout: { ...STRENGTH_WORKOUT, workoutName: "Heavy Bench Day" },
       });
       expect(out.value.action).toBe("replaced");
-      const onDisk = JSON.parse(fs.readFileSync(path.join(plansDir, "rename.json"), "utf-8"));
+      const onDisk = JSON.parse(stored("workout-plans/rename.json")!);
       expect(onDisk.map((w: any) => w.workoutName)).toEqual(["Heavy Bench Day"]);
     });
 
     it("rejects an invalid workout without touching the file", async () => {
       const file = writePlan("untouched.json", [{ ...STRENGTH_WORKOUT }]);
-      const before = fs.readFileSync(path.join(plansDir, "untouched.json"), "utf-8");
+      const before = stored("workout-plans/untouched.json");
 
       const out = await callTool(client, "upsert_plan_workout", {
         path: file,
@@ -297,7 +300,7 @@ describe("MCP server (mock mode, in-memory transport)", () => {
       });
       expect(out.isError).toBe(true);
       expect(out.text).toContain("Unknown exerciseName");
-      expect(fs.readFileSync(path.join(plansDir, "untouched.json"), "utf-8")).toBe(before);
+      expect(stored("workout-plans/untouched.json")).toBe(before);
     });
 
     it("rejects enum violations at the schema boundary", async () => {
@@ -338,12 +341,15 @@ describe("MCP server (mock mode, in-memory transport)", () => {
       });
       expect(out.isError).toBe(false);
       expect(out.value.validation.valid).toBe(false);
-      expect(fs.existsSync(path.join(plansDir, "written.json"))).toBe(true);
+      expect(getStore().head("workout-plans/written.json")).toBeDefined();
     });
 
-    it("leaves no temp files behind", () => {
-      const leftovers = fs.readdirSync(plansDir).filter((f) => f.endsWith(".tmp"));
-      expect(leftovers).toEqual([]);
+    it("keeps the version it overwrites in the history", async () => {
+      await callTool(client, "write_plan", { path: "workout-plans/history.json", content: [{ workoutName: "v1" }] });
+      await callTool(client, "write_plan", { path: "workout-plans/history.json", content: [{ workoutName: "v2" }] });
+      const [previous] = getStore().history("workout-plans/history.json");
+      expect(previous).toMatchObject({ source: "mcp" });
+      expect(JSON.parse(getStore().revision("workout-plans/history.json", previous.id)!.text)).toEqual([{ workoutName: "v1" }]);
     });
 
     it("reports a missing file clearly", async () => {
@@ -370,22 +376,10 @@ describe("MCP server (mock mode, in-memory transport)", () => {
       expect(out.isError).toBe(true);
     });
 
-    it("rejects symlinks that point outside the volume", async () => {
-      const outside = path.join(tmpRoot, "outside");
-      fs.mkdirSync(outside);
-      fs.writeFileSync(path.join(outside, "secret.json"), "{}");
-      fs.symlinkSync(outside, path.join(plansDir, "linked"));
-
-      const out = await callTool(client, "read_plan", { path: "workout-plans/linked/secret.json" });
-      expect(out.isError).toBe(true);
-      expect(() => resolveDataPath("workout-plans/linked/secret.json")).toThrow(/escapes/);
-    });
-
-    it("maps logical paths to the configured roots and back", () => {
-      expect(resolveDataPath("data/MED/activities.json")).toBe(path.join(dataDir, "MED", "activities.json"));
-      expect(resolveDataPath("./workout-plans/a.json")).toBe(path.join(plansDir, "a.json"));
-      expect(toLogicalPath(path.join(dataDir, "MED", "activities.json"))).toBe("data/MED/activities.json");
-      expect(toLogicalPath(path.join(plansDir, "a.json"))).toBe("workout-plans/a.json");
+    it("maps paths to their canonical form", () => {
+      expect(logicalPath("./workout-plans/a.json")).toBe("workout-plans/a.json");
+      expect(logicalPath("data\\MED\\activities.json")).toBe("data/MED/activities.json");
+      expect(() => logicalPath("data/activities.json")).toThrow(/data\/<profile>/);
     });
   });
 

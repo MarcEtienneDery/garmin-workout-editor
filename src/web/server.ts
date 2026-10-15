@@ -1,11 +1,12 @@
 /**
- * web/server.ts — small web UI to manage plan files (CRUD + Monaco JSON editor).
+ * web/server.ts — small web UI to manage plans (CRUD + Monaco JSON editor).
  *
  *   npm run web                      # http://127.0.0.1:8788
  *   WEB_PORT=8788 WEB_HOST=0.0.0.0 WEB_AUTH_TOKEN=... npm run web
  *
- * Reaches the same files as the MCP plan tools ("workout-plans/*.json" and
- * "data/<profile>/*.json") through the same path guard. Non-loopback binds
+ * Reaches the same documents as the MCP plan tools ("workout-plans/*.json" and
+ * "data/<profile>/*.json") through the same store, which keeps the earlier versions
+ * of every document (GET /api/history). Non-loopback binds
  * require WEB_AUTH_TOKEN (HTTP Basic auth: any user name, the token as password).
  *
  * The Garmin actions (upload / schedule / send to device) reuse the MCP tool
@@ -18,8 +19,8 @@
  * (POST, PUT, DELETE /api/garmin/workout). Each write that touches Garmin needs confirm: true.
  *
  * Logins (HTTP Basic): user = a profile name, password = WEB_PASSWORD from that
- * profile's .env.<profile> -> sees only data/<profile>/ (plus the shared
- * workout-plans/) and its Garmin actions run as that profile. WEB_AUTH_TOKEN
+ * profile's .env.<profile> -> sees only data/<profile>/ and the plans in workout-plans/
+ * that are shared or its own, and its Garmin actions run as that profile. WEB_AUTH_TOKEN
  * as the password (any user name) is the admin login with full access.
  */
 import * as fs from "fs";
@@ -27,15 +28,9 @@ import * as http from "http";
 import * as path from "path";
 import { createHash, timingSafeEqual } from "crypto";
 import * as dotenv from "dotenv";
-import { PROJECT_ROOT, getAvailableProfiles, getDataRoot, getProfilesDir } from "../shared/profileLoader";
-import {
-  getPlansDir,
-  getSettings,
-  resolveDataPath,
-  resolveProfileName,
-  runCaptured,
-  toLogicalPath,
-} from "../mcp/context";
+import { PROJECT_ROOT, getAvailableProfiles, getProfilesDir } from "../shared/profileLoader";
+import { type DocMeta, type StoreErrorCode, StoreError, getStore, normalizeLogicalPath, profileOfPath } from "../shared/store";
+import { getSettings, resolveProfileName, runCaptured } from "../mcp/context";
 import { installConsoleRedirect } from "../mcp/logCapture";
 import { diffPlanWorkout, extractWorkouts, validatePlanData } from "../mcp/tools/plans";
 import {
@@ -62,7 +57,8 @@ const PUBLIC_DIR = path.join(__dirname, "public");
 // Monaco is served from node_modules so the editor works offline (e.g. on the NAS).
 const MONACO_DIR = path.join(PROJECT_ROOT, "node_modules", "monaco-editor", "min", "vs");
 const MAX_BODY_BYTES = 10 * 1024 * 1024;
-const PROFILE_DIR_REGEX = /^[a-zA-Z0-9_-]+$/;
+const STORE_STATUS: Record<StoreErrorCode, number> = { not_found: 404, exists: 409, conflict: 409, invalid_path: 400 };
+const store = () => getStore();
 
 export interface WebServerOptions {
   host: string;
@@ -103,10 +99,16 @@ function profileWebPassword(name: string): string | undefined {
 }
 const profilesWithWebPassword = (): string[] => getAvailableProfiles().filter((p) => profileWebPassword(p));
 
-/** A profile login may only reach its own data/<profile>/ folder (workout-plans/ is shared). */
+/** A profile login reaches its own data/<profile>/ and the plans in workout-plans/ that are shared or its own. */
+function canReach(who: Principal, logical: string, owner: string | null): boolean {
+  if (who.admin) return true;
+  const folder = profileOfPath(logical);
+  return folder ? folder === who.profile : owner === null || owner === who.profile;
+}
+
 function assertScope(who: Principal, logical: string): void {
-  if (who.admin || !logical.startsWith("data/")) return;
-  if (!logical.startsWith(`data/${who.profile}/`)) {
+  if (who.admin) return;
+  if (!canReach(who, logical, store().head(logical)?.owner ?? null)) {
     throw new HttpError(403, `${logical} belongs to another profile.`);
   }
 }
@@ -132,21 +134,20 @@ async function readBody(req: http.IncomingMessage): Promise<any> {
   }
 }
 
-function resolveOr400(logicalPath: unknown): { logical: string; absolute: string } {
+function logicalOr400(logicalPath: unknown): string {
   if (typeof logicalPath !== "string" || !logicalPath) throw new HttpError(400, "Missing path");
   try {
-    const absolute = resolveDataPath(logicalPath);
-    return { logical: toLogicalPath(absolute), absolute };
+    return normalizeLogicalPath(logicalPath);
   } catch (error) {
     throw new HttpError(400, (error as Error).message);
   }
 }
 
-function writeTextAtomic(absolute: string, text: string): void {
-  fs.mkdirSync(path.dirname(absolute), { recursive: true });
-  const tmp = `${absolute}.${process.pid}.tmp`;
-  fs.writeFileSync(tmp, text, "utf8");
-  fs.renameSync(tmp, absolute);
+/** The logical path of a request, checked against what this login may reach. */
+function scopedPath(who: Principal, logicalPath: unknown): string {
+  const logical = logicalOr400(logicalPath);
+  assertScope(who, logical);
+  return logical;
 }
 
 function parseOr400(text: unknown): unknown {
@@ -170,49 +171,32 @@ function validateText(text: string): unknown {
 interface FileInfo {
   path: string;
   size: number;
-  mtimeMs: number;
+  /** Changes with every save: send it back with a save to find out whether someone else saved first. */
+  version: number;
+  updatedAt: number;
+  owner: string | null;
+  /** Who saved this version: web, mcp, cli, import. */
+  source: string;
   workoutCount?: number;
   weekStart?: string;
   weekEnd?: string;
 }
 
-function describe(absolute: string): FileInfo {
-  const stat = fs.statSync(absolute);
-  const info: FileInfo = { path: toLogicalPath(absolute), size: stat.size, mtimeMs: stat.mtimeMs };
-  if (stat.size < 5 * 1024 * 1024) {
-    try {
-      const data: any = JSON.parse(fs.readFileSync(absolute, "utf8"));
-      const workouts = Array.isArray(data) ? data : data?.workouts;
-      if (Array.isArray(workouts)) info.workoutCount = workouts.length;
-      if (typeof data?.weekStart === "string") info.weekStart = data.weekStart;
-      if (typeof data?.weekEnd === "string") info.weekEnd = data.weekEnd;
-    } catch {
-      /* listed anyway; the editor will flag it */
-    }
-  }
-  return info;
-}
-
-function jsonFilesIn(dir: string): string[] {
-  if (!fs.existsSync(dir)) return [];
-  return fs
-    .readdirSync(dir, { withFileTypes: true })
-    .filter((e) => e.isFile() && e.name.endsWith(".json") && !e.name.startsWith("."))
-    .map((e) => path.join(dir, e.name));
-}
+const fileInfo = (m: DocMeta): FileInfo => ({
+  path: m.path,
+  size: m.size,
+  version: m.version,
+  updatedAt: m.updatedAt,
+  owner: m.owner,
+  source: m.source,
+  ...m.summary,
+});
 
 function listFiles(who: Principal): FileInfo[] {
-  const dataRoot = getDataRoot();
-  const profileDirs = fs.existsSync(dataRoot)
-    ? fs
-        .readdirSync(dataRoot, { withFileTypes: true })
-        .filter((e) => e.isDirectory() && PROFILE_DIR_REGEX.test(e.name) && (who.admin || e.name === who.profile))
-        .map((e) => path.join(dataRoot, e.name))
-    : [];
-  return [getPlansDir(), ...profileDirs]
-    .flatMap(jsonFilesIn)
-    .map(describe)
-    .sort((a, b) => a.path.localeCompare(b.path));
+  return store()
+    .list()
+    .filter((m) => canReach(who, m.path, m.owner))
+    .map(fileInfo);
 }
 
 /** JSON Schema for the Monaco editor: autocompletion and hover docs for plan files. */
@@ -298,13 +282,13 @@ function garminInfo(who: Principal) {
   };
 }
 
-/** data/<PROFILE>/... files belong to that profile; plans in workout-plans/ need an explicit or default one. */
+/** data/<PROFILE>/... files and owned plans belong to that profile; other plans need an explicit or default one. */
 function profileFor(who: Principal, logical: string, requested: unknown): string {
   if (!who.admin) {
     if (!getAvailableProfiles().includes(who.profile)) throw new HttpError(400, `Unknown Garmin profile "${who.profile}".`);
     return who.profile; // a profile login always acts as itself
   }
-  const owner = /^data\/([^/]+)\//.exec(logical)?.[1];
+  const owner = profileOfPath(logical) ?? (logical ? (store().head(logical)?.owner ?? undefined) : undefined);
   const name = owner ?? (typeof requested === "string" && requested ? requested : undefined);
   let resolved: string;
   try {
@@ -324,13 +308,13 @@ async function garminAction(body: any, who: Principal): Promise<{ status: number
   if (body.confirm !== true) throw new HttpError(400, "Confirmation required (confirm: true).");
   const action = body.action as GarminAction;
 
-  const { logical, absolute } = resolveOr400(body.path);
-  assertScope(who, logical);
-  if (!fs.existsSync(absolute)) throw new HttpError(404, `File not found: ${logical}`);
+  const logical = scopedPath(who, body.path);
+  const doc = store().get(logical);
+  if (!doc) throw new HttpError(404, `File not found: ${logical}`);
   const profile = profileFor(who, logical, body.profile);
 
   if (action === "upload" || action === "upload_schedule") {
-    const validation = validateText(fs.readFileSync(absolute, "utf8")) as { errors: string[] } | null;
+    const validation = validateText(doc.text) as { errors: string[] } | null;
     if (validation && validation.errors.length > 0) {
       return { status: 422, payload: { error: "Fix the validation errors before uploading.", errors: validation.errors } };
     }
@@ -349,12 +333,12 @@ async function garminAction(body: any, who: Principal): Promise<{ status: number
         return sendPlanToDevice(profile, logical, deviceId);
     }
   });
-  const mtimeMs = fs.existsSync(absolute) ? fs.statSync(absolute).mtimeMs : undefined;
+  const version = store().head(logical)?.version;
   if (!outcome.ok) {
     const message = outcome.error instanceof Error ? outcome.error.message : String(outcome.error);
-    return { status: 502, payload: { error: message, log: outcome.log, profile, mtimeMs } };
+    return { status: 502, payload: { error: message, log: outcome.log, profile, version } };
   }
-  return { status: 200, payload: { action, profile, result: outcome.value, log: outcome.log, mtimeMs } };
+  return { status: 200, payload: { action, profile, result: outcome.value, log: outcome.log, version } };
 }
 
 // ── Workouts view: the Garmin library next to the plan entries that carry the same workouts ──
@@ -366,27 +350,24 @@ const EXPORT_FILE = /^workouts(-raw)?\.json$/;
 interface PlanEntry {
   path: string;
   index: number;
-  mtimeMs: number;
+  version: number;
   workout: any;
 }
 
-/** Every workout in the plan files a profile works with: the shared workout-plans/ and its own data/<profile>/. */
+/** Every workout in the plans a profile works with: the shared and its own in workout-plans/, and its data/<profile>/ files. */
 function planEntriesFor(profile: string): PlanEntry[] {
-  const files = [
-    ...jsonFilesIn(getPlansDir()),
-    ...jsonFilesIn(path.join(getDataRoot(), profile)).filter((f) => !EXPORT_FILE.test(path.basename(f))),
-  ];
   const entries: PlanEntry[] = [];
-  for (const absolute of files) {
+  for (const meta of store().list()) {
+    const isPlan = meta.path.startsWith("workout-plans/") && (meta.owner === null || meta.owner === profile);
+    const isOwnData = meta.path.startsWith(`data/${profile}/`) && !EXPORT_FILE.test(meta.path.slice(meta.path.lastIndexOf("/") + 1));
+    if ((!isPlan && !isOwnData) || meta.size > MAX_SCAN_BYTES) continue;
     try {
-      const stat = fs.statSync(absolute);
-      if (stat.size > MAX_SCAN_BYTES) continue;
-      const data: any = JSON.parse(fs.readFileSync(absolute, "utf8"));
+      const data: any = JSON.parse(store().get(meta.path)?.text ?? "");
       const list = Array.isArray(data) ? data : data?.workouts;
       if (!Array.isArray(list)) continue;
       list.forEach((workout, index) => {
         if (workout && typeof workout === "object" && typeof workout.workoutName === "string") {
-          entries.push({ path: toLogicalPath(absolute), index, mtimeMs: stat.mtimeMs, workout });
+          entries.push({ path: meta.path, index, version: meta.version, workout });
         }
       });
     } catch {
@@ -406,7 +387,7 @@ type WorkoutRowState = "garmin-only" | "linked" | "not-uploaded";
  * have a workoutId and plan entries to compare (checked afterwards through /api/garmin/status).
  */
 function workoutRows(library: LibraryWorkout[], entries: PlanEntry[]) {
-  const ref = (e: PlanEntry) => ({ path: e.path, index: e.index, mtimeMs: e.mtimeMs });
+  const ref = (e: PlanEntry) => ({ path: e.path, index: e.index, version: e.version });
   const listed = new Set(library.map((w) => String(w.workoutId)));
   const rows: {
     key: string;
@@ -460,28 +441,30 @@ async function viaGarmin<T>(fn: () => Promise<T>): Promise<{ value: T; log: stri
 
 interface PlanFile {
   logical: string;
-  absolute: string;
+  owner: string | null;
   data: unknown;
   /** Live reference into `data`. */
   workouts: any[];
 }
 
-function loadPlanFile(who: Principal, logicalPath: unknown, mtimeMs?: unknown): PlanFile {
-  const { logical, absolute } = resolveOr400(logicalPath);
-  assertScope(who, logical);
-  if (!fs.existsSync(absolute)) throw new HttpError(404, `File not found: ${logical}`);
-  if (typeof mtimeMs === "number" && fs.statSync(absolute).mtimeMs !== mtimeMs) {
-    throw new HttpError(409, `${logical} changed on disk since you opened it. Reload and try again.`);
+function loadPlanFile(who: Principal, logicalPath: unknown, version?: unknown): PlanFile {
+  const logical = scopedPath(who, logicalPath);
+  const doc = store().get(logical);
+  if (!doc) throw new HttpError(404, `File not found: ${logical}`);
+  if (typeof version === "number" && doc.version !== version) {
+    throw new HttpError(409, `${logical} changed since you opened it. Reload and try again.`);
   }
-  const data = parseOr400(fs.readFileSync(absolute, "utf8"));
+  const data = parseOr400(doc.text);
   try {
-    return { logical, absolute, data, workouts: extractWorkouts(data).workouts };
+    return { logical, owner: doc.owner, data, workouts: extractWorkouts(data).workouts };
   } catch {
     throw new HttpError(400, `${logical} is not a workout plan.`);
   }
 }
 
-const savePlanFile = (file: PlanFile): void => writeTextAtomic(file.absolute, JSON.stringify(file.data, null, 2) + "\n");
+const savePlanFile = (file: PlanFile): void => {
+  store().put(file.logical, JSON.stringify(file.data, null, 2) + "\n", { source: "web", replace: true });
+};
 
 interface PlanTarget {
   file: PlanFile;
@@ -496,7 +479,7 @@ function loadPlanTargets(who: Principal, refs: unknown, workoutId?: unknown): { 
   const targets: PlanTarget[] = [];
   for (const ref of refs) {
     if (!ref || typeof ref !== "object") throw new HttpError(400, "Each plan reference needs a path and index");
-    const file = files.get(resolveOr400(ref?.path).logical) ?? loadPlanFile(who, ref?.path, ref?.mtimeMs);
+    const file = files.get(logicalOr400(ref?.path)) ?? loadPlanFile(who, ref?.path, ref?.version);
     files.set(file.logical, file);
     const entry = file.workouts[ref.index];
     if (!Number.isInteger(ref.index) || !entry || typeof entry !== "object") {
@@ -516,10 +499,10 @@ function workoutFrom(body: any): Record<string, any> {
   return workout;
 }
 
-/** data/<PROFILE>/ plans decide the Garmin profile; otherwise the request (or default) does. */
-const ownerHint = (files: PlanFile[]): string => files.find((f) => f.logical.startsWith("data/"))?.logical ?? "";
+/** data/<PROFILE>/ plans and owned plans decide the Garmin profile; otherwise the request (or default) does. */
+const ownerHint = (files: PlanFile[]): string => files.find((f) => profileOfPath(f.logical) || f.owner)?.logical ?? "";
 
-const changedFiles = (files: PlanFile[]) => files.map((f) => ({ path: f.logical, mtimeMs: fs.statSync(f.absolute).mtimeMs }));
+const changedFiles = (files: PlanFile[]) => files.map((f) => ({ path: f.logical, version: store().head(f.logical)?.version }));
 
 /** Add a new workout to a plan and/or Garmin. */
 async function createWorkout(body: any, who: Principal): Promise<unknown> {
@@ -529,7 +512,7 @@ async function createWorkout(body: any, who: Principal): Promise<unknown> {
   if (upload && validation.errors.length) {
     throw new HttpError(422, "Fix the validation errors before uploading.", { errors: validation.errors });
   }
-  const plan = hasId(body.planPath) ? loadPlanFile(who, body.planPath, body.mtimeMs) : undefined;
+  const plan = hasId(body.planPath) ? loadPlanFile(who, body.planPath, body.version) : undefined;
   if (!plan && !upload) throw new HttpError(400, "Choose a plan to add it to, or upload it to Garmin.");
 
   let saved: { workoutId: number | string } | undefined;
@@ -656,11 +639,7 @@ function serveStatic(pathname: string, res: http.ServerResponse): void {
 async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, url: URL, who: Principal): Promise<void> {
   const route = `${req.method} ${url.pathname}`;
   const queryPath = url.searchParams.get("path");
-  const scoped = (logicalPath: unknown) => {
-    const resolved = resolveOr400(logicalPath);
-    assertScope(who, resolved.logical);
-    return resolved;
-  };
+  const scoped = (logicalPath: unknown) => scopedPath(who, logicalPath);
 
   switch (route) {
     case "GET /api/files":
@@ -670,39 +649,31 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
       return send(res, 200, workoutSchema());
 
     case "GET /api/file": {
-      const { logical, absolute } = scoped(queryPath);
-      if (!fs.existsSync(absolute)) throw new HttpError(404, `File not found: ${logical}`);
-      return send(res, 200, {
-        path: logical,
-        text: fs.readFileSync(absolute, "utf8"),
-        mtimeMs: fs.statSync(absolute).mtimeMs,
-      });
+      const logical = scoped(queryPath);
+      const doc = store().get(logical);
+      if (!doc) throw new HttpError(404, `File not found: ${logical}`);
+      return send(res, 200, { path: logical, text: doc.text, version: doc.version, updatedAt: doc.updatedAt });
     }
 
     case "PUT /api/file": {
-      // Body: { text, mtimeMs? } to update (409 if the file changed on disk since mtimeMs),
+      // Body: { text, version? } to update (409 if the file was saved by someone else since `version`),
       //       { text, create: true } to create (409 if it already exists).
       const body = await readBody(req);
-      const { logical, absolute } = scoped(queryPath);
+      const logical = scoped(queryPath);
       parseOr400(body.text);
-      const exists = fs.existsSync(absolute);
-      if (body.create && exists) throw new HttpError(409, `${logical} already exists`);
-      if (!body.create && !exists) throw new HttpError(404, `File not found: ${logical}`);
-      if (!body.create && typeof body.mtimeMs === "number" && fs.statSync(absolute).mtimeMs !== body.mtimeMs) {
-        throw new HttpError(409, `${logical} changed on disk since you opened it. Reload to see the new version.`);
-      }
-      writeTextAtomic(absolute, body.text);
-      return send(res, exists ? 200 : 201, {
-        path: logical,
-        mtimeMs: fs.statSync(absolute).mtimeMs,
-        validation: validateText(body.text),
-      });
+      const meta = body.create
+        ? store().put(logical, body.text, { create: true, source: "web", owner: who.admin ? null : who.profile })
+        : store().put(logical, body.text, {
+            replace: true,
+            expectedVersion: typeof body.version === "number" ? body.version : undefined,
+            source: "web",
+          });
+      return send(res, body.create ? 201 : 200, { path: logical, version: meta.version, validation: validateText(body.text) });
     }
 
     case "DELETE /api/file": {
-      const { logical, absolute } = scoped(queryPath);
-      if (!fs.existsSync(absolute)) throw new HttpError(404, `File not found: ${logical}`);
-      fs.unlinkSync(absolute);
+      const logical = scoped(queryPath);
+      store().remove(logical, { source: "web" });
       return send(res, 200, { path: logical, deleted: true });
     }
 
@@ -710,11 +681,23 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
       const body = await readBody(req);
       const from = scoped(body.from);
       const to = scoped(body.to);
-      if (!fs.existsSync(from.absolute)) throw new HttpError(404, `File not found: ${from.logical}`);
-      if (fs.existsSync(to.absolute)) throw new HttpError(409, `${to.logical} already exists`);
-      fs.mkdirSync(path.dirname(to.absolute), { recursive: true });
-      fs.renameSync(from.absolute, to.absolute);
-      return send(res, 200, { from: from.logical, to: to.logical, mtimeMs: fs.statSync(to.absolute).mtimeMs });
+      const meta = store().rename(from, to);
+      return send(res, 200, { from, to, version: meta.version });
+    }
+
+    case "GET /api/history": {
+      // The versions this document had before its latest save, newest first.
+      const logical = scoped(queryPath);
+      const current = store().head(logical);
+      if (!current) throw new HttpError(404, `File not found: ${logical}`);
+      return send(res, 200, { path: logical, current: fileInfo(current), revisions: store().history(logical) });
+    }
+
+    case "GET /api/revision": {
+      const logical = scoped(queryPath);
+      const revision = store().revision(logical, Number(url.searchParams.get("id")));
+      if (!revision) throw new HttpError(404, "No such revision");
+      return send(res, 200, { path: logical, ...revision });
     }
 
     case "GET /api/garmin":
@@ -757,7 +740,7 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
           } catch (error) {
             differences = [`Could not compare: ${(error as Error).message}`];
           }
-          return { path: e.path, index: e.index, mtimeMs: e.mtimeMs, workout: e.workout, differences };
+          return { path: e.path, index: e.index, version: e.version, workout: e.workout, differences };
         });
       return send(res, 200, { profile, workout, plans });
     }
@@ -775,11 +758,12 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
       // Is each workout of a plan up to date on Garmin? Body: { path, text? (unsaved editor content), profile?, refresh? }.
       const body = await readBody(req);
       requireGarmin(who);
-      const { logical, absolute } = scoped(body.path);
+      const logical = scoped(body.path);
       let text = body.text;
       if (typeof text !== "string") {
-        if (!fs.existsSync(absolute)) throw new HttpError(404, `File not found: ${logical}`);
-        text = fs.readFileSync(absolute, "utf8");
+        const doc = store().get(logical);
+        if (!doc) throw new HttpError(404, `File not found: ${logical}`);
+        text = doc.text;
       }
       const data: any = parseOr400(text);
       const workouts = Array.isArray(data) ? data : Array.isArray(data?.workouts) ? data.workouts : null;
@@ -850,6 +834,7 @@ export function startWebServer(options: WebServerOptions): Promise<http.Server> 
     } catch (error) {
       if (res.headersSent) return void res.destroy();
       if (error instanceof HttpError) return send(res, error.status, { error: error.message, ...error.extra });
+      if (error instanceof StoreError) return send(res, STORE_STATUS[error.code], { error: error.message });
       console.error("[web] error:", error);
       send(res, 500, { error: "Internal error" });
     }
@@ -867,7 +852,7 @@ if (require.main === module) {
   const host = process.env.WEB_HOST ?? "127.0.0.1";
   const port = Number(process.env.WEB_PORT ?? 8788);
   startWebServer({ host, port, token: process.env.WEB_AUTH_TOKEN || undefined })
-    .then(() => console.log(`Plan editor on http://${host}:${port}  (plans: ${getPlansDir()})`))
+    .then(() => console.log(`Plan editor on http://${host}:${port}  (store: ${store().kind}, ${store().location})`))
     .catch((error) => {
       console.error(error.message);
       process.exit(1);

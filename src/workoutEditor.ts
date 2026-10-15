@@ -1060,7 +1060,13 @@ export class WorkoutEditor {
    * Import workout plan from JSON file
    */
   async importWorkoutPlan(inputPath: string): Promise<WeeklyWorkoutPlan> {
-    const raw = fs.readFileSync(inputPath, "utf-8");
+    return this.parseWorkoutPlan(fs.readFileSync(inputPath, "utf-8"));
+  }
+
+  /**
+   * Parse and check a workout plan given as JSON text (the file-free half of importWorkoutPlan).
+   */
+  parseWorkoutPlan(raw: string): WeeklyWorkoutPlan {
     const plan = JSON.parse(raw) as WeeklyWorkoutPlan;
     this.validateWorkoutPlan(plan);
     return plan;
@@ -1994,11 +2000,28 @@ export class WorkoutEditor {
     inputPath: string,
     dryRun: boolean = false
   ): Promise<{ successful: number; failed: number; failedWorkouts: string[] }> {
-    console.log(`📂 Loading workouts from ${inputPath}...`);
+    return this.uploadWorkoutsFromText(
+      fs.readFileSync(inputPath, "utf-8"),
+      dryRun,
+      (updated) => fs.writeFileSync(inputPath, updated),
+      inputPath
+    );
+  }
+
+  /**
+   * uploadWorkoutsFromFile for workouts that are not in a file: `raw` is the JSON text, `save` receives the
+   * JSON text with the new workoutIds written in, and `source` names where the workouts came from in the log.
+   */
+  async uploadWorkoutsFromText(
+    raw: string,
+    dryRun: boolean,
+    save: (updated: string) => void,
+    source: string
+  ): Promise<{ successful: number; failed: number; failedWorkouts: string[] }> {
+    console.log(`📂 Loading workouts from ${source}...`);
 
     // Load workouts
-    const fileContent = fs.readFileSync(inputPath, "utf-8");
-    const data = JSON.parse(fileContent);
+    const data = JSON.parse(raw);
     
     let workouts: DetailedWorkout[] = [];
     
@@ -2071,14 +2094,10 @@ export class WorkoutEditor {
       }
     }
 
-    // Write updated IDs back to source file
+    // Write updated IDs back to where the workouts came from
     if (idsUpdated > 0) {
-      if (Array.isArray(data)) {
-        fs.writeFileSync(inputPath, JSON.stringify(workouts, null, 2));
-      } else {
-        fs.writeFileSync(inputPath, JSON.stringify({ ...data, workouts }, null, 2));
-      }
-      console.log(`\n📝 Updated ${idsUpdated} workout ID(s) in ${inputPath}`);
+      save(JSON.stringify(Array.isArray(data) ? workouts : { ...data, workouts }, null, 2));
+      console.log(`\n📝 Updated ${idsUpdated} workout ID(s) in ${source}`);
     }
 
     console.log("\n" + "=".repeat(50));

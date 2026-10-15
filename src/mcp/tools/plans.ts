@@ -1,5 +1,3 @@
-import * as fs from "fs";
-import * as path from "path";
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import exerciseCategoryMap from "../../exercise-category-map.json";
@@ -8,20 +6,20 @@ import {
   VALID_STEP_TYPES,
   VALID_TARGET_TYPES,
 } from "../../workoutEditor";
-import { getDataRoot } from "../../shared/profileLoader";
+import { PROFILE_NAME_REGEX } from "../../shared/store/paths";
+import { getStore } from "../../shared/store";
 import type { DetailedWorkout } from "../../shared/types";
 import { compareWorkouts } from "../../shared/workoutSync";
 import {
-  getPlansDir,
   getValidatorEditor,
-  readJsonFile,
-  resolveDataPath,
+  logicalPath as checkedPath,
+  readJsonDoc,
   runTool,
-  writeJsonAtomic,
+  updateJsonDoc,
+  writeJsonDoc,
 } from "../context";
 
 const EXERCISES = exerciseCategoryMap as Record<string, string>;
-const PROFILE_DIR_REGEX = /^[a-zA-Z0-9_-]+$/;
 
 // ─── Schemas ────────────────────────────────────────────────────────────────
 
@@ -208,11 +206,11 @@ interface FileEntry {
 const MAX_SUMMARY_BYTES = 20 * 1024 * 1024;
 const NOTES_PREVIEW_CHARS = 300;
 
-/** Cheap description of a JSON file's content so callers can pick a file without reading each one. */
-function summarizeJsonFile(fullPath: string, sizeBytes: number): Record<string, unknown> {
+/** Cheap description of a document's content so callers can pick one without reading each. */
+function summarizeJsonText(text: string, sizeBytes: number): Record<string, unknown> {
   if (sizeBytes > MAX_SUMMARY_BYTES) return { summaryError: "file too large to summarize" };
   try {
-    const data: unknown = JSON.parse(fs.readFileSync(fullPath, "utf8"));
+    const data: unknown = JSON.parse(text);
     if (Array.isArray(data)) return { kind: "array", itemCount: data.length };
     if (data === null || typeof data !== "object") return { kind: typeof data };
     const obj = data as Record<string, unknown>;
@@ -255,21 +253,15 @@ function summarizeJsonFile(fullPath: string, sizeBytes: number): Record<string, 
   }
 }
 
-function listJsonFiles(dir: string, logicalPrefix: string): FileEntry[] {
-  if (!fs.existsSync(dir)) return [];
-  return fs
-    .readdirSync(dir, { withFileTypes: true })
-    .filter((e) => e.isFile() && e.name.endsWith(".json") && !e.name.startsWith("."))
-    .map((e) => {
-      const stat = fs.statSync(path.join(dir, e.name));
-      return {
-        path: `${logicalPrefix}/${e.name}`,
-        sizeBytes: stat.size,
-        modified: stat.mtime.toISOString(),
-        ...summarizeJsonFile(path.join(dir, e.name), stat.size),
-      };
-    })
-    .sort((a, b) => a.path.localeCompare(b.path));
+function listDocuments(prefix: string): FileEntry[] {
+  const store = getStore();
+  return store.list(prefix).map((meta) => ({
+    path: meta.path,
+    sizeBytes: meta.size,
+    modified: new Date(meta.updatedAt).toISOString(),
+    ...(meta.owner && !meta.path.startsWith("data/") ? { owner: meta.owner } : {}),
+    ...summarizeJsonText(store.get(meta.path)?.text ?? "", meta.size),
+  }));
 }
 
 export function registerPlanTools(server: McpServer): void {
@@ -286,23 +278,12 @@ export function registerPlanTools(server: McpServer): void {
     },
     ({ profile }) =>
       runTool(async () => {
-        if (profile !== undefined && !PROFILE_DIR_REGEX.test(profile)) {
+        if (profile !== undefined && !PROFILE_NAME_REGEX.test(profile)) {
           throw new Error(`Invalid profile name "${profile}".`);
         }
-        const dataRoot = getDataRoot();
-        const dataDirs = profile
-          ? [profile]
-          : fs.existsSync(dataRoot)
-            ? fs
-                .readdirSync(dataRoot, { withFileTypes: true })
-                .filter((e) => e.isDirectory() && !e.name.startsWith("."))
-                .map((e) => e.name)
-                .sort()
-            : [];
-
         return {
-          "workout-plans": listJsonFiles(getPlansDir(), "workout-plans"),
-          data: dataDirs.flatMap((d) => listJsonFiles(path.join(dataRoot, d), `data/${d}`)),
+          "workout-plans": listDocuments("workout-plans/"),
+          data: listDocuments(profile ? `data/${profile}/` : "data/"),
         };
       })
   );
@@ -320,8 +301,8 @@ export function registerPlanTools(server: McpServer): void {
     },
     ({ path: logicalPath }) =>
       runTool(async () => {
-        const content = readJsonFile(resolveDataPath(logicalPath), logicalPath);
-        return { path: logicalPath, content };
+        const logical = checkedPath(logicalPath);
+        return { path: logical, content: readJsonDoc(logical) };
       })
   );
 
@@ -330,7 +311,7 @@ export function registerPlanTools(server: McpServer): void {
     {
       title: "Write plan",
       description:
-        "Create or overwrite a plan with the given content. Workout plans/arrays are validated afterwards; the plan is saved even if validation reports errors, so check `validation`. To change a single workout, prefer upsert_plan_workout.\n\n" +
+        "Create or overwrite a plan with the given content. Workout plans/arrays are validated afterwards; the plan is saved even if validation reports errors, so check `validation`. To change a single workout, prefer upsert_plan_workout. The version it replaces stays in the plan's history, so an overwrite can be undone from the web editor.\n\n" +
         WORKOUT_FORMAT,
       inputSchema: {
         path: z.string().describe('Logical path starting with "workout-plans/" or "data/", ending in .json.'),
@@ -342,11 +323,11 @@ export function registerPlanTools(server: McpServer): void {
     },
     ({ path: logicalPath, content }) =>
       runTool(async () => {
-        const absolute = resolveDataPath(logicalPath);
-        const existed = fs.existsSync(absolute);
-        writeJsonAtomic(absolute, content);
+        const logical = checkedPath(logicalPath);
+        const existed = getStore().head(logical) !== undefined;
+        writeJsonDoc(logical, content);
         return {
-          path: logicalPath,
+          path: logical,
           overwritten: existed,
           validation: looksLikeWorkoutsFile(content) ? validatePlanData(content) : undefined,
         };
@@ -369,9 +350,8 @@ export function registerPlanTools(server: McpServer): void {
     },
     ({ path: logicalPath, workout, matchName }) =>
       runTool(async () => {
-        const absolute = resolveDataPath(logicalPath);
-        const data = readJsonFile(absolute, logicalPath);
-        const { workouts } = extractWorkouts(data);
+        const logical = checkedPath(logicalPath);
+        extractWorkouts(readJsonDoc(logical)); // is it a plan at all? (a clear error before anything is validated)
 
         if (!isSimpleRunning(workout)) {
           try {
@@ -381,23 +361,21 @@ export function registerPlanTools(server: McpServer): void {
           }
         }
 
-        const index = workouts.findIndex((w) =>
-          matchName !== undefined
-            ? w?.workoutName === matchName
-            : (workout.workoutId !== undefined && String(w?.workoutId) === String(workout.workoutId)) ||
-              w?.workoutName === workout.workoutName
-        );
+        let result: { action: "replaced" | "appended"; index: number; workoutCount: number } | undefined;
+        updateJsonDoc(logical, (data) => {
+          const { workouts } = extractWorkouts(data);
+          const index = workouts.findIndex((w) =>
+            matchName !== undefined
+              ? w?.workoutName === matchName
+              : (workout.workoutId !== undefined && String(w?.workoutId) === String(workout.workoutId)) ||
+                w?.workoutName === workout.workoutName
+          );
 
-        if (index >= 0) workouts[index] = workout;
-        else workouts.push(workout);
-
-        writeJsonAtomic(absolute, data);
-        return {
-          path: logicalPath,
-          action: index >= 0 ? "replaced" : "appended",
-          index: index >= 0 ? index : workouts.length - 1,
-          workoutCount: workouts.length,
-        };
+          if (index >= 0) workouts[index] = workout;
+          else workouts.push(workout);
+          result = { action: index >= 0 ? "replaced" : "appended", index: index >= 0 ? index : workouts.length - 1, workoutCount: workouts.length };
+        });
+        return { path: logical, ...result! };
       })
   );
 
@@ -414,8 +392,8 @@ export function registerPlanTools(server: McpServer): void {
     },
     ({ path: logicalPath }) =>
       runTool(async () => {
-        const data = readJsonFile(resolveDataPath(logicalPath), logicalPath);
-        return { path: logicalPath, ...validatePlanData(data) };
+        const logical = checkedPath(logicalPath);
+        return { path: logical, ...validatePlanData(readJsonDoc(logical)) };
       })
   );
 

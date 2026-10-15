@@ -290,7 +290,7 @@ A small website to manage plan files: a Monaco JSON editor (with schema autocomp
 npm run web          # http://127.0.0.1:8788
 ```
 
-- **Files**: create, duplicate, rename and delete plans in `workout-plans/` and `data/<profile>/` (the same files the MCP plan tools reach).
+- **Files**: create, duplicate, rename and delete plans in `workout-plans/` and `data/<profile>/` (the same [stored documents](#storage) the MCP plan tools reach).
 - **Outline panel**: add, duplicate and delete individual workouts, or click one to jump to it in the editor. With Garmin available, each workout shows whether it is up to date on Garmin: ✓ up to date, ≠ differs (click it for what differs), ○ not uploaded (no `workoutId`), ✗ missing (the `workoutId` is not on Garmin). It compares the editor's text, unsaved edits included, with the Garmin copy, and updates as you type.
 - **Workouts view** (*Workouts* switch in the header, ⌚ tab on phones): your Garmin workout library next to the plan workouts, each with the same status chips. Click one to see its steps and the plan files that carry it; when the plan and Garmin differ you see what differs and can push the plan's version to Garmin or pull Garmin's version into the plan. *+ New*, *Edit* (a JSON editor with the same schema and validation) and *Delete* change the plan file and Garmin together:
   - Edit saves into the plan entry and, if ticked, replaces the workout on Garmin (Garmin deletes and recreates it, so the `workoutId` changes; every plan entry that pointed at the old one gets the new id; ticking *Re-schedule upcoming dates* adds its future `scheduledDate`s to the calendar again). Workouts that only exist on Garmin are edited on Garmin alone.
@@ -298,9 +298,10 @@ npm run web          # http://127.0.0.1:8788
   - Each row has four buttons. **Upload** puts the plan's version on Garmin (greyed out when they already match, or when only Garmin has the workout). **Download** brings Garmin's version into the plan, or, for a Garmin-only workout, adds it to a plan you choose, linked to the Garmin workout so a later upload replaces it instead of duplicating it. **Clone** opens the New dialog with a copy (no `workoutId`, no `scheduledDate`) that you can send to a plan and/or Garmin. **Delete** asks what to remove, as above.
   - Garmin changes ask for confirmation first. Garmin lists at most the 100 most recently updated workouts, and exports such as `data/<profile>/workouts.json` are not treated as plans.
 - **Validation**: the same pre-upload checks as `validate_plan`, run as you type; saving is never blocked by validation errors. `Ctrl/Cmd+S` saves.
-- **Safe writes**: atomic saves, and a save is refused (409) if the file changed on disk since you opened it (e.g. edited through the MCP server).
+- **Safe writes**: a save is refused (409) if someone else saved the file since you opened it (e.g. through the MCP server). Reload to see their version.
+- **History**: every save keeps the version it replaces. *History* lists the earlier versions of the open file with who saved them (web, mcp, import); *Load* puts one in the editor and *Save* makes it the current version again. A deleted file can be brought back from the command line (see [Storage](#storage)).
 - **Config**: `WEB_PORT` (8788), `WEB_HOST` (127.0.0.1). Binding to a non-loopback host requires `WEB_AUTH_TOKEN` or at least one profile `WEB_PASSWORD` (below).
-- **Logins** (HTTP Basic): add `WEB_PASSWORD=<password>` to a profile's `.env.<profile>` and sign in with the profile name as user name. That login sees only `data/<profile>/` plus the shared `workout-plans/`, and its Garmin buttons always act as that profile. `WEB_AUTH_TOKEN` (any user name, the token as password) stays the admin login with access to everything. Passwords are read on every request, so edits apply without a restart; browsers cache the login, so use a private window to switch user. Generate one with `openssl rand -hex 16`.
+- **Logins** (HTTP Basic): add `WEB_PASSWORD=<password>` to a profile's `.env.<profile>` and sign in with the profile name as user name. That login sees only `data/<profile>/`, the shared plans in `workout-plans/` and the plans it created itself, and its Garmin buttons always act as that profile. `WEB_AUTH_TOKEN` (any user name, the token as password) stays the admin login with access to everything. Passwords are read on every request, so edits apply without a restart; browsers cache the login, so use a private window to switch user. Generate one with `openssl rand -hex 16`.
 - **Garmin buttons**: *Upload*, *Schedule*, *Upload + schedule* and *Send to watch* run the same code as the MCP tools `upload_workouts`, `schedule_plan`, `upload_and_schedule_plan` and `send_to_device`. Each one saves the file first, shows what it will do (workouts with a `workoutId` are deleted and recreated) and asks for confirmation; uploads are refused while validation has errors. New `workoutId`s are written back and the editor reloads them, and the Garmin log appears under *Checks → Garmin*.
 - The buttons need the Garmin credentials: the `.env.<profile>` files in `GARMIN_PROFILES_DIR` (Docker: mount `./config` at `/config:ro`). Without a profile (or in mock mode) they stay disabled. Plans under `data/<profile>/` use that profile; for `workout-plans/` a profile picker appears when you have several.
 - Anyone with `WEB_AUTH_TOKEN` (or a profile's `WEB_PASSWORD`, for that profile) can change that Garmin account from here; use HTTPS (reverse proxy or tunnel) if the editor is reachable beyond your LAN.
@@ -318,7 +319,7 @@ An MCP server exposes this repo's functionality to Claude, so the model can revi
 | Plans | `list_plans`, `read_plan`, `write_plan`, `upsert_plan_workout`, `validate_plan`, `list_exercise_names` |
 | Garmin writes | `upload_workouts`, `upload_single_workout`, `schedule_plan`, `upload_and_schedule_plan`, `send_to_device` |
 
-There is also an `update_weekly_workouts` prompt that walks through the weekly review. Plan files are addressed as `workout-plans/<name>.json` or `data/<profile>/<name>.json`; only `.json` files under those two roots are reachable (never dotfiles such as the token cache).
+There is also an `update_weekly_workouts` prompt that walks through the weekly review. Plans are addressed as `workout-plans/<name>.json` or `data/<profile>/<name>.json`; only `.json` documents under those two roots exist (the token cache and `.env` files are never reachable). Every `write_plan` / `upsert_plan_workout` keeps the previous version in the [history](#storage).
 
 Garmin write tools are marked destructive so the client asks before running them, and the server instructions tell Claude to get your explicit confirmation first. Uploads delete and recreate any workout that already has a `workoutId` and write the new IDs back into the plan file.
 
@@ -340,12 +341,24 @@ Volumes (see `docker-compose.yml`):
 | Mount | Purpose |
 |---|---|
 | `./config:/config:ro` | `.env.<profile>` files with the Garmin credentials |
-| `./data:/data` | per-profile token cache, `activities.json`, `training-plan.json` |
-| `./workout-plans:/plans` | plan files; uploads write new workout IDs back here |
+| `./data:/data` | the database `garmin.db` (all plans and data, see [Storage](#storage)) and the per-profile token cache |
+| `./workout-plans:/plans:ro` | only read, once: the plan files in it are imported into the database the first time it is created. Drop the mount afterwards |
 
-The container runs as `PUID:PGID` (default 1000:1000), so `data/` and `workout-plans/` must be writable by that user. Set `PUID`/`PGID` in `.env` to match your NAS user. The port is published on `127.0.0.1:8787` only; set `MCP_BIND=0.0.0.0` to allow LAN clients. `GET /healthz` is the unauthenticated health check.
+The container runs as `PUID:PGID` (default 1000:1000), so `data/` must be writable by that user. Set `PUID`/`PGID` in `.env` to match your NAS user. The port is published on `127.0.0.1:8787` only; set `MCP_BIND=0.0.0.0` to allow LAN clients. `GET /healthz` is the unauthenticated health check.
 
-The same compose file also starts `garmin-web`, the [plan editor](#plan-editor-web-ui) (shared image; `/plans`, `/data` and `/config` mounts, the last one for the Garmin buttons). It needs `WEB_AUTH_TOKEN` in `.env` (`echo "WEB_AUTH_TOKEN=$(openssl rand -hex 16)" >> .env`) and is published on `127.0.0.1:8788`; set `WEB_BIND=0.0.0.0` for LAN access. Sign in with any user name and the token as password.
+The same compose file also starts `garmin-web`, the [plan editor](#plan-editor-web-ui) (shared image; `/data` and `/config` mounts, the last one for the Garmin buttons, and `/plans` for the first-time import). It needs `WEB_AUTH_TOKEN` in `.env` (`echo "WEB_AUTH_TOKEN=$(openssl rand -hex 16)" >> .env`) and is published on `127.0.0.1:8788`; set `WEB_BIND=0.0.0.0` for LAN access. Sign in with any user name and the token as password.
+
+### Storage
+
+Plans and per-profile data (`workout-plans/*.json`, `data/<profile>/*.json`: activities, workout exports, `training-plan.json`) live in one SQLite database, `garmin.db` in the data directory, shared by the MCP server and the web editor. It needs no extra service and no native module (it uses `node:sqlite`, which comes with Node 22.13+).
+
+- **First start**: if the database is new, the JSON files of the old layout (`WORKOUT_PLANS_DIR/*.json`, `GARMIN_DATA_DIR/<profile>/*.json`) are imported once. The files are only read, never changed or deleted.
+- **History**: every save keeps the version it replaces (the last 100 per document), with who saved it. Saving identical text changes nothing. Saves from the web editor carry the version they were based on and are refused if someone else saved in between.
+- **Ownership**: a plan a profile login creates in `workout-plans/` belongs to that profile; the admin and MCP tools create shared plans. `data/<profile>/` always belongs to its profile.
+- **Command line** (`npm run store -- <command>`, in Docker `docker exec garmin-mcp node dist/storeCli.js <command>`): `list [prefix]`, `history <path>`, `show <path> [id]`, `restore <path> [id]` (the last earlier version by default; also brings back a deleted document), `trash`, `owner <path> <profile|shared>`, `import [--overwrite]`, `export <dir>`.
+- **Backups**: the database is one file. Copy it while the services are idle, or use `sqlite3 garmin.db ".backup copy.db"`; `export <dir>` writes every document back out as a plain `.json` file for git or editing.
+- **CLI scripts** (`manage-workouts`, `adjust-workouts`, ...) still read and write ordinary files. `export <dir>` hands the database's plans to them; `import --overwrite` loads their results back (it reads `WORKOUT_PLANS_DIR` and `GARMIN_DATA_DIR`).
+- `GARMIN_STORE=files` keeps the old one-file-per-plan layout instead (no history, no owners): a way back if you ever need one.
 
 ### Make it reachable from claude.ai
 
@@ -378,7 +391,7 @@ MCP_AUTH_TOKEN=$(openssl rand -hex 32) npm run mcp:http -- --mock --port 8787
 npx @modelcontextprotocol/inspector      # then connect to http://127.0.0.1:8787/mcp/<token>
 ```
 
-`--mock` (or `MOCK_MODE=true`) serves mock data and refuses every Garmin write except `dryRun` validation. Use `--profile <name>` or `GARMIN_PROFILE` to choose the default account. `GARMIN_PROFILES_DIR`, `GARMIN_DATA_DIR` and `WORKOUT_PLANS_DIR` relocate the credentials, data and plan directories (the Docker image sets them to `/config`, `/data`, `/plans`).
+`--mock` (or `MOCK_MODE=true`) serves mock data and refuses every Garmin write except `dryRun` validation. Use `--profile <name>` or `GARMIN_PROFILE` to choose the default account. `GARMIN_PROFILES_DIR`, `GARMIN_DATA_DIR` and `WORKOUT_PLANS_DIR` relocate the credentials, the data directory (database and token cache) and the plan files that are imported into the database (the Docker image sets them to `/config`, `/data`, `/plans`). `GARMIN_STORE_PATH` moves the database (default `<GARMIN_DATA_DIR>/garmin.db`).
 
 ## Testing
 

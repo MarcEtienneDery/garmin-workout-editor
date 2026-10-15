@@ -19,6 +19,7 @@
     "mcp": "tsx src/mcp/server.ts",
     "mcp:http": "tsx src/mcp/server.ts --http",
     "web": "tsx src/web/server.ts",
+    "store": "tsx src/storeCli.ts",
     "test-llm": "tsx src/testLlm.ts",
     "test-prompt": "tsx src/testPrompt.ts"
   },

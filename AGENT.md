@@ -25,8 +25,7 @@ No linter; TypeScript strict mode is the gate. Run `npx tsc --noEmit` and the re
 | Garmin client, types, profiles | `src/shared/` (`garminClient.ts`, `types.ts`, `profileLoader.ts`) |
 | MCP server | `src/mcp/` (`createServer.ts`, `tools/garmin.ts`, `tools/plans.ts`) |
 | Plan editor web UI | `src/web/` (`server.ts`, `public/index.html`; Monaco served from node_modules). Its Garmin buttons and its Workouts view (library listing, plan-vs-Garmin check, save, delete) call the shared action functions in `src/mcp/tools/garmin.ts`; the comparison itself is `src/shared/workoutSync.ts` + `diffPlanWorkout` in `src/mcp/tools/plans.ts` |
-| Plans (JSON) | `workout-plans/` |
-| Per-profile data | `data/<profile>/` |
+| Plans and per-profile data (JSON documents) | the store in `src/shared/store/` (SQLite `garmin.db`, `GARMIN_STORE=files` for the old files). Logical paths `workout-plans/<name>.json` and `data/<profile>/<name>.json`; every save keeps the previous version. CLI: `npm run store -- ...` (`src/storeCli.ts`). The token cache and `.env.<profile>` stay plain files. `workout-plans/` and `data/<profile>/*.json` on disk are only the one-time import source |
 
 Data flow is fetch, transform, save. Avoid extending the legacy files `src/types.ts`, `src/garminExtractor.ts` and `src/extractActivities.ts`.
 
@@ -54,7 +53,7 @@ Data flow is fetch, transform, save. Avoid extending the legacy files `src/types
 
 ## Deployment
 
-The MCP server runs in Docker on the NAS as `garmin-mcp`, defined in `~/docker/garmin.yml`; the plan editor runs beside it as `garmin-web` (same image, `node dist/web/server.js`, needs `WEB_AUTH_TOKEN` for the admin login (profiles can add `WEB_PASSWORD` to `.env.<profile>` for their own login), and `/config` mounted for its Garmin buttons). It builds from `/home/medery/git/garmin-workout-editor` and mounts its `workout-plans/` as `/plans`. To deploy `main`:
+The MCP server runs in Docker on the NAS as `garmin-mcp`, defined in `~/docker/garmin.yml`; the plan editor runs beside it as `garmin-web` (same image, `node dist/web/server.js`, needs `WEB_AUTH_TOKEN` for the admin login (profiles can add `WEB_PASSWORD` to `.env.<profile>` for their own login), and `/config` mounted for its Garmin buttons). It builds from `/home/medery/git/garmin-workout-editor`; the database lives in `~/docker/garmin-mcp/data/garmin.db` (`sqlite_backup` it in `~/docker/backup.sh`), and the checkout's `workout-plans/` is mounted read-only as `/plans` only so a new database can import it. To deploy `main`:
 
 ```bash
 git -C /home/medery/git/garmin-workout-editor fetch origin && git -C /home/medery/git/garmin-workout-editor merge --ff-only origin/main

@@ -1,6 +1,6 @@
 # MCP server for claude.ai / Claude Desktop, plus the plan editor web UI.
 #
-#   1. From a checkout of the repo (./workout-plans already holds your plans):
+#   1. From a checkout of the repo (./workout-plans is imported into the database on first start):
 #      mkdir -p config data
 #      cp .env.MED config/            # one .env.<profile> per Garmin account
 #   2. echo "MCP_AUTH_TOKEN=$(openssl rand -hex 32)" >> .env     # compose reads .env
@@ -17,7 +17,7 @@ services:
     image: garmin-workout-editor-mcp:latest
     container_name: garmin-mcp
     restart: unless-stopped
-    # Run as the owner of ./data and ./workout-plans (Synology/QNAP users are rarely uid 1000).
+    # Run as the owner of ./data (Synology/QNAP users are rarely uid 1000).
     user: "${PUID:-1000}:${PGID:-1000}"
     environment:
       MCP_AUTH_TOKEN: ${MCP_AUTH_TOKEN:?Set MCP_AUTH_TOKEN in .env (openssl rand -hex 32)}
@@ -28,10 +28,10 @@ services:
       - "${MCP_BIND:-127.0.0.1}:${MCP_PORT:-8787}:8787"
     volumes:
       - ./config:/config:ro            # .env.<profile> files (Garmin credentials)
-      - ./data:/data                   # token cache, activities.json, training-plan.json
-      - ./workout-plans:/plans         # plan files; uploads write new workoutIds back here
+      - ./data:/data                   # garmin.db (plans and data) and the token cache
+      - ./workout-plans:/plans:ro      # read once: imported into garmin.db when it is first created; drop it afterwards
 
-  # Plan editor (Monaco JSON editor + CRUD on the plan files, plus upload / schedule / send
+  # Plan editor (Monaco JSON editor + CRUD on the stored plans, plus upload / schedule / send
   # buttons). Same image as garmin-mcp; /config is only used by those Garmin buttons.
   garmin-web:
     image: garmin-workout-editor-mcp:latest
@@ -48,7 +48,7 @@ services:
     volumes:
       - ./config:/config:ro            # same credentials as garmin-mcp (enables the Garmin buttons)
       - ./data:/data
-      - ./workout-plans:/plans
+      - ./workout-plans:/plans:ro
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8788/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 30s

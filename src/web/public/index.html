@@ -111,7 +111,11 @@
   dialog .dfoot .spacer { flex:1; }
   dialog label { display:flex; gap:6px; align-items:center; }
   dialog .opts { display:grid; gap:8px; }
-  #dlg { width:min(520px, 96vw); }
+  #dlg, #hdlg { width:min(520px, 96vw); }
+  #hdlg .hlist { display:grid; gap:4px; max-height:50vh; overflow:auto; }
+  #hdlg .hrow { display:flex; gap:8px; align-items:center; padding:4px 0; border-bottom:1px solid var(--line); }
+  #hdlg .hrow span { flex:1; min-width:0; }
+  #hdlg .hrow small { display:block; color:var(--dim); }
   #dlgText:not(:empty) { margin-bottom:10px; }
   #wdlg[open] { display:flex; flex-direction:column; height:min(86dvh, 760px); }
   #wdlg .dform { display:flex; gap:12px; align-items:center; flex-wrap:wrap; padding:8px 12px; border-bottom:1px solid var(--line); }
@@ -178,7 +182,7 @@
     .row .chip { min-width:30px; text-align:center; font-size:15px; line-height:22px; }
     #wbody { padding:12px 14px 24px; font-size:15px; }
     #wdlg[open] { width:100vw; max-width:100vw; height:var(--vvh, 100dvh); max-height:var(--vvh, 100dvh); top:var(--vvtop, 0px); margin:0; border-radius:0; border:0; }
-    #dlg { width:94vw; }
+    #dlg, #hdlg { width:94vw; }
 
     #tabbar { display:grid; grid-template-columns:repeat(5,1fr); background:var(--panel); border-top:1px solid var(--line); padding-bottom:env(safe-area-inset-bottom); }
     #tabbar button { border:0; border-radius:0; background:none; height:var(--tabbar-h); padding:4px 0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; font-size:11px; color:var(--dim); }
@@ -204,6 +208,7 @@
     <button id="validate" disabled>Validate</button>
     <button id="format" disabled>Format</button>
     <button id="reload" disabled>Reload</button>
+    <button id="history" disabled>History</button>
     <button id="dup" disabled>Duplicate</button>
     <button id="rename" disabled>Rename</button>
     <button id="delete" class="danger" disabled>Delete</button>
@@ -282,6 +287,12 @@
   <div class="dfoot"><span class="spacer"></span><button id="dlgCancel">Cancel</button><button id="dlgOk" class="primary">OK</button></div>
 </dialog>
 
+<dialog id="hdlg">
+  <div class="dhead"><b id="hdlgTitle"></b></div>
+  <div class="dbody"><div id="hdlgText" class="meta"></div><div class="hlist" id="hdlgList"></div></div>
+  <div class="dfoot"><span class="spacer"></span><button id="hdlgClose">Close</button></div>
+</dialog>
+
 <script src="/vendor/monaco/loader.js"></script>
 <script>
 const $ = (id) => document.getElementById(id);
@@ -353,7 +364,7 @@ function toggleMenu() {
 }
 let editor, monaco;
 let files = [];
-let current = null;        // { path, mtimeMs }
+let current = null;        // { path, version }
 let savedText = "";
 let validateTimer;
 let garmin = { enabled: false, profiles: [], defaultProfile: null, reason: null };
@@ -443,7 +454,7 @@ async function garminFile(path, action) {
 async function openFile(p) {
   if (current && current.path !== p && isDirty() && !confirm("Discard unsaved changes?")) return;
   const f = await api("GET", fileUrl(p));
-  current = { path: f.path, mtimeMs: f.mtimeMs };
+  current = { path: f.path, version: f.version };
   setTab("editor");
   savedText = f.text;
   editor.setValue(f.text);
@@ -456,7 +467,7 @@ async function openFile(p) {
 
 function setButtons() {
   const on = !!current;
-  for (const id of ["save", "validate", "format", "reload", "dup", "rename", "delete"]) $(id).disabled = !on;
+  for (const id of ["save", "validate", "format", "reload", "history", "dup", "rename", "delete"]) $(id).disabled = !on;
   for (const id of Object.keys(GARMIN_ACTIONS)) {
     $(id).disabled = !on || !garmin.enabled || garminBusy;
     $(id).title = garmin.enabled ? "" : garmin.reason || "Garmin actions are unavailable";
@@ -470,8 +481,8 @@ function setButtons() {
 const save = guard(async () => {
   if (!current) return;
   const text = editor.getValue();
-  const r = await api("PUT", fileUrl(current.path), { text, mtimeMs: current.mtimeMs });
-  current.mtimeMs = r.mtimeMs; savedText = text;
+  const r = await api("PUT", fileUrl(current.path), { text, version: current.version });
+  current.version = r.version; savedText = text;
   showValidation(r.validation); setButtons(); refreshFiles(); refreshSync();
   toast("Saved");
 });
@@ -509,11 +520,11 @@ const rename = guard(async () => {
   if (!to || to === current.path) return;
   if (isDirty()) await save();
   const r = await api("POST", "/api/rename", { from: current.path, to });
-  current.path = r.to; current.mtimeMs = r.mtimeMs; setButtons(); refreshFiles();
+  current.path = r.to; current.version = r.version; setButtons(); refreshFiles();
 });
 
 const remove = guard(async (path = current.path) => {
-  if (!confirm(`Delete ${path}? This cannot be undone.`)) return;
+  if (!confirm(`Delete ${path}?\n\nIts last version stays in the database history; ask for it to be restored from the command line.`)) return;
   await api("DELETE", fileUrl(path));
   if (current && current.path === path) { current = null; savedText = ""; editor.setValue(""); setButtons(); renderOutline(); showValidation(null); setTab("files"); }
   refreshFiles();
@@ -523,6 +534,37 @@ const remove = guard(async (path = current.path) => {
 const reload = guard(async () => {
   if (isDirty() && !confirm("Discard unsaved changes?")) return;
   const p = current.path; current = null; await openFile(p);
+});
+
+/** Earlier versions of the open file. Loading one puts its text in the editor; Save makes it the current version. */
+const showHistory = guard(async () => {
+  if (!current) return;
+  const path = current.path;
+  const h = await api("GET", "/api/history?path=" + encodeURIComponent(path));
+  const dlg = $("hdlg"), list = $("hdlgList");
+  $("hdlgTitle").textContent = "History of " + path;
+  $("hdlgText").textContent = h.revisions.length ? "Load an earlier version into the editor, then Save to keep it." : "No earlier version: this file has not been changed since it was created.";
+  list.innerHTML = "";
+  const kb = (n) => (n < 1024 ? n + " B" : (n / 1024).toFixed(1) + " KB");
+  const row = (when, who, size, onLoad) => {
+    const r = document.createElement("div"), label = document.createElement("span"), small = document.createElement("small");
+    r.className = "hrow"; label.textContent = when; small.textContent = `${who} · ${kb(size)}`; label.append(small); r.append(label);
+    if (onLoad) { const b = document.createElement("button"); b.textContent = "Load"; b.onclick = guard(onLoad); r.append(b); }
+    list.append(r);
+  };
+  row("Now · " + new Date(h.current.updatedAt).toLocaleString(), "saved by " + h.current.source, h.current.size);
+  for (const rev of h.revisions) {
+    row(new Date(rev.savedAt).toLocaleString(), "saved by " + rev.source, rev.size, async () => {
+      if (!current || current.path !== path) return;
+      if (isDirty() && !confirm("Replace the unsaved changes in the editor?")) return;
+      const full = await api("GET", `/api/revision?path=${encodeURIComponent(path)}&id=${rev.id}`);
+      editor.setValue(full.text);
+      dlg.close();
+      toast("Version loaded: press Save to make it the current one", 6000);
+    });
+  }
+  $("hdlgClose").onclick = () => dlg.close();
+  dlg.showModal(); navDialog(dlg);
 });
 
 function format() {
@@ -609,12 +651,12 @@ async function garminRun(action) {
     const r = await api("POST", "/api/garmin/action", { action, path: current.path, profile, deviceId, confirm: true });
     showActivity(`✓ ${ACTION_LABEL[action]} (${r.profile})`, "ok", summaryOf(action, r), r.log);
     toast(`${ACTION_LABEL[action]} done`);
-    await reloadFromDisk(r.mtimeMs);
+    await reloadFromDisk(r.version);
   } catch (e) {
     const d = e.data || {};
     showActivity(`✗ ${ACTION_LABEL[action]} failed`, "err", [e.message, ...(d.errors || [])], d.log);
     toast(e.message, 8000);
-    await reloadFromDisk(d.mtimeMs);
+    await reloadFromDisk(d.version);
   } finally {
     garminBusy = false; setButtons(); setTab("problems");
     refreshSync(true);
@@ -622,8 +664,8 @@ async function garminRun(action) {
 }
 
 /** Uploads write new workoutIds into the file: pull them into the editor when it changed on disk. */
-async function reloadFromDisk(mtimeMs) {
-  if (!current || mtimeMs === undefined || mtimeMs === current.mtimeMs) return;
+async function reloadFromDisk(version) {
+  if (!current || version === undefined || version === current.version) return;
   const top = editor.getScrollTop(), p = current.path;
   current = null; await openFile(p); editor.setScrollTop(top);
 }
@@ -740,7 +782,7 @@ async function planRowGarmin(i, action, state) {
     if (action === "upload") {
       const v = (await api("POST", "/api/validate", { text: JSON.stringify([w]) })).validation;
       if (v && v.errors.length) { showActivity(`✗ ${label} not uploaded`, "err", v.errors); return toast("Fix the validation errors before uploading.", 6000); }
-      r = await pushWorkout(w, [{ path: current.path, index: i, mtimeMs: current.mtimeMs }], profile, state === "modified");
+      r = await pushWorkout(w, [{ path: current.path, index: i, version: current.version }], profile, state === "modified");
       if (!r) return;
       showActivity(`✓ Uploaded "${label}" (${profile})`, "ok", [], r.log);
       toast("Uploaded to Garmin");
@@ -753,7 +795,7 @@ async function planRowGarmin(i, action, state) {
       if (!r) return;
     }
     const changed = (r.changed || []).find((c) => c.path === current.path);
-    if (changed) await reloadFromDisk(changed.mtimeMs);
+    if (changed) await reloadFromDisk(changed.version);
     refreshSync(true);
   } catch (e) {
     const d = e.data || {};
@@ -825,7 +867,7 @@ const ROW_CHIPS = {
   synced: ["✓ Up to date", "ok"], modified: ["≠ Differs", "warn"], missing: ["✗ Missing on Garmin", "err"], error: ["? Can't check", "err"],
 };
 const isPlanFile = (f) => f.workoutCount != null && !/^data\/[^/]+\/workouts(-raw)?\.json$/.test(f.path);
-const planRef = (p) => ({ path: p.path, index: p.index, mtimeMs: p.mtimeMs });
+const planRef = (p) => ({ path: p.path, index: p.index, version: p.version });
 const prettyName = (key) => String(key).toLowerCase().split("_").map((x) => x.charAt(0).toUpperCase() + x.slice(1)).join(" ");
 const planName = (path) => path.split("/").pop().replace(/\.json$/, "");
 const upcoming = (w) => [].concat((w && w.scheduledDate) || []).filter((d) => d >= new Date().toISOString().slice(0, 10));
@@ -951,7 +993,7 @@ async function selectRow(key, show = true) {
       for (const p of row.plans) {
         const f = await api("GET", fileUrl(p.path));
         const w = (workoutsOf(JSON.parse(f.text)) || [])[p.index];
-        if (w) plans.push({ path: p.path, index: p.index, mtimeMs: f.mtimeMs, workout: w, differences: [] });
+        if (w) plans.push({ path: p.path, index: p.index, version: f.version, workout: w, differences: [] });
       }
     }
   } catch (e) {
@@ -1238,7 +1280,7 @@ const saveDialog = async () => {
       r = await api("PUT", "/api/garmin/workout", { workoutId: d.garmin ? d.garmin.workoutId : d.row.workoutId, workout, plans, upload, schedule, profile, confirm: upload });
     } else {
       const file = planPath ? files.find((f) => f.path === planPath) : null;
-      r = await api("POST", "/api/garmin/workout", { workout, planPath, mtimeMs: file && file.mtimeMs, upload, schedule, profile, confirm: upload, linkWorkoutId: dlgLink ?? undefined });
+      r = await api("POST", "/api/garmin/workout", { workout, planPath, version: file && file.version, upload, schedule, profile, confirm: upload, linkWorkoutId: dlgLink ?? undefined });
     }
     $("wdlg").close();
     toast(upload ? "Saved and uploaded to Garmin" : "Saved to the plan");
@@ -1259,8 +1301,8 @@ async function afterChange(result, selectKey) {
   else if (!W.rows.some((r) => r.key === wasSelected)) clearDetail();
   for (const c of result.changed || []) {
     if (!current || current.path !== c.path) continue;
-    if (isDirty()) toast(`${c.path} changed on disk: reload it in the Plans view before saving.`, 8000);
-    else await reloadFromDisk(c.mtimeMs);
+    if (isDirty()) toast(`${c.path} was changed elsewhere: reload it in the Plans view before saving.`, 8000);
+    else await reloadFromDisk(c.version);
   }
   refreshFiles();
 }
@@ -1371,7 +1413,7 @@ require(["vs/editor/editor.main"], async (m) => {
     clearTimeout(validateTimer); validateTimer = setTimeout(runValidate, 600);
   });
   $("save").onclick = save; $("new").onclick = newFile; $("validate").onclick = runValidate;
-  $("format").onclick = format; $("reload").onclick = reload; $("dup").onclick = () => duplicate();
+  $("format").onclick = format; $("reload").onclick = reload; $("history").onclick = showHistory; $("dup").onclick = () => duplicate();
   $("rename").onclick = rename; $("delete").onclick = () => remove();
   $("menu").onclick = toggleMenu;
   for (const [id, action] of Object.entries(GARMIN_ACTIONS)) $(id).onclick = guard(() => garminRun(action));

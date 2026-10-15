@@ -52,7 +52,8 @@ import * as path from "path";
 import { compareWorkouts } from "../shared/workoutSync";
 import { configureMcp } from "../mcp/context";
 import { diffPlanWorkout } from "../mcp/tools/plans";
-import { checkWorkoutSync, deleteLibraryWorkout, getLibraryWorkout, invalidateLibrary, listLibraryWorkouts, saveWorkout } from "../mcp/tools/garmin";
+import { checkWorkoutSync, deleteLibraryWorkout, getLibraryWorkout, invalidateLibrary, listLibraryWorkouts, saveWorkout, uploadAndSchedulePlan, uploadPlan } from "../mcp/tools/garmin";
+import { closeStore, getStore } from "../shared/store";
 
 const squat = (): any => ({
   workoutName: "Squat day",
@@ -124,6 +125,7 @@ describe("workouts on Garmin", () => {
 
   afterAll(() => {
     jest.restoreAllMocks();
+    closeStore();
     configureMcp({ mock: true, defaultProfile: undefined });
     fs.rmSync(dir, { recursive: true, force: true });
     if (saved.data === undefined) delete process.env.GARMIN_DATA_DIR; else process.env.GARMIN_DATA_DIR = saved.data;
@@ -198,5 +200,48 @@ describe("workouts on Garmin", () => {
     await deleteLibraryWorkout("TEST", workoutId);
     expect(await listLibraryWorkouts("TEST")).toEqual([]);
     await expect(deleteLibraryWorkout("TEST", workoutId)).rejects.toThrow(/404/);
+  });
+
+  describe("plans in the store", () => {
+    const planDoc = (workouts: any[]) => JSON.stringify({ generatedAt: "2026-10-11T00:00:00Z", weekStart: "2026-10-12", weekEnd: "2026-10-18", workouts }, null, 2);
+    const idsIn = (logical: string) => JSON.parse(getStore().get(logical)!.text).workouts.map((w: any) => w.workoutId);
+
+    it("writes the new workoutIds back into the plan and keeps the version it had", async () => {
+      getStore().put("workout-plans/up.json", planDoc([squat()]), { source: "web" });
+      const result = await uploadPlan("TEST", "workout-plans/up.json");
+      expect(result).toMatchObject({ path: "workout-plans/up.json", status: "ok", successful: 1 });
+
+      const [id] = idsIn("workout-plans/up.json");
+      expect(mockGarmin.library.has(Number(id))).toBe(true);
+      expect(getStore().head("workout-plans/up.json")?.source).toBe("mcp");
+      const [before] = getStore().history("workout-plans/up.json");
+      expect(JSON.parse(getStore().revision("workout-plans/up.json", before.id)!.text).workouts[0].workoutId).toBeUndefined();
+    });
+
+    it("replaces the workout it already uploaded instead of duplicating it", async () => {
+      getStore().put("workout-plans/again.json", planDoc([squat()]));
+      await uploadPlan("TEST", "workout-plans/again.json");
+      const [first] = idsIn("workout-plans/again.json");
+      await uploadPlan("TEST", "workout-plans/again.json");
+      const [second] = idsIn("workout-plans/again.json");
+      expect(second).not.toBe(first);
+      expect([...mockGarmin.library.keys()]).toEqual([Number(second)]);
+    });
+
+    it("uploads and schedules a plan and stores the ids", async () => {
+      getStore().put("workout-plans/both.json", planDoc([squat()]));
+      const result = await uploadAndSchedulePlan("TEST", "workout-plans/both.json");
+      expect(result).toMatchObject({ path: "workout-plans/both.json", writtenBack: true });
+      const [id] = idsIn("workout-plans/both.json");
+      expect(mockGarmin.scheduled).toEqual([
+        { workoutId: Number(id), date: "2000-01-01" },
+        { workoutId: Number(id), date: "2999-01-01" },
+      ]);
+    });
+
+    it("says so when the plan is not in the store", async () => {
+      await expect(uploadPlan("TEST", "workout-plans/none.json")).rejects.toThrow(/File not found/);
+      await expect(uploadAndSchedulePlan("TEST", "workout-plans/none.json")).rejects.toThrow(/File not found/);
+    });
   });
 });
