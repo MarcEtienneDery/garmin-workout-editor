@@ -543,14 +543,15 @@ async function createWorkout(body: any, who: Principal): Promise<unknown> {
     ({ value: saved, log } = await viaGarmin(() => saveWorkout(profile, toUpload, body.schedule === true)));
   }
   const created = saved ? { ...workout, workoutId: saved.workoutId } : { ...workout };
-  if (!saved) delete created.workoutId;
+  // Not uploaded: the entry is unlinked, unless it is a copy of a workout that is already on Garmin (linkWorkoutId).
+  if (!saved) { if (hasId(body.linkWorkoutId)) created.workoutId = body.linkWorkoutId; else delete created.workoutId; }
   let index: number | undefined;
   if (plan) {
     plan.workouts.push(created);
     index = plan.workouts.length - 1;
     savePlanFile(plan);
   }
-  return { workoutId: saved?.workoutId, path: plan?.logical, index, changed: plan ? changedFiles([plan]) : [], validation, log };
+  return { workoutId: created.workoutId, path: plan?.logical, index, changed: plan ? changedFiles([plan]) : [], validation, log };
 }
 
 /**

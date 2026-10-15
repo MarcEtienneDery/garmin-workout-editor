@@ -290,6 +290,18 @@ describe("web plan editor", () => {
         expect(g.saveWorkout).not.toHaveBeenCalled();
       });
 
+      it("links a copy of a workout that is already on Garmin instead of uploading it again", async () => {
+        const body = { workout: { ...lift, workoutId: 1234 }, planPath: "workout-plans/a.json", linkWorkoutId: 1234 };
+        const r = await call("POST", "/api/garmin/workout", body);
+        expect(r.status).toBe(201);
+        expect(r.json.workoutId).toBe(1234);
+        expect(readPlan("a.json").workouts[3]).toEqual({ ...lift, workoutId: 1234 });
+        expect(g.saveWorkout).not.toHaveBeenCalled();
+
+        await call("POST", "/api/garmin/workout", { ...body, linkWorkoutId: undefined }); // without the link the stale id is dropped
+        expect(readPlan("a.json").workouts[4]).toEqual(lift);
+      });
+
       it("uploads it and records the new id in the plan", async () => {
         const body = { workout: { ...lift, workoutId: 1234 }, planPath: "workout-plans/a.json", upload: true, schedule: true };
         expect((await call("POST", "/api/garmin/workout", body)).status).toBe(400); // no confirmation
