@@ -9,6 +9,8 @@ import {
   VALID_TARGET_TYPES,
 } from "../../workoutEditor";
 import { getDataRoot } from "../../shared/profileLoader";
+import type { DetailedWorkout } from "../../shared/types";
+import { compareWorkouts } from "../../shared/workoutSync";
 import {
   getPlansDir,
   getValidatorEditor,
@@ -112,7 +114,7 @@ export interface PlanValidation {
   workouts: WorkoutRow[];
 }
 
-function isSimpleRunning(w: any): boolean {
+export function isSimpleRunning(w: any): boolean {
   return (
     w.workoutType === "running" &&
     !!w.distanceMeters &&
@@ -182,6 +184,16 @@ export function validatePlanData(data: unknown): PlanValidation {
     warnings,
     workouts: rows,
   };
+}
+
+/**
+ * How a plan's workout differs from the copy fetched from Garmin (empty = up to date).
+ * Pure: the plan side is converted to Garmin's format and back first, so the
+ * comparison only sees what Garmin would actually store.
+ */
+export function diffPlanWorkout(plan: any, garmin: DetailedWorkout): string[] {
+  const canonical = getValidatorEditor().toGarminCanonical(plan);
+  return compareWorkouts(canonical, garmin, { ignoreSteps: isSimpleRunning(plan) });
 }
 
 // ─── Tools ──────────────────────────────────────────────────────────────────

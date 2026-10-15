@@ -24,7 +24,7 @@ No linter; TypeScript strict mode is the gate. Run `npx tsc --noEmit` and the re
 | AI-assisted adjustment | `src/adjustWorkouts.ts`, `src/workoutAdjuster.ts` |
 | Garmin client, types, profiles | `src/shared/` (`garminClient.ts`, `types.ts`, `profileLoader.ts`) |
 | MCP server | `src/mcp/` (`createServer.ts`, `tools/garmin.ts`, `tools/plans.ts`) |
-| Plan editor web UI | `src/web/` (`server.ts`, `public/index.html`; Monaco served from node_modules). Its Garmin buttons call the shared action functions in `src/mcp/tools/garmin.ts` |
+| Plan editor web UI | `src/web/` (`server.ts`, `public/index.html`; Monaco served from node_modules). Its Garmin buttons and its Workouts view (library listing, plan-vs-Garmin check, save, delete) call the shared action functions in `src/mcp/tools/garmin.ts`; the comparison itself is `src/shared/workoutSync.ts` + `diffPlanWorkout` in `src/mcp/tools/plans.ts` |
 | Plans (JSON) | `workout-plans/` |
 | Per-profile data | `data/<profile>/` |
 
@@ -47,6 +47,7 @@ Data flow is fetch, transform, save. Avoid extending the legacy files `src/types
 
 ## Testing
 
+- Web UI changes are not covered by Jest (the page is plain script in `src/web/public/index.html`): run `npm run web` and click through it, ideally also at phone width.
 - Jest runs with `maxWorkers: 1`.
 - Mock `@flow-js/garmin-connect`; use `getMockClient()` / `resetMockClient()` from `src/mocks.setup.ts`.
 - `@github/copilot-sdk` maps to `src/__mocks__/copilot-sdk.ts`.

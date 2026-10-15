@@ -8,6 +8,7 @@
 <style>
   :root { --bg:#1e1e1e; --panel:#252526; --line:#3c3c3c; --fg:#d4d4d4; --dim:#8b8b8b; --accent:#0e7ad1; --ok:#4ec9b0; --warn:#d7ba7d; --err:#f48771; }
   * { box-sizing:border-box; }
+  [hidden] { display:none !important; }
   html,body { height:100%; margin:0; }
   body { height:100dvh; background:var(--bg); color:var(--fg); font:13px/1.4 system-ui,sans-serif; display:grid; grid-template-rows:auto minmax(0,1fr) auto; -webkit-tap-highlight-color:transparent; }
   header { position:relative; display:flex; gap:6px; align-items:center; padding:6px 10px; background:var(--panel); border-bottom:1px solid var(--line); flex-wrap:wrap; }
@@ -21,6 +22,7 @@
   button:disabled { opacity:.4; cursor:default; }
   button.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
   button.danger:hover:not(:disabled) { background:#7a2b22; }
+  #dlgOk.danger { background:#7a2b22; border-color:#7a2b22; color:#fff; }
   main { display:grid; grid-template-columns:240px 1fr 300px; min-height:0; }
   aside { background:var(--panel); overflow:auto; min-height:0; overscroll-behavior:contain; }
   #files { border-right:1px solid var(--line); }
@@ -42,7 +44,71 @@
   .empty { color:var(--dim); padding:10px; }
   button.garmin { border-color:#4a6a8a; }
   button.garmin:hover:not(:disabled) { background:#27425e; }
-  #profile { background:#333; color:var(--fg); border:1px solid var(--line); border-radius:3px; padding:4px 6px; font:inherit; }
+  select, input[type="search"] { background:#333; color:var(--fg); border:1px solid var(--line); border-radius:3px; padding:4px 6px; font:inherit; }
+  /* ── Plan view: is each workout up to date on Garmin? ── */
+  .chip { font-size:11px; line-height:16px; padding:0 7px; border-radius:9px; border:1px solid var(--line); color:var(--dim); white-space:nowrap; flex:none; }
+  .chip.ok { color:var(--ok); border-color:#2d6a5c; } .chip.warn { color:var(--warn); border-color:#7a6a3d; } .chip.err { color:var(--err); border-color:#8a4a40; }
+  button.chip { background:none; padding:0 7px; cursor:pointer; }
+  button.chip:hover:not(:disabled) { background:#333; }
+  #syncbar { display:flex; align-items:center; gap:6px; padding:4px 10px; color:var(--dim); }
+  #syncbar[hidden] { display:none; }
+  #syncbar span { flex:1; min-width:0; }
+  #syncbar button { padding:1px 6px; }
+
+  /* ── Workouts view: the Garmin library, next to the plan workouts, with CRUD ── */
+  #views { display:flex; }
+  #views button { border-radius:0; }
+  #views button:first-child { border-radius:3px 0 0 3px; } #views button:last-child { border-radius:0 3px 3px 0; margin-left:-1px; }
+  #views button[aria-pressed="true"] { background:var(--accent); border-color:var(--accent); color:#fff; }
+  body[data-view="workouts"] :is(#save, #actions, #current, #menu, main, #tabbar) { display:none !important; }
+  body:not([data-view="workouts"]) #wview { display:none; }
+  #wview { display:grid; grid-template-columns:380px 1fr; min-height:0; }
+  #wlist, #wdetail { display:flex; flex-direction:column; min-height:0; min-width:0; }
+  #wlist { background:var(--panel); border-right:1px solid var(--line); }
+  .wbar { display:flex; gap:6px; align-items:center; padding:6px 10px; background:var(--panel); border-bottom:1px solid var(--line); }
+  .wbar input[type="search"] { flex:1; min-width:0; }
+  .wbar b { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .only-mobile { display:none; }
+  #wNote { padding:0 10px; }
+  #wrows, #wbody { flex:1; min-height:0; overflow:auto; overscroll-behavior:contain; }
+  .wrow { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:2px 8px; padding:7px 10px; cursor:pointer; border-left:2px solid transparent; border-bottom:1px solid #2f2f2f; }
+  .wrow:hover { background:#2d2d2e; }
+  .wrow.active { background:#37373d; border-left-color:var(--accent); }
+  .wrow .n { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .wrow small { grid-column:1 / -1; color:var(--dim); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #wbody { padding:12px 16px 24px; }
+  #wbody h3 { margin:16px 0 6px; font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--dim); }
+  #wbody .meta { color:var(--dim); }
+  #wbody .banner { margin:12px 0 0; padding:8px 10px; border:1px solid var(--line); border-left-width:3px; border-radius:3px; background:var(--panel); }
+  #wbody .banner.ok { border-left-color:var(--ok); } #wbody .banner.warn { border-left-color:var(--warn); } #wbody .banner.err { border-left-color:var(--err); }
+  #wbody .banner ul { margin:4px 0 0; padding-left:18px; color:var(--dim); }
+  #wbody .banner .btns { display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; }
+  .steps { margin:0; padding-left:0; list-style:none; }
+  .steps li { padding:3px 0; border-bottom:1px solid #2a2a2a; }
+  .steps li small { color:var(--dim); margin-left:6px; }
+  .steps .group { border:1px solid var(--line); border-radius:3px; margin:4px 0; padding:3px 8px 3px 10px; }
+  .steps .group > b { color:var(--warn); font-weight:600; }
+  .steps .group .steps { padding-left:0; }
+  .plans a { color:var(--accent); cursor:pointer; text-decoration:none; } .plans a:hover { text-decoration:underline; }
+  .plans div { padding:2px 0; }
+  details.plan-version { margin-top:10px; } details.plan-version summary { cursor:pointer; color:var(--dim); }
+
+  dialog { background:var(--panel); color:var(--fg); border:1px solid var(--line); border-radius:6px; padding:0; width:min(900px, 96vw); box-shadow:0 12px 40px rgba(0,0,0,.6); }
+  dialog::backdrop { background:rgba(0,0,0,.6); }
+  dialog .dhead { display:flex; align-items:center; gap:8px; padding:8px 12px; border-bottom:1px solid var(--line); }
+  dialog .dhead b { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  dialog .dbody { padding:10px 12px; }
+  dialog .dfoot { display:flex; gap:10px; align-items:center; flex-wrap:wrap; padding:8px 12px; border-top:1px solid var(--line); }
+  dialog .dfoot .spacer { flex:1; }
+  dialog label { display:flex; gap:6px; align-items:center; }
+  dialog .opts { display:grid; gap:8px; }
+  #dlg { width:min(520px, 96vw); }
+  #dlgText:not(:empty) { margin-bottom:10px; }
+  #wdlg[open] { display:flex; flex-direction:column; height:min(86dvh, 760px); }
+  #wdlg .dform { display:flex; gap:12px; align-items:center; flex-wrap:wrap; padding:8px 12px; border-bottom:1px solid var(--line); }
+  #wdlg .dform[hidden] { display:none; }
+  #wdEditor { flex:1; min-height:0; }
+  #wdProblems { max-height:20%; overflow:auto; }
   #activity { padding:0 0 10px; }
   #activity pre { margin:0; padding:4px 10px; white-space:pre-wrap; word-break:break-word; font:12px/1.4 ui-monospace,monospace; color:var(--dim); }
 
@@ -58,7 +124,8 @@
     #actions { display:none; position:absolute; z-index:10; top:100%; left:0; right:0; padding:10px; gap:8px; grid-template-columns:1fr 1fr;
       background:var(--panel); border-bottom:1px solid var(--line); box-shadow:0 8px 16px rgba(0,0,0,.5); }
     body.menu-open #actions { display:grid; max-height:75dvh; overflow:auto; }
-    #profile { grid-column:1 / -1; min-height:40px; font-size:14px; }
+    #profile { grid-column:1 / -1; }
+    select, input[type="search"] { min-height:40px; font-size:14px; }
     #activity pre { padding:4px 12px; font-size:12px; }
 
     main { display:block; position:relative; overflow:hidden; }
@@ -72,14 +139,31 @@
     .file { padding:12px 14px; font-size:15px; border-bottom:1px solid #2f2f2f; }
     .file small { font-size:12px; margin-top:2px; }
     .row { padding:8px 12px; gap:8px; flex-wrap:wrap; min-height:48px; }
-    .row .name { flex:1 1 60%; font-size:15px; }
+    .row .name { flex:1 1 30%; font-size:15px; }
     .row small { order:3; flex-basis:100%; margin-top:-4px; }
     .row button { min-width:44px; min-height:40px; padding:0 10px; font-size:16px; }
     .msg { padding:8px 12px; font-size:14px; }
     .empty { padding:16px 12px; font-size:14px; }
     #toast { max-width:92vw; font-size:14px; }
 
-    #tabbar { display:grid; grid-template-columns:repeat(4,1fr); background:var(--panel); border-top:1px solid var(--line); padding-bottom:env(safe-area-inset-bottom); }
+    #views { display:none; }
+    body[data-view="workouts"] #views { display:flex; }
+    body[data-view="workouts"] header { justify-content:center; }
+    #views button { min-width:96px; }
+    #wview { display:block; position:relative; overflow:hidden; }
+    #wlist, #wdetail { width:100%; height:100%; border:0; }
+    body:not([data-wpane="detail"]) #wdetail, body[data-wpane="detail"] #wlist { display:none; }
+    .only-mobile { display:inline-block; min-width:40px; padding:0; font-size:20px; line-height:1; }
+    .wbar { padding:6px 10px; }
+    .wrow { padding:12px 14px; font-size:15px; }
+    .wrow small { font-size:12px; }
+    .chip { font-size:12px; }
+    .row .chip { min-width:30px; text-align:center; font-size:15px; line-height:22px; }
+    #wbody { padding:12px 14px 24px; font-size:15px; }
+    #wdlg[open] { width:100vw; max-width:100vw; height:100dvh; max-height:100dvh; margin:0; border-radius:0; border:0; }
+    #dlg { width:94vw; }
+
+    #tabbar { display:grid; grid-template-columns:repeat(5,1fr); background:var(--panel); border-top:1px solid var(--line); padding-bottom:env(safe-area-inset-bottom); }
     #tabbar button { border:0; border-radius:0; background:none; height:var(--tabbar-h); padding:4px 0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; font-size:11px; color:var(--dim); }
     #tabbar button span { font-size:18px; line-height:1; }
     #tabbar button[aria-selected="true"] { color:var(--fg); box-shadow:inset 0 2px 0 var(--accent); }
@@ -90,9 +174,13 @@
   }
 </style>
 </head>
-<body>
+<body data-view="plans">
 <header>
   <h1>Plan Editor</h1>
+  <nav id="views" aria-label="View">
+    <button id="vPlans" aria-pressed="true">Plans</button>
+    <button id="vWorkouts" aria-pressed="false">Workouts</button>
+  </nav>
   <button id="save" class="primary" disabled>Save</button>
   <div id="actions">
     <button id="new">+ New</button>
@@ -116,7 +204,8 @@
   <div id="editor"></div>
   <aside id="side">
     <div id="outlinePane">
-      <h2>Workouts</h2>
+      <h2>Outline</h2>
+      <div id="syncbar" hidden><span id="syncSummary"></span><button id="syncRefresh" title="Check against Garmin again">↻</button></div>
       <div id="outline"><div class="empty">Open a plan.</div></div>
     </div>
     <div id="problemsPane">
@@ -127,13 +216,54 @@
     </div>
   </aside>
 </main>
+<section id="wview">
+  <div id="wlist">
+    <div class="wbar">
+      <select id="wProfile" title="Garmin profile" hidden></select>
+      <input id="wFilter" type="search" placeholder="Filter workouts" aria-label="Filter workouts">
+      <button id="wRefresh" title="Reload from Garmin">↻</button>
+      <button id="wNew" class="primary">+ New</button>
+    </div>
+    <div id="wNote" class="empty" hidden></div>
+    <div id="wrows"></div>
+  </div>
+  <div id="wdetail">
+    <div class="wbar">
+      <button id="wBackList" class="only-mobile" aria-label="Back to the list">←</button>
+      <b id="wTitle">Workout</b>
+      <button id="wEdit" disabled>Edit</button>
+      <button id="wDelete" class="danger" disabled>Delete</button>
+    </div>
+    <div id="wbody"><div class="empty">Select a workout.</div></div>
+  </div>
+</section>
 <nav id="tabbar" role="tablist">
   <button role="tab" data-tab="files"><span>📁</span>Files</button>
   <button role="tab" data-tab="editor"><span>✎</span>Editor</button>
-  <button role="tab" data-tab="outline"><span>☰</span>Workouts</button>
+  <button role="tab" data-tab="outline"><span>☰</span>Outline</button>
   <button role="tab" data-tab="problems"><span>⚠</span>Checks<b class="badge" id="badge"></b></button>
+  <button role="tab" id="tabWorkouts"><span>⌚</span>Workouts</button>
 </nav>
 <div id="toast"></div>
+
+<dialog id="wdlg">
+  <div class="dhead"><b id="wdTitle">Workout</b><button id="wdClose" aria-label="Close">✕</button></div>
+  <div class="dform" id="wdPlanRow" hidden><label>Add to plan <select id="wdPlan"></select></label></div>
+  <div id="wdEditor"></div>
+  <div id="wdProblems"></div>
+  <div class="dfoot">
+    <label><input type="checkbox" id="wdUpload"><span id="wdUploadLabel">Apply to Garmin</span></label>
+    <label id="wdScheduleRow"><input type="checkbox" id="wdSchedule">Re-schedule upcoming dates</label>
+    <span class="spacer"></span>
+    <button id="wdCancel">Cancel</button>
+    <button id="wdSave" class="primary">Save</button>
+  </div>
+</dialog>
+<dialog id="dlg">
+  <div class="dhead"><b id="dlgTitle"></b></div>
+  <div class="dbody"><div id="dlgText" class="meta"></div><div class="opts" id="dlgOpts"></div></div>
+  <div class="dfoot"><span class="spacer"></span><button id="dlgCancel">Cancel</button><button id="dlgOk" class="primary">OK</button></div>
+</dialog>
 
 <script src="/vendor/monaco/loader.js"></script>
 <script>
@@ -160,6 +290,8 @@ let validateTimer;
 let garmin = { enabled: false, profiles: [], defaultProfile: null, reason: null };
 let garminBusy = false;
 const profileOwner = () => current && (/^data\/([^/]+)\//.exec(current.path) || [])[1];
+// The Garmin profile the open plan acts as: its data/<profile>/ owner, else the picker (or the only profile).
+const planProfile = () => profileOwner() || (garmin.profiles.length > 1 ? $("profile").value : garmin.profiles[0]);
 
 // ── API ────────────────────────────────────────────────────────────────
 async function api(method, url, body) {
@@ -219,6 +351,7 @@ async function openFile(p) {
   setButtons();
   refreshFiles();
   runValidate();
+  refreshSync();
 }
 
 function setButtons() {
@@ -239,7 +372,7 @@ const save = guard(async () => {
   const text = editor.getValue();
   const r = await api("PUT", fileUrl(current.path), { text, mtimeMs: current.mtimeMs });
   current.mtimeMs = r.mtimeMs; savedText = text;
-  showValidation(r.validation); setButtons(); refreshFiles();
+  showValidation(r.validation); setButtons(); refreshFiles(); refreshSync();
   toast("Saved");
 });
 
@@ -307,6 +440,7 @@ async function loadGarmin() {
   if (garmin.defaultProfile) sel.value = garmin.defaultProfile;
   setButtons();
   if (garmin.user && !garmin.user.admin) refreshFiles();
+  refreshSync();
 }
 
 function showActivity(title, cls, lines, log) {
@@ -338,7 +472,7 @@ async function garminRun(action) {
     return toast(`Fix the ${validation.errors.length} validation error(s) before uploading.`, 6000);
   }
   const list = workoutsOf(parsed()) || [];
-  const profile = profileOwner() || (garmin.profiles.length > 1 ? $("profile").value : garmin.profiles[0]);
+  const profile = planProfile();
   const withId = list.filter((w) => w && w.workoutId !== undefined).length;
   const dates = list.reduce((n, w) => n + (w && w.scheduledDate !== undefined ? [].concat(w.scheduledDate).length : 0), 0);
   const flagged = list.filter((w) => w && w.sendToDevice);
@@ -382,6 +516,7 @@ async function garminRun(action) {
     await reloadFromDisk(d.mtimeMs);
   } finally {
     garminBusy = false; setButtons(); setTab("problems");
+    refreshSync(true);
   }
 }
 
@@ -429,9 +564,66 @@ function mutate(fn) {
   editor.pushUndoStop();
 }
 
+// ── Is each workout up to date on Garmin? (checked against the editor's text, unsaved edits included) ──
+let sync = null;   // { path, sigs: JSON of each workout when asked, statuses, error? }
+let syncSeq = 0, syncTimer;
+
+// [glyph, class, tooltip]; the bar above the list spells the glyphs out
+const SYNC_CHIPS = {
+  synced: ["✓", "ok", "Up to date on Garmin"],
+  modified: ["≠", "warn", "Differs from the copy on Garmin"],
+  "not-uploaded": ["○", "", "No workoutId yet: not on Garmin"],
+  missing: ["✗", "err", "Has a workoutId, but Garmin has no such workout"],
+  error: ["?", "err", "Could not check against Garmin"],
+};
+
+function scheduleSync() {
+  clearTimeout(syncTimer);
+  if (current && garmin.enabled) syncTimer = setTimeout(() => refreshSync(), 1500);
+}
+
+async function refreshSync(force = false) {
+  clearTimeout(syncTimer);
+  const list = current && garmin.enabled && workoutsOf(parsed());
+  const seq = ++syncSeq;
+  if (!list) { sync = null; return renderOutline(); }
+  const text = editor.getValue(), path = current.path, sigs = list.map((w) => JSON.stringify(w));
+  try {
+    const r = await api("POST", "/api/garmin/status", { path, text, profile: planProfile(), refresh: force });
+    if (seq === syncSeq) sync = { path, sigs, statuses: r.statuses };
+  } catch (e) {
+    if (seq === syncSeq) sync = { path, sigs, statuses: [], error: e.message };
+  }
+  if (seq === syncSeq) renderOutline();
+}
+
+function syncOf(i, w) {
+  if (!sync || !current || sync.path !== current.path || sync.sigs[i] !== JSON.stringify(w)) return null;
+  return sync.statuses.find((s) => s.index === i) || null;
+}
+
+function renderSyncBar(list) {
+  const bar = $("syncbar");
+  bar.hidden = !(garmin.enabled && current && list);
+  if (bar.hidden) return;
+  const counts = {};
+  list.forEach((w, i) => { const s = syncOf(i, w); if (s) counts[s.state] = (counts[s.state] || 0) + 1; });
+  const words = { synced: "up to date", modified: "differ", "not-uploaded": "not uploaded", missing: "missing", error: "unchecked" };
+  const parts = Object.entries(counts).map(([state, n]) => `${SYNC_CHIPS[state][0]} ${n} ${words[state]}`);
+  $("syncSummary").textContent = sync?.error ? "Garmin: " + sync.error : parts.length ? "Garmin: " + parts.join(" · ") : "Garmin: checking…";
+}
+
+/** Put the editor's cursor on a workout of the open plan. */
+function revealWorkout(w) {
+  setTab("editor"); editor.layout();
+  const m = editor.getModel().findMatches('"workoutName"\\s*:\\s*' + JSON.stringify(w.workoutName).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), false, true, true, null, false);
+  if (m.length) { editor.revealLineInCenter(m[0].range.startLineNumber); editor.setPosition(m[0].range.getStartPosition()); editor.focus(); }
+}
+
 function renderOutline() {
   const el = $("outline"); el.innerHTML = "";
   const list = workoutsOf(parsed());
+  renderSyncBar(current && list);
   if (!current || !list) { el.innerHTML = `<div class="empty">${current ? "Not a workout plan." : "Open a plan."}</div>`; return; }
   list.forEach((w, i) => {
     const row = document.createElement("div"); row.className = "row";
@@ -439,12 +631,18 @@ function renderOutline() {
     row.innerHTML = `<span class="name"></span><small></small><button title="Duplicate">⧉</button><button title="Delete" class="danger">✕</button>`;
     const [name, small, dup, del] = row.children;
     name.textContent = w?.workoutName ?? "(unnamed)";
-    small.textContent = [w?.steps ? w.steps.length + " steps" : "", date, w?.workoutId ? "↑" : ""].filter(Boolean).join(" ");
-    name.onclick = () => {
-      setTab("editor"); editor.layout();
-      const m = editor.getModel().findMatches('"workoutName"\\s*:\\s*' + JSON.stringify(w.workoutName).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), false, true, true, null, false);
-      if (m.length) { editor.revealLineInCenter(m[0].range.startLineNumber); editor.setPosition(m[0].range.getStartPosition()); editor.focus(); }
-    };
+    small.textContent = [w?.steps ? w.steps.length + " steps" : "", date, garmin.enabled ? "" : w?.workoutId ? "↑" : ""].filter(Boolean).join(" ");
+    if (garmin.enabled) {
+      const st = syncOf(i, w), [glyph, cls, tip] = st ? SYNC_CHIPS[st.state] : ["…", "", "Checking against Garmin"];
+      const chip = document.createElement(st && st.differences.length ? "button" : "span");
+      chip.className = "chip " + cls; chip.textContent = glyph; chip.title = [tip, ...(st?.differences || [])].join("\n");
+      if (chip.tagName === "BUTTON") chip.onclick = () => {
+        showActivity(`${st.state === "error" ? "?" : "≠"} ${w?.workoutName ?? "(unnamed)"}`, st.state === "error" ? "err" : "warn", st.differences);
+        if (mobileQuery.matches) setTab("problems");
+      };
+      row.prepend(chip);
+    }
+    name.onclick = () => revealWorkout(w);
     dup.onclick = () => mutate((l) => { const c = structuredClone(l[i]); delete c.workoutId; c.workoutName += " (copy)"; l.splice(i + 1, 0, c); });
     del.onclick = () => confirm(`Remove "${w?.workoutName}" from the plan?`) && mutate((l) => l.splice(i, 1));
     el.append(row);
@@ -455,8 +653,446 @@ function renderOutline() {
   el.append(add);
 }
 
+// ── Workouts view: the Garmin library next to the plan workouts, with create / edit / delete ──
+// Everything here goes through /api/workouts and /api/garmin/workout, which keep the plan files
+// and Garmin in step: saving or deleting a workout changes both unless you untick one.
+const W = { profile: null, rows: [], truncated: false, selected: null, detail: null, filter: "", run: 0, detailRun: 0 };
+const STATE_RANK = { synced: 1, modified: 2, error: 3, missing: 4 };
+const ROW_CHIPS = {
+  "garmin-only": ["Garmin only", ""], "not-uploaded": ["Not on Garmin", ""], checking: ["Checking…", ""],
+  synced: ["✓ Up to date", "ok"], modified: ["≠ Differs", "warn"], missing: ["✗ Missing on Garmin", "err"], error: ["? Can't check", "err"],
+};
+const isPlanFile = (f) => f.workoutCount != null && !/^data\/[^/]+\/workouts(-raw)?\.json$/.test(f.path);
+const planRef = (p) => ({ path: p.path, index: p.index, mtimeMs: p.mtimeMs });
+const prettyName = (key) => String(key).toLowerCase().split("_").map((x) => x.charAt(0).toUpperCase() + x.slice(1)).join(" ");
+const planName = (path) => path.split("/").pop().replace(/\.json$/, "");
+const upcoming = (w) => [].concat((w && w.scheduledDate) || []).filter((d) => d >= new Date().toISOString().slice(0, 10));
+
+function setView(view) {
+  document.body.dataset.view = view;
+  $("vPlans").setAttribute("aria-pressed", String(view === "plans"));
+  $("vWorkouts").setAttribute("aria-pressed", String(view === "workouts"));
+  $("tabWorkouts").setAttribute("aria-selected", String(view === "workouts"));
+  if (view === "workouts") guard(loadWorkouts)();
+  else if (editor) requestAnimationFrame(() => editor.layout());
+}
+
+function rowState(row) {
+  if (row.state !== "linked") return row.state;
+  if (!row.checks || !row.checks.length) return "checking";
+  return row.checks.reduce((worst, c) => (STATE_RANK[c.state] > STATE_RANK[worst] ? c.state : worst), "synced");
+}
+
+async function loadWorkouts(refresh = false) {
+  await garminReady;
+  const run = ++W.run, note = $("wNote");
+  const sel = $("wProfile");
+  if (!sel.options.length) for (const name of garmin.profiles) sel.add(new Option(name, name));
+  sel.hidden = !(garmin.user && garmin.user.admin && garmin.profiles.length > 1);
+  W.profile = W.profile || garmin.defaultProfile || garmin.profiles[0];
+  sel.value = W.profile || "";
+  note.hidden = true;
+  if (!garmin.enabled) {
+    W.rows = []; renderRows();
+    note.textContent = garmin.reason || "Garmin is not available."; note.hidden = false;
+    return;
+  }
+  if (!W.rows.length) $("wrows").innerHTML = '<div class="empty">Loading from Garmin…</div>';
+  const q = new URLSearchParams({ profile: W.profile }); if (refresh) q.set("refresh", "1");
+  let r;
+  try { r = await api("GET", "/api/workouts?" + q); }
+  catch (e) { if (run === W.run) { W.rows = []; renderRows(); note.textContent = e.message; note.hidden = false; } return; }
+  if (run !== W.run) return;
+  W.rows = r.rows; W.truncated = r.truncated;
+  renderRows();
+  const keep = W.rows.find((x) => x.key === W.selected);
+  if (!keep) clearDetail();
+  checkLinked(run);
+}
+
+/** Compare each plan's workouts with Garmin in the background; the chips fill in as the answers arrive. */
+async function checkLinked(run) {
+  const byPath = new Map();
+  for (const row of W.rows) {
+    if (row.state !== "linked") continue;
+    for (const p of row.plans) { if (!byPath.has(p.path)) byPath.set(p.path, []); byPath.get(p.path).push([row, p.index]); }
+  }
+  for (const [path, items] of byPath) {
+    if (run !== W.run) return;
+    let statuses = [], failure = null;
+    try { statuses = (await api("POST", "/api/garmin/status", { path, profile: W.profile })).statuses; }
+    catch (e) { failure = e.message; }
+    if (run !== W.run) return;
+    for (const [row, index] of items) {
+      const s = statuses.find((x) => x.index === index) || { index, state: "error", differences: [failure || "Not checked"] };
+      (row.checks ||= []).push({ path, ...s });
+    }
+    renderRows();
+  }
+}
+
+function renderRows() {
+  const el = $("wrows"); el.innerHTML = "";
+  const f = W.filter.trim().toLowerCase();
+  const rows = W.rows.filter((r) => !f || [r.workoutName, r.workoutType, ...r.plans.map((p) => p.path)].join(" ").toLowerCase().includes(f));
+  for (const r of rows) {
+    const d = document.createElement("div");
+    d.className = "wrow" + (r.key === W.selected ? " active" : "");
+    d.innerHTML = '<span class="n"></span><span class="chip"></span><small></small>';
+    const [n, chip, small] = d.children;
+    n.textContent = r.workoutName;
+    const [label, cls] = ROW_CHIPS[rowState(r)];
+    chip.textContent = label; chip.className = "chip " + cls;
+    small.textContent = [r.workoutType, r.updatedDate && /^\d{4}-/.test(r.updatedDate) ? "updated " + r.updatedDate.slice(0, 10) : "", ...[...new Set(r.plans.map((p) => planName(p.path)))]].filter(Boolean).join(" · ");
+    d.onclick = guard(() => selectRow(r.key));
+    el.append(d);
+  }
+  if (!rows.length && $("wNote").hidden) el.innerHTML = `<div class="empty">${W.rows.length ? "No match." : "No workouts."}</div>`;
+  if (W.truncated && !f) { const t = document.createElement("div"); t.className = "empty"; t.textContent = "Garmin lists only the 100 most recently updated workouts."; el.append(t); }
+}
+
+function clearDetail() {
+  W.selected = null; W.detail = null; W.detailRun++;
+  $("wTitle").textContent = "Workout"; $("wEdit").disabled = $("wDelete").disabled = true;
+  $("wbody").innerHTML = '<div class="empty">Select a workout.</div>';
+  document.body.dataset.wpane = "list";
+}
+
+async function selectRow(key) {
+  const row = W.rows.find((r) => r.key === key);
+  if (!row) return;
+  W.selected = key; document.body.dataset.wpane = "detail";
+  renderRows();
+  const token = ++W.detailRun;
+  $("wTitle").textContent = row.workoutName; $("wEdit").disabled = $("wDelete").disabled = true;
+  $("wbody").innerHTML = '<div class="empty">Loading…</div>';
+  let garminWorkout = null, plans = [];
+  try {
+    if (row.workoutId != null) {
+      try {
+        const r = await api("GET", "/api/garmin/workout?" + new URLSearchParams({ id: row.workoutId, profile: W.profile }));
+        garminWorkout = r.workout; plans = r.plans;
+      } catch (e) { if (!/not found/i.test(e.message)) throw e; }
+    }
+    if (!garminWorkout) {
+      // Not on Garmin (yet): show the plan's version instead.
+      for (const p of row.plans) {
+        const f = await api("GET", fileUrl(p.path));
+        const w = (workoutsOf(JSON.parse(f.text)) || [])[p.index];
+        if (w) plans.push({ path: p.path, index: p.index, mtimeMs: f.mtimeMs, workout: w, differences: [] });
+      }
+    }
+  } catch (e) {
+    if (token === W.detailRun) $("wbody").innerHTML = "";
+    if (token === W.detailRun) { const m = document.createElement("div"); m.className = "msg err"; m.textContent = e.message; $("wbody").append(m); }
+    return;
+  }
+  if (token !== W.detailRun) return;
+  W.detail = { row, garmin: garminWorkout, plans };
+  $("wEdit").disabled = $("wDelete").disabled = !(garminWorkout || plans.length);
+  renderDetail();
+}
+
+function fmtDuration(s) { const m = Math.floor(s / 60), r = s % 60; return m ? (r ? `${m} min ${r} s` : `${m} min`) : `${s} s`; }
+
+function stepSummary(st) {
+  const bits = [];
+  const v = st.endConditionValue;
+  if (st.endCondition === "reps") bits.push(`${v} reps`);
+  else if (st.endCondition === "time") bits.push(fmtDuration(v));
+  else if (st.endCondition === "distance") bits.push(v >= 1000 ? `${+(v / 1000).toFixed(2)} km` : `${v} m`);
+  else if (st.endCondition === "lap.button") bits.push("until lap button");
+  else if (st.endCondition) bits.push(`${st.endCondition} ${v ?? ""}`.trim());
+  if (st.weight) bits.push(`@ ${st.weight} lb`);
+  if (st.weightPercentage) bits.push(`@ ${st.weightPercentage}% of ${prettyName(st.benchmarkKey || "1RM")}`);
+  if (st.targetType && st.targetType !== "no.target") bits.push(`${st.targetType.replace(/\.zone$/, "")} ${st.targetValueOne ?? ""}${st.targetValueTwo ? "–" + st.targetValueTwo : ""}`.trim());
+  if (st.restTimeSeconds) bits.push(`rest ${fmtDuration(st.restTimeSeconds)}`);
+  return bits.join(" · ");
+}
+
+function stepsEl(steps) {
+  const ol = document.createElement("ol"); ol.className = "steps";
+  const item = (st) => {
+    const li = document.createElement("li");
+    li.append(st.exerciseName ? prettyName(st.exerciseName) : prettyName(st.stepType));
+    const small = document.createElement("small"); small.textContent = stepSummary(st); li.append(small);
+    return li;
+  };
+  for (let i = 0; i < steps.length; i++) {
+    const st = steps[i];
+    if (st.numberOfRepeats > 1 && st.repeatGroupIndex !== undefined) {
+      const g = document.createElement("li"); g.className = "group";
+      const head = document.createElement("b"); head.textContent = `Repeat ×${st.numberOfRepeats}`; g.append(head);
+      const inner = document.createElement("ol"); inner.className = "steps";
+      while (i < steps.length && steps[i].repeatGroupIndex === st.repeatGroupIndex) inner.append(item(steps[i++]));
+      i--; g.append(inner); ol.append(g);
+    } else ol.append(item(st));
+  }
+  return ol;
+}
+
+function section(title, ...children) {
+  const h = document.createElement("h3"); h.textContent = title;
+  return [h, ...children];
+}
+
+function renderDetail() {
+  const d = W.detail, box = $("wbody"); box.innerHTML = "";
+  const w = d && (d.garmin || (d.plans[0] && d.plans[0].workout));
+  if (!w) { box.innerHTML = '<div class="empty">This workout is no longer in its plan.</div>'; return; }
+  $("wTitle").textContent = w.workoutName;
+  const add = (...nodes) => nodes.flat().forEach((n) => n && box.append(n));
+  const text = (tag, cls, t) => { const e = document.createElement(tag); if (cls) e.className = cls; e.textContent = t; return e; };
+
+  add(text("div", "meta", [w.workoutType, d.garmin ? `Garmin id ${d.garmin.workoutId}` : "", w.description].filter(Boolean).join(" · ")));
+
+  // Status against the plan
+  const banner = document.createElement("div");
+  const differing = d.plans.filter((p) => p.differences.length);
+  if (!d.garmin && d.plans.some((p) => p.workout.workoutId != null)) {
+    banner.className = "banner err"; banner.append(text("div", "", "✗ The plan has a workoutId, but Garmin has no such workout."));
+  } else if (!d.garmin) {
+    banner.className = "banner"; banner.append(text("div", "", "Not on Garmin yet."));
+  } else if (!d.plans.length) {
+    banner.className = "banner"; banner.append(text("div", "", "Only on Garmin: no plan file carries this workout."));
+  } else if (differing.length) {
+    banner.className = "banner warn"; banner.append(text("div", "", `≠ Differs from ${planName(differing[0].path)}:`));
+    const ul = document.createElement("ul"); differing[0].differences.forEach((x) => ul.append(text("li", "", x))); banner.append(ul);
+    const btns = document.createElement("div"); btns.className = "btns";
+    const push = text("button", "garmin", "↑ Push the plan's version to Garmin"), pull = text("button", "", "↓ Use Garmin's version in the plan");
+    push.onclick = guard(() => pushPlanVersion(differing[0])); pull.onclick = guard(() => pullGarminVersion(differing[0]));
+    btns.append(push, pull); banner.append(btns);
+  } else {
+    banner.className = "banner ok"; banner.append(text("div", "", `✓ Up to date with ${[...new Set(d.plans.map((p) => planName(p.path)))].join(", ")}.`));
+  }
+  add(banner);
+
+  add(section(d.garmin ? "Steps on Garmin" : "Steps in the plan", w.steps && w.steps.length ? stepsEl(w.steps) : text("div", "meta", w.distanceMeters ? `${w.distanceMeters / 1000} km, no steps` : "No steps")));
+  if (d.garmin && differing.length && differing[0].workout.steps) {
+    const det = document.createElement("details"); det.className = "plan-version";
+    det.append(text("summary", "", `Steps in ${planName(differing[0].path)}`), stepsEl(differing[0].workout.steps));
+    add(det);
+  }
+
+  if (d.plans.length) {
+    const list = document.createElement("div"); list.className = "plans";
+    for (const p of d.plans) {
+      const line = document.createElement("div"), a = text("a", "", `${p.path} #${p.index + 1}`);
+      a.onclick = guard(() => openPlanWorkout(p.path, p.workout));
+      line.append(a); list.append(line);
+    }
+    add(section("In plans", list));
+  }
+}
+
+async function openPlanWorkout(path, w) {
+  setView("plans");
+  if (!current || current.path !== path) await openFile(path);
+  setTab("editor"); revealWorkout(w);
+}
+
+// ── Dialogs ────────────────────────────────────────────────────────────
+
+/** A modal with checkboxes. Resolves to { id: checked } when confirmed, or null when cancelled. */
+function askDialog({ title, text, options = [], ok = "OK", danger = false }) {
+  const dlg = $("dlg");
+  $("dlgTitle").textContent = title; $("dlgText").textContent = text || "";
+  const opts = $("dlgOpts"); opts.innerHTML = "";
+  const boxes = options.map((o) => {
+    const label = document.createElement("label"), cb = document.createElement("input");
+    cb.type = "checkbox"; cb.checked = !!o.checked; label.append(cb, o.label); opts.append(label);
+    return [o.id, cb];
+  });
+  $("dlgOk").textContent = ok; $("dlgOk").className = danger ? "danger" : "primary";
+  return new Promise((resolve) => {
+    const done = (value) => { dlg.close(); $("dlgOk").onclick = $("dlgCancel").onclick = dlg.onclose = null; resolve(value); };
+    $("dlgOk").onclick = () => done(Object.fromEntries(boxes.map(([id, cb]) => [id, cb.checked])));
+    $("dlgCancel").onclick = () => done(null);
+    dlg.onclose = () => resolve(null); // Escape
+    dlg.showModal();
+  });
+}
+
+let dlgEditor, dlgMode = null, dlgSaving = false;
+
+function ensureDialogEditor() {
+  if (dlgEditor) return;
+  dlgEditor = monaco.editor.create($("wdEditor"), {
+    model: monaco.editor.createModel("", "json", monaco.Uri.parse(WORKOUT_URI)), theme: "vs-dark", automaticLayout: true,
+    minimap: { enabled: false }, tabSize: 2, scrollBeyondLastLine: false, ...monacoLayoutOptions(),
+  });
+  let timer;
+  dlgEditor.onDidChangeModelContent(() => { clearTimeout(timer); timer = setTimeout(checkDialog, 500); updateScheduleBox(); });
+  dlgEditor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => guard(saveDialog)());
+}
+
+function dialogWorkout() {
+  try {
+    const w = JSON.parse(dlgEditor.getValue());
+    return w && typeof w === "object" && !Array.isArray(w) ? { workout: w } : { error: "Expected one workout object." };
+  } catch (e) { return { error: "Not valid JSON: " + e.message }; }
+}
+
+function showDialogProblems(lines, cls = "err") {
+  const el = $("wdProblems"); el.innerHTML = "";
+  for (const [c, t] of lines.map((x) => (Array.isArray(x) ? x : [cls, x]))) { const d = document.createElement("div"); d.className = "msg " + c; d.textContent = t; el.append(d); }
+}
+
+async function checkDialog() {
+  const { workout, error } = dialogWorkout();
+  if (error) return showDialogProblems([error]);
+  try {
+    const v = (await api("POST", "/api/validate", { text: JSON.stringify([workout]) })).validation;
+    showDialogProblems([...v.errors.map((m) => ["err", m]), ...v.warnings.map((m) => ["warn", m])]);
+  } catch (e) { showDialogProblems([e.message]); }
+}
+
+function updateScheduleBox() {
+  const { workout } = dialogWorkout();
+  const dates = workout ? upcoming(workout) : [];
+  $("wdScheduleRow").hidden = !dates.length || !$("wdUpload").checked;
+}
+
+/** mode: "new" | "edit"; workout: what to show in the editor. */
+async function openWorkoutDialog(mode, workout) {
+  if (!monaco) throw new Error("The editor is still loading. Try again in a moment.");
+  ensureDialogEditor();
+  dlgMode = mode; showDialogProblems([]);
+  const d = W.detail;
+  const garminOnly = mode === "edit" && d.garmin && !d.plans.length;
+  $("wdTitle").textContent = mode === "new" ? "New workout" : `Edit — ${workout.workoutName}`;
+  $("wdPlanRow").hidden = mode !== "new";
+  if (mode === "new") {
+    await refreshFiles();
+    const sel = $("wdPlan"); sel.innerHTML = ""; sel.add(new Option("(none — Garmin only)", ""));
+    for (const f of files.filter(isPlanFile)) sel.add(new Option(f.path, f.path));
+    sel.value = current && files.some((f) => f.path === current.path && isPlanFile(f)) ? current.path : "";
+  }
+  $("wdUploadLabel").textContent = mode === "new" ? "Upload to Garmin" : garminOnly ? "Save to Garmin" : "Also update on Garmin (replaces the workout: new id)";
+  $("wdUpload").checked = garmin.enabled; $("wdUpload").disabled = garminOnly;
+  $("wdSchedule").checked = true;
+  dlgEditor.setValue(JSON.stringify(workout, null, 2) + "\n");
+  $("wdlg").showModal();
+  dlgEditor.layout(); updateScheduleBox();
+  setTimeout(checkDialog, 0);
+}
+
+/** The confirmation text for putting a workout on Garmin; the API insists on it being confirmed. */
+function confirmUpload(workout, { replacing, plans, schedule }) {
+  const lines = [replacing ? `Replace "${workout.workoutName}" on Garmin?` : `Upload "${workout.workoutName}" to Garmin?`, `Garmin profile: ${W.profile}`, ""];
+  if (replacing) lines.push("Garmin deletes the old workout and creates a new one, so its workoutId changes.");
+  if (plans.length) lines.push(`${plans.length === 1 ? "The plan entry" : plans.length + " plan entries"} in ${[...new Set(plans.map((p) => p.path))].join(", ")} will get the new id.`);
+  lines.push(schedule ? "Its upcoming scheduled dates are added to the Garmin calendar again." : "Its calendar entries are not re-created.");
+  lines.push("", "This changes your Garmin account. Continue?");
+  return confirm(lines.join("\n"));
+}
+
+const saveDialog = async () => {
+  if (dlgSaving) return;
+  const { workout, error } = dialogWorkout();
+  if (error) return showDialogProblems([error]);
+  const upload = $("wdUpload").checked, schedule = upload && !$("wdScheduleRow").hidden && $("wdSchedule").checked;
+  if (upload) {
+    // Refuse before asking for confirmation: the server would reject an invalid workout anyway.
+    const v = (await api("POST", "/api/validate", { text: JSON.stringify([workout]) })).validation;
+    if (v && v.errors.length) return showDialogProblems([...v.errors.map((m) => ["err", m]), ["warn", "Fix these before uploading, or untick the Garmin box to save only to the plan."]]);
+  }
+  const d = W.detail, editing = dlgMode === "edit";
+  const plans = editing ? d.plans.map(planRef) : [];
+  const planPath = !editing && $("wdPlan").value ? $("wdPlan").value : "";
+  const replacing = editing && d.garmin && upload;
+  if (upload && !confirmUpload(workout, { replacing, plans: editing ? plans : planPath ? [{ path: planPath }] : [], schedule })) return;
+
+  dlgSaving = true; $("wdSave").disabled = true;
+  try {
+    const profile = W.profile;
+    let r;
+    if (editing) {
+      r = await api("PUT", "/api/garmin/workout", { workoutId: d.garmin ? d.garmin.workoutId : d.row.workoutId, workout, plans, upload, schedule, profile, confirm: upload });
+    } else {
+      const file = planPath ? files.find((f) => f.path === planPath) : null;
+      r = await api("POST", "/api/garmin/workout", { workout, planPath, mtimeMs: file && file.mtimeMs, upload, schedule, profile, confirm: upload });
+    }
+    $("wdlg").close();
+    toast(upload ? "Saved and uploaded to Garmin" : "Saved to the plan");
+    const key = upload && r.workoutId != null ? `g:${r.workoutId}` : editing ? W.selected : r.path ? `p:${r.path}#${r.index}` : null;
+    await afterChange(r, key);
+  } catch (e) {
+    showDialogProblems([e.message, ...((e.data && e.data.errors) || [])]);
+  } finally { dlgSaving = false; $("wdSave").disabled = false; }
+};
+
+/** Reload the list after a change and bring the open plan up to date. */
+async function afterChange(result, selectKey) {
+  const wasSelected = W.selected;
+  W.selected = selectKey; W.detail = null;
+  await loadWorkouts(true);
+  if (selectKey && W.rows.some((r) => r.key === selectKey)) await selectRow(selectKey);
+  else if (!W.rows.some((r) => r.key === wasSelected)) clearDetail();
+  for (const c of result.changed || []) {
+    if (!current || current.path !== c.path) continue;
+    if (isDirty()) toast(`${c.path} changed on disk: reload it in the Plans view before saving.`, 8000);
+    else await reloadFromDisk(c.mtimeMs);
+  }
+  refreshFiles();
+}
+
+const pushPlanVersion = async (p) => {
+  const d = W.detail, workout = p.workout;
+  const schedule = upcoming(workout).length > 0;
+  if (!confirmUpload(workout, { replacing: true, plans: d.plans, schedule })) return;
+  const r = await api("PUT", "/api/garmin/workout", { workoutId: d.garmin.workoutId, workout, plans: d.plans.map(planRef), upload: true, schedule, profile: W.profile, confirm: true });
+  toast("Garmin now has the plan's version");
+  await afterChange(r, `g:${r.workoutId}`);
+};
+
+const pullGarminVersion = async (p) => {
+  const d = W.detail;
+  if (!confirm(`Replace "${d.garmin.workoutName}" in ${p.path} with the version from Garmin?\n\nIts scheduledDate and sendToDevice stay as they are. This only changes the plan file.`)) return;
+  const workout = { ...d.garmin };
+  for (const k of ["scheduledDate", "sendToDevice", "distanceMeters"]) if (p.workout[k] !== undefined) workout[k] = p.workout[k];
+  const r = await api("PUT", "/api/garmin/workout", { workoutId: d.garmin.workoutId, workout, plans: [planRef(p)] });
+  toast("The plan now has Garmin's version");
+  await afterChange(r, W.selected);
+};
+
+const deleteSelected = async () => {
+  const d = W.detail; if (!d) return;
+  const name = (d.garmin || d.plans[0].workout).workoutName;
+  const where = [...new Set(d.plans.map((p) => p.path))];
+  const options = [];
+  if (d.garmin) options.push({ id: "garmin", label: `Delete from Garmin (profile ${W.profile})`, checked: true });
+  if (where.length) options.push({ id: "plans", label: `Remove from the plan${where.length > 1 ? "s" : ""}: ${where.join(", ")}`, checked: !d.garmin });
+  const answer = await askDialog({
+    title: `Delete "${name}"`, ok: "Delete", danger: true, options,
+    text: d.garmin && where.length ? "Tick what to delete. If you keep it in the plan, it stays there as a workout that is not on Garmin." : "This cannot be undone.",
+  });
+  if (!answer) return;
+  if (!answer.garmin && !answer.plans) return toast("Nothing selected.");
+  const r = await api("DELETE", "/api/garmin/workout", { workoutId: d.garmin ? d.garmin.workoutId : d.row.workoutId, plans: d.plans.map(planRef), garmin: !!answer.garmin, removeFromPlans: !!answer.plans, profile: W.profile, confirm: true });
+  toast("Deleted");
+  clearDetail();
+  await afterChange(r, null);
+};
+
+function bindWorkoutsView() {
+  $("vPlans").onclick = () => setView("plans"); $("vWorkouts").onclick = () => setView("workouts");
+  $("tabWorkouts").onclick = () => setView("workouts");
+  $("wRefresh").onclick = guard(() => loadWorkouts(true));
+  $("wProfile").onchange = guard(() => { W.profile = $("wProfile").value; W.rows = []; clearDetail(); return loadWorkouts(); });
+  $("wFilter").oninput = () => { W.filter = $("wFilter").value; renderRows(); };
+  $("wBackList").onclick = () => { document.body.dataset.wpane = "list"; };
+  $("wNew").onclick = guard(() => openWorkoutDialog("new", newWorkout("New workout")));
+  $("wEdit").onclick = guard(() => { const d = W.detail; return d && openWorkoutDialog("edit", d.plans.length ? d.plans[0].workout : d.garmin); });
+  $("wDelete").onclick = guard(deleteSelected);
+  $("wdSave").onclick = guard(saveDialog); $("wdCancel").onclick = $("wdClose").onclick = () => $("wdlg").close();
+  $("wdUpload").onchange = updateScheduleBox;
+}
+
 // ── Boot ───────────────────────────────────────────────────────────────
 const MONACO_BASE = location.origin + "/vendor/monaco/";
+// The two editors (plan file, single workout) are told apart by model URI so each gets its own JSON schema.
+const PLAN_URI = "plan://editor/plan.json", WORKOUT_URI = "workout://editor/workout.json";
 require.config({ paths: { vs: "/vendor/monaco" } });
 // Workers can't resolve a relative base URL, so bootstrap them through a blob with absolute paths.
 self.MonacoEnvironment = {
@@ -472,7 +1108,7 @@ function monacoLayoutOptions() {
 require(["vs/editor/editor.main"], async (m) => {
   monaco = m;
   editor = monaco.editor.create($("editor"), {
-    value: "", language: "json", theme: "vs-dark", automaticLayout: true,
+    model: monaco.editor.createModel("", "json", monaco.Uri.parse(PLAN_URI)), theme: "vs-dark", automaticLayout: true,
     minimap: { enabled: false }, tabSize: 2, formatOnPaste: true, scrollBeyondLastLine: false,
     ...monacoLayoutOptions(),
   });
@@ -482,14 +1118,18 @@ require(["vs/editor/editor.main"], async (m) => {
   editor.onDidBlurEditorText(() => document.body.classList.remove("kbd"));
   try {
     const schema = await api("GET", "/api/schema");
+    const workoutSchema = (schema.oneOf.find((x) => x.type === "array") || {}).items;
     monaco.languages.json.jsonDefaults.setDiagnosticsOptions({
       validate: true, allowComments: false,
-      schemas: [{ uri: "plan-schema.json", fileMatch: ["*"], schema }],
+      schemas: [
+        { uri: "plan-schema.json", fileMatch: [PLAN_URI], schema },
+        ...(workoutSchema ? [{ uri: "workout-schema.json", fileMatch: [WORKOUT_URI], schema: workoutSchema }] : []),
+      ],
     });
   } catch {}
   editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, save);
   editor.onDidChangeModelContent(() => {
-    setButtons(); renderOutline();
+    setButtons(); renderOutline(); scheduleSync();
     clearTimeout(validateTimer); validateTimer = setTimeout(runValidate, 600);
   });
   $("save").onclick = save; $("new").onclick = newFile; $("validate").onclick = runValidate;
@@ -498,12 +1138,15 @@ require(["vs/editor/editor.main"], async (m) => {
   $("menu").onclick = toggleMenu;
   for (const [id, action] of Object.entries(GARMIN_ACTIONS)) $(id).onclick = guard(() => garminRun(action));
   $("actions").addEventListener("click", (e) => e.target.closest("button") && document.body.classList.remove("menu-open"));
-  document.querySelectorAll("#tabbar button").forEach((b) => (b.onclick = () => setTab(b.dataset.tab)));
+  document.querySelectorAll("#tabbar button[data-tab]").forEach((b) => (b.onclick = () => { setView("plans"); setTab(b.dataset.tab); }));
+  $("syncRefresh").onclick = guard(() => refreshSync(true));
+  $("profile").onchange = () => refreshSync(true);
   window.addEventListener("beforeunload", (e) => { if (isDirty()) e.preventDefault(); });
 });
 setTab("files");
 guard(refreshFiles)();
-loadGarmin();
+const garminReady = loadGarmin(); // the Workouts view waits for it
+bindWorkoutsView();
 </script>
 </body>
 </html>

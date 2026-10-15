@@ -291,7 +291,11 @@ npm run web          # http://127.0.0.1:8788
 ```
 
 - **Files**: create, duplicate, rename and delete plans in `workout-plans/` and `data/<profile>/` (the same files the MCP plan tools reach).
-- **Workouts panel**: add, duplicate and delete individual workouts, or click one to jump to it in the editor.
+- **Outline panel**: add, duplicate and delete individual workouts, or click one to jump to it in the editor. With Garmin available, each workout shows whether it is up to date on Garmin: ✓ up to date, ≠ differs (click it for what differs), ○ not uploaded (no `workoutId`), ✗ missing (the `workoutId` is not on Garmin). It compares the editor's text, unsaved edits included, with the Garmin copy, and updates as you type.
+- **Workouts view** (*Workouts* switch in the header, ⌚ tab on phones): your Garmin workout library next to the plan workouts, each with the same status chips. Click one to see its steps and the plan files that carry it; when the plan and Garmin differ you see what differs and can push the plan's version to Garmin or pull Garmin's version into the plan. *+ New*, *Edit* (a JSON editor with the same schema and validation) and *Delete* change the plan file and Garmin together:
+  - Edit saves into the plan entry and, if ticked, replaces the workout on Garmin (Garmin deletes and recreates it, so the `workoutId` changes; every plan entry that pointed at the old one gets the new id; ticking *Re-schedule upcoming dates* adds its future `scheduledDate`s to the calendar again). Workouts that only exist on Garmin are edited on Garmin alone.
+  - New adds the workout to a plan, to Garmin, or both. Delete removes it from Garmin and/or the plan; if you keep it in the plan it stays there as "not uploaded".
+  - Garmin changes ask for confirmation first. Garmin lists at most the 100 most recently updated workouts, and exports such as `data/<profile>/workouts.json` are not treated as plans.
 - **Validation**: the same pre-upload checks as `validate_plan`, run as you type; saving is never blocked by validation errors. `Ctrl/Cmd+S` saves.
 - **Safe writes**: atomic saves, and a save is refused (409) if the file changed on disk since you opened it (e.g. edited through the MCP server).
 - **Config**: `WEB_PORT` (8788), `WEB_HOST` (127.0.0.1). Binding to a non-loopback host requires `WEB_AUTH_TOKEN` or at least one profile `WEB_PASSWORD` (below).
@@ -299,7 +303,7 @@ npm run web          # http://127.0.0.1:8788
 - **Garmin buttons**: *Upload*, *Schedule*, *Upload + schedule* and *Send to watch* run the same code as the MCP tools `upload_workouts`, `schedule_plan`, `upload_and_schedule_plan` and `send_to_device`. Each one saves the file first, shows what it will do (workouts with a `workoutId` are deleted and recreated) and asks for confirmation; uploads are refused while validation has errors. New `workoutId`s are written back and the editor reloads them, and the Garmin log appears under *Checks → Garmin*.
 - The buttons need the Garmin credentials: the `.env.<profile>` files in `GARMIN_PROFILES_DIR` (Docker: mount `./config` at `/config:ro`). Without a profile (or in mock mode) they stay disabled. Plans under `data/<profile>/` use that profile; for `workout-plans/` a profile picker appears when you have several.
 - Anyone with `WEB_AUTH_TOKEN` (or a profile's `WEB_PASSWORD`, for that profile) can change that Garmin account from here; use HTTPS (reverse proxy or tunnel) if the editor is reachable beyond your LAN.
-- Works on phones: below 900px it switches to one pane at a time (Files / Editor / Workouts / Checks) with the actions in a ⋯ menu.
+- Works on phones: below 900px it switches to one pane at a time (Files / Editor / Outline / Checks, plus the Workouts view) with the actions in a ⋯ menu.
 
 ## MCP Server (claude.ai / Claude Desktop)
 

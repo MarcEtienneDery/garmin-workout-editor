@@ -13,6 +13,12 @@ jest.mock("../mcp/tools/garmin", () => ({
   schedulePlan: jest.fn(async () => ({ attempted: [] })),
   uploadAndSchedulePlan: jest.fn(async () => ({ workouts: [] })),
   sendPlanToDevice: jest.fn(async () => ({ requested: ["Easy run"] })),
+  LIBRARY_LIMIT: 100,
+  listLibraryWorkouts: jest.fn(async () => []),
+  getLibraryWorkout: jest.fn(async () => null),
+  checkWorkoutSync: jest.fn(async () => []),
+  saveWorkout: jest.fn(async () => ({ workoutId: 999, previousWorkoutId: 5 })),
+  deleteLibraryWorkout: jest.fn(async () => undefined),
 }));
 const g = garmin as jest.Mocked<typeof garmin>;
 
@@ -197,6 +203,226 @@ describe("web plan editor", () => {
       expect(r.status).toBe(502);
       expect(r.json.error).toMatch(/authenticate/);
       expect(typeof r.json.mtimeMs).toBe("number");
+    });
+  });
+  describe("Workouts view", () => {
+    const easy = { workoutName: "Easy run", workoutType: "running", distanceMeters: 5000 };
+    const lift = {
+      workoutName: "Bench day",
+      workoutType: "strength_training",
+      steps: [{ stepType: "interval", targetType: "no.target", endCondition: "reps", endConditionValue: 5, reps: 5, exerciseName: "BARBELL_BENCH_PRESS" }],
+    };
+    const writePlan = (name: string, workouts: object[], where = "plans") =>
+      fs.writeFileSync(path.join(dir, where, name), JSON.stringify({ weekStart: "2026-10-12", weekEnd: "2026-10-18", workouts }));
+    const readPlan = (name: string, where = "plans") => JSON.parse(fs.readFileSync(path.join(dir, where, name), "utf8"));
+    const mtime = (name: string, where = "plans") => fs.statSync(path.join(dir, where, name)).mtimeMs;
+    const ref = (name: string, index: number, where = "plans") => ({ path: `${where === "plans" ? "workout-plans" : where}/${name}`, index, mtimeMs: mtime(name, where) });
+
+    beforeEach(() => {
+      addProfile("TEST");
+      writePlan("a.json", [{ ...easy, workoutId: 5 }, { ...lift }, { ...lift, workoutName: "Gone", workoutId: 77 }]);
+    });
+
+    it("lists the Garmin library next to the plan workouts", async () => {
+      g.listLibraryWorkouts.mockResolvedValueOnce([
+        { workoutId: 5, workoutName: "Easy run", workoutType: "running", updatedDate: "1" },
+        { workoutId: 6, workoutName: "Only on Garmin", workoutType: "cycling" },
+      ]);
+      fs.mkdirSync(path.join(dir, "data", "TEST"));
+      fs.writeFileSync(path.join(dir, "data", "TEST", "workouts.json"), JSON.stringify([{ ...easy, workoutId: 6 }])); // a library export, not a plan
+      fs.writeFileSync(path.join(dir, "data", "TEST", "activities.json"), JSON.stringify({ activities: [] }));
+
+      const r = await call("GET", "/api/workouts");
+      expect(r.status).toBe(200);
+      expect(g.listLibraryWorkouts).toHaveBeenCalledWith("TEST", false);
+      expect(r.json.truncated).toBe(false);
+      expect(r.json.rows).toEqual([
+        expect.objectContaining({ key: "g:5", state: "linked", plans: [expect.objectContaining({ path: "workout-plans/a.json", index: 0 })] }),
+        expect.objectContaining({ key: "g:6", state: "garmin-only", plans: [] }),
+        expect.objectContaining({ key: "p:workout-plans/a.json#1", workoutName: "Bench day", state: "not-uploaded" }),
+        expect.objectContaining({ key: "p:workout-plans/a.json#2", workoutName: "Gone", state: "linked", workoutId: 77 }),
+      ]);
+    });
+
+    it("flags a full library and is unavailable without Garmin", async () => {
+      g.listLibraryWorkouts.mockResolvedValueOnce(Array.from({ length: 100 }, (_, i) => ({ workoutId: i + 1000, workoutName: `w${i}` })));
+      expect((await call("GET", "/api/workouts?refresh=1")).json.truncated).toBe(true);
+      expect(g.listLibraryWorkouts).toHaveBeenLastCalledWith("TEST", true);
+
+      fs.rmSync(path.join(dir, "config", ".env.TEST"));
+      const off = await call("GET", "/api/workouts");
+      expect(off.status).toBe(409);
+      expect(off.json.error).toMatch(/No Garmin profiles/);
+    });
+
+    it("shows one workout from Garmin with the plan entries that carry it", async () => {
+      g.getLibraryWorkout.mockResolvedValueOnce({ workoutId: 5, workoutName: "Easy run", workoutType: "running" });
+      const r = await call("GET", "/api/garmin/workout?id=5");
+      expect(g.getLibraryWorkout).toHaveBeenCalledWith("TEST", "5");
+      expect(r.json.workout).toEqual(expect.objectContaining({ workoutName: "Easy run" }));
+      expect(r.json.plans).toEqual([expect.objectContaining({ path: "workout-plans/a.json", index: 0, differences: [], workout: expect.objectContaining({ workoutId: 5 }) })]);
+
+      expect((await call("GET", "/api/garmin/workout?id=404")).status).toBe(404);
+      expect((await call("GET", "/api/garmin/workout?id=../x")).status).toBe(400);
+    });
+
+    it("checks the plan as it is in the editor, unsaved edits included", async () => {
+      g.checkWorkoutSync.mockResolvedValueOnce([{ index: 0, state: "synced", differences: [] }]);
+      const text = JSON.stringify({ workouts: [{ ...easy, workoutId: 5, workoutName: "Edited, not saved" }] });
+      const r = await call("POST", "/api/garmin/status", { path: "workout-plans/a.json", text });
+      expect(r.json.statuses).toEqual([{ index: 0, state: "synced", differences: [] }]);
+      expect(g.checkWorkoutSync).toHaveBeenCalledWith("TEST", [expect.objectContaining({ workoutName: "Edited, not saved" })], false);
+
+      await call("POST", "/api/garmin/status", { path: "workout-plans/a.json", refresh: true });
+      expect(g.checkWorkoutSync).toHaveBeenLastCalledWith("TEST", expect.arrayContaining([expect.objectContaining({ workoutId: 77 })]), true); // read from disk
+
+      const other = await call("POST", "/api/garmin/status", { path: "workout-plans/a.json", text: JSON.stringify({ activities: [] }) });
+      expect(other.json.statuses).toEqual([]);
+      expect((await call("POST", "/api/garmin/status", { text })).status).toBe(400);
+    });
+
+    describe("create", () => {
+      it("adds a workout to a plan without touching Garmin", async () => {
+        const r = await call("POST", "/api/garmin/workout", { workout: lift, planPath: "workout-plans/a.json" });
+        expect(r.status).toBe(201);
+        expect(r.json).toEqual(expect.objectContaining({ path: "workout-plans/a.json", index: 3 }));
+        expect(readPlan("a.json").workouts[3]).toEqual(lift);
+        expect(g.saveWorkout).not.toHaveBeenCalled();
+      });
+
+      it("uploads it and records the new id in the plan", async () => {
+        const body = { workout: { ...lift, workoutId: 1234 }, planPath: "workout-plans/a.json", upload: true, schedule: true };
+        expect((await call("POST", "/api/garmin/workout", body)).status).toBe(400); // no confirmation
+        const r = await call("POST", "/api/garmin/workout", { ...body, confirm: true });
+        expect(r.json.workoutId).toBe(999);
+        expect(g.saveWorkout).toHaveBeenCalledWith("TEST", expect.not.objectContaining({ workoutId: expect.anything() }), true); // never replaces another workout
+        expect(readPlan("a.json").workouts[3]).toEqual({ ...lift, workoutId: 999 });
+      });
+
+      it("can upload to Garmin only, and refuses invalid workouts", async () => {
+        const r = await call("POST", "/api/garmin/workout", { workout: lift, upload: true, confirm: true });
+        expect(r.status).toBe(201);
+        expect(r.json.workoutId).toBe(999);
+        expect(readPlan("a.json").workouts).toHaveLength(3);
+
+        const bad = { workoutName: "x", workoutType: "strength_training", steps: [{ stepType: "nope", targetType: "no.target" }] };
+        const rejected = await call("POST", "/api/garmin/workout", { workout: bad, upload: true, confirm: true });
+        expect(rejected.status).toBe(422);
+        expect(rejected.json.errors.length).toBeGreaterThan(0);
+        expect(g.saveWorkout).toHaveBeenCalledTimes(1);
+        expect((await call("POST", "/api/garmin/workout", { workout: lift })).status).toBe(400); // nowhere to put it
+      });
+    });
+
+    describe("update", () => {
+      it("replaces the plan entry and puts the workout on Garmin under its new id", async () => {
+        const edited = { ...easy, workoutName: "Easy run (longer)", distanceMeters: 8000, workoutId: 5, scheduledDate: "2026-10-14" };
+        const body = { workoutId: 5, workout: edited, plans: [ref("a.json", 0)], upload: true, confirm: true };
+        const r = await call("PUT", "/api/garmin/workout", body);
+        expect(r.status).toBe(200);
+        expect(g.saveWorkout).toHaveBeenCalledWith("TEST", expect.objectContaining({ workoutId: 5, distanceMeters: 8000 }), false);
+        expect(readPlan("a.json").workouts[0]).toEqual({ ...edited, workoutId: 999 });
+        expect(r.json.changed).toEqual([expect.objectContaining({ path: "workout-plans/a.json" })]);
+      });
+
+      it("repoints the other plans that carried the old workout", async () => {
+        writePlan("b.json", [{ ...easy, workoutName: "Copy", workoutId: 5 }]);
+        const body = { workoutId: 5, workout: { ...easy, workoutId: 5, distanceMeters: 1 }, plans: [ref("a.json", 0), ref("b.json", 0)], upload: true, confirm: true };
+        await call("PUT", "/api/garmin/workout", body);
+        expect(readPlan("a.json").workouts[0]).toEqual({ ...easy, distanceMeters: 1, workoutId: 999 });
+        expect(readPlan("b.json").workouts[0]).toEqual({ ...easy, workoutName: "Copy", workoutId: 999 });
+      });
+
+      it("saves to the plan alone when asked, keeping the workoutId the editor shows", async () => {
+        const r = await call("PUT", "/api/garmin/workout", { workoutId: 5, workout: { ...easy, workoutId: 5, description: "x" }, plans: [ref("a.json", 0)] });
+        expect(r.status).toBe(200);
+        expect(g.saveWorkout).not.toHaveBeenCalled();
+        expect(readPlan("a.json").workouts[0]).toEqual({ ...easy, workoutId: 5, description: "x" });
+      });
+
+      it("refuses stale or mismatched plan entries before touching Garmin", async () => {
+        const body = { workoutId: 5, workout: easy, upload: true, confirm: true };
+        const stale = ref("a.json", 0);
+        fs.utimesSync(path.join(dir, "plans", "a.json"), new Date(), new Date(Date.now() + 5000));
+        expect((await call("PUT", "/api/garmin/workout", { ...body, plans: [stale] })).status).toBe(409);
+        expect((await call("PUT", "/api/garmin/workout", { ...body, plans: [ref("a.json", 9)] })).status).toBe(409);
+        expect((await call("PUT", "/api/garmin/workout", { ...body, plans: [ref("a.json", 1)], workoutId: 6 })).status).toBe(200); // entry without an id: nothing to contradict
+        expect((await call("PUT", "/api/garmin/workout", { ...body, plans: [ref("a.json", 0)], workoutId: 6 })).status).toBe(409); // entry has id 5, not 6
+        expect((await call("PUT", "/api/garmin/workout", { ...body, plans: [{ path: "workout-plans/../x.json", index: 0 }] })).status).toBe(400);
+        expect((await call("PUT", "/api/garmin/workout", { workout: easy })).status).toBe(400); // nothing to save
+        expect(g.saveWorkout).toHaveBeenCalledTimes(1);
+      });
+
+      it("reports a Garmin failure with the log and leaves the plan alone", async () => {
+        g.saveWorkout.mockRejectedValueOnce(new Error("Garmin did not accept the workout (see log)."));
+        const before = fs.readFileSync(path.join(dir, "plans", "a.json"), "utf8");
+        const r = await call("PUT", "/api/garmin/workout", { workoutId: 5, workout: { ...easy, workoutId: 5 }, plans: [ref("a.json", 0)], upload: true, confirm: true });
+        expect(r.status).toBe(502);
+        expect(r.json.error).toMatch(/did not accept/);
+        expect(r.json).toHaveProperty("log");
+        expect(fs.readFileSync(path.join(dir, "plans", "a.json"), "utf8")).toBe(before);
+      });
+    });
+
+    describe("delete", () => {
+      it("deletes from Garmin and keeps the plan workout as not uploaded", async () => {
+        const body = { workoutId: 5, plans: [ref("a.json", 0)], garmin: true };
+        expect((await call("DELETE", "/api/garmin/workout", body)).status).toBe(400); // no confirmation
+        const r = await call("DELETE", "/api/garmin/workout", { ...body, confirm: true });
+        expect(r.status).toBe(200);
+        expect(g.deleteLibraryWorkout).toHaveBeenCalledWith("TEST", 5);
+        expect(readPlan("a.json").workouts[0]).toEqual(easy);
+        expect(readPlan("a.json").workouts).toHaveLength(3);
+      });
+
+      it("can also remove the workout from the plans, or only from the plans", async () => {
+        // entry 2 carries workout 77, not 5: refused, and nothing is deleted from Garmin
+        const refused = await call("DELETE", "/api/garmin/workout", { workoutId: 5, plans: [ref("a.json", 0), ref("a.json", 2)], garmin: true, removeFromPlans: true, confirm: true });
+        expect(refused.status).toBe(409);
+        expect(g.deleteLibraryWorkout).not.toHaveBeenCalled();
+        expect(readPlan("a.json").workouts).toHaveLength(3);
+
+        const r = await call("DELETE", "/api/garmin/workout", { workoutId: 5, plans: [ref("a.json", 0), ref("a.json", 1)], garmin: true, removeFromPlans: true, confirm: true });
+        expect(r.status).toBe(200);
+        expect(readPlan("a.json").workouts.map((w: any) => w.workoutName)).toEqual(["Gone"]);
+
+        g.deleteLibraryWorkout.mockClear();
+        const local = await call("DELETE", "/api/garmin/workout", { plans: [ref("a.json", 0)], removeFromPlans: true }); // no Garmin involved: no confirmation needed
+        expect(local.status).toBe(200);
+        expect(g.deleteLibraryWorkout).not.toHaveBeenCalled();
+        expect(readPlan("a.json").workouts).toEqual([]);
+      });
+
+      it("deletes a Garmin-only workout and needs something to delete", async () => {
+        expect((await call("DELETE", "/api/garmin/workout", { workoutId: 6, garmin: true, confirm: true })).status).toBe(200);
+        expect(g.deleteLibraryWorkout).toHaveBeenCalledWith("TEST", 6);
+        expect((await call("DELETE", "/api/garmin/workout", { garmin: true, confirm: true })).status).toBe(400); // no id
+        expect((await call("DELETE", "/api/garmin/workout", { workoutId: 6, confirm: true })).status).toBe(400); // nothing chosen
+      });
+    });
+
+    it("keeps a profile login to its own data folder and Garmin account", async () => {
+      addProfile("MED", "med-pw");
+      addProfile("SAM", "sam-pw");
+      for (const name of ["MED", "SAM"]) {
+        fs.mkdirSync(path.join(dir, "data", name), { recursive: true });
+        writePlan("mine.json", [{ ...easy, workoutName: `${name} run`, workoutId: 1 }], path.join("data", name));
+      }
+      const login = { Authorization: "Basic " + Buffer.from("MED:med-pw").toString("base64") };
+      const med = (method: string, url: string, body?: unknown) => call(method, url, body, { ...H, ...login });
+
+      g.listLibraryWorkouts.mockResolvedValueOnce([{ workoutId: 1, workoutName: "x" }]);
+      const rows = (await med("GET", "/api/workouts?profile=SAM")).json.rows;
+      expect(g.listLibraryWorkouts).toHaveBeenLastCalledWith("MED", false);
+      expect(rows[0].plans.map((p: any) => p.path)).toEqual(["data/MED/mine.json"]);
+
+      const body = { workoutId: 1, workout: easy, plans: [{ path: "data/SAM/mine.json", index: 0 }], upload: true, confirm: true, profile: "SAM" };
+      expect((await med("PUT", "/api/garmin/workout", body)).status).toBe(403);
+      const own = await med("PUT", "/api/garmin/workout", { ...body, plans: [{ path: "data/MED/mine.json", index: 0 }] });
+      expect(own.status).toBe(200);
+      expect(g.saveWorkout).toHaveBeenLastCalledWith("MED", expect.anything(), false);
+      expect((await med("DELETE", "/api/garmin/workout", { workoutId: 1, garmin: true, confirm: true, profile: "SAM" })).status).toBe(200);
+      expect(g.deleteLibraryWorkout).toHaveBeenLastCalledWith("MED", 1);
     });
   });
   describe("per-profile logins", () => {

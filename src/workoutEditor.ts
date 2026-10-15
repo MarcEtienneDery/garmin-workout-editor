@@ -670,6 +670,39 @@ export class WorkoutEditor {
     return this.transformSingleWorkout(details);
   }
 
+  /** Plan-format view of a workout detail fetched from Garmin (no request). */
+  fromGarminDetail(detail: IWorkoutDetail): DetailedWorkout {
+    return this.transformSingleWorkout(detail);
+  }
+
+  /**
+   * What Garmin holds for `workout` once it is uploaded, in plan format: the workout is
+   * built in Garmin's format and transformed back, so it can be compared with a fetched one.
+   */
+  toGarminCanonical(workout: DetailedWorkout): DetailedWorkout {
+    return this.transformSingleWorkout(this.buildGarminWorkoutDetail(workout));
+  }
+
+  /** The library listing (one request, no steps), with the dates needed to tell whether a workout changed. */
+  async listWorkoutSummaries(): Promise<
+    {
+      workoutId: number | string;
+      workoutName: string;
+      workoutType?: string;
+      description?: string;
+      updatedDate?: string;
+    }[]
+  > {
+    const raw = await this.fetchRawWorkouts(false);
+    return raw.map((w: any) => ({
+      workoutId: w.workoutId,
+      workoutName: w.workoutName || "Unnamed Workout",
+      workoutType: w.sportType?.sportTypeKey,
+      description: w.description || undefined,
+      updatedDate: w.updatedDate != null ? String(w.updatedDate) : undefined,
+    }));
+  }
+
   /**
    * Fetch and transform workouts in a single session
    * Returns both raw and transformed data
@@ -1937,6 +1970,20 @@ export class WorkoutEditor {
       console.error(`     ❌ Upload failed: ${error.message}`);
       return null;
     }
+  }
+
+  /** Delete a workout from the Garmin library. */
+  async deleteWorkout(workoutId: number | string): Promise<void> {
+    const authenticated = await this.garminClient.ensureAuthenticated();
+    if (!authenticated) {
+      throw new Error("Failed to authenticate with Garmin");
+    }
+    const client = this.garminClient.getClientAny();
+    if (!client.deleteWorkout) {
+      throw new Error("deleteWorkout is not available on this Garmin client");
+    }
+    await client.deleteWorkout({ workoutId: String(workoutId) });
+    console.log(`🗑️  Deleted workout ${workoutId}`);
   }
 
   /**

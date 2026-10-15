@@ -14,7 +14,9 @@ import {
   toLogicalPath,
   writeJsonAtomic,
 } from "../context";
-import { extractWorkouts } from "./plans";
+import type { DetailedWorkout } from "../../shared/types";
+import type { SyncStatus } from "../../shared/workoutSync";
+import { diffPlanWorkout, extractWorkouts } from "./plans";
 
 const profileArg = z
   .string()
@@ -142,6 +144,148 @@ export async function sendPlanToDevice(profile: string | undefined, logicalPath:
     requested: toSend.map((w) => w.workoutName),
     note: "Workouts without a workoutId are skipped; see the log.",
   };
+}
+
+// ── Workout library: view, check against plans, save, delete ───────────────
+// Used by the web editor's Workouts view and the plan view's "up to date on Garmin" badges.
+
+export interface LibraryWorkout {
+  workoutId: number | string;
+  workoutName: string;
+  workoutType?: string;
+  description?: string;
+  updatedDate?: string;
+}
+
+/** Garmin returns at most this many workouts per listing (see WorkoutEditor.fetchWorkoutsWithRaw). */
+export const LIBRARY_LIMIT = 100;
+const LIBRARY_TTL_MS = 60_000;
+
+// The library is listed once per minute at most and a workout's steps are re-fetched only when
+// its updatedDate changes, so re-checking a plan after every edit costs no extra Garmin calls.
+const libraryCache = new Map<string, { at: number; list: LibraryWorkout[] }>();
+const detailCache = new Map<string, { updatedDate: string; workout: DetailedWorkout }>();
+
+/** Forget what was fetched for a profile; called after anything that changes its library. */
+export function invalidateLibrary(profile: string): void {
+  libraryCache.delete(profile);
+  for (const key of detailCache.keys()) if (key.startsWith(`${profile}:`)) detailCache.delete(key);
+}
+
+export async function listLibraryWorkouts(profile: string | undefined, refresh = false): Promise<LibraryWorkout[]> {
+  const session = getSession(profile);
+  const cached = libraryCache.get(session.profile.name);
+  if (!refresh && cached && Date.now() - cached.at < LIBRARY_TTL_MS) return cached.list;
+  const list = await session.editor.listWorkoutSummaries();
+  libraryCache.set(session.profile.name, { at: Date.now(), list });
+  return list;
+}
+
+/** One workout from Garmin in the plan format, always fresh; null when Garmin has no such workout. */
+export async function getLibraryWorkout(profile: string | undefined, workoutId: number | string): Promise<DetailedWorkout | null> {
+  const session = getSession(profile);
+  await requireAuth(session);
+  const detail = await session.editor.fetchWorkoutDetails(workoutId);
+  return detail ? session.editor.fromGarminDetail(detail) : null;
+}
+
+/**
+ * For each workout of a plan: is the copy on Garmin up to date? Workouts without a
+ * workoutId are "not-uploaded"; ids Garmin does not know are "missing".
+ */
+export async function checkWorkoutSync(profile: string | undefined, workouts: unknown[], refresh = false): Promise<SyncStatus[]> {
+  const session = getSession(profile);
+  const library = await listLibraryWorkouts(profile, refresh);
+  const known = new Map(library.map((w) => [String(w.workoutId), w]));
+
+  const statuses: SyncStatus[] = [];
+  for (const [index, w] of workouts.entries()) {
+    const planned = w as any;
+    if (!planned || typeof planned !== "object" || Array.isArray(planned)) {
+      statuses.push({ index, state: "error", differences: ["Not a workout object"] });
+      continue;
+    }
+    if (planned.workoutId === undefined || planned.workoutId === null || planned.workoutId === "") {
+      statuses.push({ index, state: "not-uploaded", differences: [] });
+      continue;
+    }
+
+    const id = String(planned.workoutId);
+    const summary = known.get(id);
+    const key = `${session.profile.name}:${id}`;
+    let garmin: DetailedWorkout | null | undefined;
+    const hit = detailCache.get(key);
+    if (summary?.updatedDate && hit?.updatedDate === summary.updatedDate) {
+      garmin = hit.workout;
+    } else {
+      const detail = await session.editor.fetchWorkoutDetails(id);
+      garmin = detail ? session.editor.fromGarminDetail(detail) : null;
+      if (garmin && summary?.updatedDate) detailCache.set(key, { updatedDate: summary.updatedDate, workout: garmin });
+    }
+    if (!garmin) {
+      statuses.push(
+        summary
+          ? { index, state: "error", differences: ["Could not read the workout from Garmin"] }
+          : { index, state: "missing", differences: [] }
+      );
+      continue;
+    }
+
+    try {
+      const differences = diffPlanWorkout(planned, garmin);
+      statuses.push({ index, state: differences.length ? "modified" : "synced", differences });
+    } catch (error) {
+      statuses.push({ index, state: "error", differences: [error instanceof Error ? error.message : String(error)] });
+    }
+  }
+  return statuses;
+}
+
+const today = (): string => new Date().toISOString().slice(0, 10);
+
+/**
+ * Create or replace ONE workout on Garmin (a workout that has a workoutId is deleted and recreated,
+ * so the id changes). `schedule` re-adds its upcoming scheduledDate entries to the calendar, since the
+ * old ones belonged to the old workout. Returns the new id.
+ */
+export async function saveWorkout(
+  profile: string | undefined,
+  workout: Record<string, any>,
+  schedule = false
+): Promise<{ workoutId: number | string; previousWorkoutId?: number | string }> {
+  const session = getSession(profile);
+  assertLive(session, "save_workout");
+
+  const copy = structuredClone(workout);
+  const previousWorkoutId = copy.workoutId ?? undefined;
+  const dates = [copy.scheduledDate ?? []].flat().filter((d: string) => d >= today());
+  if (schedule && dates.length) copy.scheduledDate = dates;
+  else delete copy.scheduledDate;
+
+  try {
+    await session.editor.uploadAndScheduleWorkoutPlan({
+      generatedAt: new Date().toISOString(),
+      weekStart: today(),
+      weekEnd: today(),
+      workouts: [copy as any],
+    });
+  } finally {
+    invalidateLibrary(session.profile.name);
+  }
+  if (copy.workoutId === undefined || String(copy.workoutId) === String(previousWorkoutId)) {
+    throw new Error("Garmin did not accept the workout (see log).");
+  }
+  return { workoutId: copy.workoutId, previousWorkoutId };
+}
+
+export async function deleteLibraryWorkout(profile: string | undefined, workoutId: number | string): Promise<void> {
+  const session = getSession(profile);
+  assertLive(session, "delete_workout");
+  try {
+    await session.editor.deleteWorkout(workoutId);
+  } finally {
+    invalidateLibrary(session.profile.name);
+  }
 }
 
 export function registerGarminTools(server: McpServer): void {

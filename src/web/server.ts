@@ -12,6 +12,11 @@
  * bodies, so they need the profile credentials (GARMIN_PROFILES_DIR) and are
  * disabled when no profile is configured or in mock mode.
  *
+ * The Workouts view lists the Garmin library next to the workouts of the plan files
+ * (GET /api/workouts), compares plan workouts with their Garmin copy (POST /api/garmin/status)
+ * and creates / replaces / deletes workouts in the plan files and on Garmin together
+ * (POST, PUT, DELETE /api/garmin/workout). Each write that touches Garmin needs confirm: true.
+ *
  * Logins (HTTP Basic): user = a profile name, password = WEB_PASSWORD from that
  * profile's .env.<profile> -> sees only data/<profile>/ (plus the shared
  * workout-plans/) and its Garmin actions run as that profile. WEB_AUTH_TOKEN
@@ -32,9 +37,16 @@ import {
   toLogicalPath,
 } from "../mcp/context";
 import { installConsoleRedirect } from "../mcp/logCapture";
-import { validatePlanData } from "../mcp/tools/plans";
+import { diffPlanWorkout, extractWorkouts, validatePlanData } from "../mcp/tools/plans";
 import {
+  LIBRARY_LIMIT,
+  type LibraryWorkout,
+  checkWorkoutSync,
+  deleteLibraryWorkout,
+  getLibraryWorkout,
   listDevices,
+  listLibraryWorkouts,
+  saveWorkout,
   schedulePlan,
   sendPlanToDevice,
   uploadAndSchedulePlan,
@@ -62,7 +74,9 @@ export interface WebServerOptions {
 class HttpError extends Error {
   constructor(
     readonly status: number,
-    message: string
+    message: string,
+    /** Extra fields for the JSON error body (e.g. the Garmin log). */
+    readonly extra: Record<string, unknown> = {}
   ) {
     super(message);
   }
@@ -343,6 +357,267 @@ async function garminAction(body: any, who: Principal): Promise<{ status: number
   return { status: 200, payload: { action, profile, result: outcome.value, log: outcome.log, mtimeMs } };
 }
 
+// ── Workouts view: the Garmin library next to the plan entries that carry the same workouts ──
+
+const MAX_SCAN_BYTES = 5 * 1024 * 1024;
+// Library snapshots written by export_workouts: copies of Garmin's list, not plans to edit.
+const EXPORT_FILE = /^workouts(-raw)?\.json$/;
+
+interface PlanEntry {
+  path: string;
+  index: number;
+  mtimeMs: number;
+  workout: any;
+}
+
+/** Every workout in the plan files a profile works with: the shared workout-plans/ and its own data/<profile>/. */
+function planEntriesFor(profile: string): PlanEntry[] {
+  const files = [
+    ...jsonFilesIn(getPlansDir()),
+    ...jsonFilesIn(path.join(getDataRoot(), profile)).filter((f) => !EXPORT_FILE.test(path.basename(f))),
+  ];
+  const entries: PlanEntry[] = [];
+  for (const absolute of files) {
+    try {
+      const stat = fs.statSync(absolute);
+      if (stat.size > MAX_SCAN_BYTES) continue;
+      const data: any = JSON.parse(fs.readFileSync(absolute, "utf8"));
+      const list = Array.isArray(data) ? data : data?.workouts;
+      if (!Array.isArray(list)) continue;
+      list.forEach((workout, index) => {
+        if (workout && typeof workout === "object" && typeof workout.workoutName === "string") {
+          entries.push({ path: toLogicalPath(absolute), index, mtimeMs: stat.mtimeMs, workout });
+        }
+      });
+    } catch {
+      /* not JSON: the editor flags it */
+    }
+  }
+  return entries;
+}
+
+const hasId = (id: unknown): boolean => id !== undefined && id !== null && id !== "";
+const sameId = (a: unknown, b: unknown): boolean => hasId(a) && hasId(b) && String(a) === String(b);
+
+type WorkoutRowState = "garmin-only" | "linked" | "not-uploaded";
+
+/**
+ * One row per workout on Garmin plus one per plan workout Garmin does not list. "linked" rows
+ * have a workoutId and plan entries to compare (checked afterwards through /api/garmin/status).
+ */
+function workoutRows(library: LibraryWorkout[], entries: PlanEntry[]) {
+  const ref = (e: PlanEntry) => ({ path: e.path, index: e.index, mtimeMs: e.mtimeMs });
+  const listed = new Set(library.map((w) => String(w.workoutId)));
+  const rows: {
+    key: string;
+    workoutId?: number | string;
+    workoutName: string;
+    workoutType?: string;
+    description?: string;
+    updatedDate?: string;
+    plans: ReturnType<typeof ref>[];
+    state: WorkoutRowState;
+  }[] = [];
+
+  for (const w of library) {
+    const plans = entries.filter((e) => sameId(e.workout.workoutId, w.workoutId)).map(ref);
+    rows.push({ key: `g:${w.workoutId}`, ...w, plans, state: plans.length ? "linked" : "garmin-only" });
+  }
+  // Not in the (at most LIBRARY_LIMIT long) listing: unverified until the status check asks Garmin for it.
+  for (const e of entries) {
+    if (hasId(e.workout.workoutId) && listed.has(String(e.workout.workoutId))) continue;
+    rows.push({
+      key: `p:${e.path}#${e.index}`,
+      workoutId: hasId(e.workout.workoutId) ? e.workout.workoutId : undefined,
+      workoutName: e.workout.workoutName,
+      workoutType: e.workout.workoutType,
+      description: e.workout.description || undefined,
+      plans: [ref(e)],
+      state: hasId(e.workout.workoutId) ? "linked" : "not-uploaded",
+    });
+  }
+  return { rows, truncated: library.length >= LIBRARY_LIMIT };
+}
+
+function requireGarmin(who: Principal): void {
+  const info = garminInfo(who);
+  if (!info.enabled) throw new HttpError(409, info.reason ?? "Garmin actions are disabled.");
+}
+
+function requireConfirm(body: any): void {
+  // The UI asks first; the API insists so a stray request can't change the account.
+  if (body.confirm !== true) throw new HttpError(400, "Confirmation required (confirm: true).");
+}
+
+/** Run a Garmin call serialized with the others; a failure becomes a 502 that carries the Garmin log. */
+async function viaGarmin<T>(fn: () => Promise<T>): Promise<{ value: T; log: string }> {
+  const outcome = await runCaptured(fn);
+  if (!outcome.ok) {
+    throw new HttpError(502, outcome.error instanceof Error ? outcome.error.message : String(outcome.error), { log: outcome.log });
+  }
+  return { value: outcome.value, log: outcome.log };
+}
+
+interface PlanFile {
+  logical: string;
+  absolute: string;
+  data: unknown;
+  /** Live reference into `data`. */
+  workouts: any[];
+}
+
+function loadPlanFile(who: Principal, logicalPath: unknown, mtimeMs?: unknown): PlanFile {
+  const { logical, absolute } = resolveOr400(logicalPath);
+  assertScope(who, logical);
+  if (!fs.existsSync(absolute)) throw new HttpError(404, `File not found: ${logical}`);
+  if (typeof mtimeMs === "number" && fs.statSync(absolute).mtimeMs !== mtimeMs) {
+    throw new HttpError(409, `${logical} changed on disk since you opened it. Reload and try again.`);
+  }
+  const data = parseOr400(fs.readFileSync(absolute, "utf8"));
+  try {
+    return { logical, absolute, data, workouts: extractWorkouts(data).workouts };
+  } catch {
+    throw new HttpError(400, `${logical} is not a workout plan.`);
+  }
+}
+
+const savePlanFile = (file: PlanFile): void => writeTextAtomic(file.absolute, JSON.stringify(file.data, null, 2) + "\n");
+
+interface PlanTarget {
+  file: PlanFile;
+  index: number;
+}
+
+/** Check that each referenced plan entry still exists and carries the workout we think it does, before anything is changed. */
+function loadPlanTargets(who: Principal, refs: unknown, workoutId?: unknown): { files: PlanFile[]; targets: PlanTarget[] } {
+  if (refs === undefined) return { files: [], targets: [] };
+  if (!Array.isArray(refs)) throw new HttpError(400, "plans must be a list");
+  const files = new Map<string, PlanFile>();
+  const targets: PlanTarget[] = [];
+  for (const ref of refs) {
+    if (!ref || typeof ref !== "object") throw new HttpError(400, "Each plan reference needs a path and index");
+    const file = files.get(resolveOr400(ref?.path).logical) ?? loadPlanFile(who, ref?.path, ref?.mtimeMs);
+    files.set(file.logical, file);
+    const entry = file.workouts[ref.index];
+    if (!Number.isInteger(ref.index) || !entry || typeof entry !== "object") {
+      throw new HttpError(409, `${file.logical} no longer has workout #${ref.index}. Reload and try again.`);
+    }
+    if (hasId(workoutId) && hasId(entry.workoutId) && !sameId(entry.workoutId, workoutId)) {
+      throw new HttpError(409, `${file.logical} workout #${ref.index} is not workout ${workoutId} any more. Reload and try again.`);
+    }
+    targets.push({ file, index: ref.index });
+  }
+  return { files: [...files.values()], targets };
+}
+
+function workoutFrom(body: any): Record<string, any> {
+  const workout = body.workout;
+  if (!workout || typeof workout !== "object" || Array.isArray(workout)) throw new HttpError(400, "Missing workout");
+  return workout;
+}
+
+/** data/<PROFILE>/ plans decide the Garmin profile; otherwise the request (or default) does. */
+const ownerHint = (files: PlanFile[]): string => files.find((f) => f.logical.startsWith("data/"))?.logical ?? "";
+
+const changedFiles = (files: PlanFile[]) => files.map((f) => ({ path: f.logical, mtimeMs: fs.statSync(f.absolute).mtimeMs }));
+
+/** Add a new workout to a plan and/or Garmin. */
+async function createWorkout(body: any, who: Principal): Promise<unknown> {
+  const workout = workoutFrom(body);
+  const upload = body.upload === true;
+  const validation = validatePlanData([workout]);
+  if (upload && validation.errors.length) {
+    throw new HttpError(422, "Fix the validation errors before uploading.", { errors: validation.errors });
+  }
+  const plan = hasId(body.planPath) ? loadPlanFile(who, body.planPath, body.mtimeMs) : undefined;
+  if (!plan && !upload) throw new HttpError(400, "Choose a plan to add it to, or upload it to Garmin.");
+
+  let saved: { workoutId: number | string } | undefined;
+  let log = "";
+  if (upload) {
+    requireGarmin(who);
+    requireConfirm(body);
+    const profile = profileFor(who, plan?.logical ?? "", body.profile);
+    const toUpload = { ...workout };
+    delete toUpload.workoutId; // a new workout never replaces an existing one
+    ({ value: saved, log } = await viaGarmin(() => saveWorkout(profile, toUpload, body.schedule === true)));
+  }
+  const created = saved ? { ...workout, workoutId: saved.workoutId } : { ...workout };
+  if (!saved) delete created.workoutId;
+  let index: number | undefined;
+  if (plan) {
+    plan.workouts.push(created);
+    index = plan.workouts.length - 1;
+    savePlanFile(plan);
+  }
+  return { workoutId: saved?.workoutId, path: plan?.logical, index, changed: plan ? changedFiles([plan]) : [], validation, log };
+}
+
+/**
+ * Save an edited workout: into its plan entry (plans[0]) and/or onto Garmin. Garmin replaces the workout
+ * (new workoutId), so every plan entry that pointed at the old one is repointed.
+ */
+async function updateWorkout(body: any, who: Principal): Promise<unknown> {
+  const workout = workoutFrom(body);
+  const upload = body.upload === true;
+  const validation = validatePlanData([workout]);
+  if (upload && validation.errors.length) {
+    throw new HttpError(422, "Fix the validation errors before uploading.", { errors: validation.errors });
+  }
+  const { files, targets } = loadPlanTargets(who, body.plans ?? [], body.workoutId);
+  if (!upload && !targets.length) throw new HttpError(400, "Nothing to save: no plan entry and no upload.");
+
+  let newId: number | string | undefined;
+  let log = "";
+  if (upload) {
+    requireGarmin(who);
+    requireConfirm(body);
+    const profile = profileFor(who, ownerHint(files), body.profile);
+    const toUpload = { ...workout };
+    if (hasId(body.workoutId)) toUpload.workoutId = body.workoutId;
+    else delete toUpload.workoutId;
+    const result = await viaGarmin(() => saveWorkout(profile, toUpload, body.schedule === true));
+    newId = result.value.workoutId;
+    log = result.log;
+  }
+
+  targets.forEach(({ file, index }, i) => {
+    if (i === 0) file.workouts[index] = { ...workout };
+    if (newId !== undefined) file.workouts[index].workoutId = newId;
+  });
+  files.forEach(savePlanFile);
+  return { workoutId: newId ?? workout.workoutId, changed: changedFiles(files), validation, log };
+}
+
+/** Remove a workout from Garmin and/or from the plan entries that carry it. */
+async function deleteWorkout(body: any, who: Principal): Promise<unknown> {
+  const fromGarmin = body.garmin === true;
+  const fromPlans = body.removeFromPlans === true;
+  if (!fromGarmin && !fromPlans) throw new HttpError(400, "Nothing to delete: choose Garmin and/or the plan.");
+  const { files, targets } = loadPlanTargets(who, body.plans ?? [], body.workoutId);
+
+  let log = "";
+  if (fromGarmin) {
+    requireGarmin(who);
+    requireConfirm(body);
+    if (!hasId(body.workoutId)) throw new HttpError(400, "Missing workoutId");
+    const profile = profileFor(who, ownerHint(files), body.profile);
+    ({ log } = await viaGarmin(() => deleteLibraryWorkout(profile, body.workoutId)));
+  }
+
+  if (fromPlans) {
+    for (const file of files) {
+      const gone = new Set(targets.filter((t) => t.file === file).map((t) => t.index));
+      file.workouts.splice(0, file.workouts.length, ...file.workouts.filter((_, i) => !gone.has(i)));
+    }
+  } else {
+    // Only Garmin's copy is gone: the plan keeps the workout, as "not uploaded".
+    for (const { file, index } of targets) delete file.workouts[index].workoutId;
+  }
+  files.forEach(savePlanFile);
+  return { deleted: { garmin: fromGarmin, plans: fromPlans }, changed: changedFiles(files), log };
+}
+
 const MIME: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
@@ -458,6 +733,61 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
       return send(res, status, payload);
     }
 
+    case "GET /api/workouts": {
+      requireGarmin(who);
+      const profile = profileFor(who, "", url.searchParams.get("profile"));
+      const { value: library } = await viaGarmin(() => listLibraryWorkouts(profile, url.searchParams.get("refresh") === "1"));
+      return send(res, 200, { profile, ...workoutRows(library, planEntriesFor(profile)) });
+    }
+
+    case "GET /api/garmin/workout": {
+      requireGarmin(who);
+      const id = url.searchParams.get("id") ?? "";
+      if (!/^[\w-]+$/.test(id)) throw new HttpError(400, "Missing or invalid workout id");
+      const profile = profileFor(who, "", url.searchParams.get("profile"));
+      const { value: workout } = await viaGarmin(() => getLibraryWorkout(profile, id));
+      if (!workout) throw new HttpError(404, `Workout ${id} not found on Garmin.`);
+      const plans = planEntriesFor(profile)
+        .filter((e) => sameId(e.workout.workoutId, id))
+        .map((e) => {
+          let differences: string[];
+          try {
+            differences = diffPlanWorkout(e.workout, workout);
+          } catch (error) {
+            differences = [`Could not compare: ${(error as Error).message}`];
+          }
+          return { path: e.path, index: e.index, mtimeMs: e.mtimeMs, workout: e.workout, differences };
+        });
+      return send(res, 200, { profile, workout, plans });
+    }
+
+    case "POST /api/garmin/workout":
+      return send(res, 201, await createWorkout(await readBody(req), who));
+
+    case "PUT /api/garmin/workout":
+      return send(res, 200, await updateWorkout(await readBody(req), who));
+
+    case "DELETE /api/garmin/workout":
+      return send(res, 200, await deleteWorkout(await readBody(req), who));
+
+    case "POST /api/garmin/status": {
+      // Is each workout of a plan up to date on Garmin? Body: { path, text? (unsaved editor content), profile?, refresh? }.
+      const body = await readBody(req);
+      requireGarmin(who);
+      const { logical, absolute } = scoped(body.path);
+      let text = body.text;
+      if (typeof text !== "string") {
+        if (!fs.existsSync(absolute)) throw new HttpError(404, `File not found: ${logical}`);
+        text = fs.readFileSync(absolute, "utf8");
+      }
+      const data: any = parseOr400(text);
+      const workouts = Array.isArray(data) ? data : Array.isArray(data?.workouts) ? data.workouts : null;
+      if (!workouts) return send(res, 200, { statuses: [] });
+      const profile = profileFor(who, logical, body.profile);
+      const { value: statuses } = await viaGarmin(() => checkWorkoutSync(profile, workouts, body.refresh === true));
+      return send(res, 200, { profile, statuses });
+    }
+
     case "POST /api/validate": {
       const body = await readBody(req);
       return send(res, 200, { validation: validateText(body.text) });
@@ -518,7 +848,7 @@ export function startWebServer(options: WebServerOptions): Promise<http.Server> 
       await handleApi(req, res, url, who);
     } catch (error) {
       if (res.headersSent) return void res.destroy();
-      if (error instanceof HttpError) return send(res, error.status, { error: error.message });
+      if (error instanceof HttpError) return send(res, error.status, { error: error.message, ...error.extra });
       console.error("[web] error:", error);
       send(res, 500, { error: "Internal error" });
     }
