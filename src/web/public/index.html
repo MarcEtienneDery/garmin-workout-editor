@@ -10,7 +10,7 @@
   * { box-sizing:border-box; }
   [hidden] { display:none !important; }
   html,body { height:100%; margin:0; }
-  body { height:100dvh; background:var(--bg); color:var(--fg); font:13px/1.4 system-ui,sans-serif; display:grid; grid-template-rows:auto minmax(0,1fr) auto; -webkit-tap-highlight-color:transparent; }
+  body { height:100dvh; background:var(--bg); color:var(--fg); font:13px/1.4 system-ui,sans-serif; display:grid; grid-template-rows:auto minmax(0,1fr) auto; grid-template-columns:minmax(0,1fr); -webkit-tap-highlight-color:transparent; }
   header { position:relative; display:flex; gap:6px; align-items:center; padding:6px 10px; background:var(--panel); border-bottom:1px solid var(--line); flex-wrap:wrap; }
   header h1 { font-size:13px; margin:0 8px 0 0; }
   #current { color:var(--dim); margin-left:auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
@@ -115,6 +115,9 @@
   /* ── Mobile: one pane at a time, switched from a bottom tab bar ── */
   @media (max-width:900px) {
     :root { --tabbar-h:52px; }
+    /* Fit the visible area: --vvh/--vvtop follow the visual viewport (set in fitViewport) so an on-screen keyboard doesn't cover the editor. */
+    html { overflow:hidden; }
+    body { position:fixed; top:0; left:0; width:100%; height:var(--vvh, 100dvh); transform:translateY(var(--vvtop, 0px)); }
     header { padding:6px 10px; padding-top:calc(6px + env(safe-area-inset-top)); flex-wrap:nowrap; gap:8px; }
     header h1 { display:none; }
     button { min-height:40px; padding:6px 14px; font-size:14px; }
@@ -125,7 +128,9 @@
       background:var(--panel); border-bottom:1px solid var(--line); box-shadow:0 8px 16px rgba(0,0,0,.5); }
     body.menu-open #actions { display:grid; max-height:75dvh; overflow:auto; }
     #profile { grid-column:1 / -1; }
-    select, input[type="search"] { min-height:40px; font-size:14px; }
+    /* iOS zooms the page in when a field under 16px gets focus; Monaco's hidden textarea inherits the editor's 14px. */
+    select, input[type="search"], .monaco-editor .inputarea { min-height:40px; font-size:16px !important; }
+    .monaco-editor .inputarea { min-height:0; }
     #activity pre { padding:4px 12px; font-size:12px; }
 
     main { display:block; position:relative; overflow:hidden; }
@@ -160,7 +165,7 @@
     .chip { font-size:12px; }
     .row .chip { min-width:30px; text-align:center; font-size:15px; line-height:22px; }
     #wbody { padding:12px 14px 24px; font-size:15px; }
-    #wdlg[open] { width:100vw; max-width:100vw; height:100dvh; max-height:100dvh; margin:0; border-radius:0; border:0; }
+    #wdlg[open] { width:100vw; max-width:100vw; height:var(--vvh, 100dvh); max-height:var(--vvh, 100dvh); top:var(--vvtop, 0px); margin:0; border-radius:0; border:0; }
     #dlg { width:94vw; }
 
     #tabbar { display:grid; grid-template-columns:repeat(5,1fr); background:var(--panel); border-top:1px solid var(--line); padding-bottom:env(safe-area-inset-bottom); }
@@ -277,7 +282,59 @@ function setTab(tab) {
   $("menu").setAttribute("aria-expanded", "false");
   document.querySelectorAll("#tabbar button").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.tab === tab)));
   if (editor) requestAnimationFrame(() => editor.layout());
+  navSync();
 }
+
+// ── Size to the visible area ──
+// iOS Safari leaves the layout viewport full-height under the on-screen keyboard and scrolls the page instead,
+// so the CSS sizes the app from the visual viewport. (Chrome on Android resizes the layout viewport itself.)
+const vv = window.visualViewport;
+function fitViewport() {
+  const root = document.documentElement.style;
+  if (!vv || vv.scale > 1.01) { root.removeProperty("--vvh"); root.removeProperty("--vvtop"); return; } // leave a pinch-zoom alone
+  root.setProperty("--vvh", vv.height + "px"); root.setProperty("--vvtop", vv.offsetTop + "px");
+}
+if (vv) { vv.addEventListener("resize", fitViewport); vv.addEventListener("scroll", fitViewport); fitViewport(); }
+
+// ── History: the browser's back button walks through views, tabs, panes and open dialogs ──
+// Every entry holds the view/tab/pane it shows and the key of the entry before it; dialogs add an `ov` entry on top.
+let navKeyNow = null, navRestoring = false;
+const navState = () => ({ view: document.body.dataset.view, tab: document.body.dataset.tab, wpane: document.body.dataset.wpane || "list" });
+// The desktop layout shows every pane at once, so only the view is worth a history entry there.
+const navKey = (s) => s.view + (mobileQuery.matches ? "/" + (s.view === "plans" ? s.tab : s.wpane) : "");
+function navSync() {
+  if (navRestoring) return;
+  const s = navState(), key = navKey(s);
+  if (key === navKeyNow) return;
+  // A dialog entry whose dialog has closed is reused rather than left behind.
+  const reuse = navKeyNow === null || (history.state && history.state.ov && !document.querySelector("dialog[open]"));
+  history[reuse ? "replaceState" : "pushState"]({ ...s, prev: navKeyNow }, "");
+  navKeyNow = key;
+}
+/** Call right after showModal(): Back closes the dialog, and closing it any other way drops its history entry. */
+function navDialog(dlg) {
+  history.pushState({ ...navState(), prev: navKeyNow, ov: dlg.id }, "");
+  dlg.addEventListener("close", () => { if (history.state && history.state.ov === dlg.id) history.back(); }, { once: true });
+}
+function showWorkoutList() {
+  if (document.body.dataset.wpane !== "detail") return;
+  const s = history.state;
+  if (s && !s.ov && s.prev === navKey({ ...navState(), wpane: "list" })) return history.back(); // the entry we came from
+  document.body.dataset.wpane = "list"; navSync();
+}
+window.addEventListener("popstate", (e) => {
+  const s = e.state;
+  for (const d of document.querySelectorAll("dialog[open]")) if (!s || s.ov !== d.id) d.close();
+  if (!s) return;
+  navRestoring = true;
+  try {
+    if (s.view !== document.body.dataset.view) setView(s.view);
+    setTab(s.tab);
+    document.body.dataset.wpane = s.wpane === "detail" && !W.selected ? "list" : s.wpane;
+  } finally { navRestoring = false; }
+  navKeyNow = navKey(navState());
+  if (s.ov) history.replaceState({ ...navState(), prev: s.prev }, ""); // forward onto a dialog that is no longer open
+});
 function toggleMenu() {
   const open = document.body.classList.toggle("menu-open");
   $("menu").setAttribute("aria-expanded", String(open));
@@ -675,6 +732,7 @@ function setView(view) {
   $("tabWorkouts").setAttribute("aria-selected", String(view === "workouts"));
   if (view === "workouts") guard(loadWorkouts)();
   else if (editor) requestAnimationFrame(() => editor.layout());
+  navSync();
 }
 
 function rowState(row) {
@@ -755,13 +813,13 @@ function clearDetail() {
   W.selected = null; W.detail = null; W.detailRun++;
   $("wTitle").textContent = "Workout"; $("wEdit").disabled = $("wDelete").disabled = true;
   $("wbody").innerHTML = '<div class="empty">Select a workout.</div>';
-  document.body.dataset.wpane = "list";
+  showWorkoutList();
 }
 
 async function selectRow(key) {
   const row = W.rows.find((r) => r.key === key);
   if (!row) return;
-  W.selected = key; document.body.dataset.wpane = "detail";
+  W.selected = key; document.body.dataset.wpane = "detail"; navSync();
   renderRows();
   const token = ++W.detailRun;
   $("wTitle").textContent = row.workoutName; $("wEdit").disabled = $("wDelete").disabled = true;
@@ -909,7 +967,7 @@ function askDialog({ title, text, options = [], ok = "OK", danger = false }) {
     $("dlgOk").onclick = () => done(Object.fromEntries(boxes.map(([id, cb]) => [id, cb.checked])));
     $("dlgCancel").onclick = () => done(null);
     dlg.onclose = () => resolve(null); // Escape
-    dlg.showModal();
+    dlg.showModal(); navDialog(dlg);
   });
 }
 
@@ -972,7 +1030,7 @@ async function openWorkoutDialog(mode, workout) {
   $("wdUpload").checked = garmin.enabled; $("wdUpload").disabled = garminOnly;
   $("wdSchedule").checked = true;
   dlgEditor.setValue(JSON.stringify(workout, null, 2) + "\n");
-  $("wdlg").showModal();
+  $("wdlg").showModal(); navDialog($("wdlg"));
   dlgEditor.layout(); updateScheduleBox();
   setTimeout(checkDialog, 0);
 }
@@ -1081,7 +1139,7 @@ function bindWorkoutsView() {
   $("wRefresh").onclick = guard(() => loadWorkouts(true));
   $("wProfile").onchange = guard(() => { W.profile = $("wProfile").value; W.rows = []; clearDetail(); return loadWorkouts(); });
   $("wFilter").oninput = () => { W.filter = $("wFilter").value; renderRows(); };
-  $("wBackList").onclick = () => { document.body.dataset.wpane = "list"; };
+  $("wBackList").onclick = showWorkoutList;
   $("wNew").onclick = guard(() => openWorkoutDialog("new", newWorkout("New workout")));
   $("wEdit").onclick = guard(() => { const d = W.detail; return d && openWorkoutDialog("edit", d.plans.length ? d.plans[0].workout : d.garmin); });
   $("wDelete").onclick = guard(deleteSelected);
