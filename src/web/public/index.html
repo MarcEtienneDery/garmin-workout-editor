@@ -10,9 +10,13 @@
   * { box-sizing:border-box; }
   [hidden] { display:none !important; }
   html,body { height:100%; margin:0; }
-  body { height:100dvh; background:var(--bg); color:var(--fg); font:13px/1.4 system-ui,sans-serif; display:grid; grid-template-rows:auto minmax(0,1fr) auto; grid-template-columns:minmax(0,1fr); -webkit-tap-highlight-color:transparent; }
-  header { position:relative; display:flex; gap:6px; align-items:center; padding:6px 10px; background:var(--panel); border-bottom:1px solid var(--line); flex-wrap:wrap; }
+  body { height:100dvh; background:var(--bg); color:var(--fg); font:13px/1.4 system-ui,sans-serif; display:grid; grid-template-rows:auto auto minmax(0,1fr) auto; grid-template-columns:minmax(0,1fr); -webkit-tap-highlight-color:transparent; }
+  /* Every view has the same frame: the header (name, view switcher, account), then that view's own toolbar and content, then on phones the bottom tabs. */
+  header { grid-row:1; } #toolbar { grid-row:2; } main, #wview, #cview { grid-row:3; } #tabbar { grid-row:4; }
+  header, #toolbar { position:relative; display:flex; gap:6px; align-items:center; padding:6px 10px; background:var(--panel); border-bottom:1px solid var(--line); }
+  #toolbar { flex-wrap:wrap; }
   header h1 { font-size:13px; margin:0 8px 0 0; }
+  #account { margin-left:auto; }
   #current { color:var(--dim); flex:1 1 0; min-width:0; display:flex; justify-content:flex-end; white-space:nowrap; }
   #current .dir { flex:0 100 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; }
   #current b { flex:0 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; }
@@ -97,7 +101,7 @@
   :is(#views, .seg) button:first-child { border-radius:3px 0 0 3px; } :is(#views, .seg) button:last-child { border-radius:0 3px 3px 0; }
   :is(#views, .seg) button + button { margin-left:-1px; }
   :is(#views, .seg) button[aria-pressed="true"] { background:var(--accent); border-color:var(--accent); color:#fff; }
-  body:not([data-view="plans"]) :is(#save, #actions, #current, #menu, main, #tabbar) { display:none !important; }
+  body:not([data-view="plans"]) :is(#toolbar, main, #tabbar) { display:none !important; }
   body:not([data-view="workouts"]) #wview { display:none; }
   #wview { display:grid; grid-template-columns:380px 1fr; min-height:0; }
   #wlist, #wdetail { display:flex; flex-direction:column; min-height:0; min-width:0; }
@@ -208,8 +212,10 @@
     /* Fit the visible area: --vvh/--vvtop follow the visual viewport (set in fitViewport) so an on-screen keyboard doesn't cover the editor. */
     html { overflow:hidden; }
     body { position:fixed; top:0; left:0; width:100%; height:var(--vvh, 100dvh); transform:translateY(var(--vvtop, 0px)); }
-    header { padding:6px 10px; padding-top:calc(6px + env(safe-area-inset-top)); flex-wrap:nowrap; gap:8px; }
+    header { gap:8px; padding-top:calc(6px + env(safe-area-inset-top)); }
+    #toolbar { flex-wrap:nowrap; gap:8px; }
     header h1 { display:none; }
+    #views { flex:1; min-width:0; }
     button { min-height:40px; padding:6px 14px; font-size:14px; }
     #current { font-size:14px; }
     #current .dir { display:none; }
@@ -254,10 +260,7 @@
     .empty { padding:16px 12px; font-size:14px; }
     #toast { max-width:92vw; font-size:14px; }
 
-    #views { display:none; }
-    body:not([data-view="plans"]) #views { display:flex; }
-    body:not([data-view="plans"]) header { justify-content:center; }
-    #views button { min-width:0; padding:6px 10px; }
+    #views button { flex:1; min-width:0; padding:6px 4px; }
     #wview { display:block; position:relative; overflow:hidden; }
     #wlist, #wdetail { width:100%; height:100%; border:0; }
     body:not([data-wpane="detail"]) #wdetail, body[data-wpane="detail"] #wlist { display:none; }
@@ -284,10 +287,9 @@
     .cday { padding:2px 3px; }
     #cdow span { padding:4px 0; font-size:10px; letter-spacing:0; }
     .citem button { min-height:32px; }
-    /* the calendar and workouts headers carry a three-way switcher: on narrow phones the account shows its avatar alone */
-    @media (max-width:420px) { body:not([data-view="plans"]) #accountName { display:none; } }
+    @media (max-width:420px) { #accountName { display:none; } } /* the account shows its avatar alone, to leave the switcher the room */
 
-    #tabbar { display:grid; grid-template-columns:repeat(6,1fr); background:var(--panel); border-top:1px solid var(--line); padding-bottom:env(safe-area-inset-bottom); }
+    #tabbar { display:grid; grid-template-columns:repeat(4,1fr); background:var(--panel); border-top:1px solid var(--line); padding-bottom:env(safe-area-inset-bottom); }
     #tabbar button { border:0; border-radius:0; background:none; height:var(--tabbar-h); padding:4px 0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; font-size:11px; color:var(--dim); }
     #tabbar button span { font-size:18px; line-height:1; }
     #tabbar button[aria-selected="true"] { color:var(--fg); box-shadow:inset 0 2px 0 var(--accent); }
@@ -316,6 +318,16 @@
     <button id="vWorkouts" aria-pressed="false">Workouts</button>
     <button id="vCalendar" aria-pressed="false">Calendar</button>
   </nav>
+  <div class="dd account" id="account" hidden>
+    <button id="accountBtn" class="menubtn" aria-expanded="false" aria-controls="accountMenu" title="Account"><span class="avatar" id="accountAvatar" aria-hidden="true"></span><span id="accountName"></span></button>
+    <div class="menu" id="accountMenu">
+      <div class="who"><small>Signed in as</small><b id="accountWho"></b><small id="accountRole"></small></div>
+      <hr>
+      <button id="logout">Sign out</button>
+    </div>
+  </div>
+</header>
+<div id="toolbar" aria-label="File tools">
   <button id="save" class="primary" disabled>Save</button>
   <div id="actions">
     <button id="new">+ New</button>
@@ -346,16 +358,8 @@
     </div>
   </div>
   <span id="current">No file open</span>
-  <div class="dd account" id="account" hidden>
-    <button id="accountBtn" class="menubtn" aria-expanded="false" aria-controls="accountMenu" title="Account"><span class="avatar" id="accountAvatar" aria-hidden="true"></span><span id="accountName"></span></button>
-    <div class="menu" id="accountMenu">
-      <div class="who"><small>Signed in as</small><b id="accountWho"></b><small id="accountRole"></small></div>
-      <hr>
-      <button id="logout">Sign out</button>
-    </div>
-  </div>
   <button id="menu" aria-label="More actions" aria-expanded="false">⋯</button>
-</header>
+</div>
 <main>
   <aside id="files"></aside>
   <div id="editor"></div>
@@ -425,8 +429,6 @@
   <button role="tab" data-tab="editor"><span>✎</span>Editor</button>
   <button role="tab" data-tab="outline"><span>☰</span>Outline</button>
   <button role="tab" data-tab="problems"><span>⚠</span>Checks<b class="badge" id="badge"></b></button>
-  <button role="tab" id="tabWorkouts"><span>⌚</span>Workouts</button>
-  <button role="tab" id="tabCalendar"><span>📅</span>Calendar</button>
 </nav>
 <div id="toast"></div>
 
@@ -703,10 +705,11 @@ async function openFile(p) {
   if (current && current.path !== p && isDirty() && !(await confirmDiscard())) return;
   const f = await api("GET", fileUrl(p));
   current = { path: f.path, version: f.version };
-  setTab("editor");
   savedText = f.text;
   editor.setValue(f.text);
   editor.setScrollTop(0);
+  // A plan opens on its outline (the JSON is one tab away). A file with no workout list to outline, or with broken JSON, opens in the editor.
+  setTab(workoutsOf(parsed()) ? "outline" : "editor");
   setButtons();
   refreshFiles();
   runValidate();
@@ -1139,8 +1142,6 @@ function setView(view) {
   $("vPlans").setAttribute("aria-pressed", String(view === "plans"));
   $("vWorkouts").setAttribute("aria-pressed", String(view === "workouts"));
   $("vCalendar").setAttribute("aria-pressed", String(view === "calendar"));
-  $("tabWorkouts").setAttribute("aria-selected", String(view === "workouts"));
-  $("tabCalendar").setAttribute("aria-selected", String(view === "calendar"));
   if (view === "workouts") guard(loadWorkouts)();
   else if (view === "calendar") guard(loadCalendar)(); // plans change in the editor, so look again on every visit
   else if (editor) requestAnimationFrame(() => editor.layout());
@@ -1631,7 +1632,7 @@ function renderSide() {
 }
 
 function bindCalendarView() {
-  $("vCalendar").onclick = $("tabCalendar").onclick = () => setView("calendar");
+  $("vCalendar").onclick = () => setView("calendar");
   $("cPrev").onclick = () => gotoMonth(addMonths(C.month, -1));
   $("cNext").onclick = () => gotoMonth(addMonths(C.month, 1));
   $("cToday").onclick = () => { C.selected = todayIso(); gotoMonth(C.selected.slice(0, 7)); };
@@ -1931,7 +1932,6 @@ function bindMenus() {
 
 function bindWorkoutsView() {
   $("vPlans").onclick = () => setView("plans"); $("vWorkouts").onclick = () => setView("workouts");
-  $("tabWorkouts").onclick = () => setView("workouts");
   $("wRefresh").onclick = guard(() => loadWorkouts(true));
   $("wProfile").onchange = guard(() => { W.profile = $("wProfile").value; W.rows = []; clearDetail(); return loadWorkouts(); });
   $("wFilter").oninput = () => { W.filter = $("wFilter").value; renderRows(); };
