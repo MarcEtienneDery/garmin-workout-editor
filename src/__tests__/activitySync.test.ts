@@ -261,6 +261,36 @@ describe("listing the history", () => {
   });
 });
 
+describe("the old activity documents", () => {
+  const putDocs = () => {
+    for (const logical of ["data/MED/activities.json", "data/MED/activities-raw.json", "data/MED/activities-50.tmp.json", "data/SAM/activities.json", "data/MED/training-plan.json", "data/MED/workouts.json", "workout-plans/activities.json"]) {
+      store.put(logical, "{}", { source: "test" });
+    }
+  };
+  const left = () => store.list("").map((m) => m.path).sort();
+
+  it("are deleted, and only that profile's, once the whole history is stored", async () => {
+    putDocs();
+    await syncList(store, PROFILE, fakeGarmin(30).source);
+    expect(left()).toEqual(["data/MED/training-plan.json", "data/MED/workouts.json", "data/SAM/activities.json", "workout-plans/activities.json"]);
+  });
+
+  it("stay while the history is only partly stored, and can be restored from the trash", async () => {
+    putDocs();
+    const garmin = fakeGarmin(250);
+    const flaky: ActivitySource = { ...garmin.source, listPage: async (offset, limit) => { if (offset >= 100) throw new Error("network down"); return garmin.source.listPage(offset, limit); } };
+    await expect(syncList(store, PROFILE, flaky)).rejects.toThrow();
+    expect(left()).toContain("data/MED/activities.json");
+
+    await syncList(store, PROFILE, garmin.source);
+    expect(left()).not.toContain("data/MED/activities.json");
+    expect(store.deleted().map((d) => d.path).sort()).toEqual(["data/MED/activities-50.tmp.json", "data/MED/activities-raw.json", "data/MED/activities.json"]);
+    store.put("data/MED/activities.json", "{}", { create: true, source: "restore" });
+    await syncList(store, PROFILE, garmin.source);
+    expect(store.head("data/MED/activities.json")).toBeDefined(); // deleted once, not on every sync
+  });
+});
+
 describe("fetching details", () => {
   const filled = async (garmin: ReturnType<typeof fakeGarmin>) => {
     await syncList(store, PROFILE, garmin.source);

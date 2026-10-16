@@ -78,6 +78,29 @@ interface Pace {
  * back, to the end of the history, and then records that the history is complete.
  */
 export async function syncList(store: SqliteStore, profile: string, source: ActivitySource, options: Pace = {}): Promise<{ added: number; pages: number; complete: boolean }> {
+  const wasComplete = store.activities.state(profile).complete;
+  const result = await listActivities(store, profile, source, options);
+  if (result.complete && !wasComplete) retireActivityDocuments(store, profile); // once: a document restored later is left alone
+  return result;
+}
+
+/**
+ * Activities used to be saved as documents (data/<profile>/activities.json and its variants), overwritten on each
+ * fetch. Once the table holds the whole history those are stale copies, so they are deleted; like any deleted
+ * document they stay restorable from the trash.
+ */
+export function retireActivityDocuments(store: SqliteStore, profile: string): string[] {
+  const gone: string[] = [];
+  for (const meta of store.list("data/")) {
+    const m = /^data\/([^/]+)\/activities[^/]*\.json$/i.exec(meta.path);
+    if (!m || m[1].toLowerCase() !== profile.toLowerCase()) continue;
+    store.remove(meta.path, { source: "activity-sync" });
+    gone.push(meta.path);
+  }
+  return gone;
+}
+
+async function listActivities(store: SqliteStore, profile: string, source: ActivitySource, options: Pace): Promise<{ added: number; pages: number; complete: boolean }> {
   const table = store.activities, state = table.state(profile);
   let added = 0, pages = 0;
   const page = async (offset: number) => {
