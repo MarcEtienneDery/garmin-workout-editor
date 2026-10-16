@@ -243,6 +243,14 @@
   .ahead { color:var(--dim); }
   .ahead b { display:block; color:var(--fg); font-size:15px; }
   #abody h3 { margin:16px 0 6px; font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--dim); }
+  .amapbar { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin:0 0 6px; }
+  .amapbar small { color:var(--dim); }
+  .amap { height:260px; border:1px solid var(--line); border-radius:4px; overflow:hidden; background:#1e1e1e; }
+  .amap.leaflet-container { background:#1e1e1e; font:inherit; }
+  /* dark tiles from the light ones: the filter is on the tile layer alone, so the route and the markers keep their colours */
+  .amap .leaflet-tile-pane { filter:invert(1) hue-rotate(180deg) brightness(.95) contrast(.9); }
+  .amap .leaflet-control-attribution { background:rgba(30,30,30,.8); color:var(--dim); font-size:10px; }
+  .amap .leaflet-control-attribution a { color:var(--accent); }
   .acg { margin:4px 0 8px; }
   .acbar { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:4px; min-height:26px; }
   .acread { color:var(--dim); margin-left:auto; }
@@ -428,6 +436,7 @@
     .tchip { flex:none; min-height:32px; padding:0 10px; }
     #aSearch { flex:1 1 90px; }
     #abody { padding:12px 14px 24px; font-size:15px; }
+    .amap { height:230px; }
     #cview { display:block; height:100%; overflow:auto; overscroll-behavior:contain; }
     #cmain, #cscroll { display:block; overflow:visible; padding-left:0; padding-right:0; }
     #cbar { position:sticky; top:0; z-index:3; }
@@ -671,6 +680,7 @@
 <script src="/workoutModel.js"></script>
 <script src="/activityModel.js"></script>
 <script src="/activityCharts.js"></script>
+<script src="/activityMap.js"></script>
 <script src="/workoutListModel.js"></script>
 <script src="/vendor/monaco/loader.js"></script>
 <script>
@@ -2290,6 +2300,7 @@ async function loadPlannedPlans() {
 // ── One activity ──
 
 function clearActivity() {
+  if (A.map) { A.map.destroy(); A.map = null; }
   A.selected = null; A.detail = null; A.detailRun++;
   $("aDetailTitle").textContent = "Activity";
   $("abody").innerHTML = '<div class="empty">Select an activity.</div>';
@@ -2373,6 +2384,26 @@ function extraStats(d, add) {
   }
 }
 
+/** The route on a tile map, coloured by pace or heart rate; the map loads when it is first drawn. */
+function routeSection(c, g, box) {
+  box.append(mk("h3", "", "Route"));
+  const bar = mk("div", "amapbar"), seg = mk("div", "seg"), holder = mk("div", "amap");
+  const modes = [["pace", "Pace"], ["hr", "Heart rate"], ["none", "Plain"]];
+  let by = "pace";
+  for (const [key, label] of modes) {
+    const b = mk("button", "", label); b.dataset.by = key;
+    b.setAttribute("aria-pressed", String(key === by));
+    b.onclick = () => { by = key; [...seg.children].forEach((x) => x.setAttribute("aria-pressed", String(x.dataset.by === by))); if (A.map) A.map.recolor(by); };
+    seg.append(b);
+  }
+  bar.append(seg, mk("small", "", "Red is slower or harder, green is faster or easier."));
+  box.append(bar, holder);
+  const token = A.detailRun;
+  ActivityMap.create(holder, c, { colorBy: by, onCursor: (j) => g.setCursor(j === null ? null : AM.chartIndexFor(c, j)) })
+    .then((map) => { if (token !== A.detailRun || !holder.isConnected) { map.destroy(); return; } A.map = map; if (by !== "pace") map.recolor(by); })
+    .catch((e) => { holder.replaceChildren(mk("div", "anote", e.message || "The map could not be loaded.")); holder.style.height = "auto"; });
+}
+
 /** The graphs of one activity, and the note that says why there are none yet. */
 function chartSection(d, box) {
   const c = d.chart, id = d.activity.id;
@@ -2387,10 +2418,12 @@ function chartSection(d, box) {
     box.append(note);
     return;
   }
-  const g = ActivityCharts.graphs(c, {});
+  // The cursor of the graphs and the marker on the map follow each other.
+  const g = ActivityCharts.graphs(c, { onCursor: (i) => { if (A.map) A.map.setCursor(i === null ? null : AM.routeIndexFor(c, i)); } });
   A.graphs = g;
   if (!g.el.childElementCount) box.append(mk("div", "anote", "Garmin has no time series for this activity."));
   else box.append(g.el);
+  if (c.route) routeSection(c, g, box);
 
   // laps as the watch recorded them, and kilometer splits worked out from the series
   const laps = c.laps.filter((l) => l.meters > 0 || l.seconds > 0), splits = c.splits;
@@ -2416,7 +2449,9 @@ function chartSection(d, box) {
 }
 
 function renderActivityDetail() {
-  const d = A.detail, box = $("abody"); box.replaceChildren();
+  const d = A.detail, box = $("abody");
+  if (A.map) { A.map.destroy(); A.map = null; } // the pane is rebuilt, and a map left behind would keep listening
+  box.replaceChildren();
   A.graphs = null;
   if (!d) return;
   const r = d.activity, s = d.slim || {};

@@ -74,6 +74,7 @@ import {
 const PUBLIC_DIR = path.join(__dirname, "public");
 // Monaco is served from node_modules so the editor works offline (e.g. on the NAS).
 const MONACO_DIR = path.join(PROJECT_ROOT, "node_modules", "monaco-editor", "min", "vs");
+const LEAFLET_DIR = path.join(PROJECT_ROOT, "node_modules", "leaflet", "dist");
 const MAX_BODY_BYTES = 10 * 1024 * 1024;
 const SESSION_COOKIE = "plan_editor_session";
 /** Set by sign out: a browser that cached Basic credentials (earlier versions asked for them) keeps sending them, so they are ignored while this is set. */
@@ -780,6 +781,7 @@ const MIME: Record<string, string> = {
   ".json": "application/json",
   ".ttf": "font/ttf",
   ".svg": "image/svg+xml",
+  ".png": "image/png",
 };
 
 function serveStatic(pathname: string, res: http.ServerResponse): void {
@@ -788,6 +790,9 @@ function serveStatic(pathname: string, res: http.ServerResponse): void {
   if (name.startsWith("vendor/monaco/")) {
     root = MONACO_DIR;
     name = name.slice("vendor/monaco/".length);
+  } else if (name.startsWith("vendor/leaflet/")) {
+    root = LEAFLET_DIR;
+    name = name.slice("vendor/leaflet/".length);
   }
   let full: string;
   try {

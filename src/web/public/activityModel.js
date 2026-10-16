@@ -225,5 +225,23 @@
     return h ? `${h}:${pad(m)}:${pad(t % 60)}` : `${m}:${pad(t % 60)}`;
   }
 
-  return { niceRange, smooth, trimRange, nearestIndex, zoneShares, volumeByExercise, compare, axisClock, weekOf, totals, groupWeeks, byDate, rangeStart, filterRows, duration, pace, distance, clock, planned, planSport, newestFirst };
+  /** Where on the route (an index) the activity was at sample i of the series: by distance, else in proportion. -1 with no route. */
+  function routeIndexFor(chart, i) {
+    const route = chart && chart.route;
+    if (!route || !route.lat.length) return -1;
+    const d = chart.distance[i];
+    if (d !== null && d !== undefined && route.distance.some((x) => x !== null && x !== undefined)) return nearestIndex(route.distance, d);
+    const n = chart.time.length;
+    return n > 1 ? Math.round((i / (n - 1)) * (route.lat.length - 1)) : 0;
+  }
+
+  /** The sample of the series for a point of the route, the other way round. -1 with no series. */
+  function chartIndexFor(chart, j) {
+    if (!chart || !chart.time.length || !chart.route) return -1;
+    const d = chart.route.distance[j];
+    if (d !== null && d !== undefined && chart.distance.some((x) => x !== null && x !== undefined)) return nearestIndex(chart.distance, d);
+    return chart.route.lat.length > 1 ? Math.round((j / (chart.route.lat.length - 1)) * (chart.time.length - 1)) : 0;
+  }
+
+  return { routeIndexFor, chartIndexFor, niceRange, smooth, trimRange, nearestIndex, zoneShares, volumeByExercise, compare, axisClock, weekOf, totals, groupWeeks, byDate, rangeStart, filterRows, duration, pace, distance, clock, planned, planSport, newestFirst };
 });

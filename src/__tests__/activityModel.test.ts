@@ -200,3 +200,27 @@ describe("chart helpers", () => {
     expect(A.axisClock(3725)).toBe("1:02:05");
   });
 });
+
+describe("route and series", () => {
+  const chart = {
+    time: [0, 10, 20, 30, 40], distance: [0, 100, 200, 300, 400],
+    route: { lat: [1, 2, 3, 4], lon: [1, 2, 3, 4], distance: [0, 130, 270, 400] as (number | null)[] },
+  };
+
+  it("finds the point of the route for a sample by distance, and the sample for a point", () => {
+    expect(A.routeIndexFor(chart, 0)).toBe(0);
+    expect(A.routeIndexFor(chart, 1)).toBe(1); // 100 m is nearest the 130 m point
+    expect(A.routeIndexFor(chart, 4)).toBe(3);
+    expect(A.chartIndexFor(chart, 2)).toBe(3); // 270 m is nearest the 300 m sample
+    expect(A.chartIndexFor(chart, 0)).toBe(0);
+  });
+
+  it("goes by proportion when either side has no distances, and says -1 when there is no route or no series", () => {
+    const noDist = { ...chart, route: { ...chart.route, distance: [null, null, null, null] } };
+    expect(A.routeIndexFor(noDist, 2)).toBe(2); // half way along
+    expect(A.chartIndexFor(noDist, 3)).toBe(4);
+    expect(A.routeIndexFor({ ...chart, route: null }, 1)).toBe(-1);
+    expect(A.chartIndexFor({ ...chart, time: [] }, 1)).toBe(-1);
+    expect(A.routeIndexFor(null, 0)).toBe(-1);
+  });
+});

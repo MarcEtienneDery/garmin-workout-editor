@@ -315,6 +315,19 @@ describe("web plan editor", () => {
     });
   });
 
+  describe("map library", () => {
+    it("serves Leaflet from node_modules, with its stylesheet and images, without a login", async () => {
+      for (const [file, type] of [["leaflet.js", /javascript/], ["leaflet.css", /css/], ["images/marker-icon.png", /image\/png/]] as const) {
+        const res = await fetch(`${base}/vendor/leaflet/${file}`);
+        expect(res.status).toBe(200);
+        expect(res.headers.get("content-type")).toMatch(type);
+      }
+      expect((await fetch(`${base}/vendor/leaflet/../package.json`)).status).toBe(404);
+      expect((await fetch(`${base}/vendor/leaflet/missing.js`)).status).toBe(404);
+      expect((await fetch(`${base}/activityMap.js`)).status).toBe(200);
+    });
+  });
+
   describe("activities view", () => {
     const item = (id: number, day: string, typeKey: string, extra: Record<string, unknown> = {}) => ({
       activityId: id,
