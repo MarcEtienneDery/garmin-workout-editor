@@ -163,6 +163,73 @@ describe("web plan editor", () => {
     expect(res.status).toBe(200);
     expect(await res.text()).toContain("vendor/monaco");
   });
+
+  describe("calendar", () => {
+    const run = (workoutName: string, scheduledDate?: unknown, extra: object = {}) => ({ workoutName, workoutType: "running", scheduledDate, ...extra });
+    const calendar = async (headers = H) => (await call("GET", "/api/calendar", undefined, headers)).json.plans as any[];
+    const byPath = (plans: any[], p: string) => plans.find((x) => x.path === p);
+
+    it("lists each plan's workouts with their dates, whether written as one date or a list", async () => {
+      seed("workout-plans/b.json", { workouts: [run("One", "2026-08-01"), run("Many", ["2026-08-05", "2026-08-03", "2026-08-03"]), run("None")] });
+      const plans = await calendar();
+      expect(plans.map((p) => p.path)).toEqual(["workout-plans/b.json", "workout-plans/a.json"]); // dated first
+      expect(byPath(plans, "workout-plans/b.json").workouts).toEqual([
+        expect.objectContaining({ index: 0, workoutName: "One", workoutType: "running", dates: ["2026-08-01"] }),
+        expect.objectContaining({ index: 1, workoutName: "Many", dates: ["2026-08-03", "2026-08-05"] }),
+        expect.objectContaining({ index: 2, workoutName: "None", dates: [] }),
+      ]);
+    });
+
+    it("widens a plan's span beyond weekStart and weekEnd with its scheduled dates", async () => {
+      seed("workout-plans/hm.json", { weekStart: "2026-07-27", weekEnd: "2026-08-02", workouts: [run("Early", "2026-07-20"), run("Late", ["2026-08-16", "2026-09-20"]), run("Undated")] });
+      expect(byPath(await calendar(), "workout-plans/hm.json")).toEqual(expect.objectContaining({ weekStart: "2026-07-27", weekEnd: "2026-08-02", start: "2026-07-20", end: "2026-09-20" }));
+    });
+
+    it("keeps the week range for a plan with no scheduled workout, and flags a plan with no dates at all", async () => {
+      seed("workout-plans/windowed.json", { weekStart: "2026-10-12", weekEnd: "2026-11-08", workouts: [run("A"), run("B")] });
+      seed("workout-plans/bare.json", [run("Loose")]);
+      const plans = await calendar();
+      expect(byPath(plans, "workout-plans/windowed.json")).toEqual(expect.objectContaining({ start: "2026-10-12", end: "2026-11-08" }));
+      expect(byPath(plans, "workout-plans/windowed.json").workouts.every((w: any) => w.dates.length === 0)).toBe(true);
+      expect(byPath(plans, "workout-plans/bare.json")).toEqual(expect.objectContaining({ start: null, end: null }));
+      expect(byPath(plans, "workout-plans/a.json")).toEqual(expect.objectContaining({ start: "2026-10-12", end: "2026-10-18" })); // the default plan: week range only
+    });
+
+    it("ignores values that are not real dates", async () => {
+      seed("workout-plans/odd.json", { weekStart: "soon", weekEnd: "2026-02-30", workouts: [run("Bad", ["2026-13-01", "2026-8-1", 20260801, null, "2026-08-04"])] });
+      const odd = byPath(await calendar(), "workout-plans/odd.json");
+      expect(odd.workouts[0].dates).toEqual(["2026-08-04"]);
+      expect(odd).toEqual(expect.objectContaining({ start: "2026-08-04", end: "2026-08-04" }));
+      expect(odd.weekStart).toBeUndefined();
+    });
+
+    it("leaves out Garmin library exports and documents that are not workout lists", async () => {
+      seed("data/MED/workouts.json", [run("Exported", "2026-08-01")]);
+      seed("data/MED/workouts-raw.json", [run("Raw", "2026-08-01")]);
+      seed("data/MED/training-plan.json", { goals: { primary: "HM" } });
+      seed("data/MED/mine.json", { workouts: [run("Mine", "2026-08-02")] });
+      seed("workout-plans/notes.json", "not json at all");
+      expect((await calendar()).map((p) => p.path).sort()).toEqual(["data/MED/mine.json", "workout-plans/a.json"]);
+    });
+
+    it("works without any Garmin profile configured", async () => {
+      expect((await call("GET", "/api/garmin")).json.enabled).toBe(false);
+      expect((await call("GET", "/api/calendar")).status).toBe(200);
+    });
+
+    it("keeps a profile login to its own data folder and the plans it may see", async () => {
+      addProfile("MED", "med-pw");
+      addProfile("SAM", "sam-pw");
+      seed("data/MED/w.json", { workouts: [run("Med run", "2026-08-01")] });
+      seed("data/SAM/w.json", { workouts: [run("Sam run", "2026-08-01")] });
+      const login = (user: string, pass: string) => ({ ...H, Authorization: "Basic " + Buffer.from(`${user}:${pass}`).toString("base64") });
+
+      expect((await call("GET", "/api/calendar")).status).toBe(401);
+      expect((await calendar(login("MED", "med-pw"))).map((p) => p.path).sort()).toEqual(["data/MED/w.json", "workout-plans/a.json"]);
+      expect((await calendar(login("SAM", "sam-pw"))).map((p) => p.path).sort()).toEqual(["data/SAM/w.json", "workout-plans/a.json"]);
+    });
+  });
+
   describe("Garmin actions", () => {
     const act = (body: object) => call("POST", "/api/garmin/action", { path: "workout-plans/a.json", confirm: true, ...body });
 

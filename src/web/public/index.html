@@ -92,11 +92,12 @@
   #syncbar button { padding:1px 6px; }
 
   /* ── Workouts view: the Garmin library, next to the plan workouts, with CRUD ── */
-  #views { display:flex; }
-  #views button { border-radius:0; }
-  #views button:first-child { border-radius:3px 0 0 3px; } #views button:last-child { border-radius:0 3px 3px 0; margin-left:-1px; }
-  #views button[aria-pressed="true"] { background:var(--accent); border-color:var(--accent); color:#fff; }
-  body[data-view="workouts"] :is(#save, #actions, #current, #menu, main, #tabbar) { display:none !important; }
+  #views, .seg { display:flex; }
+  :is(#views, .seg) button { border-radius:0; }
+  :is(#views, .seg) button:first-child { border-radius:3px 0 0 3px; } :is(#views, .seg) button:last-child { border-radius:0 3px 3px 0; }
+  :is(#views, .seg) button + button { margin-left:-1px; }
+  :is(#views, .seg) button[aria-pressed="true"] { background:var(--accent); border-color:var(--accent); color:#fff; }
+  body:not([data-view="plans"]) :is(#save, #actions, #current, #menu, main, #tabbar) { display:none !important; }
   body:not([data-view="workouts"]) #wview { display:none; }
   #wview { display:grid; grid-template-columns:380px 1fr; min-height:0; }
   #wlist, #wdetail { display:flex; flex-direction:column; min-height:0; min-width:0; }
@@ -134,6 +135,44 @@
   .plans a { color:var(--accent); cursor:pointer; text-decoration:none; } .plans a:hover { text-decoration:underline; }
   .plans div { padding:2px 0; }
   details.plan-version { margin-top:10px; } details.plan-version summary { cursor:pointer; color:var(--dim); }
+
+  /* ── Calendar view: where the plan files put their workouts ── */
+  body:not([data-view="calendar"]) #cview { display:none; }
+  #cview { display:grid; grid-template-columns:minmax(0,1fr) 320px; min-height:0; }
+  #cmain { display:flex; flex-direction:column; min-height:0; min-width:0; }
+  #cbar { flex-wrap:wrap; }
+  #cTitle { min-width:9em; }
+  #cNote { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  #cNote.err { color:var(--err); }
+  #cscroll { flex:1; min-height:0; overflow:auto; overscroll-behavior:contain; padding:0 10px 10px; }
+  #cdow, .cweek { display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); }
+  #cdow span { padding:6px 4px; text-align:center; color:var(--dim); font-size:11px; text-transform:uppercase; letter-spacing:.06em; }
+  #cgrid { border-right:1px solid var(--line); border-bottom:1px solid var(--line); }
+  /* a week is a grid: row 1 holds the day numbers, the next rows are lanes for plan bars or workout chips */
+  .cweek { grid-auto-rows:20px; }
+  .cday { grid-row:1 / -1; min-width:0; padding:3px 4px; border-left:1px solid var(--line); border-top:1px solid var(--line); cursor:pointer; }
+  .cday:hover { background:#2a2a2b; }
+  .cday.out { background:#1a1a1a; color:var(--dim); }
+  .cday.sel { outline:2px solid var(--accent); outline-offset:-2px; }
+  .cday .dnum { display:inline-block; min-width:20px; padding:0 4px; text-align:center; line-height:18px; border-radius:9px; }
+  .cday.today .dnum { background:var(--accent); color:#fff; }
+  .cbar { z-index:1; height:18px; min-height:0; margin:1px 2px; padding:0 6px; background:var(--c); border:1px solid var(--c); border-radius:3px; color:#fff; font-size:11px; line-height:16px; text-align:left; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .cbar:hover:not(:disabled) { background:var(--c); filter:brightness(1.25); }
+  .cbar.cont-l { margin-left:0; border-top-left-radius:0; border-bottom-left-radius:0; }
+  .cbar.cont-r { margin-right:0; border-top-right-radius:0; border-bottom-right-radius:0; }
+  /* a plan whose span comes from weekStart / weekEnd alone: nothing in it has a scheduledDate */
+  .cbar.window { background:transparent; border-style:dashed; border-color:var(--cl); color:var(--fg); }
+  .cbar.window:hover:not(:disabled) { background:rgba(255,255,255,.07); filter:none; }
+  #cside h2:not(:first-child) { margin-top:6px; }
+  .cblock { padding:0 10px 10px; }
+  .clabel { padding:8px 0 2px; color:var(--dim); font-size:11px; text-transform:uppercase; letter-spacing:.06em; }
+  .citem { display:grid; grid-template-columns:auto minmax(0,1fr) auto; gap:0 8px; align-items:center; padding:5px 4px; border-bottom:1px solid #2f2f2f; }
+  .citem[role="button"] { cursor:pointer; } .citem[role="button"]:hover { background:#2d2d2e; }
+  .citem .sw { width:10px; height:10px; border-radius:2px; background:var(--c); border:1px solid var(--c); }
+  .citem .sw.window { background:transparent; border-style:dashed; border-color:var(--cl); }
+  .citem .n { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .citem small { grid-column:2 / -1; color:var(--dim); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .citem button { padding:1px 8px; }
 
   dialog { background:var(--panel); color:var(--fg); border:1px solid var(--line); border-radius:6px; padding:0; width:min(900px, 96vw); box-shadow:0 12px 40px rgba(0,0,0,.6); }
   dialog::backdrop { background:rgba(0,0,0,.6); }
@@ -216,9 +255,9 @@
     #toast { max-width:92vw; font-size:14px; }
 
     #views { display:none; }
-    body[data-view="workouts"] #views { display:flex; }
-    body[data-view="workouts"] header { justify-content:center; }
-    #views button { min-width:96px; }
+    body:not([data-view="plans"]) #views { display:flex; }
+    body:not([data-view="plans"]) header { justify-content:center; }
+    #views button { min-width:0; padding:6px 10px; }
     #wview { display:block; position:relative; overflow:hidden; }
     #wlist, #wdetail { width:100%; height:100%; border:0; }
     body:not([data-wpane="detail"]) #wdetail, body[data-wpane="detail"] #wlist { display:none; }
@@ -235,7 +274,20 @@
     #wdlg[open] { width:100vw; max-width:100vw; height:var(--vvh, 100dvh); max-height:var(--vvh, 100dvh); top:var(--vvtop, 0px); margin:0; border-radius:0; border:0; }
     #dlg, #hdlg { width:94vw; }
 
-    #tabbar { display:grid; grid-template-columns:repeat(5,1fr); background:var(--panel); border-top:1px solid var(--line); padding-bottom:env(safe-area-inset-bottom); }
+    #cview { display:block; height:100%; overflow:auto; overscroll-behavior:contain; }
+    #cmain, #cscroll { display:block; overflow:visible; padding-left:0; padding-right:0; }
+    #cbar { position:sticky; top:0; z-index:3; }
+    #cside { overflow:visible; border:0; border-top:1px solid var(--line); }
+    /* the cells are small: bars and chips only colour them, and a tap selects the day, whose details are listed below the grid */
+    .cbar { pointer-events:none; }
+    .cbar.wk { height:8px; margin:6px 3px; padding:0; font-size:0; }
+    .cday { padding:2px 3px; }
+    #cdow span { padding:4px 0; font-size:10px; letter-spacing:0; }
+    .citem button { min-height:32px; }
+    /* the calendar and workouts headers carry a three-way switcher: on narrow phones the account shows its avatar alone */
+    @media (max-width:420px) { body:not([data-view="plans"]) #accountName { display:none; } }
+
+    #tabbar { display:grid; grid-template-columns:repeat(6,1fr); background:var(--panel); border-top:1px solid var(--line); padding-bottom:env(safe-area-inset-bottom); }
     #tabbar button { border:0; border-radius:0; background:none; height:var(--tabbar-h); padding:4px 0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; font-size:11px; color:var(--dim); }
     #tabbar button span { font-size:18px; line-height:1; }
     #tabbar button[aria-selected="true"] { color:var(--fg); box-shadow:inset 0 2px 0 var(--accent); }
@@ -262,6 +314,7 @@
   <nav id="views" aria-label="View">
     <button id="vPlans" aria-pressed="true">Plans</button>
     <button id="vWorkouts" aria-pressed="false">Workouts</button>
+    <button id="vCalendar" aria-pressed="false">Calendar</button>
   </nav>
   <button id="save" class="primary" disabled>Save</button>
   <div id="actions">
@@ -341,12 +394,39 @@
     <div id="wbody"><div class="empty">Select a workout.</div></div>
   </div>
 </section>
+<section id="cview">
+  <div id="cmain">
+    <div class="wbar" id="cbar">
+      <button id="cPrev" title="Previous month" aria-label="Previous month">◀</button>
+      <button id="cToday">Today</button>
+      <button id="cNext" title="Next month" aria-label="Next month">▶</button>
+      <b id="cTitle" aria-live="polite"></b>
+      <div class="seg" id="cModes" role="group" aria-label="What the calendar shows">
+        <button data-mode="plans" aria-pressed="true" title="Where each plan is scheduled">Plans</button>
+        <button data-mode="workouts" aria-pressed="false" title="Which workout is scheduled when">Workouts</button>
+      </div>
+      <button id="cRefresh" title="Reload the plans">↻</button>
+    </div>
+    <div id="cNote" class="empty" hidden></div>
+    <div id="cscroll">
+      <div id="cdow"></div>
+      <div id="cgrid"></div>
+    </div>
+  </div>
+  <aside id="cside">
+    <h2 id="cDayTitle">Day</h2>
+    <div class="cblock" id="cDay"></div>
+    <h2 id="cLegendTitle">Plans</h2>
+    <div class="cblock" id="cLegend"></div>
+  </aside>
+</section>
 <nav id="tabbar" role="tablist">
   <button role="tab" data-tab="files"><span>📁</span>Files</button>
   <button role="tab" data-tab="editor"><span>✎</span>Editor</button>
   <button role="tab" data-tab="outline"><span>☰</span>Outline</button>
   <button role="tab" data-tab="problems"><span>⚠</span>Checks<b class="badge" id="badge"></b></button>
   <button role="tab" id="tabWorkouts"><span>⌚</span>Workouts</button>
+  <button role="tab" id="tabCalendar"><span>📅</span>Calendar</button>
 </nav>
 <div id="toast"></div>
 
@@ -411,7 +491,7 @@ if (vv) { vv.addEventListener("resize", fitViewport); vv.addEventListener("scrol
 let navKeyNow = null, navRestoring = false;
 const navState = () => ({ view: document.body.dataset.view, tab: document.body.dataset.tab, wpane: document.body.dataset.wpane || "list" });
 // The desktop layout shows every pane at once, so only the view is worth a history entry there.
-const navKey = (s) => s.view + (mobileQuery.matches ? "/" + (s.view === "plans" ? s.tab : s.wpane) : "");
+const navKey = (s) => s.view + (mobileQuery.matches && s.view !== "calendar" ? "/" + (s.view === "plans" ? s.tab : s.wpane) : "");
 function navSync() {
   if (navRestoring) return;
   const s = navState(), key = navKey(s);
@@ -1058,8 +1138,11 @@ function setView(view) {
   document.body.dataset.view = view;
   $("vPlans").setAttribute("aria-pressed", String(view === "plans"));
   $("vWorkouts").setAttribute("aria-pressed", String(view === "workouts"));
+  $("vCalendar").setAttribute("aria-pressed", String(view === "calendar"));
   $("tabWorkouts").setAttribute("aria-selected", String(view === "workouts"));
+  $("tabCalendar").setAttribute("aria-selected", String(view === "calendar"));
   if (view === "workouts") guard(loadWorkouts)();
+  else if (view === "calendar") guard(loadCalendar)(); // plans change in the editor, so look again on every visit
   else if (editor) requestAnimationFrame(() => editor.layout());
   navSync();
 }
@@ -1335,6 +1418,226 @@ const cloneRow = async (d) => {
   copy.workoutName = `${copy.workoutName} (copy)`;
   await openWorkoutDialog("new", copy, { title: "Clone workout", planPath: d.plans.length ? d.plans[0].path : "" });
 };
+
+// ── Calendar view: where the plan files put their workouts ──
+// /api/calendar gives each plan's span (weekStart / weekEnd widened by every scheduledDate) and the dates of its workouts.
+// This is what the files say, not what Garmin's own calendar holds. Dates are YYYY-MM-DD strings and double as day keys;
+// the grid is built with UTC arithmetic so a date never slips a day, and weeks run Monday to Sunday.
+const C = { mode: "plans", month: null, selected: null, plans: [], byDate: new Map(), loaded: false, error: "", run: 0 };
+const DAY_MS = 864e5;
+const TYPE_COLORS = { running: "#2a7d63", strength_training: "#3a68b0", cycling: "#8f6d27", swimming: "#23808f", cardio: "#9a4a73", other: "#666666" };
+const typeColor = (t) => TYPE_COLORS[t] || TYPE_COLORS.other;
+/** A plan's colour (dark enough for white text) and a light form of it for outlines. Golden-angle hues keep neighbours apart. */
+const planColors = (i) => { const hue = Math.round((210 + i * 137.5) % 360); return { color: `hsl(${hue} 45% 36%)`, light: `hsl(${hue} 55% 65%)` }; };
+const msOf = (iso) => Date.parse(iso + "T00:00:00Z");
+const isoOf = (ms) => new Date(ms).toISOString().slice(0, 10);
+const utcFormat = (opts) => new Intl.DateTimeFormat(undefined, { timeZone: "UTC", ...opts });
+const fmtDate = (iso, opts = { day: "numeric", month: "short", year: "numeric" }) => utcFormat(opts).format(msOf(iso));
+const monthName = (month) => utcFormat({ month: "long", year: "numeric" }).format(msOf(month + "-01"));
+const addMonths = (month, n) => { const [y, m] = month.split("-").map(Number); return isoOf(Date.UTC(y, m - 1 + n, 1)).slice(0, 7); };
+/** Today on the clock the person looks at (the dates in the files are plain days). */
+const todayIso = () => { const d = new Date(); return [d.getFullYear(), d.getMonth() + 1, d.getDate()].map((n, i) => String(n).padStart(i ? 2 : 4, "0")).join("-"); };
+
+/** The weeks shown for a month ("YYYY-MM"), Monday first, as lists of seven day keys. */
+function gridDays(month) {
+  const first = msOf(month + "-01"), start = first - ((new Date(first).getUTCDay() + 6) % 7) * DAY_MS;
+  const [y, m] = month.split("-").map(Number), last = Date.UTC(y, m, 0); // day 0 of the next month: the month's last day
+  const weeks = Math.ceil(((last - start) / DAY_MS + 1) / 7);
+  return Array.from({ length: weeks }, (_, w) => Array.from({ length: 7 }, (_, d) => isoOf(start + (w * 7 + d) * DAY_MS)));
+}
+
+/** A control that works as a button without being one (a bar or a row that holds other buttons). */
+function clickable(el, run) {
+  el.tabIndex = 0; el.setAttribute("role", "button"); el.onclick = run;
+  el.onkeydown = (e) => { if ((e.key === "Enter" || e.key === " ") && e.target === el) { e.preventDefault(); run(e); } };
+}
+
+const openPlan = guard(async (path) => { setView("plans"); await openFile(path); });
+const openPlanAt = guard((path, w) => openPlanWorkout(path, w));
+
+async function loadCalendar() {
+  await sessionReady;
+  const run = ++C.run;
+  C.month = C.month || todayIso().slice(0, 7); C.selected = C.selected || todayIso();
+  if (!C.loaded) renderCalendar();
+  let r;
+  try { r = await api("GET", "/api/calendar"); }
+  catch (e) { if (run === C.run) { C.error = e.message; C.loaded = false; renderCalendar(); } return; }
+  if (run !== C.run) return;
+  const order = r.plans.map((p) => p.path).sort(); // a plan keeps its colour whatever else is added
+  C.plans = r.plans.map((p) => {
+    const dated = p.workouts.filter((w) => w.dates.length).length;
+    return { ...p, name: planName(p.path), dated, ...planColors(order.indexOf(p.path)) };
+  });
+  C.byDate = new Map();
+  for (const p of C.plans) for (const w of p.workouts) for (const date of w.dates) {
+    if (!C.byDate.has(date)) C.byDate.set(date, []);
+    C.byDate.get(date).push({ date, plan: p, w });
+  }
+  C.loaded = true; C.error = "";
+  renderCalendar();
+}
+
+function gotoMonth(month) { C.month = month; renderCalendar(); }
+
+function renderCalendar() {
+  if (!C.month) return;
+  const weeks = gridDays(C.month), first = weeks[0][0], last = weeks[weeks.length - 1][6], today = todayIso();
+  $("cTitle").textContent = monthName(C.month);
+  $("cModes").querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.mode === C.mode)));
+  if (!$("cdow").children.length) for (let d = 0; d < 7; d++) { // 2024-01-01 was a Monday
+    const span = document.createElement("span"); span.textContent = utcFormat({ weekday: "short" }).format(Date.UTC(2024, 0, 1 + d)); $("cdow").append(span);
+  }
+  const lanes = C.mode === "plans" ? assignLanes(C.plans.filter((p) => p.start && p.start <= last && p.end >= first)) : null;
+  const grid = $("cgrid"); grid.replaceChildren();
+  for (const days of weeks) {
+    const week = document.createElement("div"); week.className = "cweek";
+    const bars = C.mode === "plans" ? planBars(days, lanes) : workoutChips(days);
+    // row 1 carries the day numbers; every lane in use gets a row of its own, and at least two so an empty week still has room
+    week.style.gridTemplateRows = `24px repeat(${Math.max(2, ...bars.map((b) => b.lane + 1))}, 20px) 4px`;
+    days.forEach((iso, col) => week.append(dayCell(iso, col, today)));
+    for (const b of bars) week.append(b.node);
+    grid.append(week);
+  }
+  renderNote(first, last);
+  renderSide();
+}
+
+/** Give each plan a lane (row of bars) for the whole month, so it stays on one line from week to week. */
+function assignLanes(plans) {
+  const ends = [], lane = new Map();
+  for (const p of plans) { // already in start order
+    let i = ends.findIndex((end) => end < p.start);
+    if (i < 0) i = ends.length;
+    ends[i] = p.end; lane.set(p.path, i);
+  }
+  return lane;
+}
+
+function dayCell(iso, col, today) {
+  const d = document.createElement("div");
+  d.className = "cday" + (iso.slice(0, 7) !== C.month ? " out" : "") + (iso === today ? " today" : "") + (iso === C.selected ? " sel" : "");
+  d.style.gridColumn = String(col + 1);
+  const num = document.createElement("span"); num.className = "dnum";
+  num.textContent = iso.endsWith("-01") ? fmtDate(iso, { day: "numeric", month: "short" }) : String(Number(iso.slice(8)));
+  d.append(num);
+  d.setAttribute("aria-label", fmtDate(iso, { weekday: "long", day: "numeric", month: "long", year: "numeric" }));
+  clickable(d, () => { C.selected = iso; renderCalendar(); });
+  return d;
+}
+
+const spanText = (p) => `${fmtDate(p.start, { day: "numeric", month: "short" })} – ${fmtDate(p.end)}`;
+const planNote = (p) => p.dated ? `${p.dated} of ${p.workouts.length} workouts dated` : p.workouts.length ? "no workout has a scheduledDate: the span is the plan's weekStart / weekEnd" : "no workouts";
+
+/** Plan mode: one bar per plan and week across the days of its span. */
+function planBars(days, lanes) {
+  const bars = [];
+  for (const p of C.plans) {
+    if (!lanes.has(p.path) || p.start > days[6] || p.end < days[0]) continue;
+    const from = p.start > days[0] ? days.indexOf(p.start) : 0, to = p.end < days[6] ? days.indexOf(p.end) : 6;
+    const node = document.createElement("button");
+    node.className = "cbar" + (p.start < days[0] ? " cont-l" : "") + (p.end > days[6] ? " cont-r" : "") + (p.dated ? "" : " window");
+    node.style.cssText = `--c:${p.color}; --cl:${p.light}; grid-column:${from + 1} / ${to + 2}; grid-row:${lanes.get(p.path) + 2}`;
+    node.textContent = p.name;
+    node.title = [p.path + (p.owner ? ` (${p.owner})` : ""), spanText(p), planNote(p)].join("\n");
+    node.onclick = () => openPlan(p.path);
+    bars.push({ node, lane: lanes.get(p.path) });
+  }
+  return bars;
+}
+
+/** Workout mode: one chip per scheduled workout, stacked in its day. */
+function workoutChips(days) {
+  const bars = [];
+  days.forEach((iso, col) => (C.byDate.get(iso) || []).forEach(({ plan, w }, lane) => {
+    const node = document.createElement("button");
+    node.className = "cbar wk";
+    node.style.cssText = `--c:${typeColor(w.workoutType)}; grid-column:${col + 1}; grid-row:${lane + 2}`;
+    node.textContent = w.workoutName;
+    node.title = [w.workoutName, `${prettyName(w.workoutType || "other")} · ${plan.name}`].join("\n");
+    node.onclick = () => openPlanAt(plan.path, w);
+    bars.push({ node, lane });
+  }));
+  return bars;
+}
+
+/** Above the grid: loading / failure, or a way to the nearest month that has something when this one is empty. */
+function renderNote(first, last) {
+  const note = $("cNote"); note.replaceChildren(); note.classList.toggle("err", !!C.error);
+  note.hidden = false;
+  if (C.error) { note.textContent = C.error; return; }
+  if (!C.loaded) { note.textContent = "Loading…"; return; }
+  const spans = C.mode === "plans" ? C.plans.filter((p) => p.start).map((p) => [p.start, p.end]) : [...C.byDate.keys()].map((d) => [d, d]);
+  note.hidden = spans.some(([start, end]) => start <= last && end >= first);
+  if (note.hidden) return;
+  const what = C.mode === "plans" ? "planned" : "scheduled";
+  if (!spans.length) {
+    note.textContent = C.mode === "plans"
+      ? "No plan has dates yet. A plan's weekStart / weekEnd, or a workout's scheduledDate (YYYY-MM-DD), puts it on the calendar."
+      : "No workout has a scheduledDate yet (YYYY-MM-DD).";
+    return;
+  }
+  note.append(`Nothing ${what} in ${monthName(C.month)}.`);
+  const before = spans.map(([, end]) => end).filter((end) => end < first).sort().pop();
+  const after = spans.map(([start]) => start).filter((start) => start > last).sort()[0];
+  for (const [date, label] of [[before, (m) => `← ${m}`], [after, (m) => `${m} →`]]) {
+    if (!date) continue;
+    const b = document.createElement("button"), month = date.slice(0, 7);
+    b.textContent = label(monthName(month)); b.onclick = () => gotoMonth(month);
+    note.append(b);
+  }
+}
+
+/** The side panel: what the selected day holds, then the legend for the colours. */
+function renderSide() {
+  const day = $("cDay"); day.replaceChildren();
+  const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
+  const item = ({ color, light, window, title, detail, run, button }) => {
+    const row = el("div", "citem"), sw = el("span", "sw" + (window ? " window" : "")), n = el("span", "n", title);
+    row.style.setProperty("--c", color); row.style.setProperty("--cl", light || color); row.append(sw, n);
+    if (button) { const b = el("button", "", button.label); b.onclick = (e) => { e.stopPropagation(); button.run(); }; row.append(b); } else row.append(el("span"));
+    if (detail) row.append(el("small", "", detail));
+    if (run) clickable(row, run);
+    return row;
+  };
+  const rowFor = (p) => item({ color: p.color, light: p.light, window: !p.dated, title: p.name, detail: p.start ? `${spanText(p)} · ${planNote(p)}` : "No dates yet", run: () => openPlan(p.path) });
+
+  const iso = C.selected;
+  $("cDayTitle").textContent = iso ? fmtDate(iso, { weekday: "long", day: "numeric", month: "long", year: "numeric" }) : "Day";
+  const inPlans = iso ? C.plans.filter((p) => p.start && p.start <= iso && p.end >= iso) : [];
+  const works = iso ? C.byDate.get(iso) || [] : [];
+  const sections = [
+    [`In ${inPlans.length === 1 ? "plan" : "plans"}`, inPlans.map(rowFor)],
+    [works.length === 1 ? "Workout" : "Workouts", works.map(({ plan, w }) => item({ color: typeColor(w.workoutType), title: w.workoutName, detail: `${prettyName(w.workoutType || "other")} · ${plan.name}`, run: () => openPlanAt(plan.path, w) }))],
+  ];
+  if (C.mode === "workouts") sections.reverse();
+  for (const [label, rows] of sections) if (rows.length) day.append(el("div", "clabel", label), ...rows);
+  if (!inPlans.length && !works.length) day.append(el("div", "empty", C.loaded ? "Nothing on this day." : ""));
+
+  const legend = $("cLegend"); legend.replaceChildren();
+  $("cLegendTitle").textContent = C.mode === "plans" ? "Plans" : "Workout types";
+  if (C.mode === "plans") {
+    for (const p of C.plans) {
+      const jump = p.start ? () => gotoMonth(p.start.slice(0, 7)) : () => openPlan(p.path);
+      legend.append(item({ color: p.color, light: p.light, window: !p.dated, title: p.name, detail: p.start ? `${spanText(p)} · ${planNote(p)}` : "No dates yet", run: jump, button: { label: "Open", run: () => openPlan(p.path) } }));
+    }
+    if (!C.plans.length) legend.append(el("div", "empty", C.loaded ? "No plans." : ""));
+  } else {
+    const counts = new Map();
+    for (const list of C.byDate.values()) for (const { w } of list) counts.set(w.workoutType || "other", (counts.get(w.workoutType || "other") || 0) + 1);
+    for (const [type, n] of [...counts].sort((a, b) => b[1] - a[1])) legend.append(item({ color: typeColor(type), title: prettyName(type), detail: `${n} scheduled` }));
+    if (!counts.size) legend.append(el("div", "empty", C.loaded ? "No scheduled workouts." : ""));
+  }
+}
+
+function bindCalendarView() {
+  $("vCalendar").onclick = $("tabCalendar").onclick = () => setView("calendar");
+  $("cPrev").onclick = () => gotoMonth(addMonths(C.month, -1));
+  $("cNext").onclick = () => gotoMonth(addMonths(C.month, 1));
+  $("cToday").onclick = () => { C.selected = todayIso(); gotoMonth(C.selected.slice(0, 7)); };
+  $("cRefresh").onclick = guard(loadCalendar);
+  $("cModes").querySelectorAll("button").forEach((b) => (b.onclick = () => { C.mode = b.dataset.mode; renderCalendar(); }));
+}
 
 // ── Dialogs ────────────────────────────────────────────────────────────
 
@@ -1660,6 +1963,7 @@ const garminReady = sessionReady.then(() => {
   return loadGarmin(); // the Workouts view waits for it
 });
 bindWorkoutsView();
+bindCalendarView();
 bootSession();
 </script>
 </body>

@@ -18,6 +18,9 @@
  * and creates / replaces / deletes workouts in the plan files and on Garmin together
  * (POST, PUT, DELETE /api/garmin/workout). Each write that touches Garmin needs confirm: true.
  *
+ * The Calendar view shows where the plan files put their workouts (GET /api/calendar): each plan's span
+ * and the dates of its workouts. It reads the stored plans only, not Garmin's own calendar.
+ *
  * Logins: the page shows a sign-in form (POST /api/login, GET /api/session, POST /api/logout)
  * and keeps the login in an HttpOnly session cookie. user = a profile name (any case),
  * password = WEB_PASSWORD from that profile's .env.<profile> -> sees only data/<profile>/ and
@@ -364,27 +367,81 @@ interface PlanEntry {
   workout: any;
 }
 
+const isExportSnapshot = (logical: string): boolean => EXPORT_FILE.test(logical.slice(logical.lastIndexOf("/") + 1));
+const isWorkout = (w: any): boolean => !!w && typeof w === "object" && typeof w.workoutName === "string";
+
+/** A stored document as plan data: the parsed JSON and its workout list. null when it is not JSON or holds no list (the editor flags those). */
+function readPlan(logical: string): { data: any; list: any[] } | null {
+  try {
+    const data: any = JSON.parse(store().get(logical)?.text ?? "");
+    const list = Array.isArray(data) ? data : data?.workouts;
+    return Array.isArray(list) ? { data, list } : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Every workout in the plans a profile works with: the shared and its own in workout-plans/, and its data/<profile>/ files. */
 function planEntriesFor(profile: string): PlanEntry[] {
   const entries: PlanEntry[] = [];
   for (const meta of store().list()) {
     const isPlan = meta.path.startsWith("workout-plans/") && (meta.owner === null || meta.owner === profile);
-    const isOwnData = meta.path.startsWith(`data/${profile}/`) && !EXPORT_FILE.test(meta.path.slice(meta.path.lastIndexOf("/") + 1));
+    const isOwnData = meta.path.startsWith(`data/${profile}/`) && !isExportSnapshot(meta.path);
     if ((!isPlan && !isOwnData) || meta.size > MAX_SCAN_BYTES) continue;
-    try {
-      const data: any = JSON.parse(store().get(meta.path)?.text ?? "");
-      const list = Array.isArray(data) ? data : data?.workouts;
-      if (!Array.isArray(list)) continue;
-      list.forEach((workout, index) => {
-        if (workout && typeof workout === "object" && typeof workout.workoutName === "string") {
-          entries.push({ path: meta.path, index, version: meta.version, workout });
-        }
-      });
-    } catch {
-      /* not JSON: the editor flags it */
-    }
+    readPlan(meta.path)?.list.forEach((workout, index) => {
+      if (isWorkout(workout)) entries.push({ path: meta.path, index, version: meta.version, workout });
+    });
   }
   return entries;
+}
+
+// ── Calendar view: where the plan files put their workouts (this is the files, not Garmin's own calendar) ──
+
+/** A real calendar date written YYYY-MM-DD. */
+const isoDate = (v: unknown): v is string => {
+  if (typeof v !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return false;
+  const ms = Date.parse(`${v}T00:00:00Z`);
+  return !Number.isNaN(ms) && new Date(ms).toISOString().slice(0, 10) === v;
+};
+
+/** The valid dates of a workout's scheduledDate (one date or a list), sorted and without repeats. */
+const scheduledDates = (w: any): string[] => [...new Set([w.scheduledDate].flat().filter(isoDate))].sort();
+
+interface CalendarPlan {
+  path: string;
+  owner: string | null;
+  weekStart?: string;
+  weekEnd?: string;
+  /**
+   * The span the plan covers: weekStart / weekEnd widened by every scheduledDate. The week range alone is not
+   * reliable (a plan keeps its first week after it grows), and a plan may have no scheduledDate at all. null: no dates.
+   */
+  start: string | null;
+  end: string | null;
+  workouts: { index: number; workoutName: string; workoutType?: string; workoutId?: number | string; dates: string[] }[];
+}
+
+/** Every plan this login can reach with its dates: workout-plans/ and data/<profile>/ (export snapshots are copies of Garmin's list, not plans). */
+function calendarPlans(who: Principal): CalendarPlan[] {
+  const plans: CalendarPlan[] = [];
+  for (const meta of store().list()) {
+    const inPlans = meta.path.startsWith("workout-plans/");
+    if (!inPlans && (!meta.path.startsWith("data/") || isExportSnapshot(meta.path))) continue;
+    if (meta.size > MAX_SCAN_BYTES || !canReach(who, meta.path, meta.owner)) continue;
+    const plan = readPlan(meta.path);
+    if (!plan) continue;
+    const workouts = plan.list.flatMap((w, index) =>
+      isWorkout(w)
+        ? [{ index, workoutName: w.workoutName, workoutType: w.workoutType, workoutId: hasId(w.workoutId) ? w.workoutId : undefined, dates: scheduledDates(w) }]
+        : []
+    );
+    const weekStart = isoDate(plan.data.weekStart) ? plan.data.weekStart : undefined;
+    const weekEnd = isoDate(plan.data.weekEnd) ? plan.data.weekEnd : undefined;
+    const days = [weekStart, weekEnd, ...workouts.flatMap((w) => w.dates)].filter(isoDate).sort();
+    plans.push({ path: meta.path, owner: meta.owner, weekStart, weekEnd, start: days[0] ?? null, end: days[days.length - 1] ?? null, workouts });
+  }
+  // dated plans in calendar order, the undated ones last
+  return plans.sort((a, b) => Number(a.start === null) - Number(b.start === null) || (a.start ?? "").localeCompare(b.start ?? "") || a.path.localeCompare(b.path));
 }
 
 const hasId = (id: unknown): boolean => id !== undefined && id !== null && id !== "";
@@ -733,6 +790,10 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
       const { value: library } = await viaGarmin(() => listLibraryWorkouts(profile, url.searchParams.get("refresh") === "1"));
       return send(res, 200, { profile, ...workoutRows(library, planEntriesFor(profile)) });
     }
+
+    case "GET /api/calendar":
+      // Read from the stored plans alone, so it works without a Garmin profile and in mock mode.
+      return send(res, 200, { plans: calendarPlans(who) });
 
     case "GET /api/garmin/workout": {
       requireGarmin(who);
