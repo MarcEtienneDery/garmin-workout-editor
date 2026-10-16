@@ -5,6 +5,7 @@ import * as path from "path";
 import { AddressInfo } from "net";
 import { startWebServer, isLoopback } from "../web/server";
 import * as garmin from "../mcp/tools/garmin";
+import * as activitiesTools from "../mcp/tools/activities";
 import { closeStore, getStore } from "../shared/store";
 import { toNewActivity } from "../shared/activitySync";
 
@@ -22,7 +23,14 @@ jest.mock("../mcp/tools/garmin", () => ({
   saveWorkout: jest.fn(async () => ({ workoutId: 999, previousWorkoutId: 5 })),
   deleteLibraryWorkout: jest.fn(async () => undefined),
 }));
+// Likewise Garmin's side of the activity sync.
+jest.mock("../mcp/tools/activities", () => ({
+  refreshActivities: jest.fn(async () => ({ added: 2, busy: false, error: null })),
+  startBackgroundSync: jest.fn(() => ({ started: true })),
+  fetchDetailsNow: jest.fn(async () => ({ fetched: 1, error: null })),
+}));
 const g = garmin as jest.Mocked<typeof garmin>;
+const a = activitiesTools as jest.Mocked<typeof activitiesTools>;
 
 const store = () => getStore();
 const seed = (logical: string, value: unknown) => store().put(logical, typeof value === "string" ? value : JSON.stringify(value), { source: "test" });
@@ -303,6 +311,124 @@ describe("web plan editor", () => {
       expect((await runs("", login("MED", "med-pw"))).runs.map((r) => r.pace)).toEqual([330]);
       expect((await runs("?profile=SAM", login("MED", "med-pw"))).runs.map((r) => r.pace)).toEqual([330]); // a profile login always acts as itself
       expect((await runs("?profile=SAM", login("SAM", "sam-pw"))).runs.map((r) => r.pace)).toEqual([270]);
+    });
+  });
+
+  describe("activities view", () => {
+    const item = (id: number, day: string, typeKey: string, extra: Record<string, unknown> = {}) => ({
+      activityId: id,
+      activityName: `Activity ${id}`,
+      activityType: { typeKey },
+      startTimeGMT: `${day} 12:00:00`,
+      startTimeLocal: `${day} 08:30:00`,
+      distance: typeKey === "running" ? 10000 : undefined,
+      duration: 3000.4,
+      averageSpeed: typeKey === "running" ? 3.2 : undefined,
+      averageHR: 148.6,
+      maxHR: 171,
+      trainingEffectLabel: "TEMPO",
+      aerobicTrainingEffect: 3.4,
+      calories: 640,
+      totalSets: typeKey === "strength_training" ? 18 : undefined,
+      totalReps: typeKey === "strength_training" ? 96 : undefined,
+      workoutId: 777,
+      ...extra,
+    });
+    const keep = (profile: string, ...items: any[]) => store().activities.insertNew(profile, items.map((i) => toNewActivity(i)!));
+    const login = (user: string, pass: string) => ({ ...H, Authorization: "Basic " + Buffer.from(`${user}:${pass}`).toString("base64") });
+
+    it("lists compact rows, newest first, and never the raw Garmin JSON", async () => {
+      addProfile("MED");
+      keep("MED", item(1, "2026-08-01", "running"), item(2, "2026-08-03", "strength_training"));
+      store().activities.setDetail("MED", "2", { summaryDTO: {} });
+      const out = (await call("GET", "/api/activities")).json;
+      expect(out.profile).toBe("MED");
+      expect(out.activities.map((r: any) => r.id)).toEqual(["2", "1"]);
+      expect(out.activities.map((r: any) => r.detailed)).toEqual([true, false]);
+    });
+
+    it("rows carry what a list shows: date and time from the local start, km, seconds, pace for a run, HR, effect, sets", async () => {
+      addProfile("MED");
+      keep("MED", item(1, "2026-08-01", "running"), item(2, "2026-08-03", "strength_training"));
+      const [strength, run] = (await call("GET", "/api/activities")).json.activities;
+      expect(run).toEqual({
+        id: "1", date: "2026-08-01", time: "08:30", type: "running", name: "Activity 1", km: 10, seconds: 3000, paceSec: 313,
+        avgHr: 149, maxHr: 171, effect: "TEMPO", aerobic: 3.4, elevation: null, calories: 640, sets: null, reps: null, workoutId: "777", detailed: false,
+      });
+      expect(strength).toEqual(expect.objectContaining({ type: "strength_training", km: null, paceSec: null, sets: 18, reps: 96 }));
+      expect(JSON.stringify((await call("GET", "/api/activities")).json)).not.toMatch(/activityTypeDTO|startTimeGMT/);
+    });
+
+    it("says how far the sync is", async () => {
+      addProfile("MED");
+      keep("MED", item(1, "2026-08-01", "running"));
+      const { sync } = (await call("GET", "/api/activities")).json;
+      expect(sync).toEqual(expect.objectContaining({ activities: 1, withDetails: 0, pendingDetails: 1, historyComplete: false, syncing: false }));
+    });
+
+    it("is empty, not an error, with no profile and in mock mode", async () => {
+      expect((await call("GET", "/api/activities")).json).toEqual({ profile: null, activities: [], sync: null });
+      addProfile("MED");
+      expect((await call("GET", "/api/activities")).json).toEqual(expect.objectContaining({ profile: "MED", activities: [] }));
+    });
+
+    it("gives one activity's slim form, whether its details are stored, and the plan workout it came from", async () => {
+      addProfile("MED");
+      keep("MED", item(1, "2026-08-01", "strength_training", { workoutId: 4242 }));
+      seed("workout-plans/lift.json", { workouts: [{ workoutName: "Lift", workoutType: "strength_training", workoutId: 4242 }, { workoutName: "Other", workoutId: 1 }] });
+      const bare = (await call("GET", "/api/activity?id=1")).json;
+      expect(bare.detailed).toBe(false);
+      expect(bare.activity).toEqual(expect.objectContaining({ id: "1", detailed: false, sets: 18 }));
+      expect(bare.planned).toEqual({ path: "workout-plans/lift.json", index: 0, workout: expect.objectContaining({ workoutName: "Lift" }) });
+
+      store().activities.setDetail("MED", "1", { summaryDTO: { directWorkoutRpe: 40, directWorkoutFeel: 70 }, fullExerciseSets: [] });
+      const full = (await call("GET", "/api/activity?id=1")).json;
+      expect(full.detailed).toBe(true);
+      expect(full.slim).toEqual(expect.objectContaining({ activityType: "strength_training", directWorkoutRpe: 40, directWorkoutFeel: 70 }));
+      expect(a.fetchDetailsNow).not.toHaveBeenCalled(); // a read never calls Garmin
+    });
+
+    it("answers 404 for an activity that is not stored, and 400 for a bad id", async () => {
+      addProfile("MED");
+      expect((await call("GET", "/api/activity?id=999")).status).toBe(404);
+      expect((await call("GET", "/api/activity?id=../x")).status).toBe(400);
+    });
+
+    it("keeps a profile login to its own activities", async () => {
+      addProfile("MED", "med-pw");
+      addProfile("SAM", "sam-pw");
+      keep("MED", item(1, "2026-08-01", "running"));
+      keep("SAM", item(2, "2026-08-02", "running"));
+      const med = login("MED", "med-pw");
+      expect((await call("GET", "/api/activities", undefined, med)).json.activities.map((r: any) => r.id)).toEqual(["1"]);
+      expect((await call("GET", "/api/activities?profile=SAM", undefined, med)).json.activities.map((r: any) => r.id)).toEqual(["1"]);
+      expect((await call("GET", "/api/activity?id=2&profile=SAM", undefined, med)).status).toBe(404);
+      expect((await call("GET", "/api/activities", undefined, login("SAM", "sam-pw"))).json.activities.map((r: any) => r.id)).toEqual(["2"]);
+    });
+
+    it("syncs only through a POST that needs a Garmin profile, and starts the long fill only when asked", async () => {
+      expect((await call("POST", "/api/activities/sync", {})).status).toBe(409); // no profile configured
+      addProfile("MED");
+      const quick = await call("POST", "/api/activities/sync", {});
+      expect(quick.status).toBe(200);
+      expect(quick.json).toEqual(expect.objectContaining({ added: 2, busy: false, error: null, background: null }));
+      expect(a.refreshActivities).toHaveBeenLastCalledWith("MED");
+      expect(a.startBackgroundSync).not.toHaveBeenCalled();
+
+      const full = await call("POST", "/api/activities/sync", { history: true });
+      expect(full.json.background).toEqual({ started: true });
+      expect(a.startBackgroundSync).toHaveBeenCalledWith("MED");
+      expect((await call("GET", "/api/activities/sync")).status).toBe(404); // no GET route
+    });
+
+    it("fetches one activity's details on a POST, and refuses an unknown one", async () => {
+      addProfile("MED");
+      keep("MED", item(1, "2026-08-01", "running"));
+      const out = await call("POST", "/api/activities/detail", { id: "1" });
+      expect(out.status).toBe(200);
+      expect(a.fetchDetailsNow).toHaveBeenCalledWith("MED", ["1"]);
+      expect(out.json).toEqual(expect.objectContaining({ fetched: { fetched: 1, error: null }, detailed: false }));
+      expect((await call("POST", "/api/activities/detail", { id: "5" })).status).toBe(404);
     });
   });
 

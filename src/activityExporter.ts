@@ -496,6 +496,14 @@ export class ActivityExporter {
   }
 
   /**
+   * Garmin activities (list item merged with details, as the activities table keeps them) in the slim planning
+   * format: no filtering, no logging and no Garmin client needed, so `new ActivityExporter(null)` will do.
+   */
+  slim(rawActivities: any[]): any[] {
+    return this.transformActivities(rawActivities);
+  }
+
+  /**
    * Transform raw Garmin activities to slim format for weekly planning
    */
   private transformActivities(rawActivities: any[]): any[] {

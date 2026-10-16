@@ -75,6 +75,29 @@ export interface StoredActivity extends Omit<NewActivity, "raw"> {
   syncedAt: number;
 }
 
+/** What a list shows of an activity: columns and a few fields of the list item, read in SQL so the 15-20 KB of raw JSON is not parsed in node. */
+export interface ActivitySummary {
+  id: string;
+  startLocal: string;
+  type: string;
+  name: string;
+  /** Meters and seconds, as Garmin lists them. */
+  distance: number | null;
+  duration: number | null;
+  avgHr: number | null;
+  maxHr: number | null;
+  /** Average speed in m/s. */
+  speed: number | null;
+  trainingEffectLabel: string | null;
+  aerobicEffect: number | null;
+  elevationGain: number | null;
+  calories: number | null;
+  sets: number | null;
+  reps: number | null;
+  workoutId: string | null;
+  detailed: boolean;
+}
+
 export interface SyncState {
   complete: boolean;
   /** Where an unfinished listing resumes. */
@@ -191,6 +214,39 @@ export class ActivityTable {
     if (options.type) { where.push("type = ?"); params.push(options.type); }
     params.push(options.limit ?? 1_000_000);
     return this.db.prepare(`SELECT * FROM activities WHERE ${where.join(" AND ")} ORDER BY start_gmt DESC LIMIT ?`).all(...params).map(toActivity);
+  }
+
+  /** The newest activities as list rows, newest first. */
+  summaries(profile: string, limit = 5000): ActivitySummary[] {
+    return this.db
+      .prepare(
+        `SELECT id, start_local, type, name, distance, duration, avg_hr, workout_id, detail IS NOT NULL AS detailed,
+                json_extract(raw, '$.maxHR') AS max_hr, json_extract(raw, '$.averageSpeed') AS speed,
+                json_extract(raw, '$.trainingEffectLabel') AS label, json_extract(raw, '$.aerobicTrainingEffect') AS aerobic,
+                json_extract(raw, '$.elevationGain') AS elevation, json_extract(raw, '$.calories') AS calories,
+                json_extract(raw, '$.totalSets') AS sets, json_extract(raw, '$.totalReps') AS reps
+         FROM activities WHERE profile = ? ORDER BY start_gmt DESC LIMIT ?`
+      )
+      .all(profile, limit)
+      .map((r) => ({
+        id: r.id,
+        startLocal: r.start_local,
+        type: r.type,
+        name: r.name,
+        distance: r.distance,
+        duration: r.duration,
+        avgHr: r.avg_hr,
+        maxHr: r.max_hr ?? null,
+        speed: r.speed ?? null,
+        trainingEffectLabel: r.label ?? null,
+        aerobicEffect: r.aerobic ?? null,
+        elevationGain: r.elevation ?? null,
+        calories: r.calories ?? null,
+        sets: r.sets ?? null,
+        reps: r.reps ?? null,
+        workoutId: r.workout_id,
+        detailed: !!r.detailed,
+      }));
   }
 
   get(profile: string, id: string): StoredActivity | undefined {

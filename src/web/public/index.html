@@ -12,7 +12,7 @@
   html,body { height:100%; margin:0; }
   body { height:100dvh; background:var(--bg); color:var(--fg); font:13px/1.4 system-ui,sans-serif; display:grid; grid-template-rows:auto auto minmax(0,1fr) auto; grid-template-columns:minmax(0,1fr); -webkit-tap-highlight-color:transparent; }
   /* Every view has the same frame: the header (name, view switcher, account), then that view's own toolbar and content, then on phones the bottom tabs. */
-  header { grid-row:1; } #toolbar { grid-row:2; } main, #wview, #cview { grid-row:3; } #tabbar { grid-row:4; }
+  header { grid-row:1; } #toolbar { grid-row:2; } main, #wview, #cview, #aview { grid-row:3; } #tabbar { grid-row:4; }
   header, #toolbar { position:relative; display:flex; gap:6px; align-items:center; padding:6px 10px; background:var(--panel); border-bottom:1px solid var(--line); }
   #toolbar { flex-wrap:wrap; }
   header h1 { font-size:13px; margin:0 8px 0 0; }
@@ -185,6 +185,61 @@
   .plans div { padding:2px 0; }
   details.plan-version { margin-top:10px; } details.plan-version summary { cursor:pointer; color:var(--dim); }
 
+  /* ── Activities view: the stored activities as a list and as a calendar ── */
+  body:not([data-view="activities"]) #aview { display:none; }
+  #aview { display:grid; grid-template-columns:minmax(0,1fr) 400px; min-height:0; }
+  #amain, #adetail { display:flex; flex-direction:column; min-height:0; min-width:0; }
+  #adetail { background:var(--panel); border-left:1px solid var(--line); }
+  #abar, #aCalBar { flex-wrap:wrap; }
+  #aTitle { min-width:9em; }
+  #aSearch { flex:1 1 140px; min-width:0; }
+  #aNote { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  #aNote.err { color:var(--err); }
+  #ascroll, #abody { flex:1; min-height:0; overflow:auto; overscroll-behavior:contain; }
+  #abody { padding:12px 16px 24px; }
+  #aTypes { display:flex; gap:4px; flex-wrap:wrap; }
+  .tchip { display:inline-flex; gap:6px; align-items:center; padding:2px 9px; border-radius:11px; }
+  .tchip i { width:9px; height:9px; border-radius:50%; background:var(--c); }
+  .tchip[aria-pressed="true"] { background:var(--c); border-color:var(--c); color:#fff; }
+  .tchip[aria-pressed="true"] i { background:#fff; }
+  .awk { position:sticky; top:0; z-index:2; display:flex; gap:4px 14px; flex-wrap:wrap; padding:7px 12px; background:var(--bg); border-bottom:1px solid var(--line); color:var(--dim); }
+  .awk b { color:var(--fg); }
+  .arow { display:grid; grid-template-columns:6px minmax(0,1fr) auto; gap:1px 10px; align-items:center; padding:7px 12px 7px 10px; border-bottom:1px solid #2f2f2f; cursor:pointer; }
+  .arow:hover { background:#2d2d2e; }
+  .arow.active { background:#37373d; box-shadow:inset 2px 0 0 var(--accent); }
+  .arow .dot { align-self:stretch; border-radius:3px; background:var(--c); }
+  .arow .nm { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .arow small { color:var(--dim); }
+  .arow .met { grid-column:3; grid-row:1 / span 2; text-align:right; white-space:nowrap; }
+  .arow .met small { display:block; }
+  #adow, .acal .cweek { grid-template-columns:repeat(7,minmax(0,1fr)) 78px; }
+  #adow { display:grid; }
+  #adow span { padding:6px 4px; text-align:center; color:var(--dim); font-size:11px; text-transform:uppercase; letter-spacing:.06em; }
+  .acal { padding:0 10px; }
+  #agrid { border-right:1px solid var(--line); border-bottom:1px solid var(--line); }
+  .cwtot { grid-column:8; grid-row:1 / -1; padding:4px 6px; font-size:11px; line-height:1.35; color:var(--dim); border-left:1px solid var(--line); border-top:1px solid var(--line); overflow:hidden; }
+  .cwtot b { display:block; color:var(--fg); font-weight:600; }
+  .cbar.act.ok::after { content:" ✓"; }
+  .cbar.act.sel { outline:2px solid #fff; outline-offset:-2px; }
+  .cbar.more { background:transparent; border-color:transparent; color:var(--dim); cursor:pointer; }
+  .cbar.plan { background:transparent; border:1px dashed var(--c); color:var(--fg); cursor:pointer; }
+  .cbar.plan.missed { --c:var(--err); color:var(--err); } .cbar.plan.today { --c:var(--warn); } .cbar.plan.upcoming { --c:#8b8b8b; color:var(--dim); }
+  #aDay { padding:6px 0 24px; }
+  #aDay h3 { margin:8px 12px 4px; font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--dim); }
+  .aplan { display:flex; gap:8px; padding:5px 12px; color:var(--dim); }
+  .aplan.missed b { color:var(--err); } .aplan.today b { color:var(--warn); }
+  .astats { display:grid; grid-template-columns:repeat(auto-fill,minmax(112px,1fr)); gap:10px 14px; margin:12px 0; }
+  .astats b { display:block; font-size:17px; font-weight:400; }
+  .astats small { color:var(--dim); font-size:11px; }
+  .ahead { color:var(--dim); }
+  .ahead b { display:block; color:var(--fg); font-size:15px; }
+  #abody h3 { margin:16px 0 6px; font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--dim); }
+  .atable { width:100%; border-collapse:collapse; }
+  .atable td, .atable th { padding:4px 6px 4px 0; text-align:left; border-bottom:1px solid #2a2a2a; vertical-align:top; }
+  .atable th { color:var(--dim); font-weight:400; font-size:11px; }
+  .atable td.num { text-align:right; white-space:nowrap; }
+  .anote { color:var(--dim); margin:8px 0; }
+
   /* ── Calendar view: where the plan files put their workouts ── */
   body:not([data-view="calendar"]) #cview { display:none; }
   #cview { display:grid; grid-template-columns:minmax(0,1fr) 320px; min-height:0; }
@@ -322,12 +377,25 @@
     #wdlg[open] { width:100vw; max-width:100vw; height:var(--vvh, 100dvh); max-height:var(--vvh, 100dvh); top:var(--vvtop, 0px); margin:0; border-radius:0; border:0; }
     #dlg, #hdlg { width:94vw; }
 
+    #aview { display:block; position:relative; overflow:hidden; }
+    #amain, #adetail { width:100%; height:100%; border:0; }
+    body:not([data-wpane="detail"]) #adetail, body[data-wpane="detail"] #amain { display:none; }
+    .arow { grid-template-columns:6px minmax(0,1fr); padding:10px 12px 10px 10px; font-size:15px; }
+    .arow .met { grid-column:2; grid-row:auto; text-align:left; color:var(--dim); font-size:13px; }
+    .arow small { font-size:12px; }
+    .acal { padding:0; }
+    #adow, .acal .cweek { grid-template-columns:repeat(7,minmax(0,1fr)); }
+    .cwtot, #adow span:last-child { display:none; }
+    #aTypes { flex-wrap:nowrap; overflow-x:auto; max-width:100%; }
+    .tchip { flex:none; min-height:32px; padding:0 10px; }
+    #aSearch { flex:1 1 90px; }
+    #abody { padding:12px 14px 24px; font-size:15px; }
     #cview { display:block; height:100%; overflow:auto; overscroll-behavior:contain; }
     #cmain, #cscroll { display:block; overflow:visible; padding-left:0; padding-right:0; }
     #cbar { position:sticky; top:0; z-index:3; }
     #cside { overflow:visible; border:0; border-top:1px solid var(--line); }
     /* the cells are small: bars and chips only colour them, and a tap selects the day, whose details are listed below the grid */
-    .cbar { pointer-events:none; }
+    .cbar, .cbar.act, .cbar.plan, .cbar.more { pointer-events:none; }
     .cbar.wk { height:8px; margin:6px 3px; padding:0; font-size:0; }
     .cday { padding:2px 3px; }
     #cdow span { padding:4px 0; font-size:10px; letter-spacing:0; }
@@ -362,6 +430,7 @@
     <button id="vPlans" aria-pressed="true">Plans</button>
     <button id="vWorkouts" aria-pressed="false">Workouts</button>
     <button id="vCalendar" aria-pressed="false">Calendar</button>
+    <button id="vActivities" aria-pressed="false">Activities</button>
   </nav>
   <div class="dd account" id="account" hidden>
     <button id="accountBtn" class="menubtn" aria-expanded="false" aria-controls="accountMenu" title="Account"><span class="avatar" id="accountAvatar" aria-hidden="true"></span><span id="accountName"></span></button>
@@ -469,6 +538,43 @@
     <div class="cblock" id="cLegend"></div>
   </aside>
 </section>
+<section id="aview">
+  <div id="amain">
+    <div class="wbar" id="abar">
+      <div class="seg" id="aModes" role="group" aria-label="How the activities are shown">
+        <button data-mode="list" aria-pressed="true">List</button>
+        <button data-mode="calendar" aria-pressed="false">Calendar</button>
+      </div>
+      <select id="aProfile" title="Garmin profile" hidden></select>
+      <select id="aRange" title="How far back the list goes">
+        <option value="4w">4 weeks</option><option value="12w" selected>12 weeks</option><option value="1y">1 year</option><option value="all">All</option>
+      </select>
+      <input type="search" id="aSearch" placeholder="Search by name" aria-label="Search activities by name">
+      <button id="aSync" title="Ask Garmin for new activities" hidden>↻ Sync</button>
+    </div>
+    <div class="wbar" id="aCalBar" hidden>
+      <button id="aPrev" title="Previous month" aria-label="Previous month">◀</button>
+      <button id="aToday">Today</button>
+      <button id="aNext" title="Next month" aria-label="Next month">▶</button>
+      <b id="aTitle" aria-live="polite"></b>
+      <button id="aPlanned" aria-pressed="false" title="Show the workouts the plans schedule, and whether each was done">Show planned</button>
+    </div>
+    <div class="wbar" id="aTypesBar"><span id="aTypes" role="group" aria-label="Activity types"></span></div>
+    <div id="aNote" class="empty" hidden></div>
+    <div id="ascroll">
+      <div id="alist"></div>
+      <div class="acal" id="acal" hidden><div id="adow"></div><div id="agrid"></div></div>
+      <div id="aDay" hidden></div>
+    </div>
+  </div>
+  <aside id="adetail">
+    <div class="wbar">
+      <button id="aBack" class="only-mobile" title="Back to the list" aria-label="Back to the list">‹</button>
+      <b id="aDetailTitle">Activity</b>
+    </div>
+    <div id="abody"><div class="empty">Select an activity.</div></div>
+  </aside>
+</section>
 <nav id="tabbar" role="tablist">
   <button role="tab" data-tab="files"><span>📁</span>Files</button>
   <button role="tab" data-tab="editor"><span>✎</span>Editor</button>
@@ -508,6 +614,7 @@
 </dialog>
 
 <script src="/workoutModel.js"></script>
+<script src="/activityModel.js"></script>
 <script src="/vendor/monaco/loader.js"></script>
 <script>
 const $ = (id) => document.getElementById(id);
@@ -574,7 +681,7 @@ window.addEventListener("popstate", (e) => {
   try {
     if (s.view !== document.body.dataset.view) setView(s.view);
     setTab(s.tab);
-    document.body.dataset.wpane = s.wpane === "detail" && !W.selected ? "list" : s.wpane;
+    document.body.dataset.wpane = s.wpane === "detail" && !(s.view === "activities" ? A.selected : W.selected) ? "list" : s.wpane;
   } finally { navRestoring = false; }
   navKeyNow = navKey(navState());
   if (s.ov && !($(s.ov) && $(s.ov).open)) history.replaceState({ ...navState(), prev: s.prev }, ""); // forward onto a dialog that is no longer open
@@ -1209,8 +1316,11 @@ function setView(view) {
   $("vPlans").setAttribute("aria-pressed", String(view === "plans"));
   $("vWorkouts").setAttribute("aria-pressed", String(view === "workouts"));
   $("vCalendar").setAttribute("aria-pressed", String(view === "calendar"));
+  $("vActivities").setAttribute("aria-pressed", String(view === "activities"));
+  if (!navRestoring) document.body.dataset.wpane = "list"; // a pane belongs to its view: switching views starts on the list
   if (view === "workouts") guard(loadWorkouts)();
   else if (view === "calendar") guard(loadCalendar)(); // plans change in the editor, so look again on every visit
+  else if (view === "activities") guard(loadActivities)();
   else if (editor) requestAnimationFrame(() => editor.layout());
   navSync();
 }
@@ -1815,8 +1925,376 @@ function renderSide() {
   }
 }
 
+// ── Activities view: the stored activities as a list and as a calendar ──
+// Everything here reads the activities table through /api/activities and /api/activity; Garmin is asked only when
+// someone presses a button (POST /api/activities/sync and /detail). Dates are the strings of the rows (YYYY-MM-DD, HH:MM),
+// never parsed by Date. The logic (weeks, totals, filters, planned against done) lives in activityModel.js.
+const AM = ActivityModel;
+const A = { profile: null, rows: [], sync: null, mode: "list", types: new Set(), query: "", range: "12w", month: null, day: null, selected: null, showPlanned: false, plans: null, loaded: false, error: "", run: 0, detail: null, detailRun: 0, refreshed: false, polling: false, busy: false };
+const activityRow = (id) => A.rows.find((r) => r.id === id);
+const activityQuery = () => (A.profile ? `profile=${encodeURIComponent(A.profile)}&` : "");
+
+async function loadActivities() {
+  await garminReady;
+  const run = ++A.run, note = $("aNote");
+  const sel = $("aProfile");
+  if (!sel.options.length) for (const name of garmin.profiles) sel.add(new Option(name, name));
+  sel.hidden = !(garmin.user && garmin.user.admin && garmin.profiles.length > 1);
+  A.profile = A.profile || garmin.defaultProfile || garmin.profiles[0] || null;
+  sel.value = A.profile || "";
+  $("aSync").hidden = !garmin.enabled;
+  let r;
+  try { r = await api("GET", "/api/activities?" + activityQuery()); }
+  catch (e) { if (run === A.run) { A.error = e.message; A.loaded = true; renderActivities(); } return; }
+  if (run !== A.run) return;
+  A.rows = r.activities; A.sync = r.sync; A.loaded = true; A.error = "";
+  renderActivities();
+  if (A.selected && !activityRow(A.selected)) clearActivity();
+  if (A.sync && A.sync.syncing) pollActivities();
+  // The cheap look for what is new (one Garmin call), once per visit to the page: only when there is something stored already,
+  // since the first fill of an empty table is the person's call.
+  if (garmin.enabled && !A.refreshed && A.rows.length) { A.refreshed = true; syncActivities(false, true); }
+}
+
+/** Ask Garmin for what is new; with history, also start the background fill of the whole history and of every activity's details. */
+async function syncActivities(history, quiet = false) {
+  if (A.busy) return;
+  A.busy = true; $("aSync").disabled = true;
+  if (!quiet) { A.note = "Asking Garmin…"; renderActivityNote(); }
+  try {
+    const r = await api("POST", "/api/activities/sync", { profile: A.profile, history });
+    A.sync = r.sync; A.note = "";
+    if (r.error) A.error = r.error;
+    else if (r.busy && !quiet) A.note = "A sync is already running; this view follows it.";
+    else if (!quiet) A.note = r.added ? `${r.added} new ${r.added === 1 ? "activity" : "activities"}.` : "Nothing new on Garmin.";
+    if (r.added || history) await reloadActivityRows();
+  } catch (e) { if (!quiet) A.error = e.message; }
+  finally { A.busy = false; $("aSync").disabled = false; renderActivities(); }
+  if (A.sync && A.sync.syncing) pollActivities();
+}
+
+async function reloadActivityRows() {
+  try { const r = await api("GET", "/api/activities?" + activityQuery()); A.rows = r.activities; A.sync = r.sync; } catch { /* the old rows stay */ }
+}
+
+/** While a sync runs (here or in the MCP server), look again every few seconds, so rows and details appear as they are stored. */
+async function pollActivities() {
+  if (A.polling) return;
+  A.polling = true;
+  try {
+    while (document.body.dataset.view === "activities" && A.sync && A.sync.syncing) {
+      await new Promise((r) => setTimeout(r, 4000));
+      if (document.body.dataset.view !== "activities") break;
+      const before = A.sync.withDetails + ":" + A.sync.activities;
+      await reloadActivityRows();
+      if (A.sync.withDetails + ":" + A.sync.activities !== before) {
+        renderActivities();
+        const open = A.selected && A.detail && !A.detail.detailed ? activityRow(A.selected) : null;
+        if (open && open.detailed) selectActivity(A.selected, false);
+      }
+    }
+  } finally { A.polling = false; renderActivities(); }
+}
+
+function visibleActivities() {
+  return AM.filterRows(A.rows, { types: A.types, query: A.query, from: A.mode === "list" ? AM.rangeStart(A.range, todayIso()) : null });
+}
+
+function renderActivities() {
+  $("aModes").querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.mode === A.mode)));
+  const calendar = A.mode === "calendar";
+  $("aRange").hidden = calendar; $("aCalBar").hidden = !calendar;
+  $("alist").hidden = calendar; $("acal").hidden = !calendar; $("aDay").hidden = !calendar;
+  $("aPlanned").setAttribute("aria-pressed", String(A.showPlanned));
+  renderActivityTypes();
+  renderActivityNote();
+  if (calendar) { renderActivityCalendar(); renderActivityDay(); } else renderActivityList();
+}
+
+function renderActivityTypes() {
+  const box = $("aTypes"); box.replaceChildren();
+  const counts = new Map();
+  for (const r of A.rows) counts.set(r.type, (counts.get(r.type) || 0) + 1);
+  for (const [type, n] of [...counts].sort((a, b) => b[1] - a[1])) {
+    const b = mk("button", "tchip"), dot = mk("i");
+    b.style.setProperty("--c", typeColor(type));
+    b.setAttribute("aria-pressed", String(A.types.has(type)));
+    b.append(dot, `${prettyName(type)} ${n}`);
+    b.onclick = () => { if (A.types.has(type)) A.types.delete(type); else A.types.add(type); renderActivities(); };
+    box.append(b);
+  }
+  $("aTypesBar").hidden = !counts.size;
+}
+
+/** What the table holds and how the sync stands; before anything is stored, the way to start the first fill. */
+function renderActivityNote() {
+  const note = $("aNote"); note.replaceChildren(); note.classList.toggle("err", !!A.error);
+  const line = (text) => note.append(text);
+  const button = (label, run, title) => { const b = mk("button", "", label); if (title) b.title = title; b.onclick = guard(run); note.append(b); };
+  note.hidden = false;
+  if (A.error) { line(A.error); return; }
+  if (!A.loaded) { line("Loading…"); return; }
+  const s = A.sync;
+  if (!A.rows.length) {
+    if (!garmin.enabled) { line(garmin.reason || "Garmin is not available, and nothing is stored yet."); return; }
+    line("No activities are stored yet. ");
+    button("Fetch history from Garmin", () => syncActivities(true), "Lists your whole history, then fetches every activity's details in the background, about a second each");
+    if (s && s.syncing) line("A fill is running…");
+    return;
+  }
+  const parts = [`${s.activities} stored`, `${s.withDetails} with details`];
+  if (s.syncing) parts.push("syncing…");
+  note.hidden = !(A.note || s.syncing || s.pendingDetails || !s.historyComplete || s.error);
+  if (A.note) parts.unshift(A.note);
+  if (s.error) parts.push(`stopped: ${s.error}`);
+  if (note.hidden) return;
+  line(parts.join(" · "));
+  if (garmin.enabled && !s.syncing && (!s.historyComplete || s.pendingDetails)) {
+    button(s.historyComplete ? `Fetch ${s.pendingDetails} missing details` : "Fetch the rest of the history", () => syncActivities(true), "Runs in the background; this view follows it");
+  }
+}
+
+// ── List ──
+
+function renderActivityList() {
+  const box = $("alist"); box.replaceChildren();
+  const rows = visibleActivities();
+  if (!rows.length) { if (A.loaded && A.rows.length) box.append(mk("div", "empty", "No activity matches.")); return; }
+  for (const wk of AM.groupWeeks(rows)) {
+    const head = mk("div", "awk"), t = wk.totals;
+    head.append(mk("b", "", `Week of ${fmtDate(wk.week, { day: "numeric", month: "short" })}`), mk("span", "", `${t.count} session${t.count === 1 ? "" : "s"}`));
+    if (t.km) head.append(mk("span", "", `${t.km} km`));
+    if (t.seconds) head.append(mk("span", "", AM.duration(t.seconds)));
+    box.append(head);
+    for (const r of wk.rows) box.append(activityRowEl(r));
+  }
+}
+
+const metricsOf = (r) => [AM.distance(r.km), AM.duration(r.seconds), AM.pace(r.paceSec), r.sets ? `${r.sets} sets` : "", r.avgHr ? `${r.avgHr} bpm` : ""].filter(Boolean);
+
+function activityRowEl(r) {
+  const el = mk("div", "arow" + (A.selected === r.id ? " active" : ""));
+  el.dataset.id = r.id; el.style.setProperty("--c", typeColor(r.type));
+  const info = mk("div"), met = mk("div", "met");
+  info.append(mk("div", "nm", r.name), mk("small", "", [fmtDate(r.date, { weekday: "short", day: "numeric", month: "short" }), AM.clock(r.time)].filter(Boolean).join(" · ")));
+  const m = metricsOf(r);
+  met.append(m.slice(0, 3).join(" · "));
+  if (r.effect) met.append(mk("small", "", prettyName(r.effect)));
+  el.append(mk("span", "dot"), info, met);
+  clickable(el, () => selectActivity(r.id));
+  return el;
+}
+
+// ── Calendar ──
+
+const activityChipText = (r) => r.name;
+const activityChipTitle = (r) => [r.name, `${prettyName(r.type)} · ${r.date} ${AM.clock(r.time)}`, metricsOf(r).join(" · ")].filter(Boolean).join("\n");
+const MAX_CHIPS = 4;
+
+function renderActivityCalendar() {
+  A.month = A.month || todayIso().slice(0, 7);
+  const weeks = gridDays(A.month), first = weeks[0][0], last = weeks[weeks.length - 1][6], today = todayIso();
+  $("aTitle").textContent = monthName(A.month);
+  if (!$("adow").children.length) {
+    for (let d = 0; d < 7; d++) $("adow").append(mk("span", "", utcFormat({ weekday: "short" }).format(Date.UTC(2024, 0, 1 + d))));
+    $("adow").append(mk("span", "", "Week"));
+  }
+  const rows = visibleActivities(), days = AM.byDate(rows);
+  const sessions = A.showPlanned && A.plans ? AM.planned(A.plans, A.rows, today, { from: first, to: last }) : [];
+  const doneBy = new Set(sessions.filter((s) => s.status === "done").map((s) => s.activityId));
+  const openByDay = new Map();
+  for (const s of sessions) if (s.status !== "done") { if (!openByDay.has(s.date)) openByDay.set(s.date, []); openByDay.get(s.date).push(s); }
+  const grid = $("agrid"); grid.replaceChildren();
+  for (const week of weeks) {
+    const el = mk("div", "cweek"), chips = [];
+    week.forEach((iso, col) => {
+      const cell = mk("div", "cday" + (iso.slice(0, 7) !== A.month ? " out" : "") + (iso === today ? " today" : "") + (iso === A.day ? " sel" : ""));
+      cell.style.gridColumn = String(col + 1);
+      cell.append(mk("span", "dnum", iso.endsWith("-01") ? fmtDate(iso, { day: "numeric", month: "short" }) : String(Number(iso.slice(8)))));
+      cell.setAttribute("aria-label", fmtDate(iso, { weekday: "long", day: "numeric", month: "long", year: "numeric" }));
+      clickable(cell, () => { A.day = iso; renderActivities(); });
+      el.append(cell);
+      const items = [...(days.get(iso) || []).map((r) => ({ r })), ...(openByDay.get(iso) || []).map((s) => ({ s }))];
+      items.slice(0, items.length > MAX_CHIPS ? MAX_CHIPS - 1 : MAX_CHIPS).forEach((item, lane) => {
+        const node = mk("button", "cbar wk");
+        node.style.cssText = `grid-column:${col + 1}; grid-row:${lane + 2}`;
+        if (item.r) {
+          node.classList.add("act"); node.style.setProperty("--c", typeColor(item.r.type));
+          if (doneBy.has(item.r.id)) node.classList.add("ok");
+          if (item.r.id === A.selected) node.classList.add("sel");
+          node.textContent = activityChipText(item.r); node.title = activityChipTitle(item.r);
+          node.onclick = () => { A.day = iso; selectActivity(item.r.id); };
+        } else {
+          node.classList.add("plan", item.s.status); node.style.setProperty("--c", typeColor(item.s.sport));
+          node.textContent = item.s.name; node.title = `${item.s.name}\nPlanned (${item.s.status === "missed" ? "not done" : item.s.status})`;
+          node.onclick = () => { A.day = iso; renderActivities(); };
+        }
+        chips.push(node);
+      });
+      if (items.length > MAX_CHIPS) {
+        const more = mk("button", "cbar wk more", `+${items.length - MAX_CHIPS + 1} more`);
+        more.style.cssText = `grid-column:${col + 1}; grid-row:${MAX_CHIPS + 1}`; more.onclick = () => { A.day = iso; renderActivities(); };
+        chips.push(more);
+      }
+    });
+    const t = AM.totals(week.flatMap((iso) => days.get(iso) || []));
+    const tot = mk("div", "cwtot");
+    if (t.count) { tot.append(mk("b", "", `${t.count} session${t.count === 1 ? "" : "s"}`), [t.km ? `${t.km} km` : "", AM.duration(t.seconds)].filter(Boolean).join(" · ")); }
+    el.append(tot, ...chips);
+    el.style.gridTemplateRows = `24px repeat(${MAX_CHIPS}, 20px) 4px`;
+    grid.append(el);
+  }
+}
+
+/** The selected day below the grid: its activities, and the planned workouts that were not done. */
+function renderActivityDay() {
+  const box = $("aDay"); box.replaceChildren();
+  if (!A.day) return;
+  box.append(mk("h3", "", fmtDate(A.day, { weekday: "long", day: "numeric", month: "long", year: "numeric" })));
+  const rows = visibleActivities().filter((r) => r.date === A.day).sort((a, b) => (a.time || "").localeCompare(b.time || ""));
+  for (const r of rows) box.append(activityRowEl(r));
+  const today = todayIso();
+  const open = A.showPlanned && A.plans ? AM.planned(A.plans, A.rows, today, { from: A.day, to: A.day }).filter((s) => s.status !== "done") : [];
+  for (const s of open) {
+    const line = mk("div", "aplan " + s.status);
+    line.append(mk("b", "", s.name), mk("span", "", s.status === "missed" ? "planned, not done" : s.status === "today" ? "planned for today" : "planned"));
+    box.append(line);
+  }
+  if (!rows.length && !open.length) box.append(mk("div", "empty", "Nothing on this day."));
+}
+
+async function loadPlannedPlans() {
+  if (A.plans) return;
+  try { A.plans = (await api("GET", "/api/calendar")).plans.map((p) => ({ ...p, name: planName(p.path) })); }
+  catch { A.plans = []; }
+}
+
+// ── One activity ──
+
+function clearActivity() {
+  A.selected = null; A.detail = null; A.detailRun++;
+  $("aDetailTitle").textContent = "Activity";
+  $("abody").innerHTML = '<div class="empty">Select an activity.</div>';
+  showWorkoutList();
+}
+
+async function selectActivity(id, show = true) {
+  const row = activityRow(id);
+  if (!row) return;
+  A.selected = id;
+  if (show) { document.body.dataset.wpane = "detail"; navSync(); }
+  document.querySelectorAll("#aview .arow, #aview .cbar.act").forEach((el) => el.classList.toggle("active", el.dataset.id === id));
+  if (A.mode === "calendar") renderActivityCalendar();
+  const token = ++A.detailRun;
+  $("aDetailTitle").textContent = row.name;
+  if (!A.detail || A.detail.activity.id !== id) $("abody").innerHTML = '<div class="empty">Loading…</div>';
+  let d;
+  try { d = await api("GET", `/api/activity?${activityQuery()}id=${encodeURIComponent(id)}`); }
+  catch (e) { if (token === A.detailRun) { $("abody").replaceChildren(mk("div", "msg err", e.message)); } return; }
+  if (token !== A.detailRun) return;
+  A.detail = d; renderActivityDetail();
+  // The details of one activity are one Garmin call: fetch them when they are not stored yet and nothing is filling them in.
+  if (!d.detailed && garmin.enabled && !(A.sync && A.sync.syncing)) fetchActivityDetails(id, token);
+}
+
+async function fetchActivityDetails(id, token = A.detailRun) {
+  A.detailBusy = true; renderActivityDetail();
+  let d, failure = "";
+  try { d = await api("POST", "/api/activities/detail", { profile: A.profile, id }); }
+  catch (e) { failure = e.message; }
+  A.detailBusy = false;
+  if (token !== A.detailRun) return;
+  if (d) {
+    A.detail = d;
+    const row = activityRow(id); if (row) row.detailed = d.detailed;
+    if (d.fetched && d.fetched.error) failure = d.fetched.error;
+  }
+  A.detailFailure = failure;
+  renderActivityDetail();
+}
+
+function statEl(value, label) { const d = mk("div"); d.append(mk("b", "", value), mk("small", "", label)); return d; }
+
+function renderActivityDetail() {
+  const d = A.detail, box = $("abody"); box.replaceChildren();
+  if (!d) return;
+  const r = d.activity, s = d.slim || {};
+  const head = mk("div", "ahead");
+  head.append(mk("b", "", r.name), `${prettyName(r.type)} · ${fmtDate(r.date, { weekday: "long", day: "numeric", month: "long", year: "numeric" })}${r.time ? ", " + AM.clock(r.time) : ""}`);
+  box.append(head);
+
+  const stats = mk("div", "astats");
+  const add = (value, label) => { if (value !== null && value !== undefined && value !== "") stats.append(statEl(String(value), label)); };
+  add(AM.distance(r.km), "Distance"); add(AM.duration(r.seconds), "Time"); add(AM.pace(r.paceSec), "Pace");
+  add(r.avgHr && `${r.avgHr} bpm`, "Average HR"); add(r.maxHr && `${r.maxHr} bpm`, "Max HR");
+  add(r.elevation && `${r.elevation} m`, "Elevation"); add(s.avgCadence && `${Math.round(s.avgCadence)} spm`, "Cadence");
+  add(r.calories && `${r.calories} kcal`, "Calories");
+  add(r.effect && prettyName(r.effect), "Training effect");
+  add(r.aerobic && r.aerobic.toFixed(1), "Aerobic effect"); add(s.anaerobicTrainingEffect && s.anaerobicTrainingEffect.toFixed(1), "Anaerobic effect");
+  add(s.differenceBodyBattery !== undefined ? s.differenceBodyBattery : "", "Body battery");
+  add(s.moderateIntensityMinutes || s.vigorousIntensityMinutes ? `${s.moderateIntensityMinutes || 0} + ${s.vigorousIntensityMinutes || 0} min` : "", "Moderate + vigorous");
+  add(r.sets && `${r.sets} sets · ${r.reps || 0} reps`, "Strength");
+  add(s.directWorkoutFeel && `${s.directWorkoutFeel} / 100`, "Feel"); add(s.directWorkoutRpe && `${s.directWorkoutRpe} / 100`, "RPE");
+  box.append(stats);
+
+  if (!d.detailed) {
+    const note = mk("div", "anote");
+    if (A.detailBusy) note.textContent = "Fetching the details from Garmin…";
+    else {
+      note.append(A.detailFailure ? `Could not fetch the details: ${A.detailFailure} ` : A.sync && A.sync.syncing ? "The details are being filled in; they appear here when stored. " : "The details (feel, RPE, sets, intervals) are not stored yet. ");
+      if (garmin.enabled && !(A.sync && A.sync.syncing)) { const b = mk("button", "", "Fetch them now"); b.onclick = guard(() => fetchActivityDetails(r.id)); note.append(b); }
+    }
+    box.append(note);
+  }
+
+  const sets = Array.isArray(s.exerciseSets) ? s.exerciseSets : [];
+  const lifts = sets.filter((x) => x.category !== "INTERVAL"), intervals = sets.filter((x) => x.category === "INTERVAL");
+  if (lifts.length) {
+    box.append(mk("h3", "", "Exercises"));
+    const t = mk("table", "atable"), tr = (cells, tag = "td") => { const row = mk("tr"); cells.forEach(([text, cls]) => row.append(mk(tag, cls || "", text))); t.append(row); };
+    tr([["Exercise"], ["Sets × reps", "num"], ["Weight", "num"]], "th");
+    for (const x of lifts) {
+      const reps = Array.isArray(x.repsList) ? x.repsList.join(" / ") : x.reps || "";
+      const volume = reps ? `${x.sets || 1} × ${reps}` : `${x.sets || 1} set${(x.sets || 1) === 1 ? "" : "s"}`;
+      const weight = Array.isArray(x.weightList) ? x.weightList.join(" / ") + " lb" : x.weight ? `${x.weight} lb` : "";
+      tr([[x.exerciseName + (x.supersetGroup ? " ·ss" : "")], [volume, "num"], [weight, "num"]]);
+    }
+    box.append(t);
+  }
+  if (intervals.length) {
+    box.append(mk("h3", "", "Intervals"));
+    const t = mk("table", "atable"), tr = (cells, tag = "td") => { const row = mk("tr"); cells.forEach(([text, cls]) => row.append(mk(tag, cls || "", text))); t.append(row); };
+    tr([["#"], ["Distance", "num"], ["Time", "num"], ["Pace", "num"], ["HR", "num"]], "th");
+    intervals.forEach((x, i) => tr([[String(i + 1)], [AM.distance(x.distance), "num"], [AM.duration(x.duration), "num"], [x.pace ? AM.pace(x.pace * 60) : "", "num"], [x.avgHR ? String(Math.round(x.avgHR)) : "", "num"]]));
+    box.append(t);
+  }
+
+  if (d.planned) {
+    box.append(mk("h3", "", "Planned workout"));
+    const link = mk("a", "", `${d.planned.workout.workoutName} · ${planName(d.planned.path)}`);
+    link.style.cursor = "pointer"; link.style.color = "var(--accent)";
+    link.onclick = guard(() => openPlanWorkout(d.planned.path, d.planned.workout));
+    box.append(link, workoutVisual(d.planned.workout, { profile: A.profile }));
+  }
+}
+
+function bindActivitiesView() {
+  $("vActivities").onclick = () => setView("activities");
+  $("aModes").querySelectorAll("button").forEach((b) => b.onclick = () => { A.mode = b.dataset.mode; if (A.mode === "calendar" && A.showPlanned) loadPlannedPlans().then(renderActivities); renderActivities(); });
+  $("aRange").onchange = (e) => { A.range = e.target.value; renderActivities(); };
+  $("aSearch").oninput = (e) => { A.query = e.target.value; renderActivities(); };
+  $("aSync").onclick = guard(() => syncActivities(false));
+  $("aProfile").onchange = (e) => { A.profile = e.target.value; A.rows = []; A.sync = null; A.loaded = false; A.refreshed = false; A.selected = null; A.detail = null; A.plans = null; clearActivity(); guard(loadActivities)(); };
+  $("aPrev").onclick = () => { A.month = addMonths(A.month || todayIso().slice(0, 7), -1); renderActivities(); };
+  $("aNext").onclick = () => { A.month = addMonths(A.month || todayIso().slice(0, 7), 1); renderActivities(); };
+  $("aToday").onclick = () => { A.month = todayIso().slice(0, 7); A.day = todayIso(); renderActivities(); };
+  $("aPlanned").onclick = guard(async () => { A.showPlanned = !A.showPlanned; if (A.showPlanned) await loadPlannedPlans(); renderActivities(); });
+  $("aBack").onclick = () => showWorkoutList();
+}
+
 function bindCalendarView() {
   $("vCalendar").onclick = () => setView("calendar");
+  bindActivitiesView();
   $("cPrev").onclick = () => gotoMonth(addMonths(C.month, -1));
   $("cNext").onclick = () => gotoMonth(addMonths(C.month, 1));
   $("cToday").onclick = () => { C.selected = todayIso(); gotoMonth(C.selected.slice(0, 7)); };

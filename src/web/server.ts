@@ -21,6 +21,11 @@
  * The Calendar view shows where the plan files put their workouts (GET /api/calendar): each plan's span
  * and the dates of its workouts. It reads the stored plans only, not Garmin's own calendar.
  *
+ * The Activities view lists and draws the profile's activities from the database (GET /api/activities,
+ * GET /api/activity); it never calls Garmin on a read. POST /api/activities/sync asks Garmin for what is new
+ * (and, with history: true, starts the background fill of the whole history and the details), and POST
+ * /api/activities/detail fetches one activity's details now.
+ *
  * The workout picture times steps that name no pace from the profile's recent runs (GET /api/runs),
  * read from the activities table that the Garmin sync fills.
  *
@@ -40,6 +45,10 @@ import { PROJECT_ROOT, findProfile, getAvailableProfiles, getProfilesDir } from 
 import { type DocMeta, type StoreErrorCode, StoreError, getStore, normalizeLogicalPath, profileOfPath } from "../shared/store";
 import { getSettings, resolveProfileName, runCaptured } from "../mcp/context";
 import { installConsoleRedirect } from "../mcp/logCapture";
+import ActivityExporter from "../activityExporter";
+import { syncStatus } from "../shared/activitySync";
+import type { ActivitySummary, StoredActivity } from "../shared/store";
+import { fetchDetailsNow, refreshActivities, startBackgroundSync } from "../mcp/tools/activities";
 import { diffPlanWorkout, extractWorkouts, validatePlanData } from "../mcp/tools/plans";
 import {
   LIBRARY_LIMIT,
@@ -475,6 +484,61 @@ function recentRuns(profile: string): RunSample[] {
   return runs.filter((r) => r.date >= cutoff).slice(0, RUN_LIMIT);
 }
 
+// ── Activities view: what the activities table holds, never a call to Garmin on a read ──
+
+/** The profile a read is about, or null when none is configured (nothing is stored then). */
+function profileOrNull(who: Principal, requested: unknown): string | null {
+  try {
+    return profileFor(who, "", requested);
+  } catch {
+    return null;
+  }
+}
+
+/** A row of the activity list; seconds per km for a run. */
+function activityRow(a: Omit<ActivitySummary, "detailed"> & { detailed?: boolean }) {
+  return {
+    id: a.id,
+    date: a.startLocal.slice(0, 10),
+    time: a.startLocal.slice(11, 16),
+    type: a.type,
+    name: a.name,
+    km: a.distance ? +(a.distance / 1000).toFixed(2) : null,
+    seconds: a.duration ? Math.round(a.duration) : null,
+    paceSec: a.type === "running" && a.speed && a.speed > 0 ? Math.round(1000 / a.speed) : null,
+    avgHr: a.avgHr ? Math.round(a.avgHr) : null,
+    maxHr: a.maxHr ? Math.round(a.maxHr) : null,
+    effect: a.trainingEffectLabel,
+    aerobic: a.aerobicEffect,
+    elevation: a.elevationGain ? Math.round(a.elevationGain) : null,
+    calories: a.calories ? Math.round(a.calories) : null,
+    sets: a.sets,
+    reps: a.reps,
+    workoutId: a.workoutId,
+    detailed: !!a.detailed,
+  };
+}
+
+let slimmer: ActivityExporter | undefined;
+
+/** One activity with everything stored: its row, the slim form (sets, intervals, feel and RPE), and the plan workout it came from. */
+function activityDetail(profile: string, a: StoredActivity) {
+  slimmer ??= new ActivityExporter(null as never); // the transform needs no Garmin client
+  const raw = a.raw ?? {};
+  const row = activityRow({
+    id: a.id, startLocal: a.startLocal, type: a.type, name: a.name, distance: a.distance, duration: a.duration, avgHr: a.avgHr,
+    maxHr: raw.maxHR ?? null, speed: raw.averageSpeed ?? null, trainingEffectLabel: raw.trainingEffectLabel ?? null, aerobicEffect: raw.aerobicTrainingEffect ?? null,
+    elevationGain: raw.elevationGain ?? null, calories: raw.calories ?? null, sets: raw.totalSets ?? null, reps: raw.totalReps ?? null, workoutId: a.workoutId, detailed: a.detail !== null,
+  });
+  const entry = hasId(a.workoutId) ? planEntriesFor(profile).find((e) => sameId(e.workout.workoutId, a.workoutId)) : undefined;
+  return {
+    activity: row,
+    slim: slimmer.slim([{ ...raw, ...(a.detail ?? {}) }])[0] ?? null,
+    detailed: a.detail !== null,
+    planned: entry ? { path: entry.path, index: entry.index, workout: entry.workout } : null,
+  };
+}
+
 const hasId = (id: unknown): boolean => id !== undefined && id !== null && id !== "";
 const sameId = (a: unknown, b: unknown): boolean => hasId(a) && hasId(b) && String(a) === String(b);
 
@@ -820,6 +884,41 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
       const profile = profileFor(who, "", url.searchParams.get("profile"));
       const { value: library } = await viaGarmin(() => listLibraryWorkouts(profile, url.searchParams.get("refresh") === "1"));
       return send(res, 200, { profile, ...workoutRows(library, planEntriesFor(profile)) });
+    }
+
+    case "GET /api/activities": {
+      const profile = profileOrNull(who, url.searchParams.get("profile"));
+      if (!profile) return send(res, 200, { profile: null, activities: [], sync: null });
+      return send(res, 200, { profile, activities: store().activities.summaries(profile).map(activityRow), sync: syncStatus(store(), profile) });
+    }
+
+    case "GET /api/activity": {
+      const profile = profileOrNull(who, url.searchParams.get("profile"));
+      const id = url.searchParams.get("id") ?? "";
+      if (!/^[\w-]+$/.test(id)) throw new HttpError(400, "Missing or invalid activity id");
+      const found = profile ? store().activities.get(profile, id) : undefined;
+      if (!profile || !found) throw new HttpError(404, `Activity ${id} is not stored.`);
+      return send(res, 200, activityDetail(profile, found));
+    }
+
+    case "POST /api/activities/sync": {
+      // Asks Garmin for what is new. history: true also starts the background fill of the whole history and the details.
+      requireGarmin(who);
+      const body = await readBody(req);
+      const profile = profileFor(who, "", body.profile);
+      const refreshed = await refreshActivities(profile);
+      const background = body.history === true ? startBackgroundSync(profile) : null;
+      return send(res, 200, { ...refreshed, background, sync: syncStatus(store(), profile) });
+    }
+
+    case "POST /api/activities/detail": {
+      requireGarmin(who);
+      const body = await readBody(req);
+      const profile = profileFor(who, "", body.profile);
+      const id = String(body.id ?? "");
+      if (!/^[\w-]+$/.test(id) || !store().activities.get(profile, id)) throw new HttpError(404, `Activity ${id} is not stored.`);
+      const fetched = await fetchDetailsNow(profile, [id]);
+      return send(res, 200, { ...activityDetail(profile, store().activities.get(profile, id)!), fetched });
     }
 
     case "GET /api/runs": {
