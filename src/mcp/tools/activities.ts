@@ -3,7 +3,7 @@
  * and the answer to get_activities, read from the database. The sync itself is shared/activitySync.ts.
  */
 import { getLastNWeeksStart } from "../../activityExporter";
-import { type ActivitySource, COOL_OFF_MS, LeaseLost, SETTLE_MS, isBackfilling, startBackfill, syncDetails, syncList, syncStatus, withLease, type SyncStatus } from "../../shared/activitySync";
+import { type ActivitySource, COOL_OFF_MS, LeaseLost, SETTLE_MS, isBackfilling, startBackfill, syncCharts, syncDetails, syncList, syncStatus, withLease, type SyncStatus } from "../../shared/activitySync";
 import { getStore } from "../../shared/store";
 import { type Session, getSession, requireAuth, runCaptured } from "../context";
 
@@ -59,6 +59,23 @@ export function sourceFor(session: Session): ActivitySource {
         return { ...details, ...(fullExerciseSets !== undefined && { fullExerciseSets }) };
       });
     },
+    async fetchChart({ id }) {
+      await ready();
+      // each call has the Garmin lock to itself, with a pause between them: the laps and the zones are optional
+      const details = await locked(() => session.garminClient.getActivityDetails(id));
+      const optional = async (call: () => Promise<unknown>) => {
+        await sleep(detailGapMs() ?? 300);
+        try {
+          return await locked(call as () => Promise<any>);
+        } catch (error) {
+          if (/\((429|401|403)\)|too many requests|authenticat/i.test(errorText(error))) throw error; // that is for the caller to stop on
+          return undefined; // this activity has no such part
+        }
+      };
+      const splits = await optional(() => session.garminClient.getActivitySplits(id));
+      const zones = await optional(() => session.garminClient.getActivityHrZones(id));
+      return { details, splits, zones };
+    },
   };
 }
 
@@ -84,6 +101,19 @@ export async function fetchDetailsNow(profile: string | undefined, ids: string[]
   if (!ids.length || isBackfilling(store, name)) return { fetched: 0, error: null };
   try {
     const leased = await withLease(store, name, holder(), (renew) => syncDetails(store, name, sourceFor(session), { ids, limit, renew, gapMs: detailGapMs() }));
+    if (!leased.ok) return { fetched: 0, error: null };
+    return { fetched: leased.value.fetched, error: leased.value.stopped };
+  } catch (error) {
+    return { fetched: 0, error: error instanceof LeaseLost ? null : errorText(error) };
+  }
+}
+
+/** Fetch the chart data of one activity now, unless a background sync is already filling the charts in. */
+export async function fetchChartNow(profile: string | undefined, id: string): Promise<{ fetched: number; error: string | null }> {
+  const session = getSession(profile), store = getStore(), name = session.profile.name;
+  if (isBackfilling(store, name)) return { fetched: 0, error: null };
+  try {
+    const leased = await withLease(store, name, holder(), (renew) => syncCharts(store, name, sourceFor(session), { ids: [id], limit: 1, renew, gapMs: detailGapMs() }));
     if (!leased.ok) return { fetched: 0, error: null };
     return { fetched: leased.value.fetched, error: leased.value.stopped };
   } catch (error) {

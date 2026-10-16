@@ -8,6 +8,7 @@
  *                where it got to, so an interrupted run resumes; once the history is complete, a run pages from the
  *                newest until it meets an activity it has (usually one call).
  *   syncDetails  the details (and strength sets) of the activities that lack them, newest first, one call each.
+ *   syncCharts   the chart data (time series, route, laps, zones) of the activities that lack it, three calls each.
  *   startBackfill  runs both in the background until everything is stored.
  *
  * Garmin is reached through an ActivitySource, which serializes each call with the other Garmin work, so a long
@@ -17,6 +18,7 @@
  * run picks up where this one stopped, and after a rate limit (never after a login failure, which could lock the
  * account) the job starts again by itself once the cool-off is over.
  */
+import { type ChartResponses, pruneChart } from "./activityChart";
 import { normalizeActivityType } from "./activityType";
 import type { NewActivity, SqliteStore } from "./store";
 
@@ -25,6 +27,11 @@ export interface ActivitySource {
   listPage(offset: number, limit: number): Promise<any[]>;
   /** The details of one activity, including its exercise sets when it is a strength workout. */
   fetchDetail(activity: { id: string; type: string }): Promise<Record<string, unknown>>;
+  /**
+   * The chart data of one activity: its time series and route, its laps and its heart-rate zones. Only the details are
+   * required: a 404 on the laps or the zones leaves that part out. Optional: a source without it stores no charts.
+   */
+  fetchChart?(activity: { id: string; type: string }): Promise<ChartResponses>;
 }
 
 export const PAGE_SIZE = 100;
@@ -184,6 +191,38 @@ export async function syncDetails(store: SqliteStore, profile: string, source: A
   return { fetched, failed, stopped: null };
 }
 
+/**
+ * Fetch the chart data of the activities that have none: the time series and the route, the laps and the zones, kept
+ * as Garmin sent them (pruned). An answer with no GPS or no series (a strength workout, an indoor or manual activity) is
+ * an answer and is stored; only an error counts against an activity. Stops, and records why, on a rate limit or a login failure.
+ */
+export async function syncCharts(store: SqliteStore, profile: string, source: ActivitySource, options: DetailOptions = {}): Promise<{ fetched: number; failed: number; stopped: string | null }> {
+  const table = store.activities, fetchChart = source.fetchChart?.bind(source);
+  if (!fetchChart) return { fetched: 0, failed: 0, stopped: null };
+  const wanted = table.needingChart(profile, { limit: options.limit, ids: options.ids });
+  const sleep = options.sleep ?? sleepFor;
+  let fetched = 0, failed = 0;
+  for (let i = 0; i < wanted.length; i++) {
+    if (options.renew && !options.renew()) throw new LeaseLost();
+    const { id, type } = wanted[i];
+    try {
+      const responses = await fetchChart({ id, type });
+      if (!responses || typeof responses !== "object") throw new Error("Garmin returned no chart data");
+      table.setChart(profile, id, pruneChart(responses));
+      fetched++;
+    } catch (error) {
+      if (stopsSync(error)) {
+        table.saveProgress(profile, { error: message(error), retryAfter: Date.now() + COOL_OFF_MS });
+        return { fetched, failed, stopped: message(error) };
+      }
+      table.noteChartFailure(profile, id);
+      failed++;
+    }
+    if (i < wanted.length - 1) await sleep(options.gapMs ?? DETAIL_GAP_MS);
+  }
+  return { fetched, failed, stopped: null };
+}
+
 /** Hold the profile's sync lease while fn runs. ok: false when another process holds it. */
 export async function withLease<T>(store: SqliteStore, profile: string, holder: string, fn: (renew: () => boolean) => Promise<T>): Promise<{ ok: true; value: T } | { ok: false }> {
   const table = store.activities;
@@ -226,7 +265,8 @@ export function startBackfill(store: SqliteStore, profile: string, source: Activ
   const no = (reason: string) => ({ started: false, reason, done: running.get(key) ?? Promise.resolve() });
   if (running.has(key)) return no("A sync is already running.");
   const state = table.state(profile);
-  if (state.complete && table.needingDetail(profile, { limit: 1, settleMs: SETTLE_MS }).length === 0) return no("Everything is stored.");
+  const chartsLeft = () => (source.fetchChart ? table.needingChart(profile, { limit: 1 }).length : 0);
+  if (state.complete && table.needingDetail(profile, { limit: 1, settleMs: SETTLE_MS }).length === 0 && chartsLeft() === 0) return no("Everything is stored.");
   if (state.retryAfter !== null && now < state.retryAfter) return no(`Waiting after: ${state.error ?? "an error"}`);
   if (!table.claim(profile, options.holder, LEASE_MS, now)) return no("Another process is syncing.");
 
@@ -235,7 +275,8 @@ export function startBackfill(store: SqliteStore, profile: string, source: Activ
   const done = (async () => {
     try {
       await syncList(store, profile, source, { renew });
-      const result = await syncDetails(store, profile, source, { renew, gapMs: options.gapMs, sleep: options.sleep });
+      let result = await syncDetails(store, profile, source, { renew, gapMs: options.gapMs, sleep: options.sleep });
+      if (!result.stopped) result = await syncCharts(store, profile, source, { renew, gapMs: options.gapMs, sleep: options.sleep });
       if (!result.stopped) table.saveProgress(profile, { error: null, retryAfter: null });
       else rateLimited = isRateLimit(result.stopped);
     } catch (error) {
@@ -264,8 +305,12 @@ export function startBackfill(store: SqliteStore, profile: string, source: Activ
 export interface SyncStatus {
   activities: number;
   withDetails: number;
+  /** Activities with their chart data (time series, route, laps, zones) stored. */
+  withCharts: number;
   /** Activities whose details are missing or may still change. */
   pendingDetails: number;
+  /** Activities whose chart data is not stored yet. */
+  pendingCharts: number;
   /** Is the whole history listed? */
   historyComplete: boolean;
   syncing: boolean;
@@ -280,7 +325,9 @@ export function syncStatus(store: SqliteStore, profile: string, now = Date.now()
   return {
     activities: counts.total,
     withDetails: counts.withDetail,
+    withCharts: counts.withChart,
     pendingDetails: table.needingDetail(profile, { settleMs: SETTLE_MS }).length,
+    pendingCharts: table.needingChart(profile).length,
     historyComplete: state.complete,
     syncing: !!state.holder && (state.leaseUntil ?? 0) > now,
     error: state.error,

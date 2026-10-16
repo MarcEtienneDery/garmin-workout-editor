@@ -54,7 +54,7 @@ GARMIN_PASSWORD="your_password"
 
 ### Activities
 
-Your Garmin activities are stored in the database (see [Storage](#storage)) and read through the MCP tool `get_activities`; there is no file to extract. The first call lists your whole history and a background job fetches every activity's details (about 1 second each, so a long history takes a while; it can be interrupted and resumes). Later calls ask Garmin only for what is new. In mock mode (`MOCK_MODE=true` or `--mock`) `get_activities` returns generated activities and stores nothing.
+Your Garmin activities are stored in the database (see [Storage](#storage)) and read through the MCP tool `get_activities`; there is no file to extract. The first call lists your whole history and a background job fetches every activity's details (about 1 second each, so a long history takes a while; it can be interrupted and resumes). After the details, the same background job fetches each activity's **chart data** once (three read-only calls: the time series and route, the watch's laps, the heart-rate zones), kept in an `activity_charts` table in the shape Garmin sent it, thinned to a few hundred samples; the charts are read from that on every view, so a change in how they are read never needs Garmin again. An activity with no GPS or no series (strength, indoor, manual) stores an empty answer and is not retried. Later calls ask Garmin only for what is new. In mock mode (`MOCK_MODE=true` or `--mock`) `get_activities` returns generated activities and stores nothing.
 
 ## Manage Workouts (Import/Export & Planning)
 

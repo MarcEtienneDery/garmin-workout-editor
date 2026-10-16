@@ -142,6 +142,26 @@ export class GarminClient {
   }
 
   /**
+   * The time series and the route of an activity, thinned by Garmin to at most `size` samples.
+   * Undocumented endpoint, like exerciseSets; read-only.
+   */
+  async getActivityDetails(activityId: number | string, size = 300): Promise<any> {
+    return (this.client as any).client.get(
+      `https://connectapi.garmin.com/activity-service/activity/${activityId}/details?maxChartSize=${size}&maxPolylineSize=${size}`
+    );
+  }
+
+  /** The laps the watch recorded for an activity. */
+  async getActivitySplits(activityId: number | string): Promise<any> {
+    return (this.client as any).client.get(`https://connectapi.garmin.com/activity-service/activity/${activityId}/splits`);
+  }
+
+  /** Seconds in each heart-rate zone, with each zone's lower bound. */
+  async getActivityHrZones(activityId: number | string): Promise<any> {
+    return (this.client as any).client.get(`https://connectapi.garmin.com/activity-service/activity/${activityId}/hrTimeInZones`);
+  }
+
+  /**
    * Send workouts to a connected device.
    * Uses the undocumented device-message endpoint that the Garmin Connect UI uses for "Send to Device".
    */

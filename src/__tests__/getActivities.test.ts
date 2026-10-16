@@ -27,7 +27,7 @@ const item = (n: number, daysAgo: number, typeKey = n % 2 ? "running" : "strengt
 
 /** Garmin: a list of activities, newest first, with details that carry the RPE. */
 function fakeGarmin(items: any[]) {
-  const calls = { list: [] as number[], detail: [] as string[] };
+  const calls = { list: [] as number[], detail: [] as string[], chart: [] as string[] };
   let listError: Error | null = null;
   const client = {
     getActivities: async (start: number, limit: number) => {
@@ -40,7 +40,12 @@ function fakeGarmin(items: any[]) {
       return { activityId: Number(activityId), summaryDTO: { directWorkoutFeel: 70, directWorkoutRpe: 40 } };
     },
   };
-  const garminClient = { ensureAuthenticated: async () => true, getClientAny: () => client, getActivityExerciseSets: async () => [], isMockMode: () => false };
+  const garminClient = {
+    ensureAuthenticated: async () => true, getClientAny: () => client, getActivityExerciseSets: async () => [], isMockMode: () => false,
+    getActivityDetails: async (id: string) => { calls.chart.push(String(id)); return { metricDescriptors: [], activityDetailMetrics: [] }; },
+    getActivitySplits: async () => ({ lapDTOs: [] }),
+    getActivityHrZones: async () => [],
+  };
   (getSession as jest.Mock).mockReturnValue({ profile: { name: PROFILE }, mock: false, garminClient, exporter: new ActivityExporter(garminClient as any) });
   return { calls, failList: (error: Error | null) => void (listError = error) };
 }
@@ -89,11 +94,14 @@ describe("get_activities", () => {
     const items = five();
     const garmin = fakeGarmin(items);
     await ask();
+    await settled(); // the background job fetches the charts too
+    expect(garmin.calls.chart).toHaveLength(5); // every activity's charts came with the history
     garmin.calls.list.length = 0;
     garmin.calls.detail.length = 0;
+    garmin.calls.chart.length = 0;
 
     expect((await ask()).sync.added).toBe(0);
-    expect(garmin.calls).toEqual({ list: [0], detail: [] });
+    expect(garmin.calls).toEqual({ list: [0], detail: [], chart: [] });
 
     items.unshift(item(6, 0.1));
     const out = await ask();
@@ -101,6 +109,8 @@ describe("get_activities", () => {
     expect(out.sync.added).toBe(1);
     expect(out.activities[0].id).toBe(5006);
     expect(garmin.calls.detail).toEqual(["5006"]);
+    await settled();
+    expect(garmin.calls.chart).toEqual(["5006"]); // the background job takes the new activity's charts
   });
 
   it("returns what is stored at once and fills the details in the background when asked for none", async () => {
@@ -134,6 +144,7 @@ describe("get_activities", () => {
   it("answers from what is stored when Garmin refuses, and says so", async () => {
     const garmin = fakeGarmin(five());
     await ask();
+    await settled();
     garmin.failList(new Error("ERROR: (429), Too Many Requests"));
     const out = await ask();
     expect(out.activities).toHaveLength(5);

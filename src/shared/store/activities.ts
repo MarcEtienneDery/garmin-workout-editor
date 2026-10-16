@@ -8,6 +8,11 @@ import type { Database } from "./sqliteStore";
  * its exercise sets), so the slim format can be rebuilt from them later without asking Garmin again. The columns are
  * only what the views filter and sort by.
  *
+ * An activity's chart data (the time series, the route, the laps and the heart-rate zones Garmin keeps apart from the
+ * activity) lives in `activity_charts`, in the shape Garmin sent it, pruned and decimated to a few hundred samples: the
+ * charts are drawn from it when read, so a change to how they are read never needs Garmin again. A row without data only
+ * counts the failures.
+ *
  * Next to the rows, one `activity_sync` row per profile remembers how far the listing got (`complete`, `next_offset`)
  * and who is syncing (a lease), because the MCP server and the web editor are two processes with two Garmin sessions.
  */
@@ -32,6 +37,14 @@ CREATE TABLE IF NOT EXISTS activities (
 ) WITHOUT ROWID;
 CREATE INDEX IF NOT EXISTS activities_by_day ON activities (profile, start_local);
 CREATE INDEX IF NOT EXISTS activities_by_start ON activities (profile, start_gmt);
+CREATE TABLE IF NOT EXISTS activity_charts (
+  profile    TEXT NOT NULL,
+  id         TEXT NOT NULL,
+  data       TEXT,
+  fetched_at INTEGER,
+  failed     INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (profile, id)
+) WITHOUT ROWID;
 CREATE TABLE IF NOT EXISTS activity_sync (
   profile      TEXT PRIMARY KEY,
   complete     INTEGER NOT NULL DEFAULT 0,
@@ -115,6 +128,7 @@ export interface SyncState {
 export interface ActivityCounts {
   total: number;
   withDetail: number;
+  withChart: number;
   newest: string | null;
   oldest: string | null;
 }
@@ -228,6 +242,47 @@ export class ActivityTable {
     return this.db.prepare(`SELECT * FROM activities WHERE ${where.join(" AND ")} ORDER BY start_gmt DESC LIMIT ?`).all(...params).map(toActivity);
   }
 
+  // ── Chart data ──
+
+  /** Keep an activity's chart data, as Garmin sent it (pruned). An empty answer is stored too: it is an answer. */
+  setChart(profile: string, id: string, data: unknown, now = Date.now()): void {
+    this.tx(() =>
+      this.db
+        .prepare(
+          `INSERT INTO activity_charts (profile, id, data, fetched_at, failed) VALUES (?, ?, ?, ?, 0)
+           ON CONFLICT (profile, id) DO UPDATE SET data = excluded.data, fetched_at = excluded.fetched_at, failed = 0`
+        )
+        .run(profile, id, JSON.stringify(data), now)
+    );
+  }
+
+  /** Garmin refused this activity's chart data for a reason other than a rate limit; after MAX_DETAIL_FAILURES it is left alone. */
+  noteChartFailure(profile: string, id: string): void {
+    this.tx(() =>
+      this.db
+        .prepare("INSERT INTO activity_charts (profile, id, failed) VALUES (?, ?, 1) ON CONFLICT (profile, id) DO UPDATE SET failed = failed + 1")
+        .run(profile, id)
+    );
+  }
+
+  getChart(profile: string, id: string): any | null {
+    const r = this.db.prepare("SELECT data FROM activity_charts WHERE profile = ? AND id = ?").get(profile, id);
+    return r && r.data !== null && r.data !== undefined ? JSON.parse(r.data) : null;
+  }
+
+  /** The activities that have no chart data yet, newest first. */
+  needingChart(profile: string, options: { limit?: number; ids?: string[] } = {}): { id: string; startGmt: string; type: string }[] {
+    const rows = this.db
+      .prepare(
+        `SELECT a.id, a.start_gmt, a.type FROM activities a
+         LEFT JOIN activity_charts c ON c.profile = a.profile AND c.id = a.id
+         WHERE a.profile = ? AND c.data IS NULL AND COALESCE(c.failed, 0) < ? ORDER BY a.start_gmt DESC LIMIT ?`
+      )
+      .all(profile, MAX_DETAIL_FAILURES, options.limit ?? 1_000_000);
+    const wanted = options.ids ? new Set(options.ids) : null;
+    return rows.filter((r) => !wanted || wanted.has(r.id)).map((r) => ({ id: r.id, startGmt: r.start_gmt, type: r.type }));
+  }
+
   /** The newest activities as list rows, newest first. */
   summaries(profile: string, limit = 5000): ActivitySummary[] {
     return this.db
@@ -272,7 +327,8 @@ export class ActivityTable {
     const r = this.db
       .prepare("SELECT COUNT(*) AS total, COUNT(detail) AS with_detail, MAX(start_local) AS newest, MIN(start_local) AS oldest FROM activities WHERE profile = ?")
       .get(profile) as Row;
-    return { total: r.total, withDetail: r.with_detail, newest: r.newest ?? null, oldest: r.oldest ?? null };
+    const charts = this.db.prepare("SELECT COUNT(*) AS n FROM activity_charts WHERE profile = ? AND data IS NOT NULL").get(profile) as Row;
+    return { total: r.total, withDetail: r.with_detail, withChart: charts.n, newest: r.newest ?? null, oldest: r.oldest ?? null };
   }
 
   // ── Where the sync stands, and who is running it ──

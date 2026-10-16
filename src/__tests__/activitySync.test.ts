@@ -1,7 +1,7 @@
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
-import { type ActivitySource, COOL_OFF_MS, LEASE_MS, LeaseLost, MAX_RATE_LIMIT_RETRIES, PAGE_SIZE, SETTLE_MS, isBackfilling, startBackfill, syncDetails, syncList, syncStatus, toNewActivity, withLease } from "../shared/activitySync";
+import { type ActivitySource, COOL_OFF_MS, LEASE_MS, LeaseLost, MAX_RATE_LIMIT_RETRIES, PAGE_SIZE, SETTLE_MS, isBackfilling, startBackfill, syncCharts, syncDetails, syncList, syncStatus, toNewActivity, withLease } from "../shared/activitySync";
 import { MAX_DETAIL_FAILURES, REFRESH_YOUNG_MS, SqliteStore } from "../shared/store";
 
 const DAY = 86_400_000;
@@ -25,9 +25,9 @@ const listItem = (n: number, extra: Record<string, unknown> = {}) => {
 };
 
 /** Garmin as a list of activities, newest first, that counts what it is asked. */
-function fakeGarmin(total: number, options: { failDetail?: (id: string) => Error | null } = {}) {
+function fakeGarmin(total: number, options: { failDetail?: (id: string) => Error | null; failChart?: (id: string) => Error | null; charts?: boolean } = {}) {
   const items: any[] = Array.from({ length: total }, (_, i) => listItem(total - i)); // newest first
-  const calls = { list: [] as number[], detail: [] as string[] };
+  const calls = { list: [] as number[], detail: [] as string[], chart: [] as string[] };
   const source: ActivitySource = {
     async listPage(offset, limit) {
       calls.list.push(offset);
@@ -40,6 +40,24 @@ function fakeGarmin(total: number, options: { failDetail?: (id: string) => Error
       return { activityId: Number(id), summaryDTO: { directWorkoutRpe: 40 }, ...(type === "strength_training" ? { fullExerciseSets: [{ setType: "ACTIVE" }] } : {}) };
     },
   };
+  if (options.charts !== false) {
+    source.fetchChart = async ({ id, type }) => {
+      calls.chart.push(id);
+      const error = options.failChart?.(id);
+      if (error) throw error;
+      // a strength workout has a heart-rate series and no GPS; a run has both; an indoor activity answers with nothing
+      if (type === "other") return { details: {}, splits: undefined, zones: undefined };
+      return {
+        details: {
+          metricDescriptors: [{ metricsIndex: 0, key: "directHeartRate" }, { metricsIndex: 1, key: "sumDistance" }],
+          activityDetailMetrics: [{ metrics: [120, 0] }, { metrics: [130, 100] }],
+          ...(type === "running" ? { geoPolylineDTO: { polyline: [{ lat: 1, lon: 2, extra: "x" }, { lat: 1.1, lon: 2.1 }] } } : {}),
+        },
+        splits: { lapDTOs: [{ lapIndex: 1, distance: 100, duration: 30 }] },
+        zones: [{ zoneNumber: 1, secsInZone: 30, zoneLowBoundary: 100 }],
+      };
+    };
+  }
   /** A new activity appears on Garmin: the newest one. */
   const addNewest = (extra: Record<string, unknown> = {}) => {
     const n = items.length + 1;
@@ -382,6 +400,68 @@ describe("fetching details", () => {
   });
 });
 
+describe("chart data", () => {
+  it("is stored once per activity, as Garmin sent it but pruned, and an empty answer counts as an answer", async () => {
+    const garmin = fakeGarmin(3);
+    store.activities.insertNew(PROFILE, [1, 2, 3].map((n) => toNewActivity(listItem(n, { activityType: { typeKey: n === 3 ? "other" : n % 2 ? "running" : "strength_training" } }))!));
+    expect(store.activities.needingChart(PROFILE).map((a) => a.id)).toEqual(["1003", "1002", "1001"]);
+
+    const result = await syncCharts(store, PROFILE, garmin.source, { sleep: noSleep });
+    expect(result).toEqual({ fetched: 3, failed: 0, stopped: null });
+    expect(garmin.calls.chart).toEqual(["1003", "1002", "1001"]); // newest first
+    const run = store.activities.getChart(PROFILE, "1001");
+    expect(run.v).toBe(1);
+    expect(run.details.geoPolylineDTO.polyline).toEqual([{ lat: 1, lon: 2 }, { lat: 1.1, lon: 2.1 }]); // pruned to the fields in use
+    expect(store.activities.getChart(PROFILE, "1002").details.geoPolylineDTO).toBeUndefined(); // strength: a series and no GPS
+    expect(store.activities.getChart(PROFILE, "1003")).toEqual({ v: 1, details: { metricDescriptors: [], activityDetailMetrics: [] }, splits: null, zones: null });
+    expect(store.activities.needingChart(PROFILE)).toEqual([]);
+    expect(store.activities.counts(PROFILE).withChart).toBe(3);
+
+    garmin.calls.chart.length = 0;
+    await syncCharts(store, PROFILE, garmin.source, { sleep: noSleep });
+    expect(garmin.calls.chart).toEqual([]); // a stored chart is never fetched again
+  });
+
+  it("fetches only some when asked, spaces the calls, and does nothing for a source with no charts", async () => {
+    const garmin = fakeGarmin(4);
+    await syncList(store, PROFILE, garmin.source);
+    const gaps: number[] = [];
+    await syncCharts(store, PROFILE, garmin.source, { limit: 2, gapMs: 400, sleep: async (ms) => void gaps.push(ms) });
+    expect(garmin.calls.chart).toEqual(["1004", "1003"]);
+    expect(gaps).toEqual([400]);
+    garmin.calls.chart.length = 0;
+    await syncCharts(store, PROFILE, garmin.source, { ids: ["1001"], sleep: noSleep });
+    expect(garmin.calls.chart).toEqual(["1001"]);
+
+    const plain = fakeGarmin(2, { charts: false });
+    expect(await syncCharts(store, "OTHER", plain.source)).toEqual({ fetched: 0, failed: 0, stopped: null });
+  });
+
+  it("counts an error against the activity, goes on to the next, and gives up on one that keeps failing", async () => {
+    const garmin = fakeGarmin(3, { failChart: (id) => (id === "1002" ? new Error("ERROR: (404), Not Found") : null) });
+    await syncList(store, PROFILE, garmin.source);
+    expect(await syncCharts(store, PROFILE, garmin.source, { sleep: noSleep })).toEqual({ fetched: 2, failed: 1, stopped: null });
+    for (let i = 1; i < MAX_DETAIL_FAILURES; i++) await syncCharts(store, PROFILE, garmin.source, { sleep: noSleep });
+    garmin.calls.chart.length = 0;
+    await syncCharts(store, PROFILE, garmin.source, { sleep: noSleep });
+    expect(garmin.calls.chart).toEqual([]);
+    expect(store.activities.getChart(PROFILE, "1002")).toBeNull();
+    expect(store.activities.needingChart(PROFILE)).toEqual([]);
+  });
+
+  it("stops at a rate limit or a login failure and says so, leaving the rest for later", async () => {
+    for (const [i, text] of ["ERROR: (429), Too Many Requests", "ERROR: (401), Unauthorized"].entries()) {
+      const profile = `C${i}`;
+      const garmin = fakeGarmin(4, { failChart: (id) => (id === "1003" ? new Error(text) : null) });
+      await syncList(store, profile, garmin.source);
+      expect(await syncCharts(store, profile, garmin.source, { sleep: noSleep })).toEqual({ fetched: 1, failed: 0, stopped: text });
+      expect(garmin.calls.chart).toEqual(["1004", "1003"]);
+      expect(store.activities.state(profile).error).toBe(text);
+      expect(store.activities.needingChart(profile).map((a) => a.id)).toEqual(["1003", "1002", "1001"]);
+    }
+  });
+});
+
 describe("the background sync", () => {
   it("stores the history and every activity's details, then reports it complete", async () => {
     const garmin = fakeGarmin(120);
@@ -394,6 +474,30 @@ describe("the background sync", () => {
     expect(syncStatus(store, PROFILE)).toEqual(expect.objectContaining({ activities: 120, withDetails: 120, historyComplete: true, syncing: false, error: null }));
     expect(store.activities.state(PROFILE).holder).toBeNull();
     expect(startBackfill(store, PROFILE, garmin.source, { holder: "mcp:1" })).toEqual(expect.objectContaining({ started: false, reason: "Everything is stored." }));
+  });
+
+  it("fetches every activity's charts after its details, and only then reports everything stored", async () => {
+    const garmin = fakeGarmin(5);
+    const job = startBackfill(store, PROFILE, garmin.source, { holder: "mcp:1", sleep: noSleep });
+    await job.done;
+    expect(garmin.calls.chart).toHaveLength(5);
+    expect(syncStatus(store, PROFILE)).toEqual(expect.objectContaining({ activities: 5, withDetails: 5, withCharts: 5, pendingCharts: 0, historyComplete: true }));
+    expect(startBackfill(store, PROFILE, garmin.source, { holder: "mcp:1" })).toEqual(expect.objectContaining({ started: false, reason: "Everything is stored." }));
+  });
+
+  it("still starts for the charts of a database whose history and details were stored before charts existed", async () => {
+    const before = fakeGarmin(4, { charts: false });
+    await startBackfill(store, PROFILE, before.source, { holder: "mcp:1", sleep: noSleep }).done; // the old state: complete, with details, no charts
+    expect(syncStatus(store, PROFILE)).toEqual(expect.objectContaining({ withDetails: 4, withCharts: 0, pendingCharts: 4 }));
+    expect(startBackfill(store, PROFILE, before.source, { holder: "mcp:1" })).toEqual(expect.objectContaining({ started: false, reason: "Everything is stored." })); // a source with no charts has nothing to do
+
+    const now = fakeGarmin(4);
+    const job = startBackfill(store, PROFILE, now.source, { holder: "mcp:1", sleep: noSleep });
+    expect(job.started).toBe(true);
+    await job.done;
+    expect(now.calls.chart).toHaveLength(4);
+    expect(now.calls.detail).toEqual([]); // the details were already there
+    expect(syncStatus(store, PROFILE).pendingCharts).toBe(0);
   });
 
   it("does not start while another process holds the lease", async () => {
