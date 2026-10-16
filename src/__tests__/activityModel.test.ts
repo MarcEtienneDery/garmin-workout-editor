@@ -1,3 +1,4 @@
+export {}; // a module of its own: the helpers below must not clash with those of the other model tests
 /**
  * activityModel.js is the plain script behind the Activities view: weeks, totals, filters, formats and the
  * planned-against-done matching.

@@ -534,6 +534,17 @@ describe("web plan editor", () => {
       ]);
     });
 
+    it("gives each row the days the plans schedule it on, from every plan that carries it", async () => {
+      g.listLibraryWorkouts.mockResolvedValueOnce([{ workoutId: 5, workoutName: "Easy run", workoutType: "running" }, { workoutId: 6, workoutName: "Unscheduled" }]);
+      seed("workout-plans/a.json", { workouts: [{ ...easy, workoutId: 5, scheduledDate: ["2026-10-20", "2026-10-13"] }, { workoutName: "Plan only", scheduledDate: "2026-11-01" }] });
+      seed("workout-plans/b.json", { workouts: [{ ...easy, workoutId: 5, scheduledDate: "2026-10-13" }, { ...easy, workoutId: 5, scheduledDate: "2026-12-01" }] });
+      const rows = (await call("GET", "/api/workouts")).json.rows;
+      const dates = (key: string) => rows.find((r: any) => r.key === key).dates;
+      expect(dates("g:5")).toEqual(["2026-10-13", "2026-10-20", "2026-12-01"]); // sorted, without repeats
+      expect(dates("g:6")).toEqual([]);
+      expect(dates("p:workout-plans/a.json#1")).toEqual(["2026-11-01"]);
+    });
+
     it("flags a full library and is unavailable without Garmin", async () => {
       g.listLibraryWorkouts.mockResolvedValueOnce(Array.from({ length: 100 }, (_, i) => ({ workoutId: i + 1000, workoutName: `w${i}` })));
       expect((await call("GET", "/api/workouts?refresh=1")).json.truncated).toBe(true);

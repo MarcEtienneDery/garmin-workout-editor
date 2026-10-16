@@ -560,12 +560,15 @@ function workoutRows(library: LibraryWorkout[], entries: PlanEntry[]) {
     description?: string;
     updatedDate?: string;
     plans: ReturnType<typeof ref>[];
+    /** The days the plans schedule it on, sorted. */
+    dates: string[];
     state: WorkoutRowState;
   }[] = [];
+  const datesOf = (list: PlanEntry[]) => [...new Set(list.flatMap((e) => scheduledDates(e.workout)))].sort();
 
   for (const w of library) {
-    const plans = entries.filter((e) => sameId(e.workout.workoutId, w.workoutId)).map(ref);
-    rows.push({ key: `g:${w.workoutId}`, ...w, plans, state: plans.length ? "linked" : "garmin-only" });
+    const linked = entries.filter((e) => sameId(e.workout.workoutId, w.workoutId));
+    rows.push({ key: `g:${w.workoutId}`, ...w, plans: linked.map(ref), dates: datesOf(linked), state: linked.length ? "linked" : "garmin-only" });
   }
   // Not in the (at most LIBRARY_LIMIT long) listing: unverified until the status check asks Garmin for it.
   for (const e of entries) {
@@ -577,6 +580,7 @@ function workoutRows(library: LibraryWorkout[], entries: PlanEntry[]) {
       workoutType: e.workout.workoutType,
       description: e.workout.description || undefined,
       plans: [ref(e)],
+      dates: datesOf([e]),
       state: hasId(e.workout.workoutId) ? "linked" : "not-uploaded",
     });
   }

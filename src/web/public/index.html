@@ -111,6 +111,10 @@
   .wbar { display:flex; gap:6px; align-items:center; padding:6px 10px; background:var(--panel); border-bottom:1px solid var(--line); }
   .wbar input[type="search"] { flex:1; min-width:0; }
   .wbar b { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #wFilters, #wChips { flex-wrap:wrap; padding-top:4px; padding-bottom:4px; }
+  #wFilters select { flex:1 1 0; min-width:0; font-size:12px; }
+  #wTypes { display:flex; gap:4px; flex-wrap:wrap; }
+  #wCount { margin-left:auto; color:var(--dim); white-space:nowrap; }
   .only-mobile { display:none; }
   #wNote { padding:0 10px; }
   #wrows, #wbody { flex:1; min-height:0; overflow:auto; overscroll-behavior:contain; }
@@ -391,6 +395,10 @@
     #adow, .acal .cweek { grid-template-columns:repeat(7,minmax(0,1fr)); }
     .cwtot, #adow span:last-child { display:none; }
     #aTypes { flex-wrap:nowrap; overflow-x:auto; max-width:100%; }
+    #wFilters select { font-size:16px !important; }
+    #wChips { flex-wrap:nowrap; }
+    #wTypes { flex-wrap:nowrap; overflow-x:auto; }
+    #wChips .tchip { flex:none; }
     .tchip { flex:none; min-height:32px; padding:0 10px; }
     #aSearch { flex:1 1 90px; }
     #abody { padding:12px 14px 24px; font-size:15px; }
@@ -505,6 +513,20 @@
       <input id="wFilter" type="search" placeholder="Filter workouts" aria-label="Filter workouts">
       <button id="wRefresh" title="Reload from Garmin">↻</button>
       <button id="wNew" class="primary">+ New</button>
+    </div>
+    <div class="wbar" id="wFilters">
+      <select id="wSort" title="Order of the list: most recently updated, name, type, workouts needing a look first, or next scheduled" aria-label="Sort the workouts"></select>
+      <select id="wStatus" title="Show only the workouts in one state" aria-label="Filter by status">
+        <option value="all">All statuses</option><option value="attention">Needs attention</option><option value="ok">Up to date</option>
+        <option value="notuploaded">Not on Garmin</option><option value="garminonly">Only on Garmin</option>
+      </select>
+      <select id="wPlanFilter" title="Show only the workouts of one plan" aria-label="Filter by plan"></select>
+    </div>
+    <div class="wbar" id="wChips">
+      <span id="wTypes" role="group" aria-label="Workout types"></span>
+      <button id="wUpcoming" class="tchip" style="--c:var(--accent)" aria-pressed="false" title="Only workouts a plan schedules today or later">Upcoming</button>
+      <span id="wCount"></span>
+      <button id="wClear" hidden title="Remove the search and every filter">Clear</button>
     </div>
     <div id="wNote" class="empty" hidden></div>
     <div id="wrows"></div>
@@ -622,6 +644,7 @@
 
 <script src="/workoutModel.js"></script>
 <script src="/activityModel.js"></script>
+<script src="/workoutListModel.js"></script>
 <script src="/vendor/monaco/loader.js"></script>
 <script>
 const $ = (id) => document.getElementById(id);
@@ -1331,7 +1354,7 @@ function renderOutline() {
 // ── Workouts view: the Garmin library next to the plan workouts, with create / edit / delete ──
 // Everything here goes through /api/workouts and /api/garmin/workout, which keep the plan files
 // and Garmin in step: saving or deleting a workout changes both unless you untick one.
-const W = { profile: null, rows: [], truncated: false, selected: null, detail: null, filter: "", run: 0, detailRun: 0, pending: new Set() }; // pending: rows being deleted, hidden at once
+const W = { profile: null, rows: [], truncated: false, selected: null, detail: null, filter: "", sort: "updated", status: "all", plan: "all", types: new Set(), upcoming: false, run: 0, detailRun: 0, pending: new Set() }; // pending: rows being deleted, hidden at once
 const STATE_RANK = { synced: 1, modified: 2, error: 3, missing: 4 };
 const ROW_CHIPS = {
   "garmin-only": ["Garmin only", ""], "not-uploaded": ["Not on Garmin", ""], checking: ["Checking…", ""],
@@ -1411,10 +1434,45 @@ async function checkLinked(run) {
   }
 }
 
+const WLM = WorkoutListModel;
+const WSORT_KEY = "plan-editor-workout-sort";
+try { const v = localStorage.getItem(WSORT_KEY); if (v in WLM.SORTS) W.sort = v; } catch {}
+const workoutFilters = () => ({ query: W.filter, status: W.status, plan: W.plan, types: W.types, upcoming: W.upcoming });
+
+/** The sort menu, the plan menu and the type chips follow what the list holds. */
+function renderWorkoutFilters(live) {
+  const sort = $("wSort");
+  if (!sort.options.length) for (const [key, label] of Object.entries(WLM.SORTS)) sort.add(new Option(label, key));
+  sort.value = W.sort;
+  $("wStatus").value = W.status;
+  const plans = WLM.planCounts(live), select = $("wPlanFilter");
+  if (W.plan !== "all" && W.plan !== "none" && !plans.some((p) => p.path === W.plan)) W.plan = "all"; // that plan is gone
+  select.replaceChildren(new Option("All plans", "all"), ...plans.map((p) => new Option(`${planName(p.path)} (${p.count})`, p.path)), new Option("In no plan", "none"));
+  select.value = W.plan;
+  const types = WLM.typeCounts(live), box = $("wTypes");
+  for (const t of [...W.types]) if (!types.some(([type]) => type === t)) W.types.delete(t);
+  box.replaceChildren();
+  for (const [type, n] of types) {
+    const b = document.createElement("button"), dot = document.createElement("i");
+    b.className = "tchip"; b.style.setProperty("--c", typeColor(type));
+    b.setAttribute("aria-pressed", String(W.types.has(type)));
+    b.append(dot, `${prettyName(type)} ${n}`);
+    b.onclick = () => { if (W.types.has(type)) W.types.delete(type); else W.types.add(type); renderRows(); };
+    box.append(b);
+  }
+  $("wUpcoming").setAttribute("aria-pressed", String(W.upcoming));
+  $("wFilters").hidden = $("wChips").hidden = live.length < 2;
+}
+
 function renderRows() {
   const el = $("wrows"); el.innerHTML = "";
-  const f = W.filter.trim().toLowerCase();
-  const rows = W.rows.filter((r) => !W.pending.has(r.key) && (!f || [r.workoutName, r.workoutType, ...r.plans.map((p) => p.path)].join(" ").toLowerCase().includes(f)));
+  const env = { stateOf: rowState, today: todayIso() };
+  const live = W.rows.filter((r) => !W.pending.has(r.key));
+  renderWorkoutFilters(live);
+  const filters = workoutFilters(), filtered = WLM.isFiltered(filters);
+  const rows = WLM.sortRows(WLM.filterRows(live, filters, env), W.sort, env);
+  $("wCount").textContent = filtered ? `${rows.length} of ${live.length}` : "";
+  $("wClear").hidden = !filtered;
   for (const r of rows) {
     const d = document.createElement("div");
     d.className = "wrow" + (r.key === W.selected ? " active" : "");
@@ -1435,7 +1493,7 @@ function renderRows() {
     el.append(d);
   }
   if (!rows.length && $("wNote").hidden) el.innerHTML = `<div class="empty">${W.rows.length ? "No match." : "No workouts."}</div>`;
-  if (W.truncated && !f) { const t = document.createElement("div"); t.className = "empty"; t.textContent = "Garmin lists only the 100 most recently updated workouts."; el.append(t); }
+  if (W.truncated && !filtered) { const t = document.createElement("div"); t.className = "empty"; t.textContent = "Garmin lists only the 100 most recently updated workouts."; el.append(t); }
 }
 
 function clearDetail() {
@@ -2629,6 +2687,11 @@ function bindWorkoutsView() {
   $("wRefresh").onclick = guard(() => loadWorkouts(true));
   $("wProfile").onchange = guard(() => { W.profile = $("wProfile").value; W.rows = []; clearDetail(); return loadWorkouts(); });
   $("wFilter").oninput = () => { W.filter = $("wFilter").value; renderRows(); };
+  $("wSort").onchange = () => { W.sort = $("wSort").value; try { localStorage.setItem(WSORT_KEY, W.sort); } catch {} renderRows(); };
+  $("wStatus").onchange = () => { W.status = $("wStatus").value; renderRows(); };
+  $("wPlanFilter").onchange = () => { W.plan = $("wPlanFilter").value; renderRows(); };
+  $("wUpcoming").onclick = () => { W.upcoming = !W.upcoming; renderRows(); };
+  $("wClear").onclick = () => { W.filter = ""; $("wFilter").value = ""; W.status = "all"; W.plan = "all"; W.types.clear(); W.upcoming = false; renderRows(); };
   $("wBackList").onclick = showWorkoutList;
   $("wNew").onclick = guard(() => openWorkoutDialog("new", newWorkout("New workout")));
   $("wEdit").onclick = guard(() => { const d = W.detail; return d && openWorkoutDialog("edit", d.plans.length ? d.plans[0].workout : d.garmin); });
