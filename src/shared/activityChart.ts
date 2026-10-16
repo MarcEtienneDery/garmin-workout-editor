@@ -135,6 +135,28 @@ function column(descriptors: any[], rows: any[], keys: string[]): (number | null
   return null;
 }
 
+/**
+ * The distance covered at an absolute time (ms), interpolated between the two samples around it; null when the time is
+ * outside the series. Garmin's route points carry a time but, in practice, no distance, so this is how the graph cursor
+ * and the map marker find each other.
+ */
+function distanceAt(stamp: (number | null)[], distance: (number | null)[], t: unknown): number | null {
+  if (typeof t !== "number") return null;
+  const pts: { t: number; d: number }[] = [];
+  for (let i = 0; i < stamp.length; i++) {
+    const s = stamp[i], d = distance[i];
+    if (s !== null && d !== null && (!pts.length || s >= pts[pts.length - 1].t)) pts.push({ t: s, d });
+  }
+  if (pts.length < 2 || t < pts[0].t || t > pts[pts.length - 1].t) return null;
+  let lo = 0, hi = pts.length - 1;
+  while (hi - lo > 1) {
+    const mid = (lo + hi) >> 1;
+    if (pts[mid].t <= t) lo = mid; else hi = mid;
+  }
+  const a = pts[lo], b = pts[hi];
+  return b.t === a.t ? a.d : a.d + ((t - a.t) / (b.t - a.t)) * (b.d - a.d);
+}
+
 /** Km splits worked out from the distance and time series: the time at each full kilometer by interpolation. */
 export function kmSplits(distance: (number | null)[], time: (number | null)[], hr: (number | null)[], elevation: (number | null)[]): KmSplit[] {
   const pts: { d: number; t: number; hr: number | null; e: number | null }[] = [];
@@ -195,7 +217,7 @@ export function buildChart(stored: StoredChart | null | undefined): ChartData | 
   const valid = (lat: unknown, lon: unknown) => typeof lat === "number" && typeof lon === "number" && Math.abs(lat) <= 90 && Math.abs(lon) <= 180 && !(lat === 0 && lon === 0);
   const fromPoly = poly.filter((p: any) => valid(p?.lat, p?.lon));
   if (fromPoly.length >= 2) {
-    route = { lat: fromPoly.map((p: any) => p.lat), lon: fromPoly.map((p: any) => p.lon), distance: fromPoly.map((p: any) => num(p.distanceInMeters)) };
+    route = { lat: fromPoly.map((p: any) => p.lat), lon: fromPoly.map((p: any) => p.lon), distance: fromPoly.map((p: any) => num(p.distanceInMeters) ?? (stamp ? distanceAt(stamp, distance, p.time) : null)) };
   } else {
     const lat = column(descriptors, rows, ["directLatitude"]), lon = column(descriptors, rows, ["directLongitude"]);
     if (lat && lon) {

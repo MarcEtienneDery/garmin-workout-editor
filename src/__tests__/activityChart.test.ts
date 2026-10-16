@@ -115,6 +115,20 @@ describe("reading the charts", () => {
     expect(chart.route!.distance[1]).toBeGreaterThan(0);
   });
 
+  it("finds a route point's distance from its time when Garmin leaves the distance null", () => {
+    const d = details(100);
+    d.geoPolylineDTO!.polyline.forEach((p: any) => (p.distanceInMeters = null));
+    d.geoPolylineDTO!.polyline[99].time = 1_700_000_000_000 + 99_000;
+    d.geoPolylineDTO!.polyline[98].time = 1_700_000_000_000 + 500; // half way between the first two samples
+    d.geoPolylineDTO!.polyline[97].time = 1_700_000_000_000 + 999_000_000; // after the series ended
+    const r = buildChart(pruneChart({ details: d }))!.route!;
+    expect(r.distance[0]).toBeCloseTo(3, 5); // the first sample, 3 m in
+    expect(r.distance[1]).toBeCloseTo(3 + 3 * 3.997, 0); // 4 s in, at 3 m/s
+    expect(r.distance[99]).toBeCloseTo(300, 5);
+    expect(r.distance[98]).toBeCloseTo(4.5, 5);
+    expect(r.distance[97]).toBeNull();
+  });
+
   it("falls back on latitude and longitude columns, and says there is no route when there is none", () => {
     const withCols = details(30, { withPolyline: false });
     const keys = [...withCols.metricDescriptors, { metricsIndex: 9, key: "directLatitude" }, { metricsIndex: 10, key: "directLongitude" }];
