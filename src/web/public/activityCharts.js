@@ -106,19 +106,23 @@
           svg.append(make("line", { x1: LEFT, x2: W - RIGHT, y1: sy(t), y2: sy(t), class: "acgrid" }));
           svg.append(make("text", { x: LEFT - 4, y: sy(t) + 3, class: "aclab", "text-anchor": "end" }, p.format(t)));
         }
-        // the line, broken where a sample is missing
-        let d = "", pen = false, area = "";
+        // the line, broken where a sample is missing; a dashed bridge joins the two sides (a stop has no pace, but the run goes on)
+        let d = "", bridge = "", pen = false, area = "", last = null;
         xs.forEach((x, i) => {
           const v = p.values[i];
           if (!valid(x) || !valid(v)) { pen = false; return; }
-          d += `${pen ? "L" : "M"}${sx(x).toFixed(1)} ${sy(v).toFixed(1)}`;
+          const px = sx(x).toFixed(1), py = sy(v).toFixed(1);
+          if (!pen && last) bridge += `M${last} L${px} ${py}`;
+          d += `${pen ? "L" : "M"}${px} ${py}`;
           pen = true;
+          last = `${px} ${py}`;
         });
         if (p.area && d) {
           const first = xs.findIndex((x, i) => valid(x) && valid(p.values[i])), last = xs.length - 1 - [...xs].reverse().findIndex((x, i) => valid(x) && valid(p.values[xs.length - 1 - i]));
           area = `${d} L${sx(xs[last]).toFixed(1)} ${H - BOTTOM} L${sx(xs[first]).toFixed(1)} ${H - BOTTOM} Z`;
           svg.append(make("path", { d: area, fill: p.color, opacity: 0.18, stroke: "none" }));
         }
+        if (bridge) svg.append(make("path", { d: bridge, fill: "none", stroke: p.color, "stroke-width": 1.2, "stroke-dasharray": "3 3", opacity: 0.55 }));
         svg.append(make("path", { d, fill: "none", stroke: p.color, "stroke-width": 1.6, "stroke-linejoin": "round" }));
         const line = make("line", { y1: TOP, y2: H - BOTTOM, class: "accur", visibility: "hidden" });
         const dot = make("circle", { r: 3.2, fill: p.color, stroke: "#fff", "stroke-width": 1, visibility: "hidden" });
