@@ -236,9 +236,17 @@ describe("WorkoutEditor", () => {
     it("should reset training progression and clear workout schedule", async () => {
       const trainingPlanPath = path.join(tempDir, "training-plan.json");
       const workoutPlanPath = path.join(tempDir, "next-week.workouts.tmp.json");
-      const templatePath = path.join(__dirname, "../../data/training-plan.json");
-
-      const templatePlan = JSON.parse(fs.readFileSync(templatePath, "utf-8"));
+      const templatePath = path.join(tempDir, "periodization-template.json");
+      // data/ is not in the repo, so the test brings its own template.
+      const templatePlan = {
+        periodization: {
+          currentPhase: "Base",
+          weekInPhase: 5,
+          totalWeeksInPhase: 4,
+          phases: [{ name: "Base", totalWeeks: 4 }, { name: "Build", totalWeeks: 6 }],
+        },
+      };
+      fs.writeFileSync(templatePath, JSON.stringify(templatePlan, null, 2));
 
       const initialTrainingPlan = {
         version: "1.0",
@@ -285,7 +293,7 @@ describe("WorkoutEditor", () => {
       fs.writeFileSync(trainingPlanPath, JSON.stringify(initialTrainingPlan, null, 2));
       fs.writeFileSync(workoutPlanPath, JSON.stringify(workoutPlan, null, 2));
 
-      await editor.startNewTrainingPlan(trainingPlanPath, workoutPlanPath);
+      await editor.startNewTrainingPlan(trainingPlanPath, workoutPlanPath, templatePath);
 
       const updatedTrainingPlan = JSON.parse(
         fs.readFileSync(trainingPlanPath, "utf-8")

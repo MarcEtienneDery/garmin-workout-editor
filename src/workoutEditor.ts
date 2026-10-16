@@ -1620,6 +1620,8 @@ export class WorkoutEditor {
    * Convert a WorkoutStep back to Garmin ExecutableStepDTO format
    */
   private convertStepToGarminFormat(step: WorkoutStep): any {
+    // A cooldown has no "open" target on Garmin: it is sent (and compared with Garmin's copy) as no.target.
+    const targetTypeKey = step.stepType === "cooldown" && step.targetType === "open" ? "no.target" : step.targetType || "no.target";
     const garminStep: any = {
       type: "ExecutableStepDTO",
       stepId: null,
@@ -1637,8 +1639,8 @@ export class WorkoutEditor {
       endConditionValue: step.endConditionValue !== undefined ? step.endConditionValue : null,
       preferredEndConditionUnit: null,
       targetType: {
-        workoutTargetTypeId: this.getTargetTypeId(step.targetType || "no.target"),
-        workoutTargetTypeKey: step.targetType || "no.target",
+        workoutTargetTypeId: this.getTargetTypeId(targetTypeKey),
+        workoutTargetTypeKey: targetTypeKey,
       },
       targetValueOne: step.targetValueOne !== undefined ? step.targetValueOne : null,
       targetValueTwo: step.targetValueTwo !== undefined ? step.targetValueTwo : null,
