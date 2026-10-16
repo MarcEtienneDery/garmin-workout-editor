@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS activity_sync (
   holder       TEXT,
   lease_until  INTEGER,
   error        TEXT,
+  retry_after  INTEGER,
   updated_at   INTEGER
 );
 `;
@@ -83,6 +84,8 @@ export interface SyncState {
   leaseUntil: number | null;
   /** Why the last sync stopped early, if it did. */
   error: string | null;
+  /** A background sync does not start again before this instant (ms), after it stopped on an error. */
+  retryAfter: number | null;
   updatedAt: number | null;
 }
 
@@ -212,18 +215,20 @@ export class ActivityTable {
       holder: r?.holder ?? null,
       leaseUntil: r?.lease_until ?? null,
       error: r?.error ?? null,
+      retryAfter: r?.retry_after ?? null,
       updatedAt: r?.updated_at ?? null,
     };
   }
 
-  /** Record progress: whether the whole history is listed, where a listing resumes, and why a sync stopped. */
-  saveProgress(profile: string, progress: { complete?: boolean; nextOffset?: number; error?: string | null }, now = Date.now()): void {
+  /** Record progress: whether the whole history is listed, where a listing resumes, why a sync stopped and when it may try again. */
+  saveProgress(profile: string, progress: { complete?: boolean; nextOffset?: number; error?: string | null; retryAfter?: number | null }, now = Date.now()): void {
     this.tx(() => {
       this.db.prepare("INSERT OR IGNORE INTO activity_sync (profile) VALUES (?)").run(profile);
       const sets = ["updated_at = ?"], params: unknown[] = [now];
       if (progress.complete !== undefined) { sets.push("complete = ?"); params.push(progress.complete ? 1 : 0); }
       if (progress.nextOffset !== undefined) { sets.push("next_offset = ?"); params.push(progress.nextOffset); }
       if (progress.error !== undefined) { sets.push("error = ?"); params.push(progress.error); }
+      if (progress.retryAfter !== undefined) { sets.push("retry_after = ?"); params.push(progress.retryAfter); }
       this.db.prepare(`UPDATE activity_sync SET ${sets.join(", ")} WHERE profile = ?`).run(...params, profile);
     });
   }

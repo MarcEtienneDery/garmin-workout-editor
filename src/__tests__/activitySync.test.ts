@@ -1,7 +1,7 @@
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
-import { type ActivitySource, COOL_OFF_MS, LEASE_MS, LeaseLost, PAGE_SIZE, SETTLE_MS, isBackfilling, startBackfill, syncDetails, syncList, syncStatus, toNewActivity, withLease } from "../shared/activitySync";
+import { type ActivitySource, COOL_OFF_MS, LEASE_MS, LeaseLost, MAX_RATE_LIMIT_RETRIES, PAGE_SIZE, SETTLE_MS, isBackfilling, startBackfill, syncDetails, syncList, syncStatus, toNewActivity, withLease } from "../shared/activitySync";
 import { MAX_DETAIL_FAILURES, REFRESH_YOUNG_MS, SqliteStore } from "../shared/store";
 
 const DAY = 86_400_000;
@@ -388,27 +388,96 @@ describe("the background sync", () => {
 
   it("stops on a rate limit, waits before trying again, and picks up where it stopped", async () => {
     const garmin = fakeGarmin(6, { failDetail: (id) => (id === "1003" ? new Error("ERROR: (429), Too Many Requests") : null) });
-    const first = startBackfill(store, PROFILE, garmin.source, { holder: "mcp:1", sleep: noSleep, now: 10_000 });
+    const first = startBackfill(store, PROFILE, garmin.source, { holder: "mcp:1", sleep: noSleep, schedule: () => undefined });
     await first.done;
     expect(syncStatus(store, PROFILE)).toEqual(expect.objectContaining({ activities: 6, withDetails: 3, error: expect.stringContaining("429") }));
 
-    const updatedAt = store.activities.state(PROFILE).updatedAt!;
-    expect(startBackfill(store, PROFILE, garmin.source, { holder: "mcp:1", now: updatedAt + 1000 })).toEqual(expect.objectContaining({ started: false, reason: expect.stringMatching(/^Waiting after/) }));
+    const retryAfter = store.activities.state(PROFILE).retryAfter!;
+    expect(retryAfter).toBeGreaterThan(Date.now() + COOL_OFF_MS - 5000);
+    expect(startBackfill(store, PROFILE, garmin.source, { holder: "mcp:2", now: retryAfter - 1000 })).toEqual(expect.objectContaining({ started: false, reason: expect.stringMatching(/^Waiting after/) }));
 
     // Garmin allows calls again: one look at the newest page (nothing new), and the details resume.
     const again = fakeGarmin(6);
-    const second = startBackfill(store, PROFILE, again.source, { holder: "mcp:1", sleep: noSleep, now: updatedAt + COOL_OFF_MS + 1 });
+    const second = startBackfill(store, PROFILE, again.source, { holder: "mcp:3", sleep: noSleep, now: retryAfter + 1 });
     expect(second.started).toBe(true);
     await second.done;
     expect(again.calls.list).toEqual([0]);
     expect(again.calls.detail).toEqual(["1003", "1002", "1001"]);
     expect(syncStatus(store, PROFILE)).toEqual(expect.objectContaining({ withDetails: 6, error: null, pendingDetails: 0 }));
+    expect(store.activities.state(PROFILE).retryAfter).toBeNull();
+  });
+
+  describe("starting again by itself", () => {
+    const waitUntilIdle = async () => {
+      for (let i = 0; i < 200 && isBackfilling(store, PROFILE); i++) await new Promise((r) => setTimeout(r, 5));
+    };
+
+    it("starts again after a rate limit, once the cool-off is over", async () => {
+      let limited = true;
+      const garmin = fakeGarmin(4, { failDetail: (id) => (limited && id === "1003" ? new Error("ERROR: (429), Too Many Requests") : null) });
+      const scheduled: { fn: () => void; ms: number }[] = [];
+      await startBackfill(store, PROFILE, garmin.source, { holder: "mcp:1", sleep: noSleep, gapMs: 0, schedule: (fn, ms) => void scheduled.push({ fn, ms }) }).done;
+      expect(scheduled).toHaveLength(1);
+      expect(scheduled[0].ms).toBeGreaterThan(COOL_OFF_MS);
+
+      limited = false;
+      store.activities.saveProgress(PROFILE, { retryAfter: Date.now() - 1 }); // the cool-off has passed
+      scheduled[0].fn();
+      await waitUntilIdle();
+      expect(syncStatus(store, PROFILE)).toEqual(expect.objectContaining({ withDetails: 4, error: null }));
+      expect(scheduled).toHaveLength(1); // it finished, so nothing more is scheduled
+    });
+
+    it("does not start again by itself after a login failure, which could lock the account", async () => {
+      const garmin = fakeGarmin(3, { failDetail: () => new Error("ERROR: (401), Unauthorized") });
+      const scheduled: unknown[] = [];
+      await startBackfill(store, PROFILE, garmin.source, { holder: "mcp:1", sleep: noSleep, schedule: (fn) => void scheduled.push(fn) }).done;
+      expect(store.activities.state(PROFILE).error).toMatch(/401/);
+      expect(scheduled).toEqual([]);
+    });
+
+    it("gives up after a number of rate limits in a row", async () => {
+      const garmin = fakeGarmin(3, { failDetail: () => new Error("ERROR: (429), Too Many Requests") });
+      const scheduled: unknown[] = [];
+      await startBackfill(store, PROFILE, garmin.source, { holder: "mcp:1", sleep: noSleep, attempt: MAX_RATE_LIMIT_RETRIES, schedule: (fn) => void scheduled.push(fn) }).done;
+      expect(scheduled).toEqual([]);
+    });
+
+    it("starts again after a rate limit while listing, too", async () => {
+      const source: ActivitySource = { listPage: async () => { throw new Error("ERROR: (429), Too Many Requests"); }, fetchDetail: async () => ({}) };
+      const scheduled: unknown[] = [];
+      await startBackfill(store, PROFILE, source, { holder: "mcp:1", schedule: (fn) => void scheduled.push(fn) }).done;
+      expect(scheduled).toHaveLength(1);
+    });
+  });
+
+  it("excludes two operations that overlap, even when they run in one process", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const first = withLease(store, PROFILE, "proc:1", async () => {
+      await gate;
+      return 1;
+    });
+    expect(await withLease(store, PROFILE, "proc:2", async () => 2)).toEqual({ ok: false });
+    expect(startBackfill(store, PROFILE, fakeGarmin(3).source, { holder: "proc:3" })).toEqual(expect.objectContaining({ started: false, reason: "Another process is syncing." }));
+    release();
+    expect(await first).toEqual({ ok: true, value: 1 });
+    expect(store.activities.state(PROFILE).holder).toBeNull();
+  });
+
+  it("clears an old error as soon as a listing gets through, but keeps the background sync waiting out its cool-off", async () => {
+    const garmin = fakeGarmin(4);
+    await syncList(store, PROFILE, garmin.source);
+    store.activities.saveProgress(PROFILE, { error: "ERROR: (429), Too Many Requests", retryAfter: Date.now() + COOL_OFF_MS });
+    await syncList(store, PROFILE, garmin.source);
+    expect(store.activities.state(PROFILE).error).toBeNull();
+    expect(startBackfill(store, PROFILE, garmin.source, { holder: "mcp:1" })).toEqual(expect.objectContaining({ started: false, reason: expect.stringMatching(/^Waiting after/) }));
   });
 
   it("records a failure of the listing and lets go of the lease", async () => {
     const source: ActivitySource = { listPage: async () => { throw new Error("network down"); }, fetchDetail: async () => ({}) };
     const job = startBackfill(store, PROFILE, source, { holder: "mcp:1" });
     await job.done;
-    expect(store.activities.state(PROFILE)).toEqual(expect.objectContaining({ error: "network down", holder: null, complete: false }));
+    expect(store.activities.state(PROFILE)).toEqual(expect.objectContaining({ error: "network down", holder: null, complete: false, retryAfter: expect.any(Number) }));
   });
 });

@@ -12,8 +12,10 @@
  *
  * Garmin is reached through an ActivitySource, which serializes each call with the other Garmin work, so a long
  * backfill never holds the account for more than one call. The MCP server and the web editor are separate
- * processes: a lease in the database keeps them from backfilling at once. A rate limit or a login failure stops
- * the job and is recorded; the next run picks up where this one stopped.
+ * processes: a lease in the database keeps them from syncing at once (each operation takes its own holder name, so
+ * two in one process exclude each other too). A rate limit or a login failure stops the job and is recorded; the next
+ * run picks up where this one stopped, and after a rate limit (never after a login failure, which could lock the
+ * account) the job starts again by itself once the cool-off is over.
  */
 import { normalizeActivityType } from "./activityType";
 import type { NewActivity, SqliteStore } from "./store";
@@ -39,6 +41,8 @@ const sleepFor = (ms: number) => new Promise<void>((resolve) => setTimeout(resol
 const message = (error: unknown) => (error instanceof Error ? error.message : String(error));
 /** Errors that mean Garmin will refuse the next call too: rate limits and login problems. */
 const stopsSync = (error: unknown) => /\((429|401|403)\)|too many requests|authenticat/i.test(message(error));
+/** Only a rate limit goes away by waiting; a login failure is not retried on its own, as repeated logins can lock the account. */
+export const isRateLimit = (error: unknown) => /\(429\)|too many requests/i.test(message(error));
 const text = (v: unknown): string | null => (typeof v === "string" && v ? v : null);
 const number = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
 
@@ -78,9 +82,10 @@ interface Pace {
  * back, to the end of the history, and then records that the history is complete.
  */
 export async function syncList(store: SqliteStore, profile: string, source: ActivitySource, options: Pace = {}): Promise<{ added: number; pages: number; complete: boolean }> {
-  const wasComplete = store.activities.state(profile).complete;
+  const before = store.activities.state(profile);
   const result = await listActivities(store, profile, source, options);
-  if (result.complete && !wasComplete) retireActivityDocuments(store, profile); // once: a document restored later is left alone
+  if (before.error) store.activities.saveProgress(profile, { error: null }); // Garmin answered: whatever stopped the last sync is over
+  if (result.complete && !before.complete) retireActivityDocuments(store, profile); // once: a document restored later is left alone
   return result;
 }
 
@@ -168,7 +173,7 @@ export async function syncDetails(store: SqliteStore, profile: string, source: A
       fetched++;
     } catch (error) {
       if (stopsSync(error)) {
-        table.saveProgress(profile, { error: message(error) });
+        table.saveProgress(profile, { error: message(error), retryAfter: Date.now() + COOL_OFF_MS });
         return { fetched, failed, stopped: message(error) };
       }
       table.noteDetailFailure(profile, id);
@@ -201,33 +206,55 @@ export interface BackfillOptions {
   now?: number;
   gapMs?: number;
   sleep?: (ms: number) => Promise<void>;
+  /** Run fn after ms; the default is a timer that does not keep the process alive. */
+  schedule?: (fn: () => void, ms: number) => void;
+  /** How many times in a row the job has been started again after a rate limit. */
+  attempt?: number;
 }
+
+/** After a rate limit, the job starts again by itself this many times at most. */
+export const MAX_RATE_LIMIT_RETRIES = 12;
+const unrefTimer = (fn: () => void, ms: number) => void setTimeout(fn, ms).unref();
 
 /**
  * Store the whole history and every activity's details in the background. Returns at once; `done` settles when
  * the job ends. started is false when there is nothing to do, a sync is running (here or in another process), or
- * the last one stopped on a rate limit less than COOL_OFF_MS ago.
+ * the last one stopped on an error less than COOL_OFF_MS ago. After a rate limit it starts again by itself.
  */
 export function startBackfill(store: SqliteStore, profile: string, source: ActivitySource, options: BackfillOptions): { started: boolean; reason?: string; done: Promise<void> } {
-  const table = store.activities, key = runKey(store, profile), now = options.now ?? Date.now();
+  const table = store.activities, key = runKey(store, profile), now = options.now ?? Date.now(), attempt = options.attempt ?? 0;
   const no = (reason: string) => ({ started: false, reason, done: running.get(key) ?? Promise.resolve() });
   if (running.has(key)) return no("A sync is already running.");
   const state = table.state(profile);
   if (state.complete && table.needingDetail(profile, { limit: 1, settleMs: SETTLE_MS }).length === 0) return no("Everything is stored.");
-  if (state.error && state.updatedAt !== null && now - state.updatedAt < COOL_OFF_MS) return no(`Waiting after: ${state.error}`);
+  if (state.retryAfter !== null && now < state.retryAfter) return no(`Waiting after: ${state.error ?? "an error"}`);
   if (!table.claim(profile, options.holder, LEASE_MS, now)) return no("Another process is syncing.");
 
   const renew = () => table.renew(profile, options.holder, LEASE_MS);
+  let rateLimited = false;
   const done = (async () => {
     try {
       await syncList(store, profile, source, { renew });
       const result = await syncDetails(store, profile, source, { renew, gapMs: options.gapMs, sleep: options.sleep });
-      if (!result.stopped) table.saveProgress(profile, { error: null });
+      if (!result.stopped) table.saveProgress(profile, { error: null, retryAfter: null });
+      else rateLimited = isRateLimit(result.stopped);
     } catch (error) {
-      if (!(error instanceof LeaseLost)) table.saveProgress(profile, { error: message(error) });
+      if (!(error instanceof LeaseLost)) {
+        table.saveProgress(profile, { error: message(error), retryAfter: Date.now() + COOL_OFF_MS });
+        rateLimited = isRateLimit(error);
+      }
     } finally {
       table.release(profile, options.holder);
       running.delete(key);
+    }
+    if (rateLimited && attempt < MAX_RATE_LIMIT_RETRIES) {
+      (options.schedule ?? unrefTimer)(() => {
+        try {
+          startBackfill(store, profile, source, { ...options, now: undefined, attempt: attempt + 1 });
+        } catch {
+          // the database is closed (the process is shutting down)
+        }
+      }, COOL_OFF_MS + 1000);
     }
   })();
   running.set(key, done);

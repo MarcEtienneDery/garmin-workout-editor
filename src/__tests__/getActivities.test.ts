@@ -138,6 +138,20 @@ describe("get_activities", () => {
     const out = await ask();
     expect(out.activities).toHaveLength(5);
     expect(out.sync.error).toMatch(/429/);
+
+    garmin.failList(null); // Garmin answers again: the stale error must not stay on every later answer
+    const later = await ask();
+    expect(later.sync.error).toBeNull();
+    expect(later.sync.note).toBeUndefined();
+  });
+
+  it("copes with two calls at once: they do not release each other's lease", async () => {
+    fakeGarmin(five());
+    const [a, b] = await Promise.all([ask({ includeDetails: false }), ask({ includeDetails: false })]);
+    expect(a.activities.length + b.activities.length).toBeGreaterThanOrEqual(5); // one may answer while the other is still listing
+    await settled();
+    const status = (await ask({ includeDetails: false })).sync;
+    expect(status).toEqual(expect.objectContaining({ activities: 5, withDetails: 5, historyComplete: true, error: null, syncing: false }));
   });
 
   it("answers an empty profile with an empty list, not an error", async () => {

@@ -3,12 +3,17 @@
  * and the answer to get_activities, read from the database. The sync itself is shared/activitySync.ts.
  */
 import { getLastNWeeksStart } from "../../activityExporter";
-import { type ActivitySource, LeaseLost, SETTLE_MS, isBackfilling, startBackfill, syncDetails, syncList, syncStatus, withLease, type SyncStatus } from "../../shared/activitySync";
+import { type ActivitySource, COOL_OFF_MS, LeaseLost, SETTLE_MS, isBackfilling, startBackfill, syncDetails, syncList, syncStatus, withLease, type SyncStatus } from "../../shared/activitySync";
 import { getStore } from "../../shared/store";
 import { type Session, getSession, requireAuth, runCaptured } from "../context";
 
-/** Names this process as the one syncing, in the lease the MCP server and the web editor share. */
-const HOLDER = `${process.pid}:${Math.random().toString(36).slice(2, 8)}`;
+/**
+ * Names the one that syncs, in the lease the MCP server and the web editor share. Every operation takes a name of its
+ * own: get_activities calls overlap, and two that shared a name would release each other's lease.
+ */
+const PROCESS = `${process.pid}:${Math.random().toString(36).slice(2, 8)}`;
+let operations = 0;
+const holder = () => `${PROCESS}:${++operations}`;
 /** Activities whose details a get_activities call fetches itself; the rest fill in the background. */
 const INLINE_DETAILS = 30;
 
@@ -64,11 +69,11 @@ export async function refreshActivities(profile?: string): Promise<{ added: numb
   const session = getSession(profile), store = getStore(), name = session.profile.name;
   if (isBackfilling(store, name)) return { added: 0, busy: true, error: null }; // the background job is listing already
   try {
-    const leased = await withLease(store, name, HOLDER, (renew) => syncList(store, name, sourceFor(session), { renew }));
+    const leased = await withLease(store, name, holder(), (renew) => syncList(store, name, sourceFor(session), { renew }));
     return leased.ok ? { added: leased.value.added, busy: false, error: null } : { added: 0, busy: true, error: null };
   } catch (error) {
     if (error instanceof LeaseLost) return { added: 0, busy: true, error: null };
-    store.activities.saveProgress(name, { error: errorText(error) });
+    store.activities.saveProgress(name, { error: errorText(error), retryAfter: Date.now() + COOL_OFF_MS });
     return { added: 0, busy: false, error: errorText(error) };
   }
 }
@@ -78,7 +83,7 @@ export async function fetchDetailsNow(profile: string | undefined, ids: string[]
   const session = getSession(profile), store = getStore(), name = session.profile.name;
   if (!ids.length || isBackfilling(store, name)) return { fetched: 0, error: null };
   try {
-    const leased = await withLease(store, name, HOLDER, (renew) => syncDetails(store, name, sourceFor(session), { ids, limit, renew, gapMs: detailGapMs() }));
+    const leased = await withLease(store, name, holder(), (renew) => syncDetails(store, name, sourceFor(session), { ids, limit, renew, gapMs: detailGapMs() }));
     if (!leased.ok) return { fetched: 0, error: null };
     return { fetched: leased.value.fetched, error: leased.value.stopped };
   } catch (error) {
@@ -90,7 +95,7 @@ export async function fetchDetailsNow(profile: string | undefined, ids: string[]
 export function startBackgroundSync(profile?: string): { started: boolean; reason?: string } {
   const session = getSession(profile);
   if (session.mock) return { started: false, reason: "Mock mode." };
-  const { started, reason } = startBackfill(getStore(), session.profile.name, sourceFor(session), { holder: HOLDER, gapMs: detailGapMs() });
+  const { started, reason } = startBackfill(getStore(), session.profile.name, sourceFor(session), { holder: holder(), gapMs: detailGapMs() });
   return { started, reason };
 }
 
