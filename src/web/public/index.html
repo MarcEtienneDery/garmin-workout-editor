@@ -33,6 +33,8 @@
   main { display:grid; grid-template-columns:240px 1fr 300px; min-height:0; }
   aside { background:var(--panel); overflow:auto; min-height:0; overscroll-behavior:contain; }
   #files { border-right:1px solid var(--line); }
+  #filebar { position:sticky; top:0; z-index:1; display:flex; gap:8px; align-items:center; padding:6px 10px; background:var(--panel); border-bottom:1px solid var(--line); color:var(--dim); }
+  #filebar select { flex:1; min-width:0; }
   #side { border-left:1px solid var(--line); }
   aside h2 { font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--dim); margin:0; padding:10px 10px 4px; }
   .file { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:0 8px; padding:5px 10px; cursor:pointer; border-left:2px solid transparent; }
@@ -477,7 +479,10 @@
   <button id="menu" aria-label="More actions" aria-expanded="false">⋯</button>
 </div>
 <main>
-  <aside id="files"></aside>
+  <aside id="files">
+    <div id="filebar"><label for="fileSort">Sort</label><select id="fileSort" title="Order the files inside each folder"></select></div>
+    <div id="filelist"></div>
+  </aside>
   <div id="editor"></div>
   <aside id="side">
     <div id="outlinePane">
@@ -804,11 +809,35 @@ const guard = (fn) => async (...a) => { try { await fn(...a); } catch (e) { toas
 // ── File list ──────────────────────────────────────────────────────────
 const isDirty = () => current && editor.getValue() !== savedText;
 
+// How the files are ordered inside each folder. Files without a plan date or a workout list go last.
+const byName = (a, b) => a.path.localeCompare(b.path);
+const byPlanDate = (dir) => (a, b) => (!a.weekStart || !b.weekStart ? Number(!a.weekStart) - Number(!b.weekStart) : dir * a.weekStart.localeCompare(b.weekStart)) || byName(a, b);
+const FILE_SORTS = {
+  name: ["Name (A–Z)", byName],
+  newest: ["Plan date (newest first)", byPlanDate(-1)],
+  oldest: ["Plan date (oldest first)", byPlanDate(1)],
+  modified: ["Last modified", (a, b) => b.updatedAt - a.updatedAt || byName(a, b)],
+  workouts: ["Most workouts", (a, b) => (b.workoutCount ?? -1) - (a.workoutCount ?? -1) || byName(a, b)],
+};
+const SORT_KEY = "plan-editor-file-sort";
+let fileSort = (() => { try { const v = localStorage.getItem(SORT_KEY); return v in FILE_SORTS ? v : "name"; } catch { return "name"; } })();
+
 async function refreshFiles() {
   files = (await api("GET", "/api/files")).files;
+  renderFiles();
+}
+
+function renderFiles() {
+  const sort = $("fileSort");
+  if (!sort.options.length) {
+    for (const [key, [label]] of Object.entries(FILE_SORTS)) sort.add(new Option(label, key));
+    sort.onchange = () => { fileSort = sort.value; try { localStorage.setItem(SORT_KEY, fileSort); } catch {} renderFiles(); };
+  }
+  sort.value = fileSort;
+  $("filebar").hidden = files.length < 2;
   const groups = {};
-  for (const f of files) (groups[f.path.split("/").slice(0, -1).join("/")] ||= []).push(f);
-  const el = $("files"); el.innerHTML = "";
+  for (const f of [...files].sort(FILE_SORTS[fileSort][1])) (groups[f.path.split("/").slice(0, -1).join("/")] ||= []).push(f);
+  const el = $("filelist"); el.innerHTML = "";
   for (const [dir, list] of Object.entries(groups)) {
     const h = document.createElement("h2"); h.textContent = dir; el.append(h);
     for (const f of list) {
@@ -817,7 +846,8 @@ async function refreshFiles() {
       d.innerHTML = `<span></span><small></small><span class="wact"></span>`;
       d.children[0].textContent = f.path.split("/").pop();
       // the count and the date are separate pieces so a narrow sidebar wraps the date instead of cutting it off
-      for (const text of [f.workoutCount != null ? f.workoutCount + " workouts" : null, f.weekStart].filter(Boolean)) {
+      const saved = fileSort === "modified" ? "saved " + new Date(f.updatedAt).toISOString().slice(0, 10) : null;
+      for (const text of [f.workoutCount != null ? f.workoutCount + " workouts" : null, f.weekStart, saved].filter(Boolean)) {
         const part = document.createElement("span"); part.textContent = text; d.children[1].append(part);
       }
       for (const a of fileActions(f)) {
