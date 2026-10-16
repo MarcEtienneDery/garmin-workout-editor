@@ -63,13 +63,15 @@ export function sourceFor(session: Session): ActivitySource {
       await ready();
       // each call has the Garmin lock to itself, with a pause between them: the laps and the zones are optional
       const details = await locked(() => session.garminClient.getActivityDetails(id));
+      // Only "there is no such thing for this activity" (a 404 or a 400) leaves a part out. Anything else (a 500, a timeout,
+      // a dropped connection) throws, so the activity counts a failure and is tried again: a chart that is stored is never fetched again.
       const optional = async (call: () => Promise<unknown>) => {
         await sleep(detailGapMs() ?? 300);
         try {
           return await locked(call as () => Promise<any>);
         } catch (error) {
-          if (/\((429|401|403)\)|too many requests|authenticat/i.test(errorText(error))) throw error; // that is for the caller to stop on
-          return undefined; // this activity has no such part
+          if (/\((404|400)\)/.test(errorText(error))) return undefined;
+          throw error;
         }
       };
       const splits = await optional(() => session.garminClient.getActivitySplits(id));

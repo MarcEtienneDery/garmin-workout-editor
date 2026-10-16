@@ -411,7 +411,7 @@ describe("chart data", () => {
     expect(garmin.calls.chart).toEqual(["1003", "1002", "1001"]); // newest first
     const run = store.activities.getChart(PROFILE, "1001");
     expect(run.v).toBe(1);
-    expect(run.details.geoPolylineDTO.polyline).toEqual([{ lat: 1, lon: 2 }, { lat: 1.1, lon: 2.1 }]); // pruned to the fields in use
+    expect(run.details.geoPolylineDTO.polyline).toEqual([{ lat: 1, lon: 2, extra: "x" }, { lat: 1.1, lon: 2.1 }]); // every plain field is kept
     expect(store.activities.getChart(PROFILE, "1002").details.geoPolylineDTO).toBeUndefined(); // strength: a series and no GPS
     expect(store.activities.getChart(PROFILE, "1003")).toEqual({ v: 1, details: { metricDescriptors: [], activityDetailMetrics: [] }, splits: null, zones: null });
     expect(store.activities.needingChart(PROFILE)).toEqual([]);

@@ -5,7 +5,7 @@ import * as os from "os";
 import * as path from "path";
 import ActivityExporter from "../activityExporter";
 import { getSession } from "../mcp/context";
-import { getActivities, type GetActivitiesArgs } from "../mcp/tools/activities";
+import { fetchChartNow, getActivities, type GetActivitiesArgs } from "../mcp/tools/activities";
 import { isBackfilling } from "../shared/activitySync";
 import { closeStore, getStore } from "../shared/store";
 
@@ -26,7 +26,7 @@ const item = (n: number, daysAgo: number, typeKey = n % 2 ? "running" : "strengt
 });
 
 /** Garmin: a list of activities, newest first, with details that carry the RPE. */
-function fakeGarmin(items: any[]) {
+function fakeGarmin(items: any[], splits: (id: string) => Promise<unknown> = async () => ({ lapDTOs: [] })) {
   const calls = { list: [] as number[], detail: [] as string[], chart: [] as string[] };
   let listError: Error | null = null;
   const client = {
@@ -43,7 +43,7 @@ function fakeGarmin(items: any[]) {
   const garminClient = {
     ensureAuthenticated: async () => true, getClientAny: () => client, getActivityExerciseSets: async () => [], isMockMode: () => false,
     getActivityDetails: async (id: string) => { calls.chart.push(String(id)); return { metricDescriptors: [], activityDetailMetrics: [] }; },
-    getActivitySplits: async () => ({ lapDTOs: [] }),
+    getActivitySplits: async (id: string) => splits(String(id)),
     getActivityHrZones: async () => [],
   };
   (getSession as jest.Mock).mockReturnValue({ profile: { name: PROFILE }, mock: false, garminClient, exporter: new ActivityExporter(garminClient as any) });
@@ -170,6 +170,28 @@ describe("get_activities", () => {
     const out = await ask();
     expect(out.activities).toEqual([]);
     expect(out.sync).toEqual(expect.objectContaining({ activities: 0, historyComplete: true }));
+  });
+
+  it("leaves a chart's laps out only when Garmin has none (404, 400), and tries the activity again after any other error", async () => {
+    const attempts: Record<string, number> = {};
+    fakeGarmin([item(1, 2), item(2, 3)], async (id) => {
+      attempts[id] = (attempts[id] ?? 0) + 1;
+      if (id === "5001" && attempts[id] === 1) throw new Error("ERROR: (500), Internal Server Error");
+      if (id === "5002") throw new Error("ERROR: (404), Not Found");
+      return { lapDTOs: [{ lapIndex: 1, distance: 1000, duration: 300 }] };
+    });
+    await ask({ includeDetails: false });
+    await settled();
+    const table = getStore().activities;
+    // 5001: the splits call failed with a 500, so no chart was stored and the activity is still waiting
+    expect(table.getChart(PROFILE, "5001")).toBeNull();
+    expect(table.needingChart(PROFILE).map((a) => a.id)).toEqual(["5001"]);
+    // 5002: Garmin has no laps for it, which is an answer: the chart is stored without them
+    expect(table.getChart(PROFILE, "5002")).toEqual(expect.objectContaining({ splits: null }));
+
+    expect((await fetchChartNow(PROFILE, "5001")).fetched).toBe(1); // tried again, and this time it answers
+    expect(table.getChart(PROFILE, "5001").splits.lapDTOs).toEqual([{ lapIndex: 1, distance: 1000, duration: 300 }]);
+    expect(table.needingChart(PROFILE)).toEqual([]);
   });
 
   it("keeps mock mode out of the database", async () => {

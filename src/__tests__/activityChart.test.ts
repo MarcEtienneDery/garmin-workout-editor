@@ -47,9 +47,27 @@ describe("pruning what Garmin sent", () => {
     expect(kept.details.activityDetailMetrics[0].metrics).toHaveLength(KEYS.length);
     expect(kept.details.metricDescriptors.map((m) => m.key)).toEqual(KEYS);
     expect(kept.details.geoPolylineDTO!.polyline).toHaveLength(MAX_SAMPLES);
-    expect(Object.keys(kept.details.geoPolylineDTO!.polyline[0]).sort()).toEqual(["altitude", "distanceInMeters", "lat", "lon", "speed", "time"]);
-    expect(kept.splits!.lapDTOs[0]).not.toHaveProperty("ignored");
-    expect(JSON.stringify(kept).length).toBeLessThan(80_000);
+    expect(Object.keys(kept.details.geoPolylineDTO!.polyline[0]).sort()).toEqual(["altitude", "cumulativeAscent", "distanceInMeters", "extendedCoordinate", "lat", "lon", "speed", "time", "valid"]);
+    expect(kept.splits!.lapDTOs[0]).toHaveProperty("ignored"); // a plain field is kept whatever it is called
+    expect(kept.splits!.lapDTOs[0]).toHaveProperty("averageHR");
+    expect(JSON.stringify(kept).length).toBeLessThan(150_000);
+  });
+
+  it("keeps every plain field and drops nested objects and arrays, so a field named differently than expected survives", () => {
+    const point = { latitude: 10.5, longitude: 20.5, elevationM: 30, timeMs: 5, nested: { a: 1 }, list: [1, 2], nothing: null };
+    const kept = pruneChart({
+      details: { geoPolylineDTO: { polyline: [point, { ...point, latitude: 10.6 }] } },
+      splits: { lapDTOs: [{ index: 1, lengthMeters: 1000, timer: { x: 1 }, kind: "WARMUP" }] },
+      zones: [{ zone: 1, seconds: 30, floor: 100, extra: [1] }],
+    });
+    expect(kept.details.geoPolylineDTO!.polyline[0]).toEqual({ latitude: 10.5, longitude: 20.5, elevationM: 30, timeMs: 5 });
+    expect(kept.splits!.lapDTOs).toEqual([{ index: 1, lengthMeters: 1000, kind: "WARMUP" }]);
+    expect(kept.zones).toEqual([{ zone: 1, seconds: 30, floor: 100 }]);
+    // reading those fields is a parser change; until then the chart simply has no route, rather than failing
+    const chart = buildChart(kept)!;
+    expect(chart.route).toBeNull();
+    expect(chart.laps).toHaveLength(1);
+    expect(chart.zones).toBeNull();
   });
 
   it("keeps the first and the last sample when it thins a series", () => {

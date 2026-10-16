@@ -6,7 +6,7 @@
  *   splits   /activity-service/activity/{id}/splits    the laps the watch recorded (lapDTOs)
  *   zones    /activity-service/activity/{id}/hrTimeInZones   seconds in each heart-rate zone, with the zone's lower bound
  *
- * pruneChart keeps them in the shape Garmin sent, only smaller (a few hundred samples, the fields the charts use), and
+ * pruneChart keeps them in the shape Garmin sent, only smaller (a few hundred samples, no nested objects), and
  * buildChart reads the charts from that every time they are asked for. The parsing is deliberately forgiving: a missing
  * metric leaves its series empty rather than failing, and a change to how it is read never needs Garmin again.
  */
@@ -25,23 +25,22 @@ export interface StoredChart {
   v: 1;
   details: { metricDescriptors: any[]; activityDetailMetrics: { metrics: unknown[] }[]; geoPolylineDTO?: { polyline: any[] } };
   splits: { lapDTOs: any[] } | null;
-  zones: { zoneNumber: number; secsInZone: number; zoneLowBoundary: number | null }[] | null;
+  zones: any[] | null;
 }
 
 const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
-const pick = (o: any, keys: string[]) => Object.fromEntries(keys.filter((k) => o && o[k] !== undefined && o[k] !== null).map((k) => [k, o[k]]));
+/**
+ * Every plain value of an object (numbers, text, flags), without nested objects and arrays. The fields the charts use are
+ * not guessed at here: a field Garmin names differently is kept all the same, and reading it is a parser change, not a refetch.
+ */
+const scalars = (o: any): Record<string, number | string | boolean> =>
+  Object.fromEntries(Object.entries(o && typeof o === "object" ? o : {}).filter(([, v]) => typeof v === "number" || typeof v === "string" || typeof v === "boolean")) as Record<string, number | string | boolean>;
 
 /** At most `max` of the rows, evenly spread, always the first and the last. */
 export function decimate<T>(rows: T[], max: number): T[] {
   if (rows.length <= max || max < 2) return rows.length <= max ? rows : rows.slice(0, max);
   return Array.from({ length: max }, (_, i) => rows[Math.round((i * (rows.length - 1)) / (max - 1))]);
 }
-
-const POLYLINE_FIELDS = ["lat", "lon", "altitude", "time", "distanceInMeters", "speed"];
-const LAP_FIELDS = [
-  "lapIndex", "startTimeGMT", "distance", "duration", "movingDuration", "elevationGain", "elevationLoss", "averageSpeed", "maxSpeed",
-  "averageHR", "maxHR", "averageRunCadence", "averageBikeCadence", "calories", "intensityType", "wktStepIndex", "messageIndex",
-];
 
 /** Garmin's three answers, smaller. Anything missing or oddly shaped is left out, not guessed at. */
 export function pruneChart(responses: ChartResponses): StoredChart {
@@ -52,10 +51,10 @@ export function pruneChart(responses: ChartResponses): StoredChart {
     unit: m?.unit ? { key: m.unit.key, factor: m.unit.factor } : undefined,
   }));
   const rows = (Array.isArray(d.activityDetailMetrics) ? d.activityDetailMetrics : []).map((m: any) => ({ metrics: Array.isArray(m?.metrics) ? m.metrics : [] }));
-  const polyline = Array.isArray(d.geoPolylineDTO?.polyline) ? decimate(d.geoPolylineDTO.polyline.map((p: any) => pick(p, POLYLINE_FIELDS)), MAX_SAMPLES) : [];
-  const laps = Array.isArray(responses.splits?.lapDTOs) ? responses.splits.lapDTOs.slice(0, MAX_LAPS).map((l: any) => pick(l, LAP_FIELDS)) : null;
+  const polyline = Array.isArray(d.geoPolylineDTO?.polyline) ? decimate(d.geoPolylineDTO.polyline.map((p: any) => scalars(p)), MAX_SAMPLES) : [];
+  const laps = Array.isArray(responses.splits?.lapDTOs) ? responses.splits.lapDTOs.slice(0, MAX_LAPS).map((l: any) => scalars(l)) : null;
   const zones = Array.isArray(responses.zones)
-    ? responses.zones.map((z: any) => ({ zoneNumber: z?.zoneNumber, secsInZone: z?.secsInZone, zoneLowBoundary: num(z?.zoneLowBoundary) }))
+    ? responses.zones.map((z: any) => scalars(z))
     : null;
   return {
     v: 1,
@@ -222,7 +221,7 @@ export function buildChart(stored: StoredChart | null | undefined): ChartData | 
 
   const bands = (Array.isArray(stored.zones) ? stored.zones : []).filter((z) => z && Number.isInteger(z.zoneNumber)).sort((a, b) => a.zoneNumber - b.zoneNumber);
   const zones: Zone[] | null = bands.length
-    ? bands.map((z, i) => ({ zone: z.zoneNumber, low: z.zoneLowBoundary, high: bands[i + 1]?.zoneLowBoundary ?? null, seconds: z.secsInZone ?? 0 }))
+    ? bands.map((z, i) => ({ zone: z.zoneNumber, low: num(z.zoneLowBoundary), high: num(bands[i + 1]?.zoneLowBoundary), seconds: num(z.secsInZone) ?? 0 }))
     : null;
 
   return {
