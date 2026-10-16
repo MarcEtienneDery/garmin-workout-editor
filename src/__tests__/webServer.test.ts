@@ -150,7 +150,9 @@ describe("web plan editor", () => {
     expect(() => startWebServer({ host: "0.0.0.0", port: 0 })).toThrow(/WEB_AUTH_TOKEN/);
     const secured = await startWebServer({ host: "127.0.0.1", port: 0, token: "s3cret" });
     const url = `http://127.0.0.1:${(secured.address() as AddressInfo).port}/api/files`;
-    expect((await fetch(url)).status).toBe(401);
+    const refused = await fetch(url);
+    expect(refused.status).toBe(401);
+    expect(refused.headers.get("www-authenticate")).toBeNull(); // the page has its own form; no browser dialog
     const auth = "Basic " + Buffer.from("me:s3cret").toString("base64");
     expect((await fetch(url, { headers: { Authorization: auth } })).status).toBe(200);
     await new Promise((r) => secured.close(r));
@@ -534,6 +536,107 @@ describe("web plan editor", () => {
       expect(await get("MED", "med-pw")).toBe(401);
       expect(await get("MED", "rotated")).toBe(200);
       await new Promise((r) => secured.close(r));
+    });
+
+    describe("sign-in form", () => {
+      const signIn = (user: unknown, password: unknown, headers: Record<string, string> = H) =>
+        fetch(base + "/api/login", { method: "POST", headers, body: JSON.stringify({ user, password }) });
+      const cookieOf = (res: Response) => res.headers.getSetCookie().map((c) => c.split(";")[0]).find((c) => c.startsWith("plan_editor_session=")) ?? "";
+      const withCookie = (cookie: string) => ({ ...H, Cookie: cookie });
+      const session = async (cookie?: string) =>
+        (await (await fetch(base + "/api/session", { headers: cookie ? { Cookie: cookie } : {} })).json()) as any;
+
+      it("serves the page without a login, but not the API, and reports who is signed in", async () => {
+        expect((await fetch(base + "/")).status).toBe(200);
+        expect((await call("GET", "/api/files")).status).toBe(401);
+        expect(await session()).toEqual({ authRequired: true, user: null });
+      });
+
+      it("signs a profile in with a session cookie that has that profile's reach", async () => {
+        const res = await signIn("MED", "med-pw");
+        expect(res.status).toBe(200);
+        const flags = res.headers.getSetCookie().find((c) => c.startsWith("plan_editor_session=")) ?? "";
+        expect(flags).toMatch(/HttpOnly/);
+        expect(flags).toMatch(/SameSite=Strict/);
+        expect(flags).not.toMatch(/Secure/);
+        const cookie = cookieOf(res);
+        expect(await session(cookie)).toEqual({ authRequired: true, user: { admin: false, name: "MED" } });
+        const files = await call("GET", "/api/files", undefined, withCookie(cookie));
+        expect(files.json.files.map((f: any) => f.path)).toEqual(["data/MED/w.json", "workout-plans/a.json"]);
+        expect((await call("GET", q("data/SAM/w.json"), undefined, withCookie(cookie))).status).toBe(403);
+      });
+
+      it("marks the cookie Secure behind an HTTPS proxy", async () => {
+        const res = await signIn("MED", "med-pw", { ...H, "X-Forwarded-Proto": "https" });
+        expect(res.headers.getSetCookie().find((c) => c.startsWith("plan_editor_session="))).toMatch(/; Secure/);
+      });
+
+      it("matches the profile name in any case and signs in under its real name", async () => {
+        const res = await signIn("  med ", "med-pw");
+        expect(res.status).toBe(200);
+        expect(((await res.json()) as any).user).toEqual({ admin: false, name: "MED" });
+        expect((await call("GET", q("data/MED/w.json"), undefined, withCookie(cookieOf(res)))).status).toBe(200);
+        // Basic credentials from scripts follow the same rule
+        const basicMed = { Authorization: "Basic " + Buffer.from("med:med-pw").toString("base64") };
+        expect((await call("GET", q("data/MED/w.json"), undefined, { ...H, ...basicMed })).status).toBe(200);
+      });
+
+      it("refuses wrong passwords and unknown users alike", async () => {
+        for (const [user, password] of [["MED", "nope"], ["NOPE", "med-pw"], ["MED", ""], [undefined, undefined]]) {
+          const res = await signIn(user, password);
+          expect(res.status).toBe(401);
+          expect(res.headers.get("set-cookie")).toBeNull();
+          expect(((await res.json()) as any).error).toBe("Wrong user name or password.");
+        }
+      });
+
+      it("refuses a sign-in that lacks the X-Requested-With header", async () => {
+        expect((await signIn("MED", "med-pw", { "Content-Type": "application/json" })).status).toBe(403);
+      });
+
+      it("signs out: the cookie stops working and is cleared", async () => {
+        const cookie = cookieOf(await signIn("MED", "med-pw"));
+        const out = await fetch(base + "/api/logout", { method: "POST", headers: withCookie(cookie) });
+        expect(out.status).toBe(200);
+        expect(out.headers.getSetCookie().find((c) => c.startsWith("plan_editor_session="))).toMatch(/Max-Age=0/);
+        expect((await call("GET", "/api/files", undefined, withCookie(cookie))).status).toBe(401);
+        expect((await session(cookie)).user).toBeNull();
+      });
+
+      it("signs out of a browser that still sends cached Basic credentials, until it signs in again", async () => {
+        const cached = { Authorization: "Basic " + Buffer.from("MED:med-pw").toString("base64") };
+        const out = await fetch(base + "/api/logout", { method: "POST", headers: { ...H, ...cached } });
+        const marker = out.headers.getSetCookie().map((c) => c.split(";")[0]).find((c) => c.startsWith("plan_editor_signed_out="))!;
+        expect(marker).toBe("plan_editor_signed_out=1");
+        // scripts carry no cookie, so Basic still works for them
+        expect((await call("GET", "/api/files", undefined, { ...H, ...cached })).status).toBe(200);
+        // the browser that signed out does not get back in with the cached credentials
+        const browser = { ...H, ...cached, Cookie: marker };
+        expect((await call("GET", "/api/files", undefined, browser)).status).toBe(401);
+        expect((await (await fetch(base + "/api/session", { headers: { ...cached, Cookie: marker } })).json() as any).user).toBeNull();
+        // signing in again clears the marker
+        const again = await signIn("MED", "med-pw", { ...H, Cookie: marker });
+        expect(again.headers.getSetCookie().find((c) => c.startsWith("plan_editor_signed_out="))).toMatch(/Max-Age=0/);
+      });
+
+      it("ends the session when the profile's password changes or goes away", async () => {
+        const cookie = cookieOf(await signIn("MED", "med-pw"));
+        expect((await call("GET", "/api/files", undefined, withCookie(cookie))).status).toBe(200);
+        addProfile("MED", "rotated");
+        expect((await call("GET", "/api/files", undefined, withCookie(cookie))).status).toBe(401);
+        expect((await signIn("MED", "med-pw")).status).toBe(401);
+        expect((await signIn("MED", "rotated")).status).toBe(200);
+      });
+
+      it("keeps the admin login on the token, with any user name", async () => {
+        const secured = await startWebServer({ host: "127.0.0.1", port: 0, token: "admin-token" });
+        const url = `http://127.0.0.1:${(secured.address() as AddressInfo).port}`;
+        const res = await fetch(url + "/api/login", { method: "POST", headers: H, body: JSON.stringify({ user: "boss", password: "admin-token" }) });
+        expect(((await res.json()) as any).user).toEqual({ admin: true });
+        const files = (await (await fetch(url + "/api/files", { headers: { Cookie: cookieOf(res) } })).json()) as any;
+        expect(files.files).toHaveLength(3);
+        await new Promise((r) => secured.close(r));
+      });
     });
 
     it("allows a non-loopback bind with only profile passwords", async () => {

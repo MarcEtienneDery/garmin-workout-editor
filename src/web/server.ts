@@ -7,7 +7,7 @@
  * Reaches the same documents as the MCP plan tools ("workout-plans/*.json" and
  * "data/<profile>/*.json") through the same store, which keeps the earlier versions
  * of every document (GET /api/history). Non-loopback binds
- * require WEB_AUTH_TOKEN (HTTP Basic auth: any user name, the token as password).
+ * require WEB_AUTH_TOKEN or a profile WEB_PASSWORD (below).
  *
  * The Garmin actions (upload / schedule / send to device) reuse the MCP tool
  * bodies, so they need the profile credentials (GARMIN_PROFILES_DIR) and are
@@ -18,17 +18,19 @@
  * and creates / replaces / deletes workouts in the plan files and on Garmin together
  * (POST, PUT, DELETE /api/garmin/workout). Each write that touches Garmin needs confirm: true.
  *
- * Logins (HTTP Basic): user = a profile name, password = WEB_PASSWORD from that
- * profile's .env.<profile> -> sees only data/<profile>/ and the plans in workout-plans/
- * that are shared or its own, and its Garmin actions run as that profile. WEB_AUTH_TOKEN
- * as the password (any user name) is the admin login with full access.
+ * Logins: the page shows a sign-in form (POST /api/login, GET /api/session, POST /api/logout)
+ * and keeps the login in an HttpOnly session cookie. user = a profile name (any case),
+ * password = WEB_PASSWORD from that profile's .env.<profile> -> sees only data/<profile>/ and
+ * the plans in workout-plans/ that are shared or its own, and its Garmin actions run as that
+ * profile. WEB_AUTH_TOKEN as the password (any user name) is the admin login with full access.
+ * Scripts can send the same credentials as HTTP Basic instead of using a session.
  */
 import * as fs from "fs";
 import * as http from "http";
 import * as path from "path";
-import { createHash, timingSafeEqual } from "crypto";
+import { createHash, randomBytes, timingSafeEqual } from "crypto";
 import * as dotenv from "dotenv";
-import { PROJECT_ROOT, getAvailableProfiles, getProfilesDir } from "../shared/profileLoader";
+import { PROJECT_ROOT, findProfile, getAvailableProfiles, getProfilesDir } from "../shared/profileLoader";
 import { type DocMeta, type StoreErrorCode, StoreError, getStore, normalizeLogicalPath, profileOfPath } from "../shared/store";
 import { getSettings, resolveProfileName, runCaptured } from "../mcp/context";
 import { installConsoleRedirect } from "../mcp/logCapture";
@@ -57,6 +59,11 @@ const PUBLIC_DIR = path.join(__dirname, "public");
 // Monaco is served from node_modules so the editor works offline (e.g. on the NAS).
 const MONACO_DIR = path.join(PROJECT_ROOT, "node_modules", "monaco-editor", "min", "vs");
 const MAX_BODY_BYTES = 10 * 1024 * 1024;
+const SESSION_COOKIE = "plan_editor_session";
+/** Set by sign out: a browser that cached Basic credentials (earlier versions asked for them) keeps sending them, so they are ignored while this is set. */
+const SIGNED_OUT_COOKIE = "plan_editor_signed_out";
+const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const SIGNED_OUT_TTL_MS = 365 * 24 * 60 * 60 * 1000;
 const STORE_STATUS: Record<StoreErrorCode, number> = { not_found: 404, exists: 409, conflict: 409, invalid_path: 400 };
 const store = () => getStore();
 
@@ -113,8 +120,8 @@ function assertScope(who: Principal, logical: string): void {
   }
 }
 
-function send(res: http.ServerResponse, status: number, body: unknown): void {
-  res.writeHead(status, { "Content-Type": "application/json", "Cache-Control": "no-store" });
+function send(res: http.ServerResponse, status: number, body: unknown, headers: http.OutgoingHttpHeaders = {}): void {
+  res.writeHead(status, { "Content-Type": "application/json", "Cache-Control": "no-store", ...headers });
   res.end(JSON.stringify(body));
 }
 
@@ -262,6 +269,9 @@ function workoutSchema() {
 const GARMIN_ACTIONS = ["upload", "schedule", "upload_schedule", "send"] as const;
 type GarminAction = (typeof GARMIN_ACTIONS)[number];
 
+/** What the page shows about the login: the profile name, or admin. */
+const userInfo = (who: Principal) => (who.admin ? { admin: true } : { admin: false, name: who.profile });
+
 function garminInfo(who: Principal) {
   const all = getAvailableProfiles();
   const profiles = who.admin ? all : all.filter((p) => p === who.profile);
@@ -270,7 +280,7 @@ function garminInfo(who: Principal) {
     enabled: profiles.length > 0 && !mock,
     mock,
     profiles,
-    user: who.admin ? { admin: true } : { admin: false, name: who.profile },
+    user: userInfo(who),
     defaultProfile: who.admin
       ? (getSettings().defaultProfile ?? (profiles.length === 1 ? profiles[0] : null))
       : who.profile,
@@ -790,20 +800,71 @@ export function startWebServer(options: WebServerOptions): Promise<http.Server> 
   // Checked per request: WEB_PASSWORD edits in a profile file apply without a restart.
   const authRequired = () => !!options.token || profilesWithWebPassword().length > 0;
 
-  const authenticate = (header: string | undefined): Principal | null => {
-    if (!authRequired()) return ADMIN;
-    const m = /^Basic\s+(.+)$/i.exec(header ?? "");
-    if (!m) return null;
-    const decoded = Buffer.from(m[1], "base64").toString("utf8");
-    const colon = decoded.indexOf(":");
-    const user = colon < 0 ? "" : decoded.slice(0, colon);
-    const secret = decoded.slice(colon + 1);
-
-    const profilePassword = user && getAvailableProfiles().includes(user) ? profileWebPassword(user) : undefined;
-    if (profilePassword && sameSecret(secret, profilePassword)) return { admin: false, profile: user };
+  /** Who a user name and secret stand for. A profile name matches in any case; the token is the admin login. */
+  const verify = (user: string, secret: string): Principal | null => {
+    const profile = user ? findProfile(user) : undefined;
+    const profilePassword = profile ? profileWebPassword(profile) : undefined;
+    if (profile && profilePassword && sameSecret(secret, profilePassword)) return { admin: false, profile };
     if (options.token && sameSecret(secret, options.token)) return ADMIN;
     return null;
   };
+
+  // Logins made through the form. A session ends when it expires, on logout, or when the secret it was made
+  // with changes (a rotated WEB_PASSWORD or a removed profile), just as Basic credentials stop working then.
+  interface Session { who: Principal; secretHash: Buffer; expires: number }
+  const sessions = new Map<string, Session>();
+  const currentSecret = (who: Principal) => (who.admin ? options.token : profileWebPassword(who.profile));
+
+  const cookieValue = (req: http.IncomingMessage, name: string): string | undefined => {
+    for (const part of (req.headers.cookie ?? "").split(";")) {
+      const eq = part.indexOf("=");
+      if (part.slice(0, eq).trim() === name) return part.slice(eq + 1).trim();
+    }
+    return undefined;
+  };
+  const setCookie = (req: http.IncomingMessage, name: string, value: string, maxAgeMs: number): string => {
+    const secure = req.headers["x-forwarded-proto"] === "https" || (req.socket as { encrypted?: boolean }).encrypted;
+    return `${name}=${value}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${Math.floor(maxAgeMs / 1000)}${secure ? "; Secure" : ""}`;
+  };
+  const sessionOf = (req: http.IncomingMessage): Principal | null => {
+    const id = cookieValue(req, SESSION_COOKIE);
+    const session = id ? sessions.get(id) : undefined;
+    if (!id || !session) return null;
+    const secret = currentSecret(session.who);
+    if (session.expires < Date.now() || !secret || !timingSafeEqual(sha256(secret), session.secretHash)) {
+      sessions.delete(id);
+      return null;
+    }
+    return session.who;
+  };
+
+  const authenticate = (req: http.IncomingMessage): Principal | null => {
+    if (!authRequired()) return ADMIN;
+    const session = sessionOf(req);
+    if (session) return session;
+    if (cookieValue(req, SIGNED_OUT_COOKIE)) return null; // signed out of this browser; scripts carry no cookies
+    const m = /^Basic\s+(.+)$/i.exec(req.headers.authorization ?? "");
+    if (!m) return null;
+    const decoded = Buffer.from(m[1], "base64").toString("utf8");
+    const colon = decoded.indexOf(":");
+    return verify(colon < 0 ? "" : decoded.slice(0, colon), decoded.slice(colon + 1));
+  };
+
+  async function login(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+    const body = await readBody(req);
+    if (!authRequired()) return send(res, 200, { authRequired: false, user: userInfo(ADMIN) });
+    const user = typeof body.user === "string" ? body.user.trim() : "";
+    const password = typeof body.password === "string" ? body.password : "";
+    const who = password ? verify(user, password) : null;
+    if (!who) throw new HttpError(401, "Wrong user name or password.");
+    const now = Date.now();
+    for (const [id, s] of sessions) if (s.expires < now) sessions.delete(id);
+    const id = randomBytes(32).toString("hex");
+    sessions.set(id, { who, secretHash: sha256(currentSecret(who) ?? ""), expires: now + SESSION_TTL_MS });
+    send(res, 200, { authRequired: true, user: userInfo(who) }, {
+      "Set-Cookie": [setCookie(req, SESSION_COOKIE, id, SESSION_TTL_MS), setCookie(req, SIGNED_OUT_COOKIE, "", 0)],
+    });
+  }
 
   const server = http.createServer(async (req, res) => {
     try {
@@ -818,18 +879,33 @@ export function startWebServer(options: WebServerOptions): Promise<http.Server> 
         res.writeHead(403, { "Content-Type": "text/plain" });
         return void res.end("Forbidden host");
       }
-      const who = authenticate(req.headers.authorization);
-      if (!who) {
-        res.writeHead(401, { "WWW-Authenticate": 'Basic realm="Plan editor"' });
-        return void res.end("Authentication required");
-      }
+      // The page and the editor's scripts hold no data, so they load without a login: the page shows the sign-in form itself.
       if (!url.pathname.startsWith("/api/")) {
         return req.method === "GET" ? serveStatic(url.pathname, res) : send(res, 405, { error: "Method not allowed" });
       }
-      // Custom header forces a CORS preflight, so other sites can't drive the API from a browser.
+      // Custom header forces a CORS preflight, so other sites can't drive the API from a browser (or sign it in).
       if (req.method !== "GET" && req.headers["x-requested-with"] !== "plan-editor") {
         throw new HttpError(403, "Missing X-Requested-With header");
       }
+
+      const route = `${req.method} ${url.pathname}`;
+      if (route === "POST /api/login") return await login(req, res);
+      if (route === "POST /api/logout") {
+        const id = cookieValue(req, SESSION_COOKIE);
+        if (id) sessions.delete(id);
+        return send(res, 200, { ok: true }, {
+          "Set-Cookie": [setCookie(req, SESSION_COOKIE, "", 0), setCookie(req, SIGNED_OUT_COOKIE, "1", SIGNED_OUT_TTL_MS)],
+        });
+      }
+      if (route === "GET /api/session") {
+        // 200 even when signed out, so the page can tell "show the form" from a failure.
+        const who = authenticate(req);
+        return send(res, 200, { authRequired: authRequired(), user: who ? userInfo(who) : null });
+      }
+
+      const who = authenticate(req);
+      // No WWW-Authenticate: the browser must not open its own login dialog over the form.
+      if (!who) return send(res, 401, { error: "Authentication required" });
       await handleApi(req, res, url, who);
     } catch (error) {
       if (res.headersSent) return void res.destroy();

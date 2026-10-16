@@ -13,10 +13,13 @@
   body { height:100dvh; background:var(--bg); color:var(--fg); font:13px/1.4 system-ui,sans-serif; display:grid; grid-template-rows:auto minmax(0,1fr) auto; grid-template-columns:minmax(0,1fr); -webkit-tap-highlight-color:transparent; }
   header { position:relative; display:flex; gap:6px; align-items:center; padding:6px 10px; background:var(--panel); border-bottom:1px solid var(--line); flex-wrap:wrap; }
   header h1 { font-size:13px; margin:0 8px 0 0; }
-  #current { color:var(--dim); margin-left:auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #current { color:var(--dim); flex:1 1 0; min-width:0; display:flex; justify-content:flex-end; white-space:nowrap; }
+  #current .dir { flex:0 100 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; }
+  #current b { flex:0 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; }
   #actions { display:contents; }
   #menu, #tabbar { display:none; }
   #current b { color:var(--fg); }
+  #save.dirty::after { content:" ●"; }
   button { background:#333; color:var(--fg); border:1px solid var(--line); border-radius:3px; padding:4px 10px; cursor:pointer; font:inherit; }
   button:hover:not(:disabled) { background:#3d3d3d; }
   button:disabled { opacity:.4; cursor:default; }
@@ -40,6 +43,10 @@
   .row .name { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; cursor:pointer; }
   .row .name:hover { text-decoration:underline; }
   .row small { color:var(--dim); }
+  .row.wk { flex-direction:column; align-items:stretch; gap:2px; }
+  .row.wk .wtop, .row.wk .wbot { display:flex; gap:6px; align-items:center; }
+  .row.wk .name { white-space:normal; overflow-wrap:anywhere; }
+  .row.wk small { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .row button { padding:1px 6px; }
   .msg { padding:2px 10px; }
   .msg.err { color:var(--err); } .msg.warn { color:var(--warn); } .msg.ok { color:var(--ok); }
@@ -47,7 +54,33 @@
   .empty { color:var(--dim); padding:10px; }
   button.garmin { border-color:#4a6a8a; }
   button.garmin:hover:not(:disabled) { background:#27425e; }
-  select, input[type="search"] { background:#333; color:var(--fg); border:1px solid var(--line); border-radius:3px; padding:4px 6px; font:inherit; }
+  select, input[type="search"], input[type="text"], input[type="password"] { background:#333; color:var(--fg); border:1px solid var(--line); border-radius:3px; padding:4px 6px; font:inherit; }
+  /* ── Header menus: File and Garmin actions, so the toolbar keeps to one row ── */
+  .dd { position:relative; }
+  .menubtn::after { content:" ▾"; font-size:10px; }
+  .dd > .menu { display:none; position:absolute; top:calc(100% + 4px); left:0; z-index:20; min-width:190px; flex-direction:column; padding:4px; background:var(--panel); border:1px solid var(--line); border-radius:4px; box-shadow:0 8px 24px rgba(0,0,0,.5); }
+  .dd.open > .menu { display:flex; }
+  .menu button { border:0; background:none; text-align:left; padding:6px 10px; }
+  .menu button.danger { color:var(--err); }
+  .menu hr { border:0; border-top:1px solid var(--line); margin:4px 0; }
+  .menu .mlabel { display:none; }
+  /* ── Account: who is signed in, and sign out ── */
+  .account > .menu { left:auto; right:0; }
+  .account .menubtn { display:flex; align-items:center; gap:6px; }
+  .avatar { flex:none; width:20px; height:20px; border-radius:50%; background:var(--accent); color:#fff; font-size:11px; font-weight:600; line-height:20px; text-align:center; }
+  #accountName { max-width:140px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .menu .who { padding:6px 10px; display:grid; gap:2px; }
+  .menu .who small { color:var(--dim); }
+  .menu .who b { overflow-wrap:anywhere; }
+  /* ── Sign-in form: covers the page until there is a login ── */
+  #login { position:fixed; inset:0; z-index:100; display:flex; align-items:center; justify-content:center; padding:16px; background:var(--bg); overflow:auto; }
+  #loginForm { width:100%; max-width:340px; display:grid; gap:12px; padding:24px; background:var(--panel); border:1px solid var(--line); border-radius:6px; box-shadow:0 8px 24px rgba(0,0,0,.4); }
+  #loginForm h2 { margin:0; font-size:18px; }
+  #loginForm p { margin:0; color:var(--dim); }
+  #loginForm label { display:grid; gap:4px; color:var(--dim); }
+  #loginForm input { width:100%; padding:7px 8px; color:var(--fg); }
+  #loginForm button { padding:8px 10px; }
+  #loginError { color:var(--err); }
   /* ── Plan view: is each workout up to date on Garmin? ── */
   .chip { font-size:11px; line-height:16px; padding:0 7px; border-radius:9px; border:1px solid var(--line); color:var(--dim); white-space:nowrap; flex:none; }
   .chip.ok { color:var(--ok); border-color:#2d6a5c; } .chip.warn { color:var(--warn); border-color:#7a6a3d; } .chip.err { color:var(--err); border-color:#8a4a40; }
@@ -117,6 +150,11 @@
   #hdlg .hrow span { flex:1; min-width:0; }
   #hdlg .hrow small { display:block; color:var(--dim); }
   #dlgText:not(:empty) { margin-bottom:10px; }
+  .dlg-line { margin:0 0 4px; overflow-wrap:anywhere; }
+  .dlg-line.meta { color:var(--dim); } .dlg-line.warn { color:var(--warn); }
+  #dlgInputRow, #dlgChoiceRow { display:grid; gap:4px; margin-bottom:10px; }
+  #dlgInput, #dlgChoice, #wdlg select { width:100%; min-width:0; max-width:100%; }
+  #dlgOpts label { align-items:flex-start; } #dlgOpts input { margin-top:2px; }
   #wdlg[open] { display:flex; flex-direction:column; height:min(86dvh, 760px); }
   #wdlg .dform { display:flex; gap:12px; align-items:center; flex-wrap:wrap; padding:8px 12px; border-bottom:1px solid var(--line); }
   #wdlg .dform[hidden] { display:none; }
@@ -134,15 +172,24 @@
     header { padding:6px 10px; padding-top:calc(6px + env(safe-area-inset-top)); flex-wrap:nowrap; gap:8px; }
     header h1 { display:none; }
     button { min-height:40px; padding:6px 14px; font-size:14px; }
-    #current { flex:1; margin:0; font-size:14px; }
+    #current { font-size:14px; }
+    #current .dir { display:none; }
+    #accountName { max-width:80px; }
     #menu { display:block; min-width:40px; font-size:20px; line-height:1; padding:0; }
     body.menu-open #menu { background:var(--accent); border-color:var(--accent); color:#fff; }
     #actions { display:none; position:absolute; z-index:10; top:100%; left:0; right:0; padding:10px; gap:8px; grid-template-columns:1fr 1fr;
       background:var(--panel); border-bottom:1px solid var(--line); box-shadow:0 8px 16px rgba(0,0,0,.5); }
     body.menu-open #actions { display:grid; max-height:75dvh; overflow:auto; }
-    #profile { grid-column:1 / -1; }
+    #profile, #new, .menu .mlabel, #delete { grid-column:1 / -1; }
+    /* The two dropdowns open flat inside this panel, one labelled section each; Delete goes last. */
+    #actions .dd, #actions .dd > .menu { display:contents; }
+    #actions .dd > .menubtn, #actions .menu hr { display:none; }
+    .menu .mlabel { display:block; padding:6px 2px 0; font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--dim); }
+    #actions .menu button { border:1px solid var(--line); background:#333; text-align:center; }
+    #actions .menu button.garmin { border-color:#4a6a8a; }
+    #delete { order:1; margin-top:6px; }
     /* iOS zooms the page in when a field under 16px gets focus; Monaco's hidden textarea inherits the editor's 14px. */
-    select, input[type="search"], .monaco-editor .inputarea { min-height:40px; font-size:16px !important; }
+    select, input[type="search"], input[type="text"], input[type="password"], .monaco-editor .inputarea { min-height:40px; font-size:16px !important; }
     .monaco-editor .inputarea { min-height:0; }
     #activity pre { padding:4px 12px; font-size:12px; }
 
@@ -153,12 +200,15 @@
     body[data-tab="files"] #side, body[data-tab="editor"] #side { display:none; }
     body[data-tab="outline"] #problemsPane, body[data-tab="problems"] #outlinePane { display:none; }
     aside h2 { padding:14px 12px 6px; font-size:12px; }
-    #side h2 { display:none; }
+    #outlinePane h2 { display:none; }
     .file { padding:12px 14px; font-size:15px; border-bottom:1px solid #2f2f2f; }
     .file small { font-size:12px; margin-top:2px; }
     .row { padding:8px 12px; gap:8px; flex-wrap:wrap; min-height:48px; }
     .row .name { flex:1 1 30%; font-size:15px; }
     .row small { order:3; flex-basis:100%; margin-top:-4px; }
+    .row.wk { padding:4px 12px; gap:0; }
+    .row.wk small { order:0; flex:1; margin:0; }
+    .row.wk button.chip { min-height:32px; }
     .row button { min-width:44px; min-height:40px; padding:0 10px; font-size:16px; }
     .row button.ico { min-width:38px; padding:0; }
     .msg { padding:8px 12px; font-size:14px; }
@@ -181,6 +231,7 @@
     .chip { font-size:12px; }
     .row .chip { min-width:30px; text-align:center; font-size:15px; line-height:22px; }
     #wbody { padding:12px 14px 24px; font-size:15px; }
+    #wdPlanRow label { flex-direction:column; align-items:stretch; width:100%; gap:4px; }
     #wdlg[open] { width:100vw; max-width:100vw; height:var(--vvh, 100dvh); max-height:var(--vvh, 100dvh); top:var(--vvtop, 0px); margin:0; border-radius:0; border:0; }
     #dlg, #hdlg { width:94vw; }
 
@@ -196,6 +247,16 @@
 </style>
 </head>
 <body data-view="plans">
+<div id="login" hidden>
+  <form id="loginForm" method="post" action="/api/login">
+    <h2>Plan Editor</h2>
+    <p id="loginNote">Sign in with your profile name and its web password. For the admin login, use any name with the access token.</p>
+    <label>User name<input id="loginUser" name="username" type="text" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" required></label>
+    <label>Password<input id="loginPass" name="password" type="password" autocomplete="current-password" required></label>
+    <div id="loginError" role="alert" hidden></div>
+    <button id="loginSubmit" class="primary" type="submit">Sign in</button>
+  </form>
+</div>
 <header>
   <h1>Plan Editor</h1>
   <nav id="views" aria-label="View">
@@ -207,18 +268,39 @@
     <button id="new">+ New</button>
     <button id="validate" disabled>Validate</button>
     <button id="format" disabled>Format</button>
-    <button id="reload" disabled>Reload</button>
-    <button id="history" disabled>History</button>
-    <button id="dup" disabled>Duplicate</button>
-    <button id="rename" disabled>Rename</button>
-    <button id="delete" class="danger" disabled>Delete</button>
+    <div class="dd">
+      <button id="fileBtn" class="menubtn" aria-expanded="false" aria-controls="fileMenu" disabled>File</button>
+      <div class="menu" id="fileMenu">
+        <span class="mlabel">File</span>
+        <button id="reload" disabled>Reload</button>
+        <button id="history" disabled>History</button>
+        <button id="dup" disabled>Duplicate</button>
+        <button id="rename" disabled>Rename</button>
+        <hr>
+        <button id="delete" class="danger" disabled>Delete</button>
+      </div>
+    </div>
     <select id="profile" title="Garmin profile" hidden></select>
-    <button id="gUpload" class="garmin" disabled>↑ Upload</button>
-    <button id="gSchedule" class="garmin" disabled>📅 Schedule</button>
-    <button id="gBoth" class="garmin" disabled>↑📅 Upload + schedule</button>
-    <button id="gSend" class="garmin" disabled>⌚ Send to watch</button>
+    <div class="dd">
+      <button id="garminBtn" class="menubtn garmin" aria-expanded="false" aria-controls="garminMenu" disabled>Garmin</button>
+      <div class="menu" id="garminMenu">
+        <span class="mlabel">Garmin</span>
+        <button id="gUpload" class="garmin" disabled>Upload</button>
+        <button id="gSchedule" class="garmin" disabled>Schedule</button>
+        <button id="gBoth" class="garmin" disabled>Upload + schedule</button>
+        <button id="gSend" class="garmin" disabled>Send to watch</button>
+      </div>
+    </div>
   </div>
   <span id="current">No file open</span>
+  <div class="dd account" id="account" hidden>
+    <button id="accountBtn" class="menubtn" aria-expanded="false" aria-controls="accountMenu" title="Account"><span class="avatar" id="accountAvatar" aria-hidden="true"></span><span id="accountName"></span></button>
+    <div class="menu" id="accountMenu">
+      <div class="who"><small>Signed in as</small><b id="accountWho"></b><small id="accountRole"></small></div>
+      <hr>
+      <button id="logout">Sign out</button>
+    </div>
+  </div>
   <button id="menu" aria-label="More actions" aria-expanded="false">⋯</button>
 </header>
 <main>
@@ -283,7 +365,12 @@
 </dialog>
 <dialog id="dlg">
   <div class="dhead"><b id="dlgTitle"></b></div>
-  <div class="dbody"><div id="dlgText" class="meta"></div><div class="opts" id="dlgOpts"></div></div>
+  <div class="dbody">
+    <div id="dlgText"></div>
+    <label id="dlgInputRow" hidden><span id="dlgInputLabel"></span><input id="dlgInput" type="text" autocomplete="off" spellcheck="false"></label>
+    <label id="dlgChoiceRow" hidden><span id="dlgChoiceLabel"></span><select id="dlgChoice"></select></label>
+    <div class="opts" id="dlgOpts"></div>
+  </div>
   <div class="dfoot"><span class="spacer"></span><button id="dlgCancel">Cancel</button><button id="dlgOk" class="primary">OK</button></div>
 </dialog>
 
@@ -337,7 +424,13 @@ function navSync() {
 /** Call right after showModal(): Back closes the dialog, and closing it any other way drops its history entry. */
 function navDialog(dlg) {
   history.pushState({ ...navState(), prev: navKeyNow, ov: dlg.id }, "");
-  dlg.addEventListener("close", () => { if (history.state && history.state.ov === dlg.id) history.back(); }, { once: true });
+  // dlg.settled resolves once the dialog is closed and its entry is gone, so a following dialog does not have its entry popped by this one.
+  dlg.settled = new Promise((resolve) => {
+    dlg.addEventListener("close", () => {
+      if (history.state && history.state.ov === dlg.id) { addEventListener("popstate", resolve, { once: true }); setTimeout(resolve, 500); history.back(); }
+      else resolve();
+    }, { once: true });
+  });
 }
 function showWorkoutList() {
   if (document.body.dataset.wpane !== "detail") return;
@@ -356,7 +449,7 @@ window.addEventListener("popstate", (e) => {
     document.body.dataset.wpane = s.wpane === "detail" && !W.selected ? "list" : s.wpane;
   } finally { navRestoring = false; }
   navKeyNow = navKey(navState());
-  if (s.ov) history.replaceState({ ...navState(), prev: s.prev }, ""); // forward onto a dialog that is no longer open
+  if (s.ov && !($(s.ov) && $(s.ov).open)) history.replaceState({ ...navState(), prev: s.prev }, ""); // forward onto a dialog that is no longer open
 });
 function toggleMenu() {
   const open = document.body.classList.toggle("menu-open");
@@ -374,15 +467,94 @@ const profileOwner = () => current && (/^data\/([^/]+)\//.exec(current.path) || 
 const planProfile = () => profileOwner() || (garmin.profiles.length > 1 ? $("profile").value : garmin.profiles[0]);
 
 // ── API ────────────────────────────────────────────────────────────────
-async function api(method, url, body) {
+async function request(method, url, body) {
   const res = await fetch(url, {
     method,
     headers: { "Content-Type": "application/json", "X-Requested-With": "plan-editor" },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   const data = await res.json().catch(() => ({}));
+  return { res, data };
+}
+async function api(method, url, body) {
+  const { res, data } = await request(method, url, body);
+  if (res.status === 401) showLogin("Your session has ended. Sign in again."); // the page and any unsaved edits stay behind the form
   if (!res.ok) throw Object.assign(new Error(data.error || res.statusText), { data });
   return data;
+}
+
+// ── Sign-in ────────────────────────────────────────────────────────────
+let me = null; // { authRequired, user: { admin, name? } | null } from /api/session
+let leaving = false; // set before a deliberate reload so the unsaved-changes prompt stays quiet
+const LAST_USER_KEY = "planEditor.user";
+const rememberedUser = () => { try { return localStorage.getItem(LAST_USER_KEY) || ""; } catch { return ""; } };
+const sameUser = (a, b) => !!a && !!b && a.admin === b.admin && a.name === b.name;
+const userName = (u) => (u.admin ? "Admin" : u.name);
+
+function renderAccount() {
+  const local = !!me && !me.authRequired, user = me && me.user;
+  $("account").hidden = !(local || user);
+  if (!(local || user)) return;
+  const name = local ? "Local" : userName(user);
+  $("accountName").textContent = name;
+  $("accountAvatar").textContent = name.charAt(0).toUpperCase();
+  $("accountWho").textContent = name;
+  $("accountRole").textContent = local ? "No login is needed on this address." : user.admin ? "Administrator: all profiles." : "Profile login: your plans and Garmin account.";
+  $("logout").hidden = local;
+  $("accountBtn").title = local ? "Local access" : "Signed in as " + name;
+}
+
+function showLogin(message) {
+  const wasHidden = $("login").hidden;
+  $("login").hidden = false;
+  $("loginError").hidden = !message;
+  $("loginError").textContent = message || "";
+  if (!wasHidden) return;
+  document.body.classList.remove("menu-open");
+  if (!$("loginUser").value) $("loginUser").value = rememberedUser();
+  ($("loginUser").value ? $("loginPass") : $("loginUser")).focus();
+}
+
+let signedIn;
+const sessionReady = new Promise((resolve) => (signedIn = resolve)); // resolves once there is a login, or none is needed
+
+async function bootSession() {
+  try {
+    const { res, data } = await request("GET", "/api/session");
+    if (res.ok) me = data;
+  } catch {} // server unreachable: carry on, the first request reports it
+  renderAccount();
+  if (me && me.authRequired && !me.user) showLogin(); else signedIn();
+}
+
+$("loginForm").onsubmit = async (e) => {
+  e.preventDefault();
+  const user = $("loginUser").value.trim(), submit = $("loginSubmit");
+  submit.disabled = true;
+  try {
+    const { res, data } = await request("POST", "/api/login", { user, password: $("loginPass").value });
+    if (!res.ok) throw new Error(data.error || res.statusText);
+    try { localStorage.setItem(LAST_USER_KEY, user); } catch {}
+    const before = me && me.user; // set when a session ended while the page was open
+    me = data;
+    $("loginPass").value = "";
+    $("login").hidden = true;
+    renderAccount();
+    if (!before) signedIn();
+    else if (sameUser(before, me.user)) { toast("Signed in again"); refreshFiles().catch(() => {}); }
+    else { leaving = true; location.reload(); } // someone else signed in: start from their data
+  } catch (err) {
+    $("loginError").hidden = false;
+    $("loginError").textContent = err.message;
+    $("loginPass").select();
+  } finally { submit.disabled = false; }
+};
+
+async function signOut() {
+  if (isDirty() && !(await confirmDiscard())) return;
+  leaving = true;
+  try { await request("POST", "/api/logout"); } catch {}
+  location.reload();
 }
 const fileUrl = (p) => "/api/file?path=" + encodeURIComponent(p);
 
@@ -423,10 +595,6 @@ async function refreshFiles() {
     }
   }
   if (!files.length) el.innerHTML = '<div class="empty">No plans yet.</div>';
-  if (garmin.user && !garmin.user.admin) {
-    const who = document.createElement("div"); who.className = "empty"; who.textContent = "Signed in as " + garmin.user.name;
-    el.prepend(who);
-  }
 }
 
 /** The buttons beside a plan file: the Garmin actions (plan files only), duplicate and delete. */
@@ -452,7 +620,7 @@ async function garminFile(path, action) {
 }
 
 async function openFile(p) {
-  if (current && current.path !== p && isDirty() && !confirm("Discard unsaved changes?")) return;
+  if (current && current.path !== p && isDirty() && !(await confirmDiscard())) return;
   const f = await api("GET", fileUrl(p));
   current = { path: f.path, version: f.version };
   setTab("editor");
@@ -466,15 +634,22 @@ async function openFile(p) {
 }
 
 function setButtons() {
-  const on = !!current;
-  for (const id of ["save", "validate", "format", "reload", "history", "dup", "rename", "delete"]) $(id).disabled = !on;
-  for (const id of Object.keys(GARMIN_ACTIONS)) {
-    $(id).disabled = !on || !garmin.enabled || garminBusy;
-    $(id).title = garmin.enabled ? "" : garmin.reason || "Garmin actions are unavailable";
-  }
+  const on = !!current, dirty = !!isDirty(), garminOff = !on || !garmin.enabled || garminBusy;
+  for (const id of ["fileBtn", "validate", "format", "reload", "history", "dup", "rename", "delete"]) $(id).disabled = !on;
+  $("save").disabled = !dirty; $("save").classList.toggle("dirty", dirty);
+  const why = garmin.enabled ? "" : garmin.reason || "Garmin actions are unavailable";
+  for (const id of [...Object.keys(GARMIN_ACTIONS), "garminBtn"]) { $(id).disabled = garminOff; $(id).title = why; }
   $("profile").hidden = !(on && garmin.enabled && garmin.profiles.length > 1 && !profileOwner());
-  $("current").innerHTML = on ? `<b></b>${isDirty() ? " ●" : ""}` : "No file open";
-  if (on) $("current").firstChild.textContent = current.path;
+  const cur = $("current");
+  if (cur.dataset.path !== (on ? current.path : "")) {
+    cur.dataset.path = on ? current.path : ""; cur.title = on ? current.path : ""; cur.replaceChildren();
+    if (!on) cur.textContent = "No file open";
+    else {
+      const slash = current.path.lastIndexOf("/") + 1, dir = document.createElement("span"), name = document.createElement("b");
+      dir.className = "dir"; dir.textContent = current.path.slice(0, slash); name.textContent = current.path.slice(slash);
+      cur.append(dir, name);
+    }
+  }
 }
 
 // ── Actions ────────────────────────────────────────────────────────────
@@ -488,7 +663,7 @@ const save = guard(async () => {
 });
 
 const newFile = guard(async () => {
-  let name = prompt('New file name (in workout-plans/), or a full path like "data/MED/x.json":', "workouts-new.json");
+  let name = await promptDialog({ title: "New plan file", text: "Created in workout-plans/. Give a full path such as data/MED/x.json to put it elsewhere.", input: { label: "File name", value: "workouts-new.json" }, ok: "Create" });
   if (!name) return;
   if (!/^(workout-plans|data)\//.test(name)) name = "workout-plans/" + name;
   if (!name.endsWith(".json")) name += ".json";
@@ -499,24 +674,24 @@ const newFile = guard(async () => {
 });
 
 const duplicate = guard(async (path = current.path) => {
-  const name = prompt("Duplicate as:", path.replace(/\.json$/, "-copy.json"));
-  if (!name) return;
-  // Strip workoutIds so a copy never overwrites the original workouts on Garmin.
   let text = current && current.path === path ? editor.getValue() : (await api("GET", fileUrl(path))).text;
-  try {
-    const data = JSON.parse(text);
-    const list = Array.isArray(data) ? data : data.workouts;
-    if (Array.isArray(list) && list.some((w) => w && w.workoutId !== undefined) && confirm("Remove workoutId from the copy? (recommended: re-uploading it would otherwise replace the original workouts on Garmin)")) {
-      list.forEach((w) => w && delete w.workoutId);
-      text = JSON.stringify(data, null, 2) + "\n";
-    }
-  } catch {}
-  await api("PUT", fileUrl(name), { text, create: true });
-  await openFile(name);
+  let data, list;
+  try { data = JSON.parse(text); list = Array.isArray(data) ? data : data.workouts; } catch {}
+  // Strip workoutIds so a copy never overwrites the original workouts on Garmin.
+  const hasIds = Array.isArray(list) && list.some((w) => w && w.workoutId !== undefined);
+  const answer = await askDialog({
+    title: "Duplicate file", text: path, ok: "Duplicate",
+    input: { label: "Copy name", value: path.replace(/\.json$/, "-copy.json") },
+    options: hasIds ? [{ id: "strip", checked: true, label: "Remove the workoutIds from the copy (recommended: uploading it would otherwise replace the original workouts on Garmin)" }] : [],
+  });
+  if (!answer) return;
+  if (answer.strip) { list.forEach((w) => w && delete w.workoutId); text = JSON.stringify(data, null, 2) + "\n"; }
+  await api("PUT", fileUrl(answer.input), { text, create: true });
+  await openFile(answer.input);
 });
 
 const rename = guard(async () => {
-  const to = prompt("Rename to:", current.path);
+  const to = await promptDialog({ title: "Rename file", text: current.path, input: { label: "New path", value: current.path }, ok: "Rename" });
   if (!to || to === current.path) return;
   if (isDirty()) await save();
   const r = await api("POST", "/api/rename", { from: current.path, to });
@@ -524,7 +699,7 @@ const rename = guard(async () => {
 });
 
 const remove = guard(async (path = current.path) => {
-  if (!confirm(`Delete ${path}?\n\nIts last version stays in the database history; ask for it to be restored from the command line.`)) return;
+  if (!(await confirmDialog({ title: `Delete ${path}?`, text: "Its last version stays in the database history; ask for it to be restored from the command line.", ok: "Delete", danger: true }))) return;
   await api("DELETE", fileUrl(path));
   if (current && current.path === path) { current = null; savedText = ""; editor.setValue(""); setButtons(); renderOutline(); showValidation(null); setTab("files"); }
   refreshFiles();
@@ -532,7 +707,7 @@ const remove = guard(async (path = current.path) => {
 });
 
 const reload = guard(async () => {
-  if (isDirty() && !confirm("Discard unsaved changes?")) return;
+  if (isDirty() && !(await confirmDiscard())) return;
   const p = current.path; current = null; await openFile(p);
 });
 
@@ -556,7 +731,7 @@ const showHistory = guard(async () => {
   for (const rev of h.revisions) {
     row(new Date(rev.savedAt).toLocaleString(), "saved by " + rev.source, rev.size, async () => {
       if (!current || current.path !== path) return;
-      if (isDirty() && !confirm("Replace the unsaved changes in the editor?")) return;
+      if (isDirty() && !(await confirmDialog({ title: "Replace the unsaved changes?", text: "The editor holds changes that are not saved.", ok: "Replace", danger: true }))) return;
       const full = await api("GET", `/api/revision?path=${encodeURIComponent(path)}&id=${rev.id}`);
       editor.setValue(full.text);
       dlg.close();
@@ -575,6 +750,7 @@ function format() {
 // ── Garmin actions (upload / schedule / send to watch) ─────────────────
 const GARMIN_ACTIONS = { gUpload: "upload", gSchedule: "schedule", gBoth: "upload_schedule", gSend: "send" };
 const ACTION_LABEL = { upload: "Upload", schedule: "Schedule", upload_schedule: "Upload + schedule", send: "Send to watch" };
+const ACTION_TITLE = { upload: "Upload the plan to Garmin?", schedule: "Schedule the plan on Garmin?", upload_schedule: "Upload and schedule the plan?", send: "Send the plan to the watch?" };
 
 async function loadGarmin() {
   try { garmin = await api("GET", "/api/garmin"); } catch { return; }
@@ -605,7 +781,7 @@ async function garminRun(action) {
   if (!current || garminBusy) return;
   // The actions work on the file on disk, so save first.
   if (isDirty()) {
-    if (!confirm("Save your changes before running this on Garmin?")) return;
+    if (!(await confirmSaveFirst())) return;
     await save();
     if (isDirty()) return;
   }
@@ -619,9 +795,10 @@ async function garminRun(action) {
   const withId = list.filter((w) => w && w.workoutId !== undefined).length;
   const dates = list.reduce((n, w) => n + (w && w.scheduledDate !== undefined ? [].concat(w.scheduledDate).length : 0), 0);
   const flagged = list.filter((w) => w && w.sendToDevice);
-  const lines = [`${ACTION_LABEL[action]} — ${current.path}`, `Garmin profile: ${profile}`, ""];
+  const lines = [["meta", `${current.path} · Garmin profile ${profile}`]];
   if (action !== "schedule" && action !== "send") {
-    lines.push(`Uploads ${list.length} workout(s). ${withId} already have a workoutId and will be DELETED and RECREATED on Garmin; the new ids are saved into this file.`);
+    lines.push(`Uploads ${list.length} workout(s); the new workoutIds are saved into this file.`);
+    if (withId) lines.push(["warn", `${withId} already ${withId === 1 ? "has" : "have"} a workoutId: ${withId === 1 ? "it is" : "they are"} deleted and recreated on Garmin.`]);
   }
   if (action === "schedule" || action === "upload_schedule") {
     lines.push(`Schedules ${dates} date(s) on the Garmin calendar` + (action === "schedule" ? " using existing workoutIds (workouts without one are skipped)." : "."));
@@ -629,19 +806,18 @@ async function garminRun(action) {
   if (action === "send") {
     lines.push(`Sends ${(flagged.length || list.length)} workout(s)` + (flagged.length ? ' flagged "sendToDevice"' : " (none flagged, so all)") + ` to your watch. Workouts without a workoutId are skipped (${list.length - withId} without).`);
   }
-  if (validation && validation.warnings.length) lines.push("", `${validation.warnings.length} validation warning(s) — see Checks.`);
-  lines.push("", "This changes your Garmin account. Continue?");
-  if (!confirm(lines.join("\n"))) return;
+  if (validation && validation.warnings.length) lines.push(["warn", `${validation.warnings.length} validation warning(s): see Checks.`]);
+  lines.push(["warn", "This changes your Garmin account."]);
+  if (!(await confirmDialog({ title: ACTION_TITLE[action], lines, ok: ACTION_LABEL[action] }))) return;
 
   let deviceId;
   if (action === "send") {
     const q = new URLSearchParams({ path: current.path }); if (profile) q.set("profile", profile);
     const devices = (await api("GET", "/api/garmin/devices?" + q)).devices || [];
     if (devices.length > 1) {
-      const pick = prompt("Send to which device?\n" + devices.map((d, i) => `${i + 1}) ${d.displayName}`).join("\n"), "1");
-      const d = devices[Number(pick) - 1];
-      if (!d) return;
-      deviceId = d.deviceId;
+      const pick = await askDialog({ title: "Send to which device?", choice: { label: "Device", options: devices.map((d) => ({ value: String(d.deviceId), label: d.displayName })) }, ok: "Send" });
+      if (!pick) return;
+      deviceId = devices.find((d) => String(d.deviceId) === pick.choice).deviceId;
     }
   }
 
@@ -769,7 +945,7 @@ function renderSyncBar(list) {
 async function planRowGarmin(i, action, state) {
   if (!current || garminBusy) return;
   if (isDirty()) {
-    if (!confirm("Save your changes before running this on Garmin?")) return;
+    if (!(await confirmSaveFirst())) return;
     await save();
     if (isDirty()) return;
   }
@@ -819,14 +995,15 @@ function renderOutline() {
   renderSyncBar(current && list);
   if (!current || !list) { el.innerHTML = `<div class="empty">${current ? "Not a workout plan." : "Open a plan."}</div>`; return; }
   list.forEach((w, i) => {
-    const row = document.createElement("div"); row.className = "row";
+    const row = document.createElement("div"); row.className = "row wk";
     const date = Array.isArray(w?.scheduledDate) ? w.scheduledDate.join(", ") : w?.scheduledDate || "";
-    row.innerHTML = `<span class="name"></span><small></small>`;
-    const [name, small] = row.children;
+    // the name has a line to itself; the counts and the buttons share the one below
+    row.innerHTML = `<div class="wtop"><span class="name"></span></div><div class="wbot"><small></small><span class="wact"></span></div>`;
+    const top = row.firstChild, name = top.firstChild, small = row.querySelector("small"), acts = row.querySelector(".wact");
     const addButton = (icon, title, enabled, onclick, cls = "ico") => {
       const b = document.createElement("button");
       b.className = cls; b.innerHTML = ICONS[icon]; b.title = title; b.setAttribute("aria-label", title); b.disabled = !enabled; b.onclick = onclick;
-      row.append(b);
+      acts.append(b);
     };
     name.textContent = w?.workoutName ?? "(unnamed)";
     small.textContent = [w?.steps ? w.steps.length + " steps" : "", date, garmin.enabled ? "" : w?.workoutId ? "↑" : ""].filter(Boolean).join(" ");
@@ -838,7 +1015,7 @@ function renderOutline() {
         showActivity(`${st.state === "error" ? "?" : "≠"} ${w?.workoutName ?? "(unnamed)"}`, st.state === "error" ? "err" : "warn", st.differences);
         if (mobileQuery.matches) setTab("problems");
       };
-      row.prepend(chip);
+      top.prepend(chip);
     }
     name.onclick = () => revealWorkout(w);
     if (garmin.enabled) {
@@ -848,12 +1025,17 @@ function renderOutline() {
       addButton("download", state === "modified" ? "Download Garmin's version into this workout" : `Download: ${state === "synced" ? "already up to date" : "not on Garmin"}`, state === "modified" && !garminBusy, guard(() => planRowGarmin(i, "download", state)));
     }
     addButton("clone", "Duplicate", true, () => mutate((l) => { const c = structuredClone(l[i]); delete c.workoutId; c.workoutName += " (copy)"; l.splice(i + 1, 0, c); }));
-    addButton("delete", "Remove from the plan", true, () => confirm(`Remove "${w?.workoutName}" from the plan?`) && mutate((l) => l.splice(i, 1)), "ico danger");
+    addButton("delete", "Remove from the plan", true, guard(async () => {
+      if (await confirmDialog({ title: `Remove "${w?.workoutName}"?`, text: "It leaves the plan; a copy on Garmin, if any, is not touched.", ok: "Remove", danger: true })) mutate((l) => l.splice(i, 1));
+    }), "ico danger");
     el.append(row);
   });
   const add = document.createElement("div"); add.className = "row";
   add.innerHTML = "<button>+ Add workout</button>";
-  add.firstChild.onclick = () => { const n = prompt("Workout name:", "New workout"); if (n) mutate((l) => l.push(newWorkout(n))); };
+  add.firstChild.onclick = guard(async () => {
+    const n = await promptDialog({ title: "Add a workout", input: { label: "Workout name", value: "New workout" }, ok: "Add" });
+    if (n) mutate((l) => l.push(newWorkout(n)));
+  });
   el.append(add);
 }
 
@@ -1156,25 +1338,56 @@ const cloneRow = async (d) => {
 
 // ── Dialogs ────────────────────────────────────────────────────────────
 
-/** A modal with checkboxes. Resolves to { id: checked } when confirmed, or null when cancelled. */
-function askDialog({ title, text, options = [], ok = "OK", danger = false }) {
+/**
+ * A modal that replaces confirm()/prompt(). `lines` are strings or [class, text] ("meta", "warn"); `input` is a text field
+ * { label, value }, `choice` a select { label, options: [{ value, label }] }, `options` checkboxes { id, label, checked }.
+ * Resolves to null when cancelled, else { input?, choice?, [option id]: boolean }.
+ */
+function askDialog({ title, text, lines = [], input, choice, options = [], ok = "OK", danger = false }) {
   const dlg = $("dlg");
-  $("dlgTitle").textContent = title; $("dlgText").textContent = text || "";
+  $("dlgTitle").textContent = title;
+  const body = $("dlgText"); body.replaceChildren();
+  for (const l of [text, ...lines]) {
+    if (!l) continue;
+    const [cls, t] = Array.isArray(l) ? l : ["", l];
+    const div = document.createElement("div"); div.className = "dlg-line " + cls; div.textContent = t; body.append(div);
+  }
+  const field = $("dlgInput"), pick = $("dlgChoice");
+  $("dlgInputRow").hidden = !input; $("dlgChoiceRow").hidden = !choice;
+  if (input) { $("dlgInputLabel").textContent = input.label; field.value = input.value ?? ""; }
+  pick.replaceChildren();
+  if (choice) { $("dlgChoiceLabel").textContent = choice.label; for (const o of choice.options) pick.add(new Option(o.label, o.value)); }
   const opts = $("dlgOpts"); opts.innerHTML = "";
   const boxes = options.map((o) => {
     const label = document.createElement("label"), cb = document.createElement("input");
     cb.type = "checkbox"; cb.checked = !!o.checked; label.append(cb, o.label); opts.append(label);
     return [o.id, cb];
   });
-  $("dlgOk").textContent = ok; $("dlgOk").className = danger ? "danger" : "primary";
+  const okBtn = $("dlgOk"), cancelBtn = $("dlgCancel");
+  okBtn.textContent = ok; okBtn.className = danger ? "danger" : "primary";
+  const blank = () => !!input && !field.value.trim();
+  okBtn.disabled = blank();
+  field.oninput = () => { okBtn.disabled = blank(); };
+  field.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); if (!blank()) okBtn.click(); } };
   return new Promise((resolve) => {
-    const done = (value) => { dlg.close(); $("dlgOk").onclick = $("dlgCancel").onclick = dlg.onclose = null; resolve(value); };
-    $("dlgOk").onclick = () => done(Object.fromEntries(boxes.map(([id, cb]) => [id, cb.checked])));
-    $("dlgCancel").onclick = () => done(null);
-    dlg.onclose = () => resolve(null); // Escape
+    const clear = () => { okBtn.onclick = cancelBtn.onclick = dlg.onclose = field.oninput = field.onkeydown = null; };
+    const done = async (value) => { dlg.close(); clear(); await dlg.settled; resolve(value); };
+    okBtn.onclick = () => done({
+      ...Object.fromEntries(boxes.map(([id, cb]) => [id, cb.checked])),
+      ...(input ? { input: field.value.trim() } : {}),
+      ...(choice ? { choice: pick.value } : {}),
+    });
+    cancelBtn.onclick = () => done(null);
+    dlg.onclose = async () => { clear(); await dlg.settled; resolve(null); }; // Escape, or Back on a phone
     dlg.showModal(); navDialog(dlg);
+    // Typing comes first; otherwise the safe button: Cancel when the action destroys something.
+    if (input) { field.focus(); field.select(); } else (danger ? cancelBtn : okBtn).focus();
   });
 }
+const confirmDialog = async (opts) => !!(await askDialog(opts));
+const promptDialog = async (opts) => { const r = await askDialog(opts); return r ? r.input : null; };
+const confirmDiscard = () => confirmDialog({ title: "Discard unsaved changes?", text: current ? `${current.path} has changes that are not saved.` : "", ok: "Discard", danger: true });
+const confirmSaveFirst = () => confirmDialog({ title: "Save before running on Garmin?", text: "The Garmin actions work on the saved file, so your changes are saved first.", ok: "Save and continue" });
 
 let dlgEditor, dlgMode = null, dlgLink = null, dlgSaving = false;
 
@@ -1246,14 +1459,14 @@ async function openWorkoutDialog(mode, workout, opts = {}) {
   setTimeout(checkDialog, 0);
 }
 
-/** The confirmation text for putting a workout on Garmin; the API insists on it being confirmed. */
+/** The confirmation for putting a workout on Garmin; the API insists on it being confirmed. */
 function confirmUpload(workout, { replacing, plans, schedule, profile = W.profile }) {
-  const lines = [replacing ? `Replace "${workout.workoutName}" on Garmin?` : `Upload "${workout.workoutName}" to Garmin?`, `Garmin profile: ${profile}`, ""];
-  if (replacing) lines.push("Garmin deletes the old workout and creates a new one, so its workoutId changes.");
+  const lines = [["meta", `Garmin profile ${profile}`]];
+  if (replacing) lines.push(["warn", "Garmin deletes the old workout and creates a new one, so its workoutId changes."]);
   if (plans.length) lines.push(`${plans.length === 1 ? "The plan entry" : plans.length + " plan entries"} in ${[...new Set(plans.map((p) => p.path))].join(", ")} will get the new id.`);
   lines.push(schedule ? "Its upcoming scheduled dates are added to the Garmin calendar again." : "Its calendar entries are not re-created.");
-  lines.push("", "This changes your Garmin account. Continue?");
-  return confirm(lines.join("\n"));
+  lines.push(["warn", "This changes your Garmin account."]);
+  return confirmDialog({ title: replacing ? `Replace "${workout.workoutName}" on Garmin?` : `Upload "${workout.workoutName}" to Garmin?`, lines, ok: replacing ? "Replace" : "Upload" });
 }
 
 const saveDialog = async () => {
@@ -1270,7 +1483,7 @@ const saveDialog = async () => {
   const plans = editing ? d.plans.map(planRef) : [];
   const planPath = !editing && $("wdPlan").value ? $("wdPlan").value : "";
   const replacing = editing && d.garmin && upload;
-  if (upload && !confirmUpload(workout, { replacing, plans: editing ? plans : planPath ? [{ path: planPath }] : [], schedule })) return;
+  if (upload && !(await confirmUpload(workout, { replacing, plans: editing ? plans : planPath ? [{ path: planPath }] : [], schedule }))) return;
 
   dlgSaving = true; $("wdSave").disabled = true;
   try {
@@ -1310,13 +1523,13 @@ async function afterChange(result, selectKey) {
 /** Put a plan workout on Garmin (replacing the one with its workoutId) and record the new id in the plan entries `plans`. null when declined. */
 async function pushWorkout(workout, plans, profile, replacing) {
   const schedule = upcoming(workout).length > 0;
-  if (!confirmUpload(workout, { replacing, plans, schedule, profile })) return null;
+  if (!(await confirmUpload(workout, { replacing, plans, schedule, profile }))) return null;
   return api("PUT", "/api/garmin/workout", { workoutId: workout.workoutId, workout, plans: plans.map(planRef), upload: true, schedule, profile, confirm: true });
 }
 
 /** Replace the plan entry `p` with Garmin's version `g` (scheduledDate, sendToDevice and distanceMeters stay). null when declined. */
 async function pullInto(g, p) {
-  if (!confirm(`Replace "${g.workoutName}" in ${p.path} with the version from Garmin?\n\nIts scheduledDate and sendToDevice stay as they are. This only changes the plan file.`)) return null;
+  if (!(await confirmDialog({ title: `Use Garmin's version of "${g.workoutName}"?`, lines: [`Replaces the entry in ${p.path} with the version from Garmin.`, "Its scheduledDate and sendToDevice stay as they are. This only changes the plan file."], ok: "Use Garmin's version" }))) return null;
   const workout = { ...g };
   for (const k of ["scheduledDate", "sendToDevice", "distanceMeters"]) if (p.workout[k] !== undefined) workout[k] = p.workout[k];
   const r = await api("PUT", "/api/garmin/workout", { workoutId: g.workoutId, workout, plans: [planRef(p)] });
@@ -1354,6 +1567,21 @@ const deleteSelected = async () => {
   clearDetail();
   await afterChange(r, null);
 };
+
+/** The File and Garmin dropdowns: a button toggles its menu; a click elsewhere, Escape, or choosing an item closes it. */
+function bindMenus() {
+  const close = () => document.querySelectorAll(".dd.open").forEach((d) => { d.classList.remove("open"); d.querySelector(".menubtn").setAttribute("aria-expanded", "false"); });
+  document.querySelectorAll(".dd > .menubtn").forEach((b) => (b.onclick = () => {
+    const open = !b.parentElement.classList.contains("open");
+    close(); b.parentElement.classList.toggle("open", open); b.setAttribute("aria-expanded", String(open));
+  }));
+  document.addEventListener("pointerdown", (e) => { if (!e.target.closest(".dd")) close(); }, true);
+  document.addEventListener("click", (e) => { if (e.target.closest(".menu button")) close(); });
+  document.addEventListener("keydown", (e) => {
+    const open = e.key === "Escape" && document.querySelector(".dd.open");
+    if (open) { close(); open.querySelector(".menubtn").focus(); }
+  });
+}
 
 function bindWorkoutsView() {
   $("vPlans").onclick = () => setView("plans"); $("vWorkouts").onclick = () => setView("workouts");
@@ -1397,6 +1625,7 @@ require(["vs/editor/editor.main"], async (m) => {
   editor.onDidFocusEditorText(() => document.body.classList.toggle("kbd", mobileQuery.matches));
   editor.onDidBlurEditorText(() => document.body.classList.remove("kbd"));
   try {
+    await sessionReady;
     const schema = await api("GET", "/api/schema");
     const workoutSchema = (schema.oneOf.find((x) => x.type === "array") || {}).items;
     monaco.languages.json.jsonDefaults.setDiagnosticsOptions({
@@ -1421,12 +1650,17 @@ require(["vs/editor/editor.main"], async (m) => {
   document.querySelectorAll("#tabbar button[data-tab]").forEach((b) => (b.onclick = () => { setView("plans"); setTab(b.dataset.tab); }));
   $("syncRefresh").onclick = guard(() => refreshSync(true));
   $("profile").onchange = () => refreshSync(true);
-  window.addEventListener("beforeunload", (e) => { if (isDirty()) e.preventDefault(); });
+  window.addEventListener("beforeunload", (e) => { if (!leaving && isDirty()) e.preventDefault(); });
 });
 setTab("files");
-guard(refreshFiles)();
-const garminReady = loadGarmin(); // the Workouts view waits for it
+bindMenus();
+$("logout").onclick = guard(signOut);
+const garminReady = sessionReady.then(() => {
+  guard(refreshFiles)();
+  return loadGarmin(); // the Workouts view waits for it
+});
 bindWorkoutsView();
+bootSession();
 </script>
 </body>
 </html>

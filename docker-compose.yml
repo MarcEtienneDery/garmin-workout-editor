@@ -9,7 +9,7 @@
 #   4. (optional public URL)  docker compose --profile tunnel up -d
 #
 # Add the connector with the URL  https://<your-host>/mcp/<MCP_AUTH_TOKEN>
-# Plan editor: http://<host>:8788  (any user name, WEB_AUTH_TOKEN as password)
+# Plan editor: http://<host>:8788  (sign-in form: any user name + WEB_AUTH_TOKEN, or a profile name + its WEB_PASSWORD)
 
 services:
   garmin-mcp:
