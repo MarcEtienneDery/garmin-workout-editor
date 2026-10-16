@@ -1122,7 +1122,7 @@ function renderOutline() {
 // ── Workouts view: the Garmin library next to the plan workouts, with create / edit / delete ──
 // Everything here goes through /api/workouts and /api/garmin/workout, which keep the plan files
 // and Garmin in step: saving or deleting a workout changes both unless you untick one.
-const W = { profile: null, rows: [], truncated: false, selected: null, detail: null, filter: "", run: 0, detailRun: 0 };
+const W = { profile: null, rows: [], truncated: false, selected: null, detail: null, filter: "", run: 0, detailRun: 0, pending: new Set() }; // pending: rows being deleted, hidden at once
 const STATE_RANK = { synced: 1, modified: 2, error: 3, missing: 4 };
 const ROW_CHIPS = {
   "garmin-only": ["Garmin only", ""], "not-uploaded": ["Not on Garmin", ""], checking: ["Checking…", ""],
@@ -1204,7 +1204,7 @@ async function checkLinked(run) {
 function renderRows() {
   const el = $("wrows"); el.innerHTML = "";
   const f = W.filter.trim().toLowerCase();
-  const rows = W.rows.filter((r) => !f || [r.workoutName, r.workoutType, ...r.plans.map((p) => p.path)].join(" ").toLowerCase().includes(f));
+  const rows = W.rows.filter((r) => !W.pending.has(r.key) && (!f || [r.workoutName, r.workoutType, ...r.plans.map((p) => p.path)].join(" ").toLowerCase().includes(f)));
   for (const r of rows) {
     const d = document.createElement("div");
     d.className = "wrow" + (r.key === W.selected ? " active" : "");
@@ -1218,7 +1218,7 @@ function renderRows() {
       const b = document.createElement("button");
       b.innerHTML = ICONS[a.icon]; b.title = a.title; b.setAttribute("aria-label", a.title); b.disabled = !a.enabled;
       if (a.danger) b.className = "danger";
-      b.onclick = (e) => { e.stopPropagation(); guard(() => withRow(r.key, a.run))(); };
+      b.onclick = (e) => { e.stopPropagation(); guard(() => (a.direct ? a.direct(r) : withRow(r.key, a.run)))(); };
       acts.append(b);
     }
     d.onclick = guard(() => selectRow(r.key));
@@ -1382,7 +1382,7 @@ function rowActions(row) {
     { icon: "upload", enabled: up, run: uploadRow, title: up ? "Upload the plan's version to Garmin" : `Upload: ${why[st] || "only on Garmin, no plan has it"}` },
     { icon: "download", enabled: down, run: downloadRow, title: !down ? `Download: ${why[st] || "not on Garmin"}` : st === "garmin-only" ? "Download into a plan" : "Download Garmin's version into the plan" },
     { icon: "clone", enabled: true, run: cloneRow, title: "Clone" },
-    { icon: "delete", enabled: true, run: deleteSelected, title: "Delete", danger: true },
+    { icon: "delete", enabled: true, run: deleteSelected, direct: deleteRow, title: "Delete", danger: true },
   ];
 }
 
@@ -1811,10 +1811,15 @@ const saveDialog = async () => {
 async function afterChange(result, selectKey) {
   const wasSelected = W.selected;
   W.selected = selectKey; W.detail = null;
-  await loadWorkouts(true);
+  await loadWorkouts(); // the server forgets its listing after every Garmin write, so this asks Garmin only when it has to
   // Stay on the list when a row button started this (mobile shows one pane at a time).
   if (selectKey && W.rows.some((r) => r.key === selectKey)) await selectRow(selectKey, document.body.dataset.wpane === "detail");
   else if (!W.rows.some((r) => r.key === wasSelected)) clearDetail();
+  await syncOpenPlan(result);
+}
+
+/** Bring the plan open in the editor, and the file list, up to date with what a change wrote. */
+async function syncOpenPlan(result) {
   for (const c of result.changed || []) {
     if (!current || current.path !== c.path) continue;
     if (isDirty()) toast(`${c.path} was changed elsewhere: reload it in the Plans view before saving.`, 8000);
@@ -1852,24 +1857,62 @@ const pullGarminVersion = async (p) => {
   if (r) await afterChange(r, W.selected);
 };
 
-const deleteSelected = async () => {
-  const d = W.detail; if (!d) return;
-  const name = (d.garmin || d.plans[0].workout).workoutName;
-  const where = [...new Set(d.plans.map((p) => p.path))];
+// A delete is asked at once (a row of the list already holds what the question needs, so Garmin is not asked for the workout first),
+// takes the row out of the list the moment it is confirmed, and runs behind the earlier deletes: each one reloads the list, and the
+// next needs the positions of the plan entries that reload brings.
+let deleting = Promise.resolve();
+
+/** target: { key, name, workoutId, onGarmin, plans: [{ path, index, version }] } */
+async function deleteTarget(target) {
+  const where = [...new Set(target.plans.map((p) => p.path))];
   const options = [];
-  if (d.garmin) options.push({ id: "garmin", label: `Delete from Garmin (profile ${W.profile})`, checked: true });
-  if (where.length) options.push({ id: "plans", label: `Remove from the plan${where.length > 1 ? "s" : ""}: ${where.join(", ")}`, checked: !d.garmin });
+  if (target.onGarmin) options.push({ id: "garmin", label: `Delete from Garmin (profile ${W.profile})`, checked: true });
+  if (where.length) options.push({ id: "plans", label: `Remove from the plan${where.length > 1 ? "s" : ""}: ${where.join(", ")}`, checked: !target.onGarmin });
   const answer = await askDialog({
-    title: `Delete "${name}"`, ok: "Delete", danger: true, options,
-    text: d.garmin && where.length ? "Tick what to delete. If you keep it in the plan, it stays there as a workout that is not on Garmin." : "This cannot be undone.",
+    title: `Delete "${target.name}"`, ok: "Delete", danger: true, options,
+    text: target.onGarmin && where.length ? "Tick what to delete. If you keep it in the plan, it stays there as a workout that is not on Garmin." : "This cannot be undone.",
   });
   if (!answer) return;
   if (!answer.garmin && !answer.plans) return toast("Nothing selected.");
-  const r = await api("DELETE", "/api/garmin/workout", { workoutId: d.garmin ? d.garmin.workoutId : d.row.workoutId, plans: d.plans.map(planRef), garmin: !!answer.garmin, removeFromPlans: !!answer.plans, profile: W.profile, confirm: true });
-  toast("Deleted");
-  clearDetail();
-  await afterChange(r, null);
+  // The row leaves the list at once when nothing of it will be left: it stays when the plan keeps it (as "not on Garmin") or Garmin does.
+  if ((answer.garmin || !target.onGarmin) && (answer.plans || !where.length)) {
+    W.pending.add(target.key);
+    if (W.selected === target.key) clearDetail(); else renderRows();
+  }
+  const run = deleting.then(() => sendDelete(target, answer));
+  deleting = run.catch(() => {});
+  return run;
+}
+
+async function sendDelete(target, answer) {
+  // The listing is the latest word on where the entries sit; a row Garmin does not list keeps the positions it was asked with.
+  const row = W.rows.find((r) => r.key === target.key);
+  const plans = (row ? row.plans : target.plans).map(planRef);
+  try {
+    const r = await api("DELETE", "/api/garmin/workout", { workoutId: target.workoutId, plans, garmin: !!answer.garmin, removeFromPlans: !!answer.plans, profile: W.profile, confirm: true });
+    toast("Deleted");
+    if (W.pending.delete(target.key)) W.rows = W.rows.filter((x) => x.key !== target.key); // gone whatever the reload brings
+    await loadWorkouts();
+    await syncOpenPlan(r);
+  } catch (e) {
+    W.pending.delete(target.key);
+    loadWorkouts().catch(() => {}); // show what is really there
+    throw e;
+  }
+}
+
+const deleteSelected = async () => {
+  const d = W.detail; if (!d) return;
+  await deleteTarget({
+    key: d.row.key, name: (d.garmin || d.plans[0].workout).workoutName, onGarmin: !!d.garmin,
+    workoutId: d.garmin ? d.garmin.workoutId : d.row.workoutId, plans: d.plans.map(planRef),
+  });
 };
+
+/** The row's own button: workouts Garmin lists are known to exist there, so nothing is fetched before the question. */
+const deleteRow = (row) => row.key.startsWith("g:")
+  ? deleteTarget({ key: row.key, name: row.workoutName, workoutId: row.workoutId, onGarmin: true, plans: row.plans })
+  : withRow(row.key, deleteSelected);
 
 /** The File and Garmin dropdowns: a button toggles its menu; a click elsewhere, Escape, or choosing an item closes it. */
 function bindMenus() {

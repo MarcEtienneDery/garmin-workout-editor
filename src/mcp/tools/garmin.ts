@@ -174,10 +174,20 @@ const LIBRARY_TTL_MS = 60_000;
 const libraryCache = new Map<string, { at: number; list: LibraryWorkout[] }>();
 const detailCache = new Map<string, { updatedDate: string; workout: DetailedWorkout }>();
 
-/** Forget what was fetched for a profile; called after anything that changes its library. */
+/** Forget everything fetched for a profile. */
 export function invalidateLibrary(profile: string): void {
   libraryCache.delete(profile);
   for (const key of detailCache.keys()) if (key.startsWith(`${profile}:`)) detailCache.delete(key);
+}
+
+/**
+ * After a change to the library: list it again next time, and forget the steps of the workouts that were replaced or removed.
+ * The steps of the others stay: each is stored with the updatedDate it was fetched at, so one that changed misses by itself,
+ * and fetching them all again costs a Garmin request per workout of every plan.
+ */
+function forgetListing(profile: string, ...gone: (number | string | undefined)[]): void {
+  libraryCache.delete(profile);
+  for (const id of gone) if (id !== undefined) detailCache.delete(`${profile}:${id}`);
 }
 
 export async function listLibraryWorkouts(profile: string | undefined, refresh = false): Promise<LibraryWorkout[]> {
@@ -278,7 +288,7 @@ export async function saveWorkout(
       workouts: [copy as any],
     });
   } finally {
-    invalidateLibrary(session.profile.name);
+    forgetListing(session.profile.name, previousWorkoutId);
   }
   if (copy.workoutId === undefined || String(copy.workoutId) === String(previousWorkoutId)) {
     throw new Error("Garmin did not accept the workout (see log).");
@@ -289,10 +299,21 @@ export async function saveWorkout(
 export async function deleteLibraryWorkout(profile: string | undefined, workoutId: number | string): Promise<void> {
   const session = getSession(profile);
   assertLive(session, "delete_workout");
+  const name = session.profile.name;
   try {
     await session.editor.deleteWorkout(workoutId);
-  } finally {
-    invalidateLibrary(session.profile.name);
+  } catch (error) {
+    forgetListing(name, workoutId); // it may be gone already (a 404): look again
+    throw error;
+  }
+  // Garmin confirmed it: take it out of the listing we hold instead of listing the whole library again. A full
+  // listing is the exception, since an older workout may now make it into the newest LIBRARY_LIMIT.
+  const cached = libraryCache.get(name);
+  if (cached && cached.list.length < LIBRARY_LIMIT) {
+    libraryCache.set(name, { at: cached.at, list: cached.list.filter((w) => !sameId(w.workoutId, workoutId)) });
+    detailCache.delete(`${name}:${workoutId}`);
+  } else {
+    forgetListing(name, workoutId);
   }
 }
 

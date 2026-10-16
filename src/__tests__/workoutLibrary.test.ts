@@ -194,12 +194,65 @@ describe("workouts on Garmin", () => {
     await expect(saveWorkout("TEST", { ...squat(), workoutId })).rejects.toThrow(/did not accept/);
   });
 
-  it("deletes a workout and forgets the cached listing", async () => {
+  it("deletes a workout and drops it from the listing", async () => {
     const { workoutId } = await saveWorkout("TEST", squat());
     expect(await listLibraryWorkouts("TEST")).toEqual([expect.objectContaining({ workoutId, workoutName: "Squat day", workoutType: "strength_training" })]);
     await deleteLibraryWorkout("TEST", workoutId);
     expect(await listLibraryWorkouts("TEST")).toEqual([]);
     await expect(deleteLibraryWorkout("TEST", workoutId)).rejects.toThrow(/404/);
+  });
+
+  describe("deleting or replacing one workout of many", () => {
+    const named = (i: number) => ({ ...squat(), workoutName: `Workout ${i}` });
+    /** Save `n` workouts and check them once, so the listing and every workout's steps are cached; the counters then start from zero. */
+    const checked = async (n: number) => {
+      const plan: any[] = [];
+      for (let i = 0; i < n; i++) plan.push({ ...named(i), workoutId: (await saveWorkout("TEST", named(i))).workoutId });
+      expect((await checkWorkoutSync("TEST", plan)).every((s) => s.state === "synced")).toBe(true);
+      mockGarmin.calls = { getWorkouts: 0, getWorkoutDetail: 0 };
+      return plan;
+    };
+
+    it("asks Garmin for nothing again when one is deleted: the listing is patched and the others' steps stay cached", async () => {
+      const plan = await checked(5);
+      await deleteLibraryWorkout("TEST", plan[0].workoutId);
+      expect(mockGarmin.calls).toEqual({ getWorkouts: 0, getWorkoutDetail: 0 });
+
+      const rest = plan.slice(1);
+      expect((await checkWorkoutSync("TEST", rest)).map((s) => s.state)).toEqual(["synced", "synced", "synced", "synced"]);
+      expect((await listLibraryWorkouts("TEST")).map((w) => w.workoutName)).toEqual(["Workout 1", "Workout 2", "Workout 3", "Workout 4"]);
+      expect((await checkWorkoutSync("TEST", [plan[0]]))[0].state).toBe("missing"); // the deleted one is gone, not served from the cache
+      expect(mockGarmin.calls.getWorkouts).toBe(0);
+    });
+
+    it("lists again after a replace, but fetches only the replaced workout's steps", async () => {
+      const plan = await checked(5);
+      const { workoutId } = await saveWorkout("TEST", plan[0]); // deleted and recreated under a new id
+      plan[0].workoutId = workoutId;
+      mockGarmin.calls = { getWorkouts: 0, getWorkoutDetail: 0 };
+
+      expect((await checkWorkoutSync("TEST", plan)).map((s) => s.state)).toEqual(["synced", "synced", "synced", "synced", "synced"]);
+      expect(mockGarmin.calls).toEqual({ getWorkouts: 1, getWorkoutDetail: 1 });
+    });
+
+    it("looks at Garmin again when a delete fails, since the workout may be gone already", async () => {
+      const plan = await checked(2);
+      mockGarmin.library.delete(Number(plan[0].workoutId)); // removed in the Garmin app
+      await expect(deleteLibraryWorkout("TEST", plan[0].workoutId)).rejects.toThrow(/404/);
+      expect((await listLibraryWorkouts("TEST")).map((w) => w.workoutName)).toEqual(["Workout 1"]);
+      expect(mockGarmin.calls.getWorkouts).toBe(1);
+    });
+
+    it("lists again after a delete from a full listing, which may now show an older workout", async () => {
+      const plan = await checked(1);
+      for (let i = 0; i < 99; i++) mockGarmin.library.set(5000 + i, { workoutId: 5000 + i, workoutName: `Filler ${i}`, updatedDate: "1" });
+      expect(await listLibraryWorkouts("TEST", true)).toHaveLength(100);
+      mockGarmin.calls = { getWorkouts: 0, getWorkoutDetail: 0 };
+
+      await deleteLibraryWorkout("TEST", plan[0].workoutId);
+      expect(await listLibraryWorkouts("TEST")).toHaveLength(99);
+      expect(mockGarmin.calls.getWorkouts).toBe(1);
+    });
   });
 
   describe("plans in the store", () => {
