@@ -139,6 +139,7 @@
   .wv-sum { grid-area:sum; display:flex; flex-wrap:wrap; gap:6px 20px; align-items:flex-start; }
   .wv-stat b { display:block; font-size:20px; font-weight:400; line-height:1.2; }
   .wv-stat small { color:var(--dim); font-size:11px; }
+  .wv-basis { flex-basis:100%; color:var(--dim); font-size:11px; }
   .wv-notes { flex-basis:100%; color:var(--dim); white-space:pre-wrap; overflow-wrap:anywhere; }
   .wv-chart { grid-area:chart; display:flex; align-items:flex-end; gap:1px; height:88px; border-bottom:1px solid var(--line); }
   .wv-chart.mini { height:18px; margin:2px 0; border-bottom:0; }
@@ -1169,13 +1170,13 @@ function renderOutline() {
       const host = mk("div", "wv-host");
       const flagged = st && st.differences.length && st.state === "modified" ? WM.changedSteps(st.differences) : new Set();
       if (flagged.size) host.append(flagNote(st.differences, "on Garmin"));
-      host.append(workoutVisual(w, { changed: flagged }));
+      host.append(workoutVisual(w, { changed: flagged, profile: planProfile() }));
       const edit = mk("button", "", "Edit in JSON"), actions = mk("div", "wv-actions");
       edit.onclick = () => revealWorkout(w);
       actions.append(edit); host.append(actions);
       row.append(host);
     } else if (Array.isArray(w?.steps) && w.steps.length) {
-      row.insertBefore(profileEl(WM.analyze(w), { mini: true }), row.lastChild);
+      row.insertBefore(profileEl(WM.analyze(w, { pacer: pacerFor(planProfile()) }), { mini: true }), row.lastChild);
     }
     el.append(row);
   });
@@ -1346,6 +1347,26 @@ async function selectRow(key, show = true) {
 // `changed` is the set of step positions to flag as differing from the other copy of the workout.
 const WM = WorkoutModel;
 
+// Steps that name no pace are timed from the profile's recent runs (GET /api/runs). They load once per profile, after which the pictures are drawn again.
+const RUNS = new Map(); // profile -> a pacer, or null when there are too few runs to learn from
+const runsLoading = new Set();
+function pacerFor(profile) {
+  const key = profile || "";
+  if (RUNS.has(key)) return RUNS.get(key);
+  if (!runsLoading.has(key)) {
+    runsLoading.add(key);
+    Promise.resolve()
+      .then(() => garminReady) // looked up when the microtask runs: the const is declared further down the script
+      .then(() => api("GET", "/api/runs" + (profile || garmin.defaultProfile ? `?profile=${encodeURIComponent(profile || garmin.defaultProfile)}` : "")))
+      .then((r) => RUNS.set(key, WM.pacerFrom(r.runs)), () => RUNS.set(key, null))
+      .finally(() => {
+        runsLoading.delete(key);
+        if (RUNS.get(key)) { if (document.body.dataset.view === "plans") renderOutline(); else if (W.detail) renderDetail(); }
+      });
+  }
+  return null;
+}
+
 function mk(tag, cls, text) {
   const e = document.createElement(tag);
   if (cls) e.className = cls;
@@ -1367,9 +1388,9 @@ function profileEl(a, { mini = false, changed = new Set() } = {}) {
   return chart;
 }
 
-function summaryEl(w, a) {
+function summaryEl(w, a, loading) {
   const box = mk("div", "wv-sum"), approx = a.assumed || a.open ? "~" : "";
-  const why = [`Estimated: a distance with no pace target counts at ${WM.pace(1000 / WM.ASSUMED_PACE)} /km`, `each rep counts ${WM.SECONDS_PER_REP} s`, a.open ? `${a.open} step${a.open > 1 ? "s" : ""} ending on the lap button ${a.open > 1 ? "are" : "is"} not counted` : ""].filter(Boolean).join("; ");
+  const why = [`Estimated: ${a.pace.from === "runs" ? "a step with no pace target is timed from your recent runs" : `a step with no pace target counts at ${WM.clock(WM.ASSUMED_PACE)} /km`}`, `each rep counts ${WM.SECONDS_PER_REP} s`, a.open ? `${a.open} step${a.open > 1 ? "s" : ""} ending on the lap button ${a.open > 1 ? "are" : "is"} not counted` : ""].filter(Boolean).join("; ");
   const stat = (value, label, title) => { const d = mk("div", "wv-stat"); d.append(mk("b", "", value), mk("small", "", label)); if (title) d.title = title; box.append(d); };
   const open = a.open ? ` · ${a.open} open-ended step${a.open > 1 ? "s" : ""} not counted` : ""; // shown, not only in the tooltip: phones have none
   if (a.seconds) stat(approx + WM.duration(a.seconds), "Est. time" + open, approx ? why : "");
@@ -1378,6 +1399,8 @@ function summaryEl(w, a) {
   else if (a.steps) stat(String(a.steps), a.steps === 1 ? "step" : "steps");
   const dates = [].concat((w && w.scheduledDate) || []);
   if (dates.length) stat(dates.join(", "), "Scheduled");
+  if (a.pace.from === "runs") box.append(mk("div", "wv-basis", `Steps with no pace target are timed from your last ${a.pace.runs} runs: at the pace you ran at that heart rate, or ${WM.clock(a.pace.easy)} /km with no heart-rate target.`));
+  else if (a.pace.from === "default" && !loading) box.append(mk("div", "wv-basis", `Steps with no pace target count at ${WM.clock(WM.ASSUMED_PACE)} /km: no recent runs to learn your pace from.`));
   if (w && w.description) box.append(mk("div", "wv-notes", w.description));
   return box;
 }
@@ -1452,9 +1475,9 @@ function linkVisual(root) {
   });
 }
 
-function workoutVisual(w, { changed = new Set() } = {}) {
-  const a = WM.analyze(w), box = mk("div", "wvbox"), root = mk("div", "wv");
-  root.append(summaryEl(w, a));
+function workoutVisual(w, { changed = new Set(), profile } = {}) {
+  const a = WM.analyze(w, { pacer: pacerFor(profile) }), box = mk("div", "wvbox"), root = mk("div", "wv");
+  root.append(summaryEl(w, a, !RUNS.has(profile || "")));
   if (a.hasSteps) root.append(profileEl(a, { changed }), stepListEl(a.tree, w, changed));
   else root.append(mk("div", "wv-empty", w && w.distanceMeters ? "No steps: Garmin builds its own for a distance-only run." : "No steps."));
   linkVisual(root);
@@ -1506,7 +1529,7 @@ function renderDetail() {
   const host = mk("div", "wv-host"), switcher = mk("div", "seg");
   const show = (i) => {
     [...switcher.children].forEach((b, j) => b.setAttribute("aria-pressed", String(i === j)));
-    host.replaceChildren(workoutVisual(versions[i].w, { changed: flagged }));
+    host.replaceChildren(workoutVisual(versions[i].w, { changed: flagged, profile: W.profile }));
   };
   versions.forEach((v, i) => { const b = mk("button", "", v.label); b.onclick = () => show(i); switcher.append(b); });
   add(section(versions.length > 1 ? "Workout" : d.garmin ? "Workout on Garmin" : "Workout in the plan", ...(versions.length > 1 ? [switcher, flagNote(differing[0].differences, "in the other copy")] : [])));

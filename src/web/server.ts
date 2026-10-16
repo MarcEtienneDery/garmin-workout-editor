@@ -21,6 +21,9 @@
  * The Calendar view shows where the plan files put their workouts (GET /api/calendar): each plan's span
  * and the dates of its workouts. It reads the stored plans only, not Garmin's own calendar.
  *
+ * The workout picture times steps that name no pace from the profile's recent runs (GET /api/runs),
+ * read from the data/<profile>/activities*.json files that get_activities saves.
+ *
  * Logins: the page shows a sign-in form (POST /api/login, GET /api/session, POST /api/logout)
  * and keeps the login in an HttpOnly session cookie. user = a profile name (any case),
  * password = WEB_PASSWORD from that profile's .env.<profile> -> sees only data/<profile>/ and
@@ -444,6 +447,47 @@ function calendarPlans(who: Principal): CalendarPlan[] {
   return plans.sort((a, b) => Number(a.start === null) - Number(b.start === null) || (a.start ?? "").localeCompare(b.start ?? "") || a.path.localeCompare(b.path));
 }
 
+// ── Pace from your runs: what the workout picture times steps with when the workout names no pace ──
+
+/** One run from the activity files get_activities saves; pace is seconds per km. */
+interface RunSample {
+  date: string;
+  km: number;
+  pace: number;
+  hr: number;
+}
+
+const RUN_WINDOW_DAYS = 120; // counted back from the newest run, so stale files still give an answer
+const RUN_LIMIT = 60;
+
+/** The profile's recent runs, newest first, from every data/<profile>/activities*.json (not the -raw dumps). Reads the store only, so it needs no Garmin login. */
+function recentRuns(profile: string): RunSample[] {
+  const found = new Map<string, RunSample>();
+  for (const meta of store().list()) {
+    const m = /^data\/([^/]+)\/(activities[^/]*)\.json$/i.exec(meta.path);
+    if (!m || m[1].toLowerCase() !== profile.toLowerCase() || /raw/i.test(m[2]) || meta.size > MAX_SCAN_BYTES) continue;
+    let list: any;
+    try {
+      const data = JSON.parse(store().get(meta.path)?.text ?? "");
+      list = Array.isArray(data) ? data : data?.activities;
+    } catch {
+      continue;
+    }
+    if (!Array.isArray(list)) continue;
+    for (const a of list) {
+      const date = typeof a?.startTime === "string" ? a.startTime.slice(0, 10) : "";
+      const pace = a?.avgPace * 60; // avgPace is minutes per km
+      // short runs, treadmill readings and watch glitches would skew the pace
+      if (a?.activityType !== "running" || !isoDate(date) || !(a.distance >= 2) || !(pace >= 180 && pace <= 540) || !(a.avgHR >= 90 && a.avgHR <= 210)) continue;
+      found.set(String(a.id ?? `${date}/${a.distance}`), { date, km: +a.distance.toFixed(1), pace: Math.round(pace), hr: Math.round(a.avgHR) });
+    }
+  }
+  const runs = [...found.values()].sort((a, b) => b.date.localeCompare(a.date));
+  if (!runs.length) return [];
+  const cutoff = new Date(Date.parse(`${runs[0].date}T00:00:00Z`) - RUN_WINDOW_DAYS * 86_400_000).toISOString().slice(0, 10);
+  return runs.filter((r) => r.date >= cutoff).slice(0, RUN_LIMIT);
+}
+
 const hasId = (id: unknown): boolean => id !== undefined && id !== null && id !== "";
 const sameId = (a: unknown, b: unknown): boolean => hasId(a) && hasId(b) && String(a) === String(b);
 
@@ -789,6 +833,17 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
       const profile = profileFor(who, "", url.searchParams.get("profile"));
       const { value: library } = await viaGarmin(() => listLibraryWorkouts(profile, url.searchParams.get("refresh") === "1"));
       return send(res, 200, { profile, ...workoutRows(library, planEntriesFor(profile)) });
+    }
+
+    case "GET /api/runs": {
+      // From the saved activity files alone, like the calendar: no Garmin login needed.
+      let profile: string | null = null;
+      try {
+        profile = profileFor(who, "", url.searchParams.get("profile"));
+      } catch {
+        // no usable profile: nothing to learn a pace from
+      }
+      return send(res, 200, { profile, runs: profile ? recentRuns(profile) : [] });
     }
 
     case "GET /api/calendar":

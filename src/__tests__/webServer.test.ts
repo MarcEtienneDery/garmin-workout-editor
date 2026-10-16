@@ -230,6 +230,72 @@ describe("web plan editor", () => {
     });
   });
 
+  describe("runs for the workout picture", () => {
+    const act = (id: number, startTime: string, avgPace: number, avgHR: number, extra: object = {}) => ({ id, activityType: "running", startTime, distance: 10, avgPace, avgHR, ...extra });
+    const runs = async (query = "", headers = H) => (await call("GET", "/api/runs" + query, undefined, headers)).json as { profile: string | null; runs: any[] };
+
+    it("lists the profile's recent runs, newest first, with the pace in seconds per km", async () => {
+      addProfile("MED");
+      seed("data/MED/activities.json", { activities: [act(1, "2026-08-01 07:00:00", 5.5, 150), act(2, "2026-08-20 07:00:00", 5.25, 155.4, { distance: 8.46 })] });
+      expect(await runs()).toEqual({
+        profile: "MED",
+        runs: [
+          { date: "2026-08-20", km: 8.5, pace: 315, hr: 155 },
+          { date: "2026-08-01", km: 10, pace: 330, hr: 150 },
+        ],
+      });
+    });
+
+    it("merges the activity files without counting a run twice, and skips the raw dumps", async () => {
+      addProfile("MED");
+      seed("data/MED/activities.json", { activities: [act(1, "2026-08-01 07:00:00", 5.5, 150)] });
+      seed("data/MED/activities-50.tmp.json", { activities: [act(1, "2026-08-01 07:00:00", 5.5, 150), act(2, "2026-08-03 07:00:00", 5.6, 148)] });
+      seed("data/MED/activities-raw.json", [act(3, "2026-08-05 07:00:00", 5, 160)]);
+      seed("data/MED/training-plan.json", { activities: [act(4, "2026-08-06 07:00:00", 5, 160)] });
+      expect((await runs()).runs.map((r) => r.date)).toEqual(["2026-08-03", "2026-08-01"]);
+    });
+
+    it("leaves out what would skew a pace: other sports, short runs, treadmill and glitch readings", async () => {
+      addProfile("MED");
+      seed("data/MED/activities.json", {
+        activities: [
+          act(1, "2026-08-01 07:00:00", 5.5, 150),
+          act(2, "2026-08-02 07:00:00", 5.5, 150, { activityType: "cycling" }),
+          act(3, "2026-08-03 07:00:00", 5.5, 150, { distance: 1.2 }),
+          act(4, "2026-08-04 07:00:00", 10.7, 136),
+          act(5, "2026-08-05 07:00:00", 2, 150),
+          act(6, "2026-08-06 07:00:00", 5.5, 0),
+          act(7, "2026-08-07 07:00:00", NaN, 150),
+          act(8, "soon", 5.5, 150),
+        ],
+      });
+      expect((await runs()).runs.map((r) => r.date)).toEqual(["2026-08-01"]);
+    });
+
+    it("keeps only the months before the newest run, so old fitness does not set today's pace", async () => {
+      addProfile("MED");
+      seed("data/MED/activities.json", { activities: [act(1, "2026-03-01 07:00:00", 6.5, 140), act(2, "2026-07-01 07:00:00", 5.5, 150), act(3, "2026-08-01 07:00:00", 5.4, 152)] });
+      expect((await runs()).runs.map((r) => r.date)).toEqual(["2026-08-01", "2026-07-01"]);
+    });
+
+    it("needs no Garmin login, and has no runs where there is no profile", async () => {
+      expect(await runs()).toEqual({ profile: null, runs: [] });
+      addProfile("MED");
+      expect((await call("GET", "/api/runs")).status).toBe(200);
+    });
+
+    it("gives a profile login its own runs only", async () => {
+      addProfile("MED", "med-pw");
+      addProfile("SAM", "sam-pw");
+      seed("data/MED/activities.json", { activities: [act(1, "2026-08-01 07:00:00", 5.5, 150)] });
+      seed("data/SAM/activities.json", { activities: [act(2, "2026-08-02 07:00:00", 4.5, 165)] });
+      const login = (user: string, pass: string) => ({ ...H, Authorization: "Basic " + Buffer.from(`${user}:${pass}`).toString("base64") });
+      expect((await runs("", login("MED", "med-pw"))).runs.map((r) => r.pace)).toEqual([330]);
+      expect((await runs("?profile=SAM", login("MED", "med-pw"))).runs.map((r) => r.pace)).toEqual([330]); // a profile login always acts as itself
+      expect((await runs("?profile=SAM", login("SAM", "sam-pw"))).runs.map((r) => r.pace)).toEqual([270]);
+    });
+  });
+
   describe("Garmin actions", () => {
     const act = (body: object) => call("POST", "/api/garmin/action", { path: "workout-plans/a.json", confirm: true, ...body });
 

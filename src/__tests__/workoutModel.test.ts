@@ -133,6 +133,61 @@ describe("estimates", () => {
   });
 });
 
+describe("pace learned from runs", () => {
+  const run = (hr: number, pace: number) => ({ hr, pace, date: "2026-08-01", km: 10 });
+  // easy runs at 6:00 and a heart rate of 140, harder ones faster: 5:30 at 155, 5:00 at 165
+  const RUNS = [run(138, 365), run(140, 360), run(142, 355), run(150, 335), run(155, 330), run(158, 320), run(165, 300), run(168, 295)];
+  const hrRun = (extra: object = {}) => ({ workoutType: "running", steps: [step({ targetType: "heart.rate.zone", targetValueOne: 135, targetValueTwo: 145, endCondition: "distance", endConditionValue: 10000, ...extra })] });
+
+  it("needs a few runs to learn from", () => {
+    expect(M.pacerFrom(undefined)).toBeNull();
+    expect(M.pacerFrom([run(140, 360), run(150, 340)])).toBeNull();
+    expect(M.pacerFrom([run(0, 360), run(140, 0), null, run(140, 360)])).toBeNull();
+    expect(M.pacerFrom(RUNS).runs).toBe(8);
+  });
+
+  it("takes the pace of the runs nearest a heart rate, and the easier half's median for the easy pace", () => {
+    const p = M.pacerFrom(RUNS);
+    expect(p.forHr(140)).toBe(355); // the five nearest are 138, 140, 142, 150, 155: median of 365, 360, 355, 335, 330
+    expect(p.forHr(166)).toBe(320); // 168, 165, 158, 155, 150: median of 295, 300, 320, 330, 335
+    expect(p.easy).toBe((360 + 355) / 2); // the four easier runs: 365, 360, 355, 335
+  });
+
+  it("times a heart-rate step at the learned pace instead of 6:00/km", () => {
+    const pacer = M.pacerFrom(RUNS);
+    const base = M.analyze(hrRun());
+    expect(base.seconds).toBe(3600);
+    expect(base.pace).toEqual({ from: "default", runs: 0, easy: 360 });
+    const learned = M.analyze(hrRun(), { pacer });
+    expect(learned.seconds).toBeCloseTo((pacer.forHr(140) / 1000) * 10000, 5);
+    expect(learned.seconds).toBeLessThan(3600);
+    expect(learned.assumed).toBe(true); // still an estimate
+    expect(learned.pace).toEqual({ from: "runs", runs: 8, easy: pacer.easy });
+  });
+
+  it("uses the easy pace for a step with no target, and for a timed step's distance", () => {
+    const pacer = M.pacerFrom(RUNS);
+    const free = M.analyze({ workoutType: "running", steps: [step({ stepType: "cooldown", endCondition: "distance", endConditionValue: 1000 })] }, { pacer });
+    expect(free.seconds).toBeCloseTo(pacer.easy, 5);
+    const timed = M.analyze({ workoutType: "running", steps: [step({ stepType: "warmup", endCondition: "time", endConditionValue: 600 })] }, { pacer });
+    expect(timed.meters).toBeCloseTo(600 / (pacer.easy / 1000), 5);
+  });
+
+  it("leaves a step with its own pace target alone", () => {
+    const paced = { workoutType: "running", steps: [step({ targetType: "pace.zone", targetValueOne: 3.333, targetValueTwo: 3.508, endCondition: "distance", endConditionValue: 1000 })] };
+    const withRuns = M.analyze(paced, { pacer: M.pacerFrom(RUNS) });
+    expect(withRuns.seconds).toBeCloseTo(M.analyze(paced).seconds, 8);
+    expect(withRuns.assumed).toBe(false);
+    expect(withRuns.pace.from).toBeNull();
+  });
+
+  it("does not time a strength workout's steps by running pace", () => {
+    const a = M.analyze({ workoutType: "strength_training", steps: [step({ stepType: "warmup", exerciseName: "CARDIO", endCondition: "time", endConditionValue: 300 })] }, { pacer: M.pacerFrom(RUNS) });
+    expect(a.meters).toBe(0);
+    expect(a.pace.from).toBeNull();
+  });
+});
+
 describe("the profile", () => {
   it("keeps every segment visible and lets effort set the height", () => {
     const a = M.analyze(THRESHOLD);

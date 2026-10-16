@@ -16,6 +16,8 @@
 
   const ASSUMED_PACE = 360; // seconds per km, for steps that give a distance or a time but no pace target
   const SECONDS_PER_REP = 3; // a rep step has no duration of its own; the estimate counts this much per rep
+  const MIN_RUNS = 3; // fewer runs than this say too little about how fast you go
+  const NEAREST_RUNS = 5; // runs at the closest heart rate that set the pace of a heart-rate step
   const MAX_SEGMENTS = 160; // beyond this, repeats are drawn once, as one wide segment
 
   const num = (v) => (typeof v === "number" && isFinite(v) ? v : 0);
@@ -70,6 +72,23 @@
     return { title: KIND_LABEL[kind], subtitle: exercise };
   }
 
+  /**
+   * Learns how fast you run from past runs ({ pace: seconds per km, hr: average bpm }, as GET /api/runs lists them),
+   * to time the steps that name no pace: a step with a heart-rate target takes the median pace of the runs nearest
+   * that heart rate, any other step the easy pace (the median of the easier half of the runs). null when there are too few runs.
+   */
+  function pacerFrom(runs) {
+    const list = (Array.isArray(runs) ? runs : []).filter((r) => r && num(r.pace) > 0 && num(r.hr) > 0);
+    if (list.length < MIN_RUNS) return null;
+    const median = (xs) => { const s = [...xs].sort((a, b) => a - b), m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
+    const easier = [...list].sort((a, b) => a.hr - b.hr).slice(0, Math.ceil(list.length / 2));
+    return {
+      runs: list.length,
+      easy: median(easier.map((r) => r.pace)),
+      forHr: (hr) => median([...list].sort((a, b) => Math.abs(a.hr - hr) - Math.abs(b.hr - hr)).slice(0, NEAREST_RUNS).map((r) => r.pace)),
+    };
+  }
+
   /** The target, as text, plus a number on a per-kind scale for the height of its bar. */
   function targetOf(st) {
     const a = num(st.targetValueOne), b = num(st.targetValueTwo), lo = Math.min(a || b, b || a), hi = Math.max(a, b);
@@ -108,20 +127,29 @@
     return lap ? { lap } : { other: { name: st.endCondition, value: v } };
   }
 
-  /** Seconds and meters of one run through the step; assumed when the pace was not given; open when nothing says how long. */
-  function stepMetrics(st, w) {
+  /**
+   * Seconds and meters of one run through the step. A step's own pace target sets its speed; with none, the pacer's
+   * pace for its heart-rate target or its easy pace, and with no pacer 6:00/km. Those are assumed. open: nothing says how long.
+   */
+  function stepMetrics(st, w, pacer) {
     const m = measure(st), target = targetOf(st), run = isRun(w, st);
-    const speed = target && target.kind === "speed" ? target.mid : 0;
-    let seconds = m.seconds || 0, meters = m.meters || 0, assumed = false;
+    let seconds = m.seconds || 0, meters = m.meters || 0, assumed = false, paceFrom = null;
+    const speedOf = () => {
+      if (target && target.kind === "speed") return target.mid;
+      assumed = true;
+      if (pacer) { paceFrom = "runs"; return 1000 / (target && target.kind === "hr" && target.mid ? pacer.forHr(target.mid) : pacer.easy); }
+      paceFrom = "default";
+      return 1000 / ASSUMED_PACE;
+    };
     if (meters && !seconds) {
-      const sp = speed || (run ? 1000 / ASSUMED_PACE : 0);
-      if (sp) { seconds = meters / sp; assumed = !speed; }
+      const sp = run || (target && target.kind === "speed") ? speedOf() : 0;
+      if (sp) seconds = meters / sp;
     } else if (seconds && !meters && run) {
-      meters = seconds * (speed || 1000 / ASSUMED_PACE); assumed = !speed;
+      meters = seconds * speedOf();
     } else if (m.reps) {
       seconds = m.reps * SECONDS_PER_REP; assumed = true;
     }
-    return { seconds, meters, assumed, open: !seconds && !meters };
+    return { seconds, meters, assumed, paceFrom, open: !seconds && !meters };
   }
 
   const loadOf = (st) => num(st.weight) || num(st.weightPercentage);
@@ -212,12 +240,12 @@
 
   const TIER = { warmup: 0.5, cooldown: 0.5, work: 0.8, recovery: 0.3, rest: 0.2, other: 0.6 };
 
-  function timeline(nodes, w, expand) {
+  function timeline(nodes, w, expand, pacer) {
     const segs = [];
     const push = (key, st, count, index) => {
-      const m = stepMetrics(st, w), text = describeStep(st, w);
-      segs.push({ key, index, kind: kindOf(st), st, seconds: m.seconds * count, meters: m.meters * count, assumed: m.assumed, open: m.open, count, text: [text.title, ...text.metrics.filter((x) => x.label !== "Rest").map((x) => (x.label === "Reps" ? `${x.value} reps` : x.value))].join(" · ") });
-      if (num(st.restTimeSeconds)) segs.push({ key, index, kind: "rest", st, seconds: st.restTimeSeconds * count, meters: 0, assumed: false, open: false, count, text: `Rest ${clock(st.restTimeSeconds)}` });
+      const m = stepMetrics(st, w, pacer), text = describeStep(st, w);
+      segs.push({ key, index, kind: kindOf(st), st, seconds: m.seconds * count, meters: m.meters * count, assumed: m.assumed, paceFrom: m.paceFrom, open: m.open, count, text: [text.title, ...text.metrics.filter((x) => x.label !== "Rest").map((x) => (x.label === "Reps" ? `${x.value} reps` : x.value))].join(" · ") });
+      if (num(st.restTimeSeconds)) segs.push({ key, index, kind: "rest", st, seconds: st.restTimeSeconds * count, meters: 0, assumed: false, paceFrom: null, open: false, count, text: `Rest ${clock(st.restTimeSeconds)}` });
     };
     (function walk(list, mult) {
       for (const n of list) {
@@ -258,17 +286,19 @@
     return segs;
   }
 
-  /** Everything the picture needs for one workout. */
-  function analyze(w) {
+  /** Everything the picture needs for one workout. options.pacer (from pacerFrom) times the steps that name no pace. */
+  function analyze(w, options) {
+    const pacer = (options && options.pacer) || null;
     const steps = w && Array.isArray(w.steps) ? w.steps.filter(isStep) : [];
     const tree = buildTree(steps);
-    let segments = timeline(tree, w, true);
-    if (segments.length > MAX_SEGMENTS) segments = timeline(tree, w, false);
+    let segments = timeline(tree, w, true, pacer);
+    if (segments.length > MAX_SEGMENTS) segments = timeline(tree, w, false, pacer);
     shape(segments);
-    const total = { seconds: 0, meters: 0, assumed: false, open: 0 };
+    const total = { seconds: 0, meters: 0, assumed: false, open: 0, paceFrom: null };
     for (const s of segments) {
       total.seconds += s.seconds; total.meters += s.meters;
       if (s.assumed) total.assumed = true;
+      if (s.paceFrom && total.paceFrom !== "runs") total.paceFrom = s.paceFrom;
       if (s.open && s.kind !== "rest") total.open++;
     }
     const exercises = new Set(), sets = (function count(list, mult) {
@@ -281,7 +311,7 @@
     return {
       tree, segments, steps: steps.length, sets, exercises: exercises.size,
       seconds: total.seconds || estimated || 0, meters: total.meters || num(w && w.distanceMeters),
-      assumed: total.assumed, open: total.open, hasSteps: steps.length > 0,
+      assumed: total.assumed, open: total.open, pace: { from: total.paceFrom, runs: pacer ? pacer.runs : 0, easy: pacer ? pacer.easy : ASSUMED_PACE }, hasSteps: steps.length > 0,
     };
   }
 
@@ -297,5 +327,5 @@
     return out;
   }
 
-  return { analyze, buildTree, describeStep, describeSet, changedSteps, isSuperset, clock, duration, distance, pace, targetOf, stepMetrics, prettyName, ASSUMED_PACE, SECONDS_PER_REP };
+  return { analyze, pacerFrom, buildTree, describeStep, describeSet, changedSteps, isSuperset, clock, duration, distance, pace, targetOf, stepMetrics, prettyName, ASSUMED_PACE, SECONDS_PER_REP };
 });
