@@ -135,3 +135,68 @@ describe("planned against done", () => {
     expect(A.planned(plans, [row("1", "2026-10-02", "other")], today, { from: "2026-10-02", to: "2026-10-02" }).map((s: any) => [s.date, s.status])).toEqual([["2026-10-02", "done"]]);
   });
 });
+
+describe("chart helpers", () => {
+  it("rounds an axis to bounds and ticks a person would write", () => {
+    expect(A.niceRange(0, 10, 2)).toEqual({ lo: 0, hi: 10, ticks: [0, 5, 10] });
+    expect(A.niceRange(128, 187, 3)).toEqual({ lo: 120, hi: 200, ticks: [120, 140, 160, 180, 200] });
+    expect(A.niceRange(3, 3).ticks.length).toBeGreaterThan(1); // a flat series still gets an axis
+    expect(A.niceRange(0.12, 0.31, 3).ticks).toEqual([0.1, 0.2, 0.3, 0.4]);
+  });
+
+  it("smooths over a window and keeps the gaps as gaps", () => {
+    expect(A.smooth([1, 2, 3, 4, 5], 3)).toEqual([1.5, 2, 3, 4, 4.5]);
+    expect(A.smooth([1, null, 3], 3)).toEqual([1, null, 3]);
+    expect(A.smooth([], 5)).toEqual([]);
+  });
+
+  it("finds the range of a series without its spikes", () => {
+    const xs = Array.from({ length: 100 }, (_, i) => 300 + i);
+    xs[50] = 9999; xs[10] = 1;
+    const [lo, hi] = A.trimRange(xs, 5, 95);
+    expect(lo).toBeGreaterThan(300);
+    expect(hi).toBeLessThan(500);
+    expect(A.trimRange([null, null])).toBeNull();
+    expect(A.trimRange([5])).toEqual([5, 5]);
+  });
+
+  it("finds the sample nearest to a distance, skipping gaps", () => {
+    expect(A.nearestIndex([0, 100, 200, 300], 120)).toBe(1);
+    expect(A.nearestIndex([0, null, 200, 300], 90)).toBe(0);
+    expect(A.nearestIndex([0, null, 200, 300], 1000)).toBe(3);
+    expect(A.nearestIndex([], 5)).toBe(-1);
+  });
+
+  it("gives each heart-rate zone its share of the time", () => {
+    expect(A.zoneShares([50, 850, 900, 0, 0])).toEqual([
+      { zone: 1, seconds: 50, pct: 3 }, { zone: 2, seconds: 850, pct: 47 }, { zone: 3, seconds: 900, pct: 50 }, { zone: 4, seconds: 0, pct: 0 }, { zone: 5, seconds: 0, pct: 0 },
+    ]);
+    expect(A.zoneShares([0, 0, 0, 0, 0]).every((z: any) => z.pct === 0)).toBe(true);
+    expect(A.zoneShares(null)).toEqual([]);
+  });
+
+  it("totals the volume and the sets per exercise, heaviest first, leaving out intervals", () => {
+    const sets = [
+      { exerciseName: "Squat", category: "SQUAT", sets: 3, reps: 5, weight: 100, volume: 1500 },
+      { exerciseName: "Bench", category: "BENCH", sets: 2, reps: 8, weight: 50 }, // no volume given: sets x reps x weight
+      { exerciseName: "Squat", category: "SQUAT", sets: 1, repsList: [5], weight: 120, volume: 600 },
+      { exerciseName: "Interval 1", category: "INTERVAL", sets: 1, reps: 0 },
+      { exerciseName: "Plank", category: "CORE", sets: 3, repsList: [30, 30, 30] },
+    ];
+    expect(A.volumeByExercise(sets)).toEqual([{ name: "Squat", sets: 4, volume: 2100 }, { name: "Bench", sets: 2, volume: 800 }, { name: "Plank", sets: 3, volume: 0 }]);
+    expect(A.volumeByExercise(undefined)).toEqual([]);
+  });
+
+  it("compares what was planned with what was done, and skips what the plan did not say", () => {
+    expect(A.compare({ seconds: 2700, km: 8 }, { seconds: 2940, km: 8.4 })).toEqual([
+      { label: "Time", planned: "45 min", actual: "49 min", delta: 240, pct: 9 },
+      { label: "Distance", planned: "8 km", actual: "8.4 km", delta: 0.4, pct: 5 },
+    ]);
+    expect(A.compare({ seconds: 0, km: 0 }, { seconds: 100, km: 1 })).toEqual([]);
+  });
+
+  it("writes seconds for an axis", () => {
+    expect(A.axisClock(75)).toBe("1:15");
+    expect(A.axisClock(3725)).toBe("1:02:05");
+  });
+});

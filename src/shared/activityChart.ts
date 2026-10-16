@@ -238,3 +238,68 @@ export function buildChart(stored: StoredChart | null | undefined): ChartData | 
     zones,
   };
 }
+
+// ── The numbers beside the charts ─────────────────────────────────────────
+
+export interface ActivityStats {
+  minHr: number | null;
+  maxHr: number | null;
+  /** Meters per second. */
+  maxSpeed: number | null;
+  /** Seconds for the fastest kilometer, mile and 5 km. */
+  fastest1k: number | null;
+  fastestMile: number | null;
+  fastest5k: number | null;
+  /** Centimeters. */
+  stride: number | null;
+  steps: number | null;
+  maxCadence: number | null;
+  elevationLoss: number | null;
+  minElevation: number | null;
+  maxElevation: number | null;
+  vo2max: number | null;
+  location: string | null;
+  movingSeconds: number | null;
+  elapsedSeconds: number | null;
+  aerobicMessage: string | null;
+  anaerobicMessage: string | null;
+  /** Seconds in heart-rate zones 1 to 5, as the list item has them; null when it has none. */
+  hrZones: number[] | null;
+  /** Time and distance by how the watch split the activity (run, walk, stand), when it did. */
+  segments: { kind: string; seconds: number; meters: number }[];
+}
+
+const text = (v: unknown): string | null => (typeof v === "string" && v ? v : null);
+
+/** What the list item and the details say beyond the headline numbers; each is null when Garmin did not give it. */
+export function activityStats(raw: any, detail: any): ActivityStats {
+  const r = raw ?? {}, s = detail?.summaryDTO ?? {};
+  const first = (...values: unknown[]) => values.map(num).find((v) => v !== null) ?? null;
+  const zones = [1, 2, 3, 4, 5].map((i) => num(r[`hrTimeInZone_${i}`]));
+  const kinds: Record<string, string> = { RWD_RUN: "run", RWD_WALK: "walk", RWD_STAND: "stand" };
+  const segments = (Array.isArray(r.splitSummaries) ? r.splitSummaries : [])
+    .filter((x: any) => kinds[x?.splitType] && num(x.duration) !== null)
+    .map((x: any) => ({ kind: kinds[x.splitType], seconds: Math.round(x.duration), meters: Math.round(num(x.distance) ?? 0) }));
+  return {
+    minHr: first(s.minHR, r.minHR),
+    maxHr: first(r.maxHR, s.maxHR),
+    maxSpeed: first(r.maxSpeed, s.maxSpeed),
+    fastest1k: first(r.fastestSplit_1000),
+    fastestMile: first(r.fastestSplit_1609),
+    fastest5k: first(r.fastestSplit_5000),
+    stride: first(r.avgStrideLength, s.strideLength),
+    steps: first(r.steps, s.steps),
+    maxCadence: first(r.maxRunningCadenceInStepsPerMinute, s.maxRunCadence),
+    elevationLoss: first(r.elevationLoss, s.elevationLoss),
+    minElevation: first(r.minElevation, s.minElevation),
+    maxElevation: first(r.maxElevation, s.maxElevation),
+    vo2max: first(r.vO2MaxValue),
+    location: text(r.locationName) ?? text(detail?.locationName),
+    movingSeconds: first(r.movingDuration, s.movingDuration),
+    elapsedSeconds: first(r.elapsedDuration, s.elapsedDuration),
+    aerobicMessage: text(r.aerobicTrainingEffectMessage) ?? text(s.aerobicTrainingEffectMessage),
+    anaerobicMessage: text(r.anaerobicTrainingEffectMessage) ?? text(s.anaerobicTrainingEffectMessage),
+    hrZones: zones.some((z) => z !== null && z > 0) ? zones.map((z) => z ?? 0) : null,
+    segments,
+  };
+}

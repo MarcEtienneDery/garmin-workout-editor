@@ -145,5 +145,85 @@
     return list;
   }
 
-  return { weekOf, totals, groupWeeks, byDate, rangeStart, filterRows, duration, pace, distance, clock, planned, planSport, newestFirst };
+  // ── Charts ───────────────────────────────────────────────────────────────
+
+  /** Round axis bounds and ticks (about `count` of them) for values between lo and hi. */
+  function niceRange(lo, hi, count = 3) {
+    if (!(hi > lo)) { lo -= 1; hi += 1; }
+    const raw = (hi - lo) / count, mag = Math.pow(10, Math.floor(Math.log10(raw))), f = raw / mag;
+    const step = (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * mag;
+    const from = Math.floor(lo / step) * step, to = Math.ceil(hi / step) * step, ticks = [];
+    for (let v = from; v <= to + step / 2; v += step) ticks.push(Math.round(v * 1e6) / 1e6);
+    return { lo: from, hi: to, ticks };
+  }
+
+  /** A moving average over `window` samples, ignoring gaps; a sample that was a gap stays one. */
+  function smooth(values, window = 5) {
+    const half = window >> 1;
+    return values.map((v, i) => {
+      if (v === null || v === undefined) return null;
+      let sum = 0, n = 0;
+      for (let j = Math.max(0, i - half); j <= Math.min(values.length - 1, i + half); j++) if (values[j] !== null && values[j] !== undefined) { sum += values[j]; n++; }
+      return n ? sum / n : null;
+    });
+  }
+
+  /** The lowest and highest of the values once the extremes are set aside, so a spike does not squash a graph; null with none. */
+  function trimRange(values, lowPct = 2, highPct = 98) {
+    const xs = values.filter((v) => v !== null && v !== undefined).sort((a, b) => a - b);
+    if (!xs.length) return null;
+    const at = (p) => xs[Math.min(xs.length - 1, Math.max(0, Math.round((p / 100) * (xs.length - 1))))];
+    return [at(lowPct), at(highPct)];
+  }
+
+  /** The index of the sample nearest to x in a series that rises (gaps are skipped); -1 when there is none. */
+  function nearestIndex(xs, x) {
+    let best = -1, gap = Infinity;
+    for (let i = 0; i < xs.length; i++) {
+      if (xs[i] === null || xs[i] === undefined) continue;
+      const g = Math.abs(xs[i] - x);
+      if (g < gap) { gap = g; best = i; } else if (xs[i] > x) break;
+    }
+    return best;
+  }
+
+  /** Seconds in each heart-rate zone as shares of the total. */
+  function zoneShares(seconds) {
+    const total = (seconds || []).reduce((a, b) => a + (b || 0), 0);
+    return (seconds || []).map((s, i) => ({ zone: i + 1, seconds: s || 0, pct: total ? Math.round(((s || 0) / total) * 100) : 0 }));
+  }
+
+  /** Volume (lb) and sets per exercise of a strength activity, the heaviest first. */
+  function volumeByExercise(sets) {
+    const by = new Map();
+    for (const x of sets || []) {
+      if (!x || x.category === "INTERVAL" || !x.exerciseName) continue;
+      const reps = Array.isArray(x.repsList) ? x.repsList.reduce((a, b) => a + b, 0) : (x.reps || 0) * (x.sets || 1);
+      const volume = x.volume || (Array.isArray(x.weightList) ? 0 : (x.weight || 0) * reps);
+      const e = by.get(x.exerciseName) || { name: x.exerciseName, sets: 0, volume: 0 };
+      e.sets += x.sets || 1; e.volume += volume;
+      by.set(x.exerciseName, e);
+    }
+    return [...by.values()].sort((a, b) => b.volume - a.volume || b.sets - a.sets);
+  }
+
+  /** What was planned against what was done: time and distance, each with the difference. */
+  function compare(planned, actual) {
+    const rows = [];
+    const row = (label, p, a, format) => {
+      if (!p || !a) return;
+      rows.push({ label, planned: format(p), actual: format(a), delta: Math.round((a - p) * 1000) / 1000, pct: Math.round(((a - p) / p) * 100) });
+    };
+    row("Time", planned.seconds, actual.seconds, duration);
+    row("Distance", planned.km, actual.km, distance);
+    return rows;
+  }
+
+  /** Seconds as m:ss, or h:mm:ss from an hour on, for an axis. */
+  function axisClock(sec) {
+    const t = Math.round(sec), h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60);
+    return h ? `${h}:${pad(m)}:${pad(t % 60)}` : `${m}:${pad(t % 60)}`;
+  }
+
+  return { niceRange, smooth, trimRange, nearestIndex, zoneShares, volumeByExercise, compare, axisClock, weekOf, totals, groupWeeks, byDate, rangeStart, filterRows, duration, pace, distance, clock, planned, planSport, newestFirst };
 });

@@ -28,6 +28,7 @@ jest.mock("../mcp/tools/activities", () => ({
   refreshActivities: jest.fn(async () => ({ added: 2, busy: false, error: null })),
   startBackgroundSync: jest.fn(() => ({ started: true })),
   fetchDetailsNow: jest.fn(async () => ({ fetched: 1, error: null })),
+  fetchChartNow: jest.fn(async () => ({ fetched: 1, error: null })),
 }));
 const g = garmin as jest.Mocked<typeof garmin>;
 const a = activitiesTools as jest.Mocked<typeof activitiesTools>;
@@ -419,6 +420,42 @@ describe("web plan editor", () => {
       expect(full.json.background).toEqual({ started: true });
       expect(a.startBackgroundSync).toHaveBeenCalledWith("MED");
       expect((await call("GET", "/api/activities/sync")).status).toBe(404); // no GET route
+    });
+
+    it("adds the stats and the charts to an activity, once the chart data is stored", async () => {
+      addProfile("MED");
+      keep("MED", item(1, "2026-08-01", "running", { hrTimeInZone_1: 60, hrTimeInZone_2: 600, fastestSplit_1000: 270.2, locationName: "Nowhere" }));
+      const bare = (await call("GET", "/api/activity?id=1")).json;
+      expect(bare.chart).toBeNull();
+      expect(bare.stats).toEqual(expect.objectContaining({ hrZones: [60, 600, 0, 0, 0], fastest1k: 270.2, location: "Nowhere" }));
+
+      store().activities.setChart("MED", "1", {
+        v: 1,
+        details: {
+          metricDescriptors: [{ metricsIndex: 0, key: "directHeartRate" }, { metricsIndex: 1, key: "sumDistance" }, { metricsIndex: 2, key: "directSpeed" }],
+          activityDetailMetrics: [{ metrics: [120, 0, 3] }, { metrics: [130, 600, 3] }],
+          geoPolylineDTO: { polyline: [{ lat: 10, lon: 20, distanceInMeters: 0 }, { lat: 10.001, lon: 20.001, distanceInMeters: 600 }] },
+        },
+        splits: { lapDTOs: [{ lapIndex: 1, distance: 600, duration: 200, intensityType: "ACTIVE" }] },
+        zones: [{ zoneNumber: 1, secsInZone: 60, zoneLowBoundary: 100 }],
+      });
+      const full = (await call("GET", "/api/activity?id=1")).json;
+      expect(full.chart.hr).toEqual([120, 130]);
+      expect(full.chart.route.lat).toEqual([10, 10.001]);
+      expect(full.chart.laps).toEqual([expect.objectContaining({ index: 1, paceSec: 333, kind: "ACTIVE" })]);
+      expect(full.chart.zones).toEqual([{ zone: 1, low: 100, high: null, seconds: 60 }]);
+      expect(a.fetchChartNow).not.toHaveBeenCalled(); // a read never calls Garmin
+    });
+
+    it("fetches one activity's chart data on a POST, and refuses an unknown one or a missing Garmin profile", async () => {
+      expect((await call("POST", "/api/activities/chart", { id: "1" })).status).toBe(409);
+      addProfile("MED");
+      keep("MED", item(1, "2026-08-01", "running"));
+      const out = await call("POST", "/api/activities/chart", { id: "1" });
+      expect(out.status).toBe(200);
+      expect(a.fetchChartNow).toHaveBeenCalledWith("MED", "1");
+      expect(out.json).toEqual(expect.objectContaining({ fetched: { fetched: 1, error: null }, chart: null }));
+      expect((await call("POST", "/api/activities/chart", { id: "5" })).status).toBe(404);
     });
 
     it("fetches one activity's details on a POST, and refuses an unknown one", async () => {

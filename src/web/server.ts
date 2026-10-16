@@ -24,7 +24,7 @@
  * The Activities view lists and draws the profile's activities from the database (GET /api/activities,
  * GET /api/activity); it never calls Garmin on a read. POST /api/activities/sync asks Garmin for what is new
  * (and, with history: true, starts the background fill of the whole history and the details), and POST
- * /api/activities/detail fetches one activity's details now.
+ * /api/activities/detail and /chart fetch one activity's details or chart data now.
  *
  * The workout picture times steps that name no pace from the profile's recent runs (GET /api/runs),
  * read from the activities table that the Garmin sync fills.
@@ -46,9 +46,10 @@ import { type DocMeta, type StoreErrorCode, StoreError, getStore, normalizeLogic
 import { getSettings, resolveProfileName, runCaptured } from "../mcp/context";
 import { installConsoleRedirect } from "../mcp/logCapture";
 import ActivityExporter from "../activityExporter";
+import { activityStats, buildChart } from "../shared/activityChart";
 import { syncStatus } from "../shared/activitySync";
 import type { ActivitySummary, StoredActivity } from "../shared/store";
-import { fetchDetailsNow, refreshActivities, startBackgroundSync } from "../mcp/tools/activities";
+import { fetchChartNow, fetchDetailsNow, refreshActivities, startBackgroundSync } from "../mcp/tools/activities";
 import { diffPlanWorkout, extractWorkouts, validatePlanData } from "../mcp/tools/plans";
 import {
   LIBRARY_LIMIT,
@@ -536,6 +537,9 @@ function activityDetail(profile: string, a: StoredActivity) {
     activity: row,
     slim: slimmer.slim([{ ...raw, ...(a.detail ?? {}) }])[0] ?? null,
     detailed: a.detail !== null,
+    stats: activityStats(raw, a.detail),
+    // the charts, read from what was stored; null until the chart data has been fetched
+    chart: buildChart(store().activities.getChart(profile, a.id)),
     planned: entry ? { path: entry.path, index: entry.index, workout: entry.workout } : null,
   };
 }
@@ -914,6 +918,16 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
       const refreshed = await refreshActivities(profile);
       const background = body.history === true ? startBackgroundSync(profile) : null;
       return send(res, 200, { ...refreshed, background, sync: syncStatus(store(), profile) });
+    }
+
+    case "POST /api/activities/chart": {
+      requireGarmin(who);
+      const body = await readBody(req);
+      const profile = profileFor(who, "", body.profile);
+      const id = String(body.id ?? "");
+      if (!/^[\w-]+$/.test(id) || !store().activities.get(profile, id)) throw new HttpError(404, `Activity ${id} is not stored.`);
+      const fetched = await fetchChartNow(profile, id);
+      return send(res, 200, { ...activityDetail(profile, store().activities.get(profile, id)!), fetched });
     }
 
     case "POST /api/activities/detail": {

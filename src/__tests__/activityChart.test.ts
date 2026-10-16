@@ -1,4 +1,4 @@
-import { MAX_SAMPLES, PACE_FASTEST, PACE_SLOWEST, buildChart, decimate, kmSplits, pruneChart } from "../shared/activityChart";
+import { MAX_SAMPLES, PACE_FASTEST, PACE_SLOWEST, activityStats, buildChart, decimate, kmSplits, pruneChart } from "../shared/activityChart";
 
 // Garmin-shaped answers with made-up values and made-up coordinates (nowhere near anyone's home).
 const KEYS = ["directTimestamp", "sumDistance", "directHeartRate", "directSpeed", "directElevation", "directDoubleCadence", "sumDuration", "directGradeAdjustedSpeed", "directAirTemperature"];
@@ -159,5 +159,32 @@ describe("km splits", () => {
   it("skips samples that go backwards and needs two points", () => {
     expect(kmSplits([0], [0], [null], [null])).toEqual([]);
     expect(kmSplits([0, 1000, 500, 2000], [0, 300, 310, 600], [null, null, null, null], [null, null, null, null]).map((s) => s.meters)).toEqual([1000, 1000]);
+  });
+});
+
+describe("the numbers beside the charts", () => {
+  const raw = {
+    maxHR: 182, maxSpeed: 4.1, fastestSplit_1000: 268.4, fastestSplit_1609: 440, fastestSplit_5000: 1400, avgStrideLength: 96.1, steps: 8800,
+    maxRunningCadenceInStepsPerMinute: 192, elevationLoss: 12, minElevation: 38, maxElevation: 51, vO2MaxValue: 52, locationName: "Nowhere",
+    movingDuration: 2900, elapsedDuration: 3000, aerobicTrainingEffectMessage: "IMPROVING_AEROBIC_BASE_2", anaerobicTrainingEffectMessage: "NO_ANAEROBIC_BENEFIT_0",
+    hrTimeInZone_1: 52.4, hrTimeInZone_2: 860, hrTimeInZone_3: 875, hrTimeInZone_4: 0, hrTimeInZone_5: 0,
+    splitSummaries: [
+      { splitType: "RWD_STAND", duration: 11.3, distance: 16.8 }, { splitType: "RWD_RUN", duration: 1774.4, distance: 5039.6 }, { splitType: "RWD_WALK", duration: 30, distance: 40 }, { splitType: "INTERVAL_ACTIVE", duration: 5 },
+    ],
+  };
+
+  it("reads each number from the list item, and from the details when the list item lacks it", () => {
+    const s = activityStats(raw, { summaryDTO: { minHR: 85 }, locationName: "Elsewhere" });
+    expect(s).toEqual(expect.objectContaining({ minHr: 85, maxHr: 182, maxSpeed: 4.1, fastest1k: 268.4, fastestMile: 440, fastest5k: 1400, stride: 96.1, steps: 8800, maxCadence: 192, elevationLoss: 12, vo2max: 52, location: "Nowhere", movingSeconds: 2900, elapsedSeconds: 3000 }));
+    expect(s.hrZones).toEqual([52.4, 860, 875, 0, 0]);
+    expect(s.segments).toEqual([{ kind: "stand", seconds: 11, meters: 17 }, { kind: "run", seconds: 1774, meters: 5040 }, { kind: "walk", seconds: 30, meters: 40 }]);
+    const fallback = activityStats({}, { summaryDTO: { maxHR: 160, strideLength: 90, maxRunCadence: 180, elevationLoss: 3 }, locationName: "Elsewhere" });
+    expect(fallback).toEqual(expect.objectContaining({ maxHr: 160, stride: 90, maxCadence: 180, elevationLoss: 3, location: "Elsewhere", hrZones: null, segments: [] }));
+  });
+
+  it("gives null for what Garmin did not say, and copes with nothing at all", () => {
+    const s = activityStats(undefined, undefined);
+    for (const [key, value] of Object.entries(s)) expect(value === null || (Array.isArray(value) && value.length === 0)).toBe(true);
+    expect(activityStats({ hrTimeInZone_1: 0, hrTimeInZone_2: 0 }, null).hrZones).toBeNull();
   });
 });

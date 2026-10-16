@@ -239,9 +239,35 @@
   .astats { display:grid; grid-template-columns:repeat(auto-fill,minmax(112px,1fr)); gap:10px 14px; margin:12px 0; }
   .astats b { display:block; font-size:17px; font-weight:400; }
   .astats small { color:var(--dim); font-size:11px; }
+  .astats .long b { font-size:13px; line-height:1.35; }
   .ahead { color:var(--dim); }
   .ahead b { display:block; color:var(--fg); font-size:15px; }
   #abody h3 { margin:16px 0 6px; font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--dim); }
+  .acg { margin:4px 0 8px; }
+  .acbar { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:4px; min-height:26px; }
+  .acread { color:var(--dim); margin-left:auto; }
+  .acp { margin:2px 0 6px; }
+  .acp .act { display:flex; justify-content:space-between; color:var(--dim); font-size:11px; }
+  .acp .acv { color:var(--fg); font-weight:600; }
+  .acsvg { display:block; width:100%; height:auto; touch-action:pan-y; user-select:none; -webkit-user-select:none; }
+  .acaxis { touch-action:auto; }
+  .acgrid { stroke:#3c3c3c; stroke-width:.6; }
+  .accur { stroke:#d4d4d4; stroke-width:1; stroke-dasharray:3 2; }
+  .aclab { fill:#8b8b8b; font-size:9px; }
+  .abars { display:grid; gap:3px; }
+  .abarrow { display:grid; grid-template-columns:minmax(2.4em,auto) minmax(3.2em,auto) minmax(40px,1fr) auto; gap:8px; align-items:center; }
+  .abarrow .abl { color:var(--dim); }
+  .abarrow .abv { white-space:nowrap; }
+  .abarrow .abx { color:var(--dim); font-size:11px; white-space:nowrap; }
+  .abartrack { display:block; height:10px; background:#2f2f2f; border-radius:3px; overflow:hidden; }
+  .abarfill { display:block; height:100%; background:var(--k-work); border-radius:3px; }
+  .abarrow.fast .abarfill { background:var(--ok); } .abarrow.slow .abarfill { background:var(--warn); }
+  .azstack { display:flex; height:14px; border-radius:3px; overflow:hidden; background:#2f2f2f; }
+  .azseg { display:block; height:100%; }
+  .azlegend { display:flex; flex-wrap:wrap; gap:2px 14px; margin-top:6px; color:var(--dim); font-size:11px; }
+  .azitem i { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:5px; }
+  .azitem.none { opacity:.5; }
+  .asegtabs { margin:0 0 6px; }
   .atable { width:100%; border-collapse:collapse; }
   .atable td, .atable th { padding:4px 6px 4px 0; text-align:left; border-bottom:1px solid #2a2a2a; vertical-align:top; }
   .atable th { color:var(--dim); font-weight:400; font-size:11px; }
@@ -644,6 +670,7 @@
 
 <script src="/workoutModel.js"></script>
 <script src="/activityModel.js"></script>
+<script src="/activityCharts.js"></script>
 <script src="/workoutListModel.js"></script>
 <script src="/vendor/monaco/loader.js"></script>
 <script>
@@ -2075,12 +2102,12 @@ async function pollActivities() {
     while (document.body.dataset.view === "activities" && A.sync && A.sync.syncing) {
       await new Promise((r) => setTimeout(r, 4000));
       if (document.body.dataset.view !== "activities") break;
-      const before = A.sync.withDetails + ":" + A.sync.activities;
+      const before = A.sync.withDetails + ":" + A.sync.activities + ":" + A.sync.withCharts;
       await reloadActivityRows();
-      if (A.sync.withDetails + ":" + A.sync.activities !== before) {
+      if (A.sync.withDetails + ":" + A.sync.activities + ":" + A.sync.withCharts !== before) {
         renderActivities();
-        const open = A.selected && A.detail && !A.detail.detailed ? activityRow(A.selected) : null;
-        if (open && open.detailed) selectActivity(A.selected, false);
+        const open = A.selected && A.detail && (!A.detail.detailed || !A.detail.chart) ? activityRow(A.selected) : null;
+        if (open && (open.detailed !== A.detail.detailed || A.sync.withCharts)) selectActivity(A.selected, false);
       }
     }
   } finally { A.polling = false; renderActivities(); }
@@ -2132,15 +2159,16 @@ function renderActivityNote() {
     if (s && s.syncing) line("A fill is running…");
     return;
   }
-  const parts = [`${s.activities} stored`, `${s.withDetails} with details`];
+  const parts = [`${s.activities} stored`, `${s.withDetails} with details`, `${s.withCharts} with graphs`];
   if (s.syncing) parts.push("syncing…");
-  note.hidden = !(A.note || s.syncing || s.pendingDetails || !s.historyComplete || s.error);
+  note.hidden = !(A.note || s.syncing || s.pendingDetails || s.pendingCharts || !s.historyComplete || s.error);
   if (A.note) parts.unshift(A.note);
   if (s.error) parts.push(`stopped: ${s.error}`);
   if (note.hidden) return;
   line(parts.join(" · "));
-  if (garmin.enabled && !s.syncing && (!s.historyComplete || s.pendingDetails)) {
-    button(s.historyComplete ? `Fetch ${s.pendingDetails} missing details` : "Fetch the rest of the history", () => syncActivities(true), "Runs in the background; this view follows it");
+  const missing = s.pendingDetails + s.pendingCharts;
+  if (garmin.enabled && !s.syncing && (!s.historyComplete || missing)) {
+    button(s.historyComplete ? `Fetch ${s.pendingDetails} missing details and ${s.pendingCharts} graphs` : "Fetch the rest of the history", () => syncActivities(true), "Runs in the background; this view follows it. The graphs take about three Garmin calls each.");
   }
 }
 
@@ -2283,8 +2311,27 @@ async function selectActivity(id, show = true) {
   catch (e) { if (token === A.detailRun) { $("abody").replaceChildren(mk("div", "msg err", e.message)); } return; }
   if (token !== A.detailRun) return;
   A.detail = d; renderActivityDetail();
-  // The details of one activity are one Garmin call: fetch them when they are not stored yet and nothing is filling them in.
-  if (!d.detailed && garmin.enabled && !(A.sync && A.sync.syncing)) fetchActivityDetails(id, token);
+  // Fetch what is not stored yet when someone opens the activity and nothing is filling it in: one call for the details, three for the graphs.
+  completeActivity(id, token);
+}
+
+async function completeActivity(id, token) {
+  if (!garmin.enabled || (A.sync && A.sync.syncing)) return;
+  if (A.detail && !A.detail.detailed) await fetchActivityDetails(id, token);
+  if (token !== A.detailRun || !A.detail) return;
+  if (!A.detail.chart) await fetchActivityChart(id, token);
+}
+
+async function fetchActivityChart(id, token = A.detailRun) {
+  A.chartBusy = true; A.chartFailure = ""; renderActivityDetail();
+  let d, failure = "";
+  try { d = await api("POST", "/api/activities/chart", { profile: A.profile, id }); }
+  catch (e) { failure = e.message; }
+  A.chartBusy = false;
+  if (token !== A.detailRun) return;
+  if (d) { A.detail = d; if (d.fetched && d.fetched.error) failure = d.fetched.error; }
+  A.chartFailure = failure;
+  renderActivityDetail();
 }
 
 async function fetchActivityDetails(id, token = A.detailRun) {
@@ -2303,10 +2350,74 @@ async function fetchActivityDetails(id, token = A.detailRun) {
   renderActivityDetail();
 }
 
-function statEl(value, label) { const d = mk("div"); d.append(mk("b", "", value), mk("small", "", label)); return d; }
+function statEl(value, label) { const d = mk("div", value.length > 12 ? "long" : ""); d.append(mk("b", "", value), mk("small", "", label)); return d; }
+
+/** What the list item and the details say beyond the headline numbers. */
+function extraStats(d, add) {
+  const st = d.stats || {}, r = d.activity;
+  add(st.minHr && `${st.minHr} bpm`, "Lowest HR");
+  add(st.maxSpeed && AM.pace(1000 / st.maxSpeed), "Fastest pace");
+  add(st.fastest1k && AM.axisClock(st.fastest1k), "Fastest 1 km"); add(st.fastest5k && AM.axisClock(st.fastest5k), "Fastest 5 km");
+  add(st.maxCadence && `${Math.round(st.maxCadence)} spm`, "Max cadence");
+  add(st.stride && `${(st.stride / 100).toFixed(2)} m`, "Stride length"); add(st.steps && st.steps.toLocaleString(), "Steps");
+  add(st.minElevation !== null && st.maxElevation !== null ? `${Math.round(st.minElevation)}–${Math.round(st.maxElevation)} m` : "", "Elevation range");
+  add(st.elevationLoss && `${Math.round(st.elevationLoss)} m`, "Descent");
+  add(st.vo2max && st.vo2max, "VO2max");
+  add(st.movingSeconds && st.elapsedSeconds && st.elapsedSeconds - st.movingSeconds > 60 ? `${AM.duration(st.movingSeconds)} of ${AM.duration(st.elapsedSeconds)}` : "", "Moving time");
+  const seg = (st.segments || []).filter((x) => x.seconds >= 20).map((x) => `${prettyName(x.kind)} ${AM.duration(x.seconds)}`);
+  add(seg.length > 1 ? seg.join(" · ") : "", "Run, walk, stand");
+  add(st.location, "Place");
+  for (const [msg, label] of [[st.aerobicMessage, "Aerobic effect"], [st.anaerobicMessage, "Anaerobic effect"]]) {
+    const text = msg && prettyName(msg.replace(/_\d+$/, ""));
+    if (text && !/^No /i.test(text)) add(text, label);
+  }
+}
+
+/** The graphs of one activity, and the note that says why there are none yet. */
+function chartSection(d, box) {
+  const c = d.chart, id = d.activity.id;
+  box.append(mk("h3", "", "Graphs"));
+  if (!c) {
+    const note = mk("div", "anote");
+    if (A.chartBusy) note.textContent = "Fetching the graphs from Garmin…";
+    else {
+      note.append(A.chartFailure ? `Could not fetch the graphs: ${A.chartFailure} ` : A.sync && A.sync.syncing ? "The graphs are being filled in; they appear here when stored. " : "The graphs are not stored yet. ");
+      if (garmin.enabled && !(A.sync && A.sync.syncing)) { const b = mk("button", "", "Fetch them now"); b.onclick = guard(() => fetchActivityChart(id)); note.append(b); }
+    }
+    box.append(note);
+    return;
+  }
+  const g = ActivityCharts.graphs(c, {});
+  A.graphs = g;
+  if (!g.el.childElementCount) box.append(mk("div", "anote", "Garmin has no time series for this activity."));
+  else box.append(g.el);
+
+  // laps as the watch recorded them, and kilometer splits worked out from the series
+  const laps = c.laps.filter((l) => l.meters > 0 || l.seconds > 0), splits = c.splits;
+  if (laps.length > 1 || splits.length > 1) {
+    const kinds = new Set(laps.map((l) => l.kind));
+    const views = [];
+    if (laps.length > 1) views.push(["laps", `Laps (${laps.length})`]);
+    if (splits.length > 1) views.push(["splits", `Km splits (${splits.length})`]);
+    let shown = laps.length > 1 && (kinds.size > 1 || splits.length <= 1) ? "laps" : views[0][0];
+    const holder = mk("div"), tabs = mk("div", "seg asegtabs");
+    const draw = () => {
+      [...tabs.children].forEach((b, i) => b.setAttribute("aria-pressed", String(views[i][0] === shown)));
+      holder.replaceChildren(shown === "laps"
+        ? ActivityCharts.paceBars(laps, { label: (x) => String(x.index), extra: (x) => [AM.distance(x.meters / 1000), AM.duration(x.seconds), x.avgHr ? `${Math.round(x.avgHr)} bpm` : "", x.kind && x.kind !== "ACTIVE" ? prettyName(x.kind) : ""].filter(Boolean).join(" · ") })
+        : ActivityCharts.paceBars(splits, { label: (x) => String(x.index), extra: (x) => [x.meters < 990 ? AM.distance(x.meters / 1000) : "", x.avgHr ? `${x.avgHr} bpm` : "", x.climb ? `${x.climb > 0 ? "+" : ""}${x.climb} m` : ""].filter(Boolean).join(" · ") }));
+    };
+    for (const [key, label] of views) { const b = mk("button", "", label); b.onclick = () => { shown = key; draw(); }; tabs.append(b); }
+    box.append(mk("h3", "", views.length > 1 ? "Laps and splits" : views[0][1]));
+    if (views.length > 1) box.append(tabs);
+    box.append(holder);
+    draw();
+  }
+}
 
 function renderActivityDetail() {
   const d = A.detail, box = $("abody"); box.replaceChildren();
+  A.graphs = null;
   if (!d) return;
   const r = d.activity, s = d.slim || {};
   const head = mk("div", "ahead");
@@ -2325,6 +2436,7 @@ function renderActivityDetail() {
   add(s.moderateIntensityMinutes || s.vigorousIntensityMinutes ? `${s.moderateIntensityMinutes || 0} + ${s.vigorousIntensityMinutes || 0} min` : "", "Moderate + vigorous");
   add(r.sets && `${r.sets} sets · ${r.reps || 0} reps`, "Strength");
   add(s.directWorkoutFeel && `${s.directWorkoutFeel} / 100`, "Feel"); add(s.directWorkoutRpe && `${s.directWorkoutRpe} / 100`, "RPE");
+  extraStats(d, add);
   box.append(stats);
 
   if (!d.detailed) {
@@ -2337,26 +2449,36 @@ function renderActivityDetail() {
     box.append(note);
   }
 
+  const zoneSeconds = d.stats && d.stats.hrZones;
+  if (zoneSeconds) { box.append(mk("h3", "", "Heart-rate zones")); box.append(ActivityCharts.zoneBar(zoneSeconds, d.chart && d.chart.zones)); }
+
+  chartSection(d, box);
+
   const sets = Array.isArray(s.exerciseSets) ? s.exerciseSets : [];
   const lifts = sets.filter((x) => x.category !== "INTERVAL"), intervals = sets.filter((x) => x.category === "INTERVAL");
+  const table = (head, rows) => {
+    const t = mk("table", "atable"), tr = (cells, tag = "td") => { const row = mk("tr"); cells.forEach(([text, cls]) => row.append(mk(tag, cls || "", text))); t.append(row); };
+    tr(head, "th"); rows.forEach((cells) => tr(cells));
+    return t;
+  };
   if (lifts.length) {
     box.append(mk("h3", "", "Exercises"));
-    const t = mk("table", "atable"), tr = (cells, tag = "td") => { const row = mk("tr"); cells.forEach(([text, cls]) => row.append(mk(tag, cls || "", text))); t.append(row); };
-    tr([["Exercise"], ["Sets × reps", "num"], ["Weight", "num"]], "th");
-    for (const x of lifts) {
+    box.append(table([["Exercise"], ["Sets × reps", "num"], ["Weight", "num"]], lifts.map((x) => {
       const reps = Array.isArray(x.repsList) ? x.repsList.join(" / ") : x.reps || "";
       const volume = reps ? `${x.sets || 1} × ${reps}` : `${x.sets || 1} set${(x.sets || 1) === 1 ? "" : "s"}`;
       const weight = Array.isArray(x.weightList) ? x.weightList.join(" / ") + " lb" : x.weight ? `${x.weight} lb` : "";
-      tr([[x.exerciseName + (x.supersetGroup ? " ·ss" : "")], [volume, "num"], [weight, "num"]]);
+      return [[x.exerciseName + (x.supersetGroup ? " ·ss" : "")], [volume, "num"], [weight, "num"]];
+    })));
+    const volumes = AM.volumeByExercise(lifts);
+    if (volumes.some((v) => v.volume > 0)) {
+      const total = Math.round(volumes.reduce((a, v) => a + v.volume, 0));
+      box.append(mk("h3", "", `Volume · ${total.toLocaleString()} lb`), ActivityCharts.volumeBars(volumes));
     }
-    box.append(t);
   }
-  if (intervals.length) {
+  // the watch's laps say more than the intervals Garmin summarises, so the table is for activities without them
+  if (intervals.length && !(d.chart && d.chart.laps.length > 1)) {
     box.append(mk("h3", "", "Intervals"));
-    const t = mk("table", "atable"), tr = (cells, tag = "td") => { const row = mk("tr"); cells.forEach(([text, cls]) => row.append(mk(tag, cls || "", text))); t.append(row); };
-    tr([["#"], ["Distance", "num"], ["Time", "num"], ["Pace", "num"], ["HR", "num"]], "th");
-    intervals.forEach((x, i) => tr([[String(i + 1)], [AM.distance(x.distance), "num"], [AM.duration(x.duration), "num"], [x.pace ? AM.pace(x.pace * 60) : "", "num"], [x.avgHR ? String(Math.round(x.avgHR)) : "", "num"]]));
-    box.append(t);
+    box.append(table([["#"], ["Distance", "num"], ["Time", "num"], ["Pace", "num"], ["HR", "num"]], intervals.map((x, i) => [[String(i + 1)], [AM.distance(x.distance), "num"], [AM.duration(x.duration), "num"], [x.pace ? AM.pace(x.pace * 60) : "", "num"], [x.avgHR ? String(Math.round(x.avgHR)) : "", "num"]])));
   }
 
   if (d.planned) {
@@ -2364,7 +2486,14 @@ function renderActivityDetail() {
     const link = mk("a", "", `${d.planned.workout.workoutName} · ${planName(d.planned.path)}`);
     link.style.cursor = "pointer"; link.style.color = "var(--accent)";
     link.onclick = guard(() => openPlanWorkout(d.planned.path, d.planned.workout));
-    box.append(link, workoutVisual(d.planned.workout, { profile: A.profile }));
+    box.append(link);
+    const plan = WM.analyze(d.planned.workout, { pacer: pacerFor(A.profile) });
+    const rows = AM.compare({ seconds: plan.seconds, km: plan.meters / 1000 }, { seconds: r.seconds, km: r.km });
+    if (rows.length) {
+      const sign = (n) => (n > 0 ? "+" : "");
+      box.append(table([["", ""], ["Planned", "num"], ["Done", "num"], ["Difference", "num"]], rows.map((x) => [[x.label], [(plan.assumed ? "~" : "") + x.planned, "num"], [x.actual, "num"], [`${sign(x.pct)}${x.pct}%`, "num"]])));
+    }
+    box.append(workoutVisual(d.planned.workout, { profile: A.profile }));
   }
 }
 
