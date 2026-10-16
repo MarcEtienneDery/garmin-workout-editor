@@ -142,6 +142,7 @@
   .wv-notes { flex-basis:100%; color:var(--dim); white-space:pre-wrap; overflow-wrap:anywhere; }
   .wv-chart { grid-area:chart; display:flex; align-items:flex-end; gap:1px; height:88px; border-bottom:1px solid var(--line); }
   .wv-chart.mini { height:18px; margin:2px 0; border-bottom:0; }
+  .wv-seg, .wv-card { cursor:pointer; }
   .wv-seg { flex:1 1 0; min-width:3px; height:calc(var(--h) * 100%); background:var(--c); border-radius:2px 2px 0 0; transition:opacity .1s; }
   .wv-seg.k-rest { opacity:.55; }
   .wv-seg.open { background-image:repeating-linear-gradient(135deg, rgba(255,255,255,.4) 0 3px, transparent 3px 7px); }
@@ -1167,7 +1168,7 @@ function renderOutline() {
     if (open) {
       const host = mk("div", "wv-host");
       const flagged = st && st.differences.length && st.state === "modified" ? WM.changedSteps(st.differences) : new Set();
-      if (flagged.size) host.append(mk("p", "wv-note", "Steps marked “differs” are not the same on Garmin."));
+      if (flagged.size) host.append(flagNote(st.differences, "on Garmin"));
       host.append(workoutVisual(w, { changed: flagged }));
       const edit = mk("button", "", "Edit in JSON"), actions = mk("div", "wv-actions");
       edit.onclick = () => revealWorkout(w);
@@ -1370,8 +1371,9 @@ function summaryEl(w, a) {
   const box = mk("div", "wv-sum"), approx = a.assumed || a.open ? "~" : "";
   const why = [`Estimated: a distance with no pace target counts at ${WM.pace(1000 / WM.ASSUMED_PACE)} /km`, `each rep counts ${WM.SECONDS_PER_REP} s`, a.open ? `${a.open} step${a.open > 1 ? "s" : ""} ending on the lap button ${a.open > 1 ? "are" : "is"} not counted` : ""].filter(Boolean).join("; ");
   const stat = (value, label, title) => { const d = mk("div", "wv-stat"); d.append(mk("b", "", value), mk("small", "", label)); if (title) d.title = title; box.append(d); };
-  if (a.seconds) stat(approx + WM.duration(a.seconds), "Est. time", approx ? why : "");
-  if (a.meters) stat(approx + WM.distance(a.meters), "Est. distance", approx ? why : "");
+  const open = a.open ? ` · ${a.open} open-ended step${a.open > 1 ? "s" : ""} not counted` : ""; // shown, not only in the tooltip: phones have none
+  if (a.seconds) stat(approx + WM.duration(a.seconds), "Est. time" + open, approx ? why : "");
+  if (a.meters) stat(approx + WM.distance(a.meters), "Est. distance" + (a.seconds ? "" : open), approx ? why : "");
   if (a.sets) stat(String(a.sets), `sets · ${a.exercises} exercise${a.exercises === 1 ? "" : "s"}`);
   else if (a.steps) stat(String(a.steps), a.steps === 1 ? "step" : "steps");
   const dates = [].concat((w && w.scheduledDate) || []);
@@ -1420,6 +1422,12 @@ function stepListEl(nodes, w, changed) {
     ol.append(g);
   }
   return ol;
+}
+
+/** The line above a picture that has flagged steps; the server lists at most ten differences, so say when the flags may be incomplete. */
+function flagNote(differences, other) {
+  const more = differences.length && /^…and \d+ more/.test(differences[differences.length - 1]);
+  return mk("p", "wv-note", `Steps marked “differs” are not the same ${other}.${more ? " More differences than these are listed, so other steps may differ too." : ""}`);
 }
 
 /** Hovering (or tapping) a bar or a card lights up its counterpart and dims the rest. */
@@ -1501,7 +1509,7 @@ function renderDetail() {
     host.replaceChildren(workoutVisual(versions[i].w, { changed: flagged }));
   };
   versions.forEach((v, i) => { const b = mk("button", "", v.label); b.onclick = () => show(i); switcher.append(b); });
-  add(section(versions.length > 1 ? "Workout" : d.garmin ? "Workout on Garmin" : "Workout in the plan", ...(versions.length > 1 ? [switcher, mk("p", "wv-note", "Steps marked “differs” are not the same in the other copy.")] : [])));
+  add(section(versions.length > 1 ? "Workout" : d.garmin ? "Workout on Garmin" : "Workout in the plan", ...(versions.length > 1 ? [switcher, flagNote(differing[0].differences, "in the other copy")] : [])));
   add(host);
   show(0);
 
