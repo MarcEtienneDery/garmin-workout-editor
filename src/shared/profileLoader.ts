@@ -53,15 +53,28 @@ export function getAvailableProfiles(): string[] {
 }
 
 /**
+ * The profile a name stands for, ignoring case ("med" -> "MED"): the exact spelling wins,
+ * otherwise a single profile that differs only in case. Profiles keep the spelling of their
+ * .env.<name> file, which names their data/<name>/ folder, so only lookups are case-insensitive.
+ */
+export function findProfile(name: string): string | undefined {
+  const available = getAvailableProfiles();
+  if (available.includes(name)) return name;
+  const matches = available.filter((p) => p.toLowerCase() === name.toLowerCase());
+  return matches.length === 1 ? matches[0] : undefined;
+}
+
+/**
  * Load a profile's credentials and resolve its data directory.
  * Throws if the profile doesn't exist or is missing required vars.
  */
-export function loadProfile(name: string): ProfileConfig {
-  if (!PROFILE_NAME_REGEX.test(name)) {
+export function loadProfile(requested: string): ProfileConfig {
+  if (!PROFILE_NAME_REGEX.test(requested)) {
     throw new Error(
-      `Invalid profile name "${name}". Use only letters, numbers, hyphens, and underscores.`
+      `Invalid profile name "${requested}". Use only letters, numbers, hyphens, and underscores.`
     );
   }
+  const name = findProfile(requested) ?? requested;
 
   const envFile = path.join(getProfilesDir(), `.env.${name}`);
   if (!fs.existsSync(envFile)) {

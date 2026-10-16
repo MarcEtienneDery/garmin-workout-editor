@@ -2,7 +2,7 @@ import * as os from "os";
 import * as path from "path";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { GarminClient } from "../shared/garminClient";
-import { ProfileConfig, getAvailableProfiles, getMockProfile, loadProfile } from "../shared/profileLoader";
+import { ProfileConfig, findProfile, getAvailableProfiles, getMockProfile, loadProfile } from "../shared/profileLoader";
 import { type DocMeta, StoreError, getStore, normalizeLogicalPath } from "../shared/store";
 import WorkoutEditor from "../workoutEditor";
 import ActivityExporter from "../activityExporter";
@@ -45,7 +45,7 @@ const sessions = new Map<string, Session>();
 
 export function resolveProfileName(requested?: string): string {
   const name = requested || settings.defaultProfile;
-  if (name) return name;
+  if (name) return findProfile(name) ?? name;
 
   const available = getAvailableProfiles();
   if (available.length === 1) return available[0];
