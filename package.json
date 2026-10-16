@@ -9,23 +9,17 @@
   "scripts": {
     "build": "tsc && node -e \"require('fs').cpSync('src/web/public','dist/web/public',{recursive:true})\"",
     "dev": "tsx src/index.ts",
-    "start": "tsx src/cli.ts",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
-    "export-activities": "tsx src/exportActivities.ts",
     "manage-workouts": "tsx src/manageWorkouts.ts",
-    "adjust-workouts": "tsx src/adjustWorkouts.ts",
     "mcp": "tsx src/mcp/server.ts",
     "mcp:http": "tsx src/mcp/server.ts --http",
     "web": "tsx src/web/server.ts",
-    "store": "tsx src/storeCli.ts",
-    "test-llm": "tsx src/testLlm.ts",
-    "test-prompt": "tsx src/testPrompt.ts"
+    "store": "tsx src/storeCli.ts"
   },
   "dependencies": {
     "@flow-js/garmin-connect": "^1.6.7",
-    "@github/copilot-sdk": "^0.1.25",
     "@modelcontextprotocol/sdk": "1.30.1",
     "dotenv": "^16.3.1",
     "monaco-editor": "0.52.2",

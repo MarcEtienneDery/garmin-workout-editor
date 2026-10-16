@@ -29,7 +29,7 @@ Steps:
 Repository-specific expectations:
 
 - Primary workout file: `data/workouts-full-body-maintenance.json`
-- Activity export command: `npm run export-activities -- 15`
+- Activities: the MCP tool `get_activities` (period `last-week`)
 - Validation command: `npm run manage-workouts -- --upload data/workouts-full-body-maintenance.json --dry-run --mock`
 - Upload command: `npm run manage-workouts -- --import-and-schedule data/workouts-full-body-maintenance.json`
 

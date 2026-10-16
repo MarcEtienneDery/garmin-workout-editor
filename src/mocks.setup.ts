@@ -1,6 +1,5 @@
 import { GarminConnect } from "@flow-js/garmin-connect";
-import * as fs from "fs";
-import * as path from "path";
+import { normalizeActivityType } from "./shared/activityType";
 
 /**
  * Get the most recent mock client instance
@@ -20,61 +19,8 @@ export const resetMockClient = () => {
   mock.mockClear();
 };
 
-import { normalizeActivityType } from "./shared/activityType";
 export { normalizeActivityType };
 
-/**
- * Load the last 4 activities from disk to seed mock data
- */
-export const loadLastActivitiesFromDisk = (): any[] | null => {
-  try {
-    const activitiesPath = path.join(__dirname, "../data/activities.json");
-    if (fs.existsSync(activitiesPath)) {
-      const raw = fs.readFileSync(activitiesPath, "utf-8");
-      const parsed = JSON.parse(raw);
-      const activities = parsed?.activities || [];
-      return activities.slice(-4);
-    }
-  } catch (error) {
-    console.warn("⚠️  Could not load activities.json for mock seeding");
-  }
-
-  try {
-    const rawPath = path.join(__dirname, "../data/activities-raw.json");
-    if (fs.existsSync(rawPath)) {
-      const raw = fs.readFileSync(rawPath, "utf-8");
-      const parsed = JSON.parse(raw);
-      return parsed ? [parsed] : null;
-    }
-  } catch (error) {
-    console.warn("⚠️  Could not load activities-raw.json for mock seeding");
-  }
-
-  return null;
-};
-
-/**
- * Load the last 4 workouts from disk to seed mock data
- */
-export const loadLastWorkoutsFromDisk = (): any[] | null => {
-  try {
-    const workoutsPath = path.join(__dirname, "../data/workouts-raw.json");
-    if (fs.existsSync(workoutsPath)) {
-      const raw = fs.readFileSync(workoutsPath, "utf-8");
-      const parsed = JSON.parse(raw);
-      // workouts-raw.json is an array of workouts
-      return Array.isArray(parsed) ? parsed.slice(0, 4) : null;
-    }
-  } catch (error) {
-    console.warn("⚠️  Could not load workouts-raw.json for mock seeding");
-  }
-
-  return null;
-};
-
-/**
- * Strength exercises modeled after activities.json (weights in lbs)
- */
 const STRENGTH_EXERCISES: { category: string; subCategory?: string; typicalWeight: number }[] = [
   { category: "BENCH_PRESS", subCategory: "BARBELL_BENCH_PRESS", typicalWeight: 185 },
   { category: "DEADLIFT", subCategory: "BARBELL_DEADLIFT", typicalWeight: 250 },
@@ -117,56 +63,6 @@ const buildMockIntervals = (): any[] => {
  * Generate mock activities for testing
  */
 export const generateMockActivities = (limit: number): any[] => {
-  const seededActivities = loadLastActivitiesFromDisk();
-  if (seededActivities && seededActivities.length > 0) {
-    const activities: any[] = [];
-    for (let i = 0; i < limit; i++) {
-      const seed = seededActivities[i % seededActivities.length];
-      const daysAgo = Math.floor(Math.random() * 30);
-      const date = new Date();
-      date.setDate(date.getDate() - daysAgo);
-      const timestamp = date.toISOString();
-      const typeKey = seed.activityType?.typeKey || seed.activityType;
-      const normalizedType = normalizeActivityType(typeKey);
-      const variance = 0.9 + Math.random() * 0.2; // 0.9-1.1
-
-      const durationSeed = seed.duration || seed.elapsedDuration || 1800;
-      const base: any = {
-        id: `activity-${i + 1}`,
-        activityName: seed.activityName || "Mock Activity",
-        activityType: normalizedType,
-        startTime: timestamp,
-        duration: Math.max(600, Math.round(durationSeed * variance)),
-        avgHR: seed.avgHR ?? seed.averageHR ?? Math.floor(Math.random() * 40) + 110,
-        maxHR: seed.maxHR ?? seed.maxHR ?? Math.floor(Math.random() * 30) + 140,
-        trainingEffectLabel: seed.trainingEffectLabel || (normalizedType === "other" ? "UNKNOWN" : "AEROBIC_BASE"),
-        differenceBodyBattery: seed.differenceBodyBattery ?? -Math.floor(Math.random() * 12) - 3,
-        moderateIntensityMinutes: seed.moderateIntensityMinutes ?? Math.floor(Math.random() * 40),
-        vigorousIntensityMinutes: seed.vigorousIntensityMinutes ?? Math.floor(Math.random() * 20),
-        directWorkoutFeel: seed.directWorkoutFeel ?? seed.summaryDTO?.directWorkoutFeel,
-        directWorkoutRpe: seed.directWorkoutRpe ?? seed.summaryDTO?.directWorkoutRpe,
-      };
-
-      if (normalizedType === "running") {
-        const distanceSeed = seed.distance ?? 8;
-        base.distance = Math.round(distanceSeed * variance * 1000) / 1000;
-        base.avgPace = seed.avgPace ?? Math.round((5 + Math.random()) * 1000) / 1000;
-        base.avgCadence = seed.avgCadence ?? Math.floor(Math.random() * 15) + 170;
-        base.elevationGain = seed.elevationGain ?? Math.floor(Math.random() * 60) + 10;
-        base.intervals = seed.intervals ?? buildMockIntervals();
-      } else if (normalizedType === "strength_training") {
-        const exerciseSets = seed.exerciseSets || [];
-        base.totalSets = seed.totalSets ?? exerciseSets.reduce((sum: number, ex: any) => sum + (ex.sets || 0), 0);
-        base.totalReps = seed.totalReps ?? exerciseSets.reduce((sum: number, ex: any) => sum + (ex.reps || 0), 0);
-        base.exerciseSets = exerciseSets;
-      }
-
-      activities.push(base);
-    }
-
-    return activities;
-  }
-
   const activityTypes = ["strength_training", "running", "other"];
   const activities: any[] = [];
 
@@ -283,14 +179,7 @@ export const generateMockActivities = (limit: number): any[] => {
  * Generate mock workouts for testing
  */
 export const generateMockWorkouts = (limit: number = 4): any[] => {
-  const seededWorkouts = loadLastWorkoutsFromDisk();
-  
-  if (seededWorkouts && seededWorkouts.length > 0) {
-    // Return up to limit workouts from seeded data
-    return seededWorkouts.slice(0, limit);
-  }
-
-  // Fallback: generate basic mock workout structure
+  // A basic mock workout structure
   const mockWorkouts: any[] = [];
   
   for (let i = 0; i < limit; i++) {

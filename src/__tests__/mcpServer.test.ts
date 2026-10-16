@@ -545,18 +545,6 @@ describe("supporting refactors", () => {
       expect(out.activities.every((a: any) => a.activityType === "running")).toBe(true);
       expect(out.totalActivities).toBe(2);
     });
-
-    it("is exactly what the CLI save path writes to disk", async () => {
-      const options = { customWeekStart: "2026-10-05", customWeekEnd: "2026-10-11", typeFilter: "running" };
-      const built = exporter.buildExtractedActivities(raw, options);
-
-      const out = path.join(tmpRoot, "cli-save", "activities.json");
-      await exporter.saveActivitiesToFile(raw, out, false, false, false, options.typeFilter, options.customWeekStart, options.customWeekEnd);
-      const written = JSON.parse(fs.readFileSync(out, "utf-8"));
-
-      expect({ ...written, extractedAt: undefined }).toEqual({ ...JSON.parse(JSON.stringify(built)), extractedAt: undefined });
-      expect(written.totalActivities).toBe(1);
-    });
   });
 
   describe("profile loader overrides", () => {

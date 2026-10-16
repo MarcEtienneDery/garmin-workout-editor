@@ -10,7 +10,6 @@ npm run build          # tsc -> dist/
 npm test               # Jest, single worker (required)
 npx jest src/__tests__/mcpServer.test.ts   # one file
 npx jest -t "name"                         # by test name
-npm run start          # interactive CLI menu (src/cli.ts)
 ```
 
 No linter; TypeScript strict mode is the gate. Run `npx tsc --noEmit` and the relevant tests before committing.
@@ -19,16 +18,15 @@ No linter; TypeScript strict mode is the gate. Run `npx tsc --noEmit` and the re
 
 | Area | Location |
 |---|---|
-| Activity export | `src/exportActivities.ts`, `src/activityExporter.ts` |
+| Activity transform (Garmin activity to the slim planning format) | `src/activityExporter.ts` |
 | Workout management | `src/manageWorkouts.ts`, `src/workoutEditor.ts` |
-| AI-assisted adjustment | `src/adjustWorkouts.ts`, `src/workoutAdjuster.ts` |
 | Garmin client, types, profiles | `src/shared/` (`garminClient.ts`, `types.ts`, `profileLoader.ts`) |
 | MCP server | `src/mcp/` (`createServer.ts`, `tools/garmin.ts`, `tools/plans.ts`) |
 | Garmin activities | stored in the `activities` table of `garmin.db` (`src/shared/store/activities.ts`), filled by `src/shared/activitySync.ts` (list paging, details, lease, background backfill) through `src/mcp/tools/activities.ts`, which also answers `get_activities` from the table. Never write `data/<profile>/activities*.json` documents again |
 | Plan editor web UI | `src/web/` (`server.ts`, `public/index.html`; Monaco served from node_modules). The workout picture (step tree, profile segments, card text, time/distance estimates) is `public/workoutModel.js`, a plain script the page loads and `src/__tests__/workoutModel.test.ts` requires; `index.html` only draws it. Steps that name no pace are timed from `GET /api/runs` (`recentRuns` in `server.ts`: the profile's runs from the `activities` table) through `pacerFrom` in the model. Its Garmin buttons and its Workouts view (library listing, plan-vs-Garmin check, save, delete) call the shared action functions in `src/mcp/tools/garmin.ts`; the comparison itself is `src/shared/workoutSync.ts` + `diffPlanWorkout` in `src/mcp/tools/plans.ts`. Its Calendar view (`GET /api/calendar`, `calendarPlans` in `server.ts`) reads the stored plans only (plan span = `weekStart`/`weekEnd` widened by every `scheduledDate`), so it needs no Garmin profile |
 | Plans and per-profile data (JSON documents) | the store in `src/shared/store/` (SQLite `garmin.db`). Logical paths `workout-plans/<name>.json` and `data/<profile>/<name>.json`; every save keeps the previous version. CLI: `npm run store -- ...` (`src/storeCli.ts`). The token cache and `.env.<profile>` stay plain files |
 
-Data flow is fetch, transform, save. Avoid extending the legacy files `src/types.ts`, `src/garminExtractor.ts` and `src/extractActivities.ts`.
+Data flow for activities: Garmin to the `activities` table (sync), table to the slim format (`buildExtractedActivities`) on read. Nothing is written to local files.
 
 ## Garmin rules
 
@@ -36,7 +34,7 @@ Data flow is fetch, transform, save. Avoid extending the legacy files `src/types
 - Use `normalizeActivityType()` from `src/mocks.setup.ts` for activity types.
 - Weights: activity sets use `maxWeight / 453.6` (grams to lbs); workout steps convert grams to lbs unless the unit is already `pound`.
 - Open-ended steps use `endCondition: "lap.button"` with `endConditionValue: 0`.
-- Keep the `setTimeout` delays in the detail-fetch loops; they are rate limiting.
+- Keep the pause between detail calls (`GARMIN_DETAIL_GAP_MS`, 500 ms by default) in the activity sync and the `setTimeout` delays in the workout detail loops; they are rate limiting.
 
 ## MCP server
 
@@ -50,7 +48,6 @@ Data flow is fetch, transform, save. Avoid extending the legacy files `src/types
 - Web UI changes are not covered by Jest (the page is plain script in `src/web/public/index.html`): run `npm run web` and click through it, ideally also at phone width.
 - Jest runs with `maxWorkers: 1`.
 - Mock `@flow-js/garmin-connect`; use `getMockClient()` / `resetMockClient()` from `src/mocks.setup.ts`.
-- `@github/copilot-sdk` maps to `src/__mocks__/copilot-sdk.ts`.
 
 ## Deployment
 

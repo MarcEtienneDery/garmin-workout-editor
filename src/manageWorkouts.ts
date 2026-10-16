@@ -273,13 +273,7 @@ async function main() {
     // Default: show usage
     console.log("Usage:");
     console.log(
-      "  npm run export-activities -- --transform-only <raw-file>   Transform activities from raw file"
-    );
-    console.log(
       "  npm run manage-workouts -- --transform-only <raw-file>     Transform workouts from raw file"
-    );
-    console.log(
-      "  npm run export-activities -- 20                            Export last 20 activities"
     );
     console.log(
       "  npm run manage-workouts -- --export                        Export all workouts with details"

@@ -9,49 +9,32 @@ jest.mock("@flow-js/garmin-connect", () => ({
 
 import ActivityExporter from "../activityExporter";
 import { GarminClient } from "../shared/garminClient";
-import * as fs from "fs";
-import * as path from "path";
-import * as os from "os";
 import { getMockClient, normalizeActivityType } from "../mocks.setup";
 
+/** The mock activities built into the slim shape, as the exporter's removed command-line path did before it wrote them to a file. */
+const extractData = async (exporter: ActivityExporter, limit: number, options: Parameters<ActivityExporter["buildExtractedActivities"]>[1] = {}) =>
+  exporter.buildExtractedActivities(await exporter.fetchActivities(limit, true), options);
+
 describe("ActivityExporter", () => {
-  let tempDir: string;
   let exporter: ActivityExporter;
   let garminClient: GarminClient;
 
   beforeEach(() => {
-    // Create a temporary directory for test files
-    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "garmin-test-"));
     garminClient = new GarminClient("test@example.com", "password123", true); // mock mode
     exporter = new ActivityExporter(garminClient);
-  });
-
-  afterEach(() => {
-    // Clean up temporary directory
-    if (fs.existsSync(tempDir)) {
-      fs.rmSync(tempDir, { recursive: true });
-    }
   });
 
   describe("Mock Mode", () => {
     it("should generate mock activities successfully", async () => {
       const limit = 10;
-      const outputPath = path.join(tempDir, "activities.json");
+      const data = await extractData(exporter, limit);
 
-      const result = await exporter.extract(limit, outputPath);
-
-      expect(result).toBe(true);
-      expect(fs.existsSync(outputPath)).toBe(true);
+      expect(data.totalActivities).toBe(limit);
     });
 
-    it("should create activities.json with correct structure", async () => {
+    it("should build the activities with the correct structure", async () => {
       const limit = 5;
-      const outputPath = path.join(tempDir, "activities.json");
-
-      await exporter.extract(limit, outputPath);
-
-      const fileContent = fs.readFileSync(outputPath, "utf-8");
-      const data = JSON.parse(fileContent);
+      const data = await extractData(exporter, limit);
 
       expect(data).toHaveProperty("extractedAt");
       expect(data).toHaveProperty("totalActivities");
@@ -62,12 +45,7 @@ describe("ActivityExporter", () => {
     });
 
     it("should create activities with required fields", async () => {
-      const outputPath = path.join(tempDir, "activities.json");
-
-      await exporter.extract(1, outputPath);
-
-      const fileContent = fs.readFileSync(outputPath, "utf-8");
-      const data = JSON.parse(fileContent);
+      const data = await extractData(exporter, 1);
       const activity = data.activities[0];
 
       // Core required fields
@@ -83,12 +61,7 @@ describe("ActivityExporter", () => {
     });
 
     it("should include optional HR metrics", async () => {
-      const outputPath = path.join(tempDir, "activities.json");
-
-      await exporter.extract(1, outputPath);
-
-      const fileContent = fs.readFileSync(outputPath, "utf-8");
-      const data = JSON.parse(fileContent);
+      const data = await extractData(exporter, 1);
       const activity = data.activities[0];
 
       expect(activity).toHaveProperty("avgHR");
@@ -96,12 +69,7 @@ describe("ActivityExporter", () => {
     });
 
     it("should generate valid ISO date strings", async () => {
-      const outputPath = path.join(tempDir, "activities.json");
-
-      await exporter.extract(5, outputPath);
-
-      const fileContent = fs.readFileSync(outputPath, "utf-8");
-      const data = JSON.parse(fileContent);
+      const data = await extractData(exporter, 5);
 
       data.activities.forEach((activity: any) => {
         expect(() => new Date(activity.startTime)).not.toThrow();
@@ -115,69 +83,11 @@ describe("ActivityExporter", () => {
       const testCases = [1, 5, 10, 20, 50];
 
       for (const limit of testCases) {
-        const outputPath = path.join(tempDir, `activities-${limit}.json`);
-        await exporter.extract(limit, outputPath);
-
-        const fileContent = fs.readFileSync(outputPath, "utf-8");
-        const data = JSON.parse(fileContent);
+        const data = await extractData(exporter, limit);
 
         expect(data.totalActivities).toBe(limit);
         expect(data.activities.length).toBe(limit);
       }
-    });
-
-    it("should save to custom path", async () => {
-      const customPath = path.join(
-        tempDir,
-        "custom",
-        "nested",
-        "activities.json"
-      );
-
-      await exporter.extract(5, customPath);
-
-      expect(fs.existsSync(customPath)).toBe(true);
-    });
-
-    it("should create directory if it does not exist", async () => {
-      const nestedPath = path.join(tempDir, "new", "nested", "dir");
-      const outputPath = path.join(nestedPath, "activities.json");
-
-      expect(fs.existsSync(nestedPath)).toBe(false);
-
-      await exporter.extract(1, outputPath);
-
-      expect(fs.existsSync(outputPath)).toBe(true);
-    });
-
-    it("should write valid JSON", async () => {
-      const outputPath = path.join(tempDir, "activities.json");
-
-      await exporter.extract(5, outputPath);
-
-      const fileContent = fs.readFileSync(outputPath, "utf-8");
-      expect(() => JSON.parse(fileContent)).not.toThrow();
-    });
-
-    it("should format JSON with proper indentation", async () => {
-      const outputPath = path.join(tempDir, "activities.json");
-
-      await exporter.extract(1, outputPath);
-
-      const fileContent = fs.readFileSync(outputPath, "utf-8");
-
-      // Check that JSON is pretty-printed (has newlines and indentation)
-      expect(fileContent).toContain("\n");
-      expect(fileContent).toContain("  ");
-    });
-
-    it("should save full raw activities when enabled", async () => {
-      const outputPath = path.join(tempDir, "activities.json");
-
-      await exporter.extract(5, outputPath, true, false, false);
-
-      const rawPath = outputPath.replace(".json", "-raw.json");
-      expect(fs.existsSync(rawPath)).toBe(true);
     });
   });
 
@@ -620,13 +530,7 @@ describe("ActivityExporter", () => {
     });
 
     it("should not filter when filterToLastWeek is false", async () => {
-      const outputPath = path.join(tempDir, "unfiltered.json");
-
-      // Extract without last week filter
-      await exporter.extract(5, outputPath, false, false, false);
-
-      const fileContent = fs.readFileSync(outputPath, "utf-8");
-      const data = JSON.parse(fileContent);
+      const data = await extractData(exporter, 5);
 
       // Should include all 5 activities regardless of date
       expect(data.totalActivities).toBe(5);
@@ -634,16 +538,10 @@ describe("ActivityExporter", () => {
     });
 
     it("should filter when filterToThisWeek is true", async () => {
-      const outputPath = path.join(tempDir, "this-week-filtered.json");
-
       // Mock the getThisWeekDates to control the week range
       jest.useFakeTimers().setSystemTime(new Date("2026-02-08T12:00:00Z")); // Sunday in current week
 
-      // Extract WITH this week filter
-      await exporter.extract(10, outputPath, false, false, false, true);
-
-      const fileContent = fs.readFileSync(outputPath, "utf-8");
-      const data = JSON.parse(fileContent);
+      const data = await extractData(exporter, 10, { filterToThisWeek: true });
 
       // Total activities should be <= 10 (filtered to only this week)
       expect(data.activities.length).toBeLessThanOrEqual(10);
@@ -735,12 +633,7 @@ describe("ActivityExporter", () => {
     });
 
     it("should not conflict when both lastWeekOnly and thisWeekOnly are false", async () => {
-      const outputPath = path.join(tempDir, "no-filter.json");
-
-      await exporter.extract(5, outputPath, false, false, false, false);
-
-      const fileContent = fs.readFileSync(outputPath, "utf-8");
-      const data = JSON.parse(fileContent);
+      const data = await extractData(exporter, 5);
 
       // Should include all 5 activities regardless of week
       expect(data.totalActivities).toBe(5);

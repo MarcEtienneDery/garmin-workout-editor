@@ -1,14 +1,12 @@
 # Garmin Workout Editor
 
-Extract your recent activities from Garmin and update your next week's workout using AI.
+Keep your Garmin activities in a database, edit your workout plans in a web editor or through Claude (MCP), and push them to Garmin.
 
 > **⚠️ Authentication Note:** Direct email/password authentication is currently blocked by Garmin. Use the **session cookie method** instead. See [AUTH_ISSUES.md](AUTH_ISSUES.md) and [GET_SESSION.md](GET_SESSION.md) for solutions.
 
 ## Features
 
-- Extract recent activities from Garmin account
-- Save activities to JSON file
-- Update next week's workout using AI
+- Store your Garmin activities (the whole history, with details) in a database, fetched once
 - Export workouts from Garmin to JSON
 - Generate a temporary next-week workout plan file for manual edits
 - Copy a workout plan to next week (shift dates by 7 days)
@@ -33,10 +31,7 @@ npm install
 GARMIN_SESSION_COOKIE="your_cookie_from_browser"
 ```
 
-3. Run:
-```bash
-npm run extract-activities
-```
+3. Run the plan editor (`npm run web`) or the MCP server (`npm run mcp`); see below.
 
 ### Alternative: Email & Password (If no 2FA)
 
@@ -51,93 +46,15 @@ GARMIN_EMAIL=your_email@example.com
 GARMIN_PASSWORD="your_password"
 ```
 
-3. Run:
-```bash
-npm run extract-activities
-```
+3. Run the plan editor (`npm run web`) or the MCP server (`npm run mcp`); see below.
 
 **Note:** If this fails with "You have been blocked", use the session cookie method instead.
 
-### LLM Model (for AI workout adjustment)
-
-- Default model: `gpt-5.2`
-- Override per run: `npm run adjust-workouts -- --model <model-name>`
-- Override globally: set `COPILOT_MODEL` in `.env`
-- For `--workouts`, prefer a weekly plan file (for example `data/next-week.workouts.tmp.json`).
-- When a large unscheduled library is provided, the adjust flow now auto-selects workouts using `trainingPlan.weeklyStructure` and fails fast if matching confidence is low.
-
-### Revisit Training Plan with AI
-
-Use LLM to review and rewrite your training-plan JSON:
-
-```bash
-npm run adjust-workouts -- --revisit-plan --plan data/training-plan.json
-```
-
-Optional context and notes:
-
-```bash
-npm run adjust-workouts -- --revisit-plan \
-  --plan data/training-plan.json \
-  --activities data/activities.json \
-  --workouts data/next-week.workouts.tmp.json \
-  --review-notes "prioritize 10k goal while preserving strength"
-```
-
-Save to a different file instead of overwriting:
-
-```bash
-npm run adjust-workouts -- --revisit-plan --plan data/training-plan.json --output data/training-plan.revised.json
-```
-
 ## Usage
 
-### Extract Activities (with Real Garmin Account)
+### Activities
 
-Extract your recent Garmin activities and save to JSON:
-
-```bash
-npm run extract-activities
-```
-
-This will create an `activities.json` file with your recent 20 activities from your real Garmin Connect account.
-
-You can specify a custom limit and output path:
-```bash
-npm run extract-activities 30 ./custom/path/activities.json
-```
-
-To save raw activity data for debugging (saves first activity as `-raw.json`):
-```bash
-npm run extract-activities -- --raw
-```
-
-Detailed mode is enabled by default and fetches complete activity details including self evaluation. This is slower (~1 second per activity) to avoid rate limiting.
-
-To disable detailed mode:
-```bash
-npm run extract-activities 10 -- --no-detailed
-```
-
-**Requirements**:
-- `.env` file with `GARMIN_EMAIL` and `GARMIN_PASSWORD`
-- Valid Garmin Connect account credentials
-- No 2-factor authentication enabled (support coming soon)
-
-### Extract Activities (Mock Mode - Testing)
-
-Run extraction with mock data without real credentials:
-
-```bash
-MOCK_MODE=true npm run extract-activities
-```
-
-Or with command-line flag:
-```bash
-npm run extract-activities -- --mock
-```
-
-This generates realistic test data for development and testing purposes.
+Your Garmin activities are stored in the database (see [Storage](#storage)) and read through the MCP tool `get_activities`; there is no file to extract. The first call lists your whole history and a background job fetches every activity's details (about 1 second each, so a long history takes a while; it can be interrupted and resumes). Later calls ask Garmin only for what is new. In mock mode (`MOCK_MODE=true` or `--mock`) `get_activities` returns generated activities and stores nothing.
 
 ## Manage Workouts (Import/Export & Planning)
 
@@ -312,7 +229,7 @@ npm run web          # http://127.0.0.1:8788
 
 ## MCP Server (claude.ai / Claude Desktop)
 
-An MCP server exposes this repo's functionality to Claude, so the model can review last week's activities, edit your plans, validate them, and (after you confirm) upload and schedule workouts on Garmin. Claude does the analysis itself; the Copilot-based `adjust-workouts` flow is not part of the MCP.
+An MCP server exposes this repo's functionality to Claude, so the model can review last week's activities, edit your plans, validate them, and (after you confirm) upload and schedule workouts on Garmin.
 
 ### Tools
 
@@ -392,7 +309,7 @@ MCP_AUTH_TOKEN=$(openssl rand -hex 32) npm run mcp:http -- --mock --port 8787
 npx @modelcontextprotocol/inspector      # then connect to http://127.0.0.1:8787/mcp/<token>
 ```
 
-`--mock` (or `MOCK_MODE=true`) serves mock data and refuses every Garmin write except `dryRun` validation. Use `--profile <name>` or `GARMIN_PROFILE` to choose the default account. `GARMIN_PROFILES_DIR` and `GARMIN_DATA_DIR` relocate the credentials and the data directory (database and token cache); the Docker image sets them to `/config` and `/data`. `GARMIN_STORE_PATH` moves the database (default `<GARMIN_DATA_DIR>/garmin.db`).
+`--mock` (or `MOCK_MODE=true`) serves mock data and refuses every Garmin write except `dryRun` validation. Use `--profile <name>` or `GARMIN_PROFILE` to choose the default account. `GARMIN_PROFILES_DIR` and `GARMIN_DATA_DIR` relocate the credentials and the data directory (database and token cache); the Docker image sets them to `/config` and `/data`. `GARMIN_STORE_PATH` moves the database (default `<GARMIN_DATA_DIR>/garmin.db`). `GARMIN_DETAIL_GAP_MS` sets the pause between two activity-detail calls of the sync (default 500).
 
 ## Testing
 
@@ -426,18 +343,15 @@ Current coverage:
 
 ```
 src/
-├── garminExtractor.ts      # Main Garmin API client with real endpoints
-├── types.ts                # TypeScript interfaces
-├── extractActivities.ts    # CLI entry point
+├── activityExporter.ts     # Garmin activity -> slim planning format
+├── workoutEditor.ts        # Garmin workouts <-> plan files
+├── manageWorkouts.ts       # Command-line workout management
+├── mocks.setup.ts          # Mock Garmin data for mock mode and tests
 ├── index.ts                # Main export
+├── shared/                 # Garmin client, profiles, the SQLite store, the activity sync
+├── mcp/                    # MCP server and its tools
+├── web/                    # Plan editor (server and page)
 └── __tests__/
-    ├── garminExtractor.test.ts          # Unit tests
-    ├── garminExtractor.integration.test.ts  # Integration tests
-    └── types.test.ts                    # Type tests
-data/
-└── activities.json         # Extracted activities (generated)
-docs/
-└── GARMIN_API.md          # Detailed API documentation
 ```
 
 ## Real Garmin API Endpoints
@@ -484,7 +398,7 @@ Each extracted activity includes comprehensive data organized into categories:
 - `maxHR`: Maximum heart rate (bpm)
 - `minHR`: Minimum heart rate (bpm)
 
-### Self Evaluation (requires --detailed flag)
+### Self Evaluation (in the activity's details)
 - `directWorkoutFeel`: How fresh you felt (1-100; 100=perfect, 50=avg, 1=very tired)
 - `directWorkoutRpe`: How hard the workout was (1-100; 100=super hard, 50=avg/good target, 1=too easy)
 
