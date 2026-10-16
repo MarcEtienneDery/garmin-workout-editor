@@ -219,7 +219,9 @@
   #agrid { border-right:1px solid var(--line); border-bottom:1px solid var(--line); }
   .cwtot { grid-column:8; grid-row:1 / -1; padding:4px 6px; font-size:11px; line-height:1.35; color:var(--dim); border-left:1px solid var(--line); border-top:1px solid var(--line); overflow:hidden; }
   .cwtot b { display:block; color:var(--fg); font-weight:600; }
-  .cbar.act.ok::after { content:" ✓"; }
+  /* an activity that answers a planned workout: a tick before the name, and a white frame that survives the phone's thin bars */
+  .cbar.act.ok { box-shadow:inset 0 0 0 2px rgba(255,255,255,.85); }
+  .cbar.act.ok::before { content:"✓ "; }
   .cbar.act.sel { outline:2px solid #fff; outline-offset:-2px; }
   .cbar.more { background:transparent; border-color:transparent; color:var(--dim); cursor:pointer; }
   .cbar.plan { background:transparent; border:1px dashed var(--c); color:var(--fg); cursor:pointer; }
@@ -227,7 +229,7 @@
   #aDay { padding:6px 0 24px; }
   #aDay h3 { margin:8px 12px 4px; font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--dim); }
   .aplan { display:flex; gap:8px; padding:5px 12px; color:var(--dim); }
-  .aplan.missed b { color:var(--err); } .aplan.today b { color:var(--warn); }
+  .aplan.missed b { color:var(--err); } .aplan.today b { color:var(--warn); } .aplan.done b { color:var(--ok); }
   .astats { display:grid; grid-template-columns:repeat(auto-fill,minmax(112px,1fr)); gap:10px 14px; margin:12px 0; }
   .astats b { display:block; font-size:17px; font-weight:400; }
   .astats small { color:var(--dim); font-size:11px; }
@@ -2154,13 +2156,13 @@ function renderActivityDay() {
   const rows = visibleActivities().filter((r) => r.date === A.day).sort((a, b) => (a.time || "").localeCompare(b.time || ""));
   for (const r of rows) box.append(activityRowEl(r));
   const today = todayIso();
-  const open = A.showPlanned && A.plans ? AM.planned(A.plans, A.rows, today, { from: A.day, to: A.day }).filter((s) => s.status !== "done") : [];
-  for (const s of open) {
+  const planned = A.showPlanned && A.plans ? AM.planned(A.plans, A.rows, today, { from: A.day, to: A.day }) : [];
+  for (const s of planned) {
     const line = mk("div", "aplan " + s.status);
-    line.append(mk("b", "", s.name), mk("span", "", s.status === "missed" ? "planned, not done" : s.status === "today" ? "planned for today" : "planned"));
+    line.append(mk("b", "", (s.status === "done" ? "✓ " : "") + s.name), mk("span", "", s.status === "done" ? "planned, done" : s.status === "missed" ? "planned, not done" : s.status === "today" ? "planned for today" : "planned"));
     box.append(line);
   }
-  if (!rows.length && !open.length) box.append(mk("div", "empty", "Nothing on this day."));
+  if (!rows.length && !planned.length) box.append(mk("div", "empty", "Nothing on this day."));
 }
 
 async function loadPlannedPlans() {

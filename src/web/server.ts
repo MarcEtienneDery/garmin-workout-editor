@@ -524,11 +524,12 @@ let slimmer: ActivityExporter | undefined;
 /** One activity with everything stored: its row, the slim form (sets, intervals, feel and RPE), and the plan workout it came from. */
 function activityDetail(profile: string, a: StoredActivity) {
   slimmer ??= new ActivityExporter(null as never); // the transform needs no Garmin client
-  const raw = a.raw ?? {};
+  const raw = a.raw ?? {}, summary = a.detail?.summaryDTO ?? {}; // what the list lacks, the details may carry
   const row = activityRow({
     id: a.id, startLocal: a.startLocal, type: a.type, name: a.name, distance: a.distance, duration: a.duration, avgHr: a.avgHr,
-    maxHr: raw.maxHR ?? null, speed: raw.averageSpeed ?? null, trainingEffectLabel: raw.trainingEffectLabel ?? null, aerobicEffect: raw.aerobicTrainingEffect ?? null,
-    elevationGain: raw.elevationGain ?? null, calories: raw.calories ?? null, sets: raw.totalSets ?? null, reps: raw.totalReps ?? null, workoutId: a.workoutId, detailed: a.detail !== null,
+    maxHr: raw.maxHR ?? summary.maxHR ?? null, speed: raw.averageSpeed ?? summary.averageSpeed ?? null, trainingEffectLabel: raw.trainingEffectLabel ?? summary.trainingEffectLabel ?? null,
+    aerobicEffect: raw.aerobicTrainingEffect ?? null, elevationGain: raw.elevationGain ?? null, calories: raw.calories ?? summary.calories ?? null,
+    sets: raw.totalSets ?? null, reps: raw.totalReps ?? null, workoutId: a.workoutId, detailed: a.detail !== null,
   });
   const entry = hasId(a.workoutId) ? planEntriesFor(profile).find((e) => sameId(e.workout.workoutId, a.workoutId)) : undefined;
   return {

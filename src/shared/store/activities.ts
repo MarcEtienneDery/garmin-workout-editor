@@ -170,9 +170,21 @@ export class ActivityTable {
     return found;
   }
 
-  /** Keep an activity's details (and when they were fetched), clearing any failures. */
+  /**
+   * Keep an activity's details (and when they were fetched), clearing any failures. A list item may lack the workout
+   * the activity came from; the details carry it as metadataDTO.associatedWorkoutId, so the column is filled from there.
+   */
   setDetail(profile: string, id: string, detail: unknown, now = Date.now()): void {
-    this.tx(() => this.db.prepare("UPDATE activities SET detail = ?, detail_at = ?, detail_failed = 0 WHERE profile = ? AND id = ?").run(JSON.stringify(detail), now, profile, id));
+    const text = JSON.stringify(detail);
+    this.tx(() =>
+      this.db
+        .prepare(
+          `UPDATE activities SET detail = ?, detail_at = ?, detail_failed = 0,
+             workout_id = COALESCE(workout_id, CAST(json_extract(?, '$.metadataDTO.associatedWorkoutId') AS TEXT), CAST(json_extract(?, '$.workoutId') AS TEXT))
+           WHERE profile = ? AND id = ?`
+        )
+        .run(text, now, text, text, profile, id)
+    );
   }
 
   /** The details of this activity could not be fetched; after MAX_DETAIL_FAILURES it is no longer tried. */
@@ -221,9 +233,11 @@ export class ActivityTable {
     return this.db
       .prepare(
         `SELECT id, start_local, type, name, distance, duration, avg_hr, workout_id, detail IS NOT NULL AS detailed,
-                json_extract(raw, '$.maxHR') AS max_hr, json_extract(raw, '$.averageSpeed') AS speed,
-                json_extract(raw, '$.trainingEffectLabel') AS label, json_extract(raw, '$.aerobicTrainingEffect') AS aerobic,
-                json_extract(raw, '$.elevationGain') AS elevation, json_extract(raw, '$.calories') AS calories,
+                COALESCE(json_extract(raw, '$.maxHR'), json_extract(detail, '$.summaryDTO.maxHR')) AS max_hr,
+                COALESCE(json_extract(raw, '$.averageSpeed'), json_extract(detail, '$.summaryDTO.averageSpeed')) AS speed,
+                COALESCE(json_extract(raw, '$.trainingEffectLabel'), json_extract(detail, '$.summaryDTO.trainingEffectLabel')) AS label,
+                json_extract(raw, '$.aerobicTrainingEffect') AS aerobic, json_extract(raw, '$.elevationGain') AS elevation,
+                COALESCE(json_extract(raw, '$.calories'), json_extract(detail, '$.summaryDTO.calories')) AS calories,
                 json_extract(raw, '$.totalSets') AS sets, json_extract(raw, '$.totalReps') AS reps
          FROM activities WHERE profile = ? ORDER BY start_gmt DESC LIMIT ?`
       )

@@ -72,6 +72,23 @@ describe("activities table", () => {
     expect(stored.raw).toEqual(item);
   });
 
+  it("fills what a list item lacks from the details: the workout it came from, and the summary fields", () => {
+    const bare = listItem(1, { workoutId: undefined, maxHR: undefined, averageSpeed: undefined, calories: undefined, trainingEffectLabel: undefined });
+    store.activities.insertNew(PROFILE, [toNewActivity(bare)!]);
+    expect(store.activities.get(PROFILE, "1001")!.workoutId).toBeNull();
+    expect(store.activities.summaries(PROFILE)[0]).toEqual(expect.objectContaining({ workoutId: null, maxHr: null, speed: null, calories: null, trainingEffectLabel: null, detailed: false }));
+
+    store.activities.setDetail(PROFILE, "1001", { metadataDTO: { associatedWorkoutId: 1572415008 }, summaryDTO: { maxHR: 171, averageSpeed: 3.2, calories: 640, trainingEffectLabel: "TEMPO" } });
+    expect(store.activities.get(PROFILE, "1001")!.workoutId).toBe("1572415008");
+    expect(store.activities.summaries(PROFILE)[0]).toEqual(expect.objectContaining({ workoutId: "1572415008", maxHr: 171, speed: 3.2, calories: 640, trainingEffectLabel: "TEMPO", detailed: true }));
+  });
+
+  it("keeps the workout the list item named, whatever the details say", () => {
+    store.activities.insertNew(PROFILE, [toNewActivity(listItem(2, { workoutId: 55 }))!]);
+    store.activities.setDetail(PROFILE, "1002", { metadataDTO: { associatedWorkoutId: 99 } });
+    expect(store.activities.get(PROFILE, "1002")!.workoutId).toBe("55");
+  });
+
   it("builds a row from a list item and refuses one with no id or no start", () => {
     expect(toNewActivity(listItem(2))).toEqual(expect.objectContaining({ id: "1002", type: "strength_training", startLocal: expect.any(String) }));
     expect(toNewActivity({ ...listItem(3), workoutId: 77 })!.workoutId).toBe("77");
