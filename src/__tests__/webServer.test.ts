@@ -615,6 +615,9 @@ describe("web plan editor", () => {
 
       it("serves the page without a login, but not the API, and reports who is signed in", async () => {
         expect((await fetch(base + "/")).status).toBe(200);
+        const model = await fetch(base + "/workoutModel.js"); // the page's own script: the sign-in form needs the page to load
+        expect(model.status).toBe(200);
+        expect(model.headers.get("content-type")).toMatch(/javascript/);
         expect((await call("GET", "/api/files")).status).toBe(401);
         expect(await session()).toEqual({ authRequired: true, user: null });
       });

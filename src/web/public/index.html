@@ -130,12 +130,55 @@
   #wbody .banner.ok { border-left-color:var(--ok); } #wbody .banner.warn { border-left-color:var(--warn); } #wbody .banner.err { border-left-color:var(--err); }
   #wbody .banner ul { margin:4px 0 0; padding-left:18px; color:var(--dim); }
   #wbody .banner .btns { display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; }
-  .steps { margin:0; padding-left:0; list-style:none; }
-  .steps li { padding:3px 0; border-bottom:1px solid #2a2a2a; }
-  .steps li small { color:var(--dim); margin-left:6px; }
-  .steps .group { border:1px solid var(--line); border-radius:3px; margin:4px 0; padding:3px 8px 3px 10px; }
-  .steps .group > b { color:var(--warn); font-weight:600; }
-  .steps .group .steps { padding-left:0; }
+  /* ── Workout visual: a profile bar and one card per step. It sizes to its box, not the window: the same picture sits in the 300px outline and the wide Workouts pane ── */
+  :root { --k-warmup:#e0393c; --k-work:#1f78d1; --k-recovery:#9a9a9a; --k-rest:#6e6e6e; --k-cooldown:#22a24a; --k-other:#8e6bd1; }
+  .k-warmup { --c:var(--k-warmup); } .k-work { --c:var(--k-work); } .k-recovery { --c:var(--k-recovery); }
+  .k-rest { --c:var(--k-rest); } .k-cooldown { --c:var(--k-cooldown); } .k-other { --c:var(--k-other); }
+  .wvbox { container-type:inline-size; min-width:0; }
+  .wv { display:grid; gap:12px; grid-template-columns:minmax(0,1fr); grid-template-areas:"sum" "chart" "steps"; }
+  .wv-sum { grid-area:sum; display:flex; flex-wrap:wrap; gap:6px 20px; align-items:flex-start; }
+  .wv-stat b { display:block; font-size:20px; font-weight:400; line-height:1.2; }
+  .wv-stat small { color:var(--dim); font-size:11px; }
+  .wv-notes { flex-basis:100%; color:var(--dim); white-space:pre-wrap; overflow-wrap:anywhere; }
+  .wv-chart { grid-area:chart; display:flex; align-items:flex-end; gap:1px; height:88px; border-bottom:1px solid var(--line); }
+  .wv-chart.mini { height:18px; margin:2px 0; border-bottom:0; }
+  .wv-seg { flex:1 1 0; min-width:3px; height:calc(var(--h) * 100%); background:var(--c); border-radius:2px 2px 0 0; transition:opacity .1s; }
+  .wv-seg.k-rest { opacity:.55; }
+  .wv-seg.open { background-image:repeating-linear-gradient(135deg, rgba(255,255,255,.4) 0 3px, transparent 3px 7px); }
+  .wv-seg.changed { box-shadow:0 -3px 0 var(--warn); }
+  .wv.focus .wv-seg:not(.hl) { opacity:.3; }
+  .wv-seg.hl { filter:brightness(1.3); }
+  .wv-steps { grid-area:steps; margin:0; padding:0; list-style:none; display:grid; gap:8px; min-width:0; }
+  .wv-card { border:1px solid var(--line); border-left:4px solid var(--c); border-radius:4px; background:var(--panel); min-width:0; }
+  .wv-card:focus-visible, .wv-card.hl { outline:2px solid var(--accent); outline-offset:1px; }
+  .wv-card.changed { border-color:var(--warn); border-left-color:var(--c); background:#2f2b1f; }
+  .wv-ch { display:flex; flex-wrap:wrap; align-items:baseline; gap:2px 8px; padding:6px 10px; background:rgba(255,255,255,.04); }
+  .wv-title { font-weight:600; overflow-wrap:anywhere; }
+  .wv-ch small { color:var(--dim); }
+  .wv-ch .wv-tag { margin-left:auto; font-size:11px; color:var(--warn); }
+  .wv-metrics { display:flex; flex-wrap:wrap; gap:6px 24px; padding:8px 10px 9px; }
+  .wv-metrics b { display:block; font-weight:400; font-size:15px; }
+  .wv-metrics small { color:var(--dim); font-size:11px; }
+  .wv-sets { margin:0; padding:2px 10px 6px; list-style:none; }
+  .wv-sets li { display:flex; flex-wrap:wrap; gap:0 14px; padding:3px 0; border-bottom:1px solid #2a2a2a; }
+  .wv-sets li:last-child { border-bottom:0; }
+  .wv-sets .n { min-width:2.2em; color:var(--dim); }
+  .wv-sets .r { color:var(--dim); margin-left:auto; }
+  .wv-sets li.changed { color:var(--warn); }
+  .wv-group { list-style:none; border:1px solid var(--line); border-radius:4px; background:rgba(255,255,255,.025); padding:0 8px 8px; }
+  .wv-gh { padding:7px 2px; font-weight:600; color:var(--warn); }
+  .wv-empty { grid-area:steps; color:var(--dim); }
+  @container (min-width:560px) {
+    .wv { grid-template-columns:minmax(0,1fr) 200px; grid-template-areas:"chart sum" "steps sum"; align-items:start; }
+    .wv-sum { flex-direction:column; gap:14px; }
+    .wv-stat b { font-size:24px; }
+    .wv-chart { height:112px; }
+  }
+  .wv-actions { display:flex; gap:6px; flex-wrap:wrap; margin-top:10px; }
+  .wv-host { padding:4px 0 8px; }
+  .wv-note { color:var(--dim); margin:0 0 8px; }
+  .row.wk .name::before { content:"▸ "; color:var(--dim); } .row.wk .name[aria-expanded="true"]::before { content:"▾ "; }
+  .row.wk > .wv-chart.mini { flex:none; }
   .plans a { color:var(--accent); cursor:pointer; text-decoration:none; } .plans a:hover { text-decoration:underline; }
   .plans div { padding:2px 0; }
   details.plan-version { margin-top:10px; } details.plan-version summary { cursor:pointer; color:var(--dim); }
@@ -462,6 +505,7 @@
   <div class="dfoot"><span class="spacer"></span><button id="hdlgClose">Close</button></div>
 </dialog>
 
+<script src="/workoutModel.js"></script>
 <script src="/vendor/monaco/loader.js"></script>
 <script>
 const $ = (id) => document.getElementById(id);
@@ -1072,14 +1116,20 @@ function revealWorkout(w) {
   if (m.length) { editor.revealLineInCenter(m[0].range.startLineNumber); editor.setPosition(m[0].range.getStartPosition()); editor.focus(); }
 }
 
+// Which workouts of the open plan show their picture. Kept here because renderOutline starts from scratch on every edit and every sync result.
+const outlineOpen = { path: null, names: new Set() };
+
 function renderOutline() {
   const el = $("outline"); el.innerHTML = "";
   const list = workoutsOf(parsed());
   renderSyncBar(current && list);
+  if (outlineOpen.path !== (current && current.path)) { outlineOpen.path = current && current.path; outlineOpen.names.clear(); }
   if (!current || !list) { el.innerHTML = `<div class="empty">${current ? "Not a workout plan." : "Open a plan."}</div>`; return; }
   list.forEach((w, i) => {
     const row = document.createElement("div"); row.className = "row wk";
     const date = Array.isArray(w?.scheduledDate) ? w.scheduledDate.join(", ") : w?.scheduledDate || "";
+    const label = w?.workoutName ?? "(unnamed)", open = outlineOpen.names.has(label);
+    row.dataset.name = label;
     // the name has a line to itself; the counts and the buttons share the one below
     row.innerHTML = `<div class="wtop"><span class="name"></span></div><div class="wbot"><small></small><span class="wact"></span></div>`;
     const top = row.firstChild, name = top.firstChild, small = row.querySelector("small"), acts = row.querySelector(".wact");
@@ -1088,10 +1138,11 @@ function renderOutline() {
       b.className = cls; b.innerHTML = ICONS[icon]; b.title = title; b.setAttribute("aria-label", title); b.disabled = !enabled; b.onclick = onclick;
       acts.append(b);
     };
-    name.textContent = w?.workoutName ?? "(unnamed)";
+    name.textContent = label;
     small.textContent = [w?.steps ? w.steps.length + " steps" : "", date, garmin.enabled ? "" : w?.workoutId ? "↑" : ""].filter(Boolean).join(" ");
+    const st = garmin.enabled ? syncOf(i, w) : null;
     if (garmin.enabled) {
-      const st = syncOf(i, w), [glyph, cls, tip] = st ? SYNC_CHIPS[st.state] : ["…", "", "Checking against Garmin"];
+      const [glyph, cls, tip] = st ? SYNC_CHIPS[st.state] : ["…", "", "Checking against Garmin"];
       const chip = document.createElement(st && st.differences.length ? "button" : "span");
       chip.className = "chip " + cls; chip.textContent = glyph; chip.title = [tip, ...(st?.differences || [])].join("\n");
       if (chip.tagName === "BUTTON") chip.onclick = () => {
@@ -1100,9 +1151,11 @@ function renderOutline() {
       };
       top.prepend(chip);
     }
-    name.onclick = () => revealWorkout(w);
+    // the name opens the workout's picture; the JSON is one button away
+    name.setAttribute("aria-expanded", String(open));
+    clickable(name, () => { if (open) outlineOpen.names.delete(label); else outlineOpen.names.add(label); renderOutline(); });
     if (garmin.enabled) {
-      const state = syncOf(i, w)?.state;
+      const state = st?.state;
       const up = ["modified", "not-uploaded", "missing"].includes(state);
       addButton("upload", up ? "Upload this workout to Garmin" : `Upload: ${state === "synced" ? "already up to date" : "still checking"}`, up && !garminBusy, guard(() => planRowGarmin(i, "upload", state)));
       addButton("download", state === "modified" ? "Download Garmin's version into this workout" : `Download: ${state === "synced" ? "already up to date" : "not on Garmin"}`, state === "modified" && !garminBusy, guard(() => planRowGarmin(i, "download", state)));
@@ -1111,6 +1164,18 @@ function renderOutline() {
     addButton("delete", "Remove from the plan", true, guard(async () => {
       if (await confirmDialog({ title: `Remove "${w?.workoutName}"?`, text: "It leaves the plan; a copy on Garmin, if any, is not touched.", ok: "Remove", danger: true })) mutate((l) => l.splice(i, 1));
     }), "ico danger");
+    if (open) {
+      const host = mk("div", "wv-host");
+      const flagged = st && st.differences.length && st.state === "modified" ? WM.changedSteps(st.differences) : new Set();
+      if (flagged.size) host.append(mk("p", "wv-note", "Steps marked “differs” are not the same on Garmin."));
+      host.append(workoutVisual(w, { changed: flagged }));
+      const edit = mk("button", "", "Edit in JSON"), actions = mk("div", "wv-actions");
+      edit.onclick = () => revealWorkout(w);
+      actions.append(edit); host.append(actions);
+      row.append(host);
+    } else if (Array.isArray(w?.steps) && w.steps.length) {
+      row.insertBefore(profileEl(WM.analyze(w), { mini: true }), row.lastChild);
+    }
     el.append(row);
   });
   const add = document.createElement("div"); add.className = "row";
@@ -1274,42 +1339,119 @@ async function selectRow(key, show = true) {
   renderDetail();
 }
 
-function fmtDuration(s) { const m = Math.floor(s / 60), r = s % 60; return m ? (r ? `${m} min ${r} s` : `${m} min`) : `${s} s`; }
+// ── Workout visual ──
+// WorkoutModel (workoutModel.js) works out the tree, the profile and the text; this draws it.
+// workoutVisual(w, { changed }) is the whole picture: totals, the profile bar, one card per step.
+// `changed` is the set of step positions to flag as differing from the other copy of the workout.
+const WM = WorkoutModel;
 
-function stepSummary(st) {
-  const bits = [];
-  const v = st.endConditionValue;
-  if (st.endCondition === "reps") bits.push(`${v} reps`);
-  else if (st.endCondition === "time") bits.push(fmtDuration(v));
-  else if (st.endCondition === "distance") bits.push(v >= 1000 ? `${+(v / 1000).toFixed(2)} km` : `${v} m`);
-  else if (st.endCondition === "lap.button") bits.push("until lap button");
-  else if (st.endCondition) bits.push(`${st.endCondition} ${v ?? ""}`.trim());
-  if (st.weight) bits.push(`@ ${st.weight} lb`);
-  if (st.weightPercentage) bits.push(`@ ${st.weightPercentage}% of ${prettyName(st.benchmarkKey || "1RM")}`);
-  if (st.targetType && st.targetType !== "no.target") bits.push(`${st.targetType.replace(/\.zone$/, "")} ${st.targetValueOne ?? ""}${st.targetValueTwo ? "–" + st.targetValueTwo : ""}`.trim());
-  if (st.restTimeSeconds) bits.push(`rest ${fmtDuration(st.restTimeSeconds)}`);
-  return bits.join(" · ");
+function mk(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text !== undefined) e.textContent = text;
+  return e;
 }
 
-function stepsEl(steps) {
-  const ol = document.createElement("ol"); ol.className = "steps";
-  const item = (st) => {
-    const li = document.createElement("li");
-    li.append(st.exerciseName ? prettyName(st.exerciseName) : prettyName(st.stepType));
-    const small = document.createElement("small"); small.textContent = stepSummary(st); li.append(small);
+function profileEl(a, { mini = false, changed = new Set() } = {}) {
+  const chart = mk("div", "wv-chart" + (mini ? " mini" : ""));
+  const total = a.segments.reduce((t, s) => t + s.weight, 0) || 1;
+  chart.setAttribute("role", "img");
+  chart.setAttribute("aria-label", `Workout profile: ${a.steps} steps${a.seconds ? ", about " + WM.duration(a.seconds) : ""}${a.meters ? ", " + WM.distance(a.meters) : ""}`);
+  for (const s of a.segments) {
+    const seg = mk("span", `wv-seg k-${s.kind}` + (s.open ? " open" : "") + (changed.has(s.index) ? " changed" : ""));
+    seg.style.flexGrow = (s.weight / total) * 100; seg.style.setProperty("--h", s.height); seg.dataset.k = s.key;
+    if (!mini) seg.title = s.text;
+    chart.append(seg);
+  }
+  return chart;
+}
+
+function summaryEl(w, a) {
+  const box = mk("div", "wv-sum"), approx = a.assumed || a.open ? "~" : "";
+  const why = [`Estimated: a distance with no pace target counts at ${WM.pace(1000 / WM.ASSUMED_PACE)} /km`, `each rep counts ${WM.SECONDS_PER_REP} s`, a.open ? `${a.open} step${a.open > 1 ? "s" : ""} ending on the lap button ${a.open > 1 ? "are" : "is"} not counted` : ""].filter(Boolean).join("; ");
+  const stat = (value, label, title) => { const d = mk("div", "wv-stat"); d.append(mk("b", "", value), mk("small", "", label)); if (title) d.title = title; box.append(d); };
+  if (a.seconds) stat(approx + WM.duration(a.seconds), "Est. time", approx ? why : "");
+  if (a.meters) stat(approx + WM.distance(a.meters), "Est. distance", approx ? why : "");
+  if (a.sets) stat(String(a.sets), `sets · ${a.exercises} exercise${a.exercises === 1 ? "" : "s"}`);
+  else if (a.steps) stat(String(a.steps), a.steps === 1 ? "step" : "steps");
+  const dates = [].concat((w && w.scheduledDate) || []);
+  if (dates.length) stat(dates.join(", "), "Scheduled");
+  if (w && w.description) box.append(mk("div", "wv-notes", w.description));
+  return box;
+}
+
+function cardEl(node, w, changed) {
+  const li = mk("li", "wv-card");
+  li.dataset.k = node.key; li.tabIndex = 0;
+  if (node.kind === "sets") {
+    const total = node.lines.reduce((t, l) => t + l.times, 0);
+    li.classList.add("k-work");
+    const head = mk("div", "wv-ch"), list = mk("ul", "wv-sets");
+    head.append(mk("span", "wv-title", WM.prettyName(node.name)), mk("small", "", `${total} set${total === 1 ? "" : "s"}`));
+    for (const line of node.lines) {
+      const d = WM.describeSet(line.st, line.times), row = mk("li", changed.has(line.index) ? "changed" : "");
+      row.append(mk("span", "n", line.times > 1 ? `${line.times} ×` : ""), mk("b", "", `${d.reps} reps`));
+      if (d.load) row.append(mk("span", "", d.load));
+      if (d.rest) row.append(mk("span", "r", `rest ${d.rest}`));
+      list.append(row);
+    }
+    if (node.lines.some((l) => changed.has(l.index))) { li.classList.add("changed"); head.append(mk("span", "wv-tag", "differs")); }
+    li.append(head, list);
     return li;
-  };
-  for (let i = 0; i < steps.length; i++) {
-    const st = steps[i];
-    if (st.numberOfRepeats > 1 && st.repeatGroupIndex !== undefined) {
-      const g = document.createElement("li"); g.className = "group";
-      const head = document.createElement("b"); head.textContent = `Repeat ×${st.numberOfRepeats}`; g.append(head);
-      const inner = document.createElement("ol"); inner.className = "steps";
-      while (i < steps.length && steps[i].repeatGroupIndex === st.repeatGroupIndex) inner.append(item(steps[i++]));
-      i--; g.append(inner); ol.append(g);
-    } else ol.append(item(st));
+  }
+  const d = WM.describeStep(node.st, w);
+  li.classList.add("k-" + d.kind);
+  const head = mk("div", "wv-ch"), metrics = mk("div", "wv-metrics");
+  head.append(mk("span", "wv-title", d.title));
+  if (d.subtitle) head.append(mk("small", "", d.subtitle));
+  if (changed.has(node.index)) { li.classList.add("changed"); head.append(mk("span", "wv-tag", "differs")); }
+  for (const m of d.metrics) { const x = mk("div"); x.append(mk("b", "", m.value), mk("small", "", m.label)); metrics.append(x); }
+  li.append(head);
+  if (d.metrics.length) li.append(metrics);
+  return li;
+}
+
+function stepListEl(nodes, w, changed) {
+  const ol = mk("ol", "wv-steps");
+  for (const n of nodes) {
+    if (n.kind !== "group") { ol.append(cardEl(n, w, changed)); continue; }
+    const g = mk("li", "wv-group");
+    g.append(mk("div", "wv-gh", `⟳ ${WM.isSuperset(n) ? `Superset · ${n.times} rounds` : `${n.times} times`}`), stepListEl(n.children, w, changed));
+    ol.append(g);
   }
   return ol;
+}
+
+/** Hovering (or tapping) a bar or a card lights up its counterpart and dims the rest. */
+function linkVisual(root) {
+  let pinned = null;
+  const light = (k) => {
+    root.classList.toggle("focus", k != null);
+    root.querySelectorAll(".hl").forEach((e) => e.classList.remove("hl"));
+    if (k != null) root.querySelectorAll(`[data-k="${k}"]`).forEach((e) => e.classList.add("hl"));
+  };
+  const keyOf = (e) => { const t = e.target.closest && e.target.closest("[data-k]"); return t ? t.dataset.k : null; };
+  root.addEventListener("pointerover", (e) => { if (e.pointerType === "mouse" && pinned === null) light(keyOf(e)); });
+  root.addEventListener("pointerleave", (e) => { if (e.pointerType === "mouse" && pinned === null) light(null); });
+  root.addEventListener("focusin", (e) => light(keyOf(e)));
+  root.addEventListener("focusout", () => { if (pinned === null) light(null); });
+  root.addEventListener("click", (e) => {
+    if (e.pointerType === "mouse") return;
+    const k = keyOf(e);
+    pinned = k === pinned ? null : k;
+    light(pinned);
+    if (pinned !== null && e.target.classList.contains("wv-seg")) root.querySelector(`.wv-card[data-k="${pinned}"]`)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  });
+}
+
+function workoutVisual(w, { changed = new Set() } = {}) {
+  const a = WM.analyze(w), box = mk("div", "wvbox"), root = mk("div", "wv");
+  root.append(summaryEl(w, a));
+  if (a.hasSteps) root.append(profileEl(a, { changed }), stepListEl(a.tree, w, changed));
+  else root.append(mk("div", "wv-empty", w && w.distanceMeters ? "No steps: Garmin builds its own for a distance-only run." : "No steps."));
+  linkVisual(root);
+  box.append(root);
+  return box;
 }
 
 function section(title, ...children) {
@@ -1325,7 +1467,7 @@ function renderDetail() {
   const add = (...nodes) => nodes.flat().forEach((n) => n && box.append(n));
   const text = (tag, cls, t) => { const e = document.createElement(tag); if (cls) e.className = cls; e.textContent = t; return e; };
 
-  add(text("div", "meta", [w.workoutType, d.garmin ? `Garmin id ${d.garmin.workoutId}` : "", w.description].filter(Boolean).join(" · ")));
+  add(text("div", "meta", [w.workoutType, d.garmin ? `Garmin id ${d.garmin.workoutId}` : ""].filter(Boolean).join(" · ")));
 
   // Status against the plan
   const banner = document.createElement("div");
@@ -1348,12 +1490,20 @@ function renderDetail() {
   }
   add(banner);
 
-  add(section(d.garmin ? "Steps on Garmin" : "Steps in the plan", w.steps && w.steps.length ? stepsEl(w.steps) : text("div", "meta", w.distanceMeters ? `${w.distanceMeters / 1000} km, no steps` : "No steps")));
-  if (d.garmin && differing.length && differing[0].workout.steps) {
-    const det = document.createElement("details"); det.className = "plan-version";
-    det.append(text("summary", "", `Steps in ${planName(differing[0].path)}`), stepsEl(differing[0].workout.steps));
-    add(det);
-  }
+  // The picture: Garmin's copy, or the plan's when Garmin has none. Where the two differ, a switch shows either, with the steps that differ flagged.
+  const flagged = differing.length ? WM.changedSteps(differing[0].differences) : new Set();
+  const versions = d.garmin
+    ? [{ label: "Garmin", w: d.garmin }, ...(differing.length ? [{ label: `Plan: ${planName(differing[0].path)}`, w: differing[0].workout }] : [])]
+    : [{ label: "Plan", w: w }];
+  const host = mk("div", "wv-host"), switcher = mk("div", "seg");
+  const show = (i) => {
+    [...switcher.children].forEach((b, j) => b.setAttribute("aria-pressed", String(i === j)));
+    host.replaceChildren(workoutVisual(versions[i].w, { changed: flagged }));
+  };
+  versions.forEach((v, i) => { const b = mk("button", "", v.label); b.onclick = () => show(i); switcher.append(b); });
+  add(section(versions.length > 1 ? "Workout" : d.garmin ? "Workout on Garmin" : "Workout in the plan", ...(versions.length > 1 ? [switcher, mk("p", "wv-note", "Steps marked “differs” are not the same in the other copy.")] : [])));
+  add(host);
+  show(0);
 
   if (d.plans.length) {
     const list = document.createElement("div"); list.className = "plans";
@@ -1366,10 +1516,13 @@ function renderDetail() {
   }
 }
 
+/** Open a plan on its outline with this workout's picture showing: where the Calendar and the Workouts view send you. */
 async function openPlanWorkout(path, w) {
   setView("plans");
   if (!current || current.path !== path) await openFile(path);
-  setTab("editor"); revealWorkout(w);
+  outlineOpen.path = path; outlineOpen.names.add(w.workoutName);
+  setTab("outline"); renderOutline();
+  [...$("outline").children].find((r) => r.dataset.name === w.workoutName)?.scrollIntoView({ block: "nearest" });
 }
 
 // ── Row buttons: upload, download, clone, delete ──
