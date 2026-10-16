@@ -1,19 +1,20 @@
 import * as fs from "fs";
 import * as path from "path";
+import { ACTIVITY_SCHEMA, ActivityTable } from "./activities";
 import { profileOfPath, summarizeText } from "./paths";
 import { StoreError, type DocMeta, type PutOptions, type RevisionMeta, type StoredDoc } from "./types";
 
 // node:sqlite ships with Node (22.13+), so the image needs no native module. @types/node 20 has no
 // typings for it, hence the small interfaces below and the typed require in open().
-interface Row {
+export interface Row {
   [column: string]: any;
 }
-interface Statement {
+export interface Statement {
   run(...params: unknown[]): unknown;
   get(...params: unknown[]): Row | undefined;
   all(...params: unknown[]): Row[];
 }
-interface Database {
+export interface Database {
   exec(sql: string): void;
   prepare(sql: string): Statement;
   close(): void;
@@ -43,6 +44,7 @@ CREATE TABLE IF NOT EXISTS revisions (
   source   TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS revisions_by_path ON revisions (path, id);
+${ACTIVITY_SCHEMA}
 `;
 
 const META_COLUMNS = "path, owner, size, version, updated_at, source, summary";
@@ -66,12 +68,16 @@ const toRevision = (r: Row): RevisionMeta => ({ id: r.id, version: r.version, sa
  */
 export class SqliteStore {
   private depth = 0;
+  /** The Garmin activities of every profile (see activities.ts). */
+  readonly activities: ActivityTable;
 
   private constructor(
     private readonly db: Database,
     /** Where it lives, for logs. */
     readonly location: string
-  ) {}
+  ) {
+    this.activities = new ActivityTable(db, (fn) => this.tx(fn));
+  }
 
   static open(file: string): SqliteStore {
     if (file !== ":memory:") fs.mkdirSync(path.dirname(file), { recursive: true });

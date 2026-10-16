@@ -164,16 +164,18 @@ describe("MCP server (mock mode, in-memory transport)", () => {
     expect(out.value.mock).toBe(true);
   });
 
-  it("returns mock workouts and activities, saving activities under the data override", async () => {
+  it("returns mock workouts and activities, keeping nothing in the database", async () => {
     const workouts = await callTool(client, "list_workouts");
     expect(workouts.isError).toBe(false);
     expect(workouts.value.count).toBeGreaterThan(0);
 
     const activities = await callTool(client, "get_activities", { limit: 8, period: "all" });
     expect(activities.isError).toBe(false);
-    expect(activities.value.savedTo).toBe("data/mock/activities.json");
+    expect(activities.value.mock).toBe(true);
     expect(activities.value.totalActivities).toBeGreaterThan(0);
-    expect(getStore().head("data/mock/activities.json")).toBeDefined();
+    // Mock activities are generated, so they are never stored: no table rows and no document.
+    expect(getStore().activities.counts("mock").total).toBe(0);
+    expect(getStore().head("data/mock/activities.json")).toBeUndefined();
     // Console output of the exporter is returned with the result.
     expect(activities.log).toContain("Fetching last 8 activities");
   });
@@ -192,7 +194,7 @@ describe("MCP server (mock mode, in-memory transport)", () => {
     writePlan("listed.json", []);
     const out = await callTool(client, "list_plans");
     expect(out.value["workout-plans"].map((f: any) => f.path)).toContain("workout-plans/listed.json");
-    expect(out.value.data.map((f: any) => f.path)).toContain("data/mock/activities.json");
+    expect(out.value.data.map((f: any) => f.path)).not.toContain("data/mock/activities.json");
   });
 
   describe("validate_plan", () => {

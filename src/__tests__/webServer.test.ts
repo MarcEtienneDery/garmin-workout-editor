@@ -6,6 +6,7 @@ import { AddressInfo } from "net";
 import { startWebServer, isLoopback } from "../web/server";
 import * as garmin from "../mcp/tools/garmin";
 import { closeStore, getStore } from "../shared/store";
+import { toNewActivity } from "../shared/activitySync";
 
 // The Garmin actions are the MCP tool bodies; stub them so no test touches Garmin.
 jest.mock("../mcp/tools/garmin", () => ({
@@ -231,12 +232,25 @@ describe("web plan editor", () => {
   });
 
   describe("runs for the workout picture", () => {
-    const act = (id: number, startTime: string, avgPace: number, avgHR: number, extra: object = {}) => ({ id, activityType: "running", startTime, distance: 10, avgPace, avgHR, ...extra });
+    // A Garmin list item: distance in meters, speed in m/s, the start as GMT and local text.
+    const item = (id: number, day: string, paceSecPerKm: number, avgHR: number, extra: Record<string, unknown> = {}) => ({
+      activityId: id,
+      activityName: "Run",
+      activityType: { typeKey: "running" },
+      startTimeGMT: `${day} 12:00:00`,
+      startTimeLocal: `${day} 08:00:00`,
+      distance: 10000,
+      duration: paceSecPerKm * 10,
+      averageSpeed: 1000 / paceSecPerKm,
+      averageHR: avgHR,
+      ...extra,
+    });
+    const keep = (profile: string, ...items: any[]) => store().activities.insertNew(profile, items.map((i) => toNewActivity(i)!));
     const runs = async (query = "", headers = H) => (await call("GET", "/api/runs" + query, undefined, headers)).json as { profile: string | null; runs: any[] };
 
     it("lists the profile's recent runs, newest first, with the pace in seconds per km", async () => {
       addProfile("MED");
-      seed("data/MED/activities.json", { activities: [act(1, "2026-08-01 07:00:00", 5.5, 150), act(2, "2026-08-20 07:00:00", 5.25, 155.4, { distance: 8.46 })] });
+      keep("MED", item(1, "2026-08-01", 330, 150), item(2, "2026-08-20", 315, 155.4, { distance: 8460 }));
       expect(await runs()).toEqual({
         profile: "MED",
         runs: [
@@ -246,35 +260,31 @@ describe("web plan editor", () => {
       });
     });
 
-    it("merges the activity files without counting a run twice, and skips the raw dumps", async () => {
+    it("counts each run once, however often it was listed", async () => {
       addProfile("MED");
-      seed("data/MED/activities.json", { activities: [act(1, "2026-08-01 07:00:00", 5.5, 150)] });
-      seed("data/MED/activities-50.tmp.json", { activities: [act(1, "2026-08-01 07:00:00", 5.5, 150), act(2, "2026-08-03 07:00:00", 5.6, 148)] });
-      seed("data/MED/activities-raw.json", [act(3, "2026-08-05 07:00:00", 5, 160)]);
-      seed("data/MED/training-plan.json", { activities: [act(4, "2026-08-06 07:00:00", 5, 160)] });
+      keep("MED", item(1, "2026-08-01", 330, 150));
+      keep("MED", item(1, "2026-08-01", 330, 150), item(2, "2026-08-03", 336, 148));
       expect((await runs()).runs.map((r) => r.date)).toEqual(["2026-08-03", "2026-08-01"]);
     });
 
     it("leaves out what would skew a pace: other sports, short runs, treadmill and glitch readings", async () => {
       addProfile("MED");
-      seed("data/MED/activities.json", {
-        activities: [
-          act(1, "2026-08-01 07:00:00", 5.5, 150),
-          act(2, "2026-08-02 07:00:00", 5.5, 150, { activityType: "cycling" }),
-          act(3, "2026-08-03 07:00:00", 5.5, 150, { distance: 1.2 }),
-          act(4, "2026-08-04 07:00:00", 10.7, 136),
-          act(5, "2026-08-05 07:00:00", 2, 150),
-          act(6, "2026-08-06 07:00:00", 5.5, 0),
-          act(7, "2026-08-07 07:00:00", NaN, 150),
-          act(8, "soon", 5.5, 150),
-        ],
-      });
+      keep(
+        "MED",
+        item(1, "2026-08-01", 330, 150),
+        item(2, "2026-08-02", 330, 150, { activityType: { typeKey: "cycling" } }),
+        item(3, "2026-08-03", 330, 150, { distance: 1200 }),
+        item(4, "2026-08-04", 642, 136),
+        item(5, "2026-08-05", 120, 150),
+        item(6, "2026-08-06", 330, 0, { averageHR: null }),
+        item(7, "2026-08-07", 330, 150, { averageSpeed: 0 })
+      );
       expect((await runs()).runs.map((r) => r.date)).toEqual(["2026-08-01"]);
     });
 
     it("keeps only the months before the newest run, so old fitness does not set today's pace", async () => {
       addProfile("MED");
-      seed("data/MED/activities.json", { activities: [act(1, "2026-03-01 07:00:00", 6.5, 140), act(2, "2026-07-01 07:00:00", 5.5, 150), act(3, "2026-08-01 07:00:00", 5.4, 152)] });
+      keep("MED", item(1, "2026-03-01", 390, 140), item(2, "2026-07-01", 330, 150), item(3, "2026-08-01", 324, 152));
       expect((await runs()).runs.map((r) => r.date)).toEqual(["2026-08-01", "2026-07-01"]);
     });
 
@@ -287,8 +297,8 @@ describe("web plan editor", () => {
     it("gives a profile login its own runs only", async () => {
       addProfile("MED", "med-pw");
       addProfile("SAM", "sam-pw");
-      seed("data/MED/activities.json", { activities: [act(1, "2026-08-01 07:00:00", 5.5, 150)] });
-      seed("data/SAM/activities.json", { activities: [act(2, "2026-08-02 07:00:00", 4.5, 165)] });
+      keep("MED", item(1, "2026-08-01", 330, 150));
+      keep("SAM", item(2, "2026-08-02", 270, 165));
       const login = (user: string, pass: string) => ({ ...H, Authorization: "Basic " + Buffer.from(`${user}:${pass}`).toString("base64") });
       expect((await runs("", login("MED", "med-pw"))).runs.map((r) => r.pace)).toEqual([330]);
       expect((await runs("?profile=SAM", login("MED", "med-pw"))).runs.map((r) => r.pace)).toEqual([330]); // a profile login always acts as itself

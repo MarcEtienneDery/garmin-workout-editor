@@ -1,6 +1,5 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { getLastNWeeksStart } from "../../activityExporter";
 import { getAvailableProfiles } from "../../shared/profileLoader";
 import { getStore } from "../../shared/store";
 import {
@@ -9,11 +8,13 @@ import {
   getSettings,
   logicalPath as checkedPath,
   readJsonDoc,
+  requireAuth,
   runTool,
   writeJsonDoc,
 } from "../context";
 import type { DetailedWorkout } from "../../shared/types";
 import type { SyncStatus } from "../../shared/workoutSync";
+import { getActivities } from "./activities";
 import { diffPlanWorkout, extractWorkouts } from "./plans";
 
 const profileArg = z
@@ -29,12 +30,6 @@ const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD");
 
 const READ_GARMIN = { readOnlyHint: true, openWorldHint: true } as const;
 const WRITE_GARMIN = { readOnlyHint: false, destructiveHint: true, openWorldHint: true } as const;
-
-async function requireAuth(session: ReturnType<typeof getSession>): Promise<void> {
-  if (!(await session.garminClient.ensureAuthenticated())) {
-    throw new Error("Failed to authenticate with Garmin (check the profile credentials; 2FA accounts need a cached token).");
-  }
-}
 
 function sameId(a: unknown, b: unknown): boolean {
   return a !== undefined && a !== null && b !== undefined && b !== null && String(a) === String(b);
@@ -339,12 +334,12 @@ export function registerGarminTools(server: McpServer): void {
   server.registerTool(
     "get_activities",
     {
-      title: "Get recent Garmin activities",
+      title: "Get Garmin activities",
       description:
-        "Fetch recent activities from Garmin, reduced to the slim planning format (duration, HR, training effect, RPE/feel, running intervals, strength sets with weights in lbs). Also saves them to data/<profile>/activities.json. `limit` is how many of the most recent activities are fetched BEFORE the date filter, so make it large enough to cover the period. With includeDetails it takes about 1 second per activity.",
+        "Activities for a period in the slim planning format (duration, HR, training effect, RPE/feel, running intervals, strength sets with weights in lbs), newest first, read from the database. Garmin is asked only for what is new since the last call and for the details of the activities returned that lack them; the full history and every activity's details fill in the background, so a first call on a profile returns what is stored so far (see `sync`). `limit` caps how many are returned (`total` and `truncated` say if more matched).",
       inputSchema: {
         profile: profileArg,
-        limit: z.number().int().min(1).max(100).default(20),
+        limit: z.number().int().min(1).max(200).default(30),
         period: z
           .enum(["last-week", "this-week", "last-4-weeks", "all"])
           .default("last-week")
@@ -355,41 +350,11 @@ export function registerGarminTools(server: McpServer): void {
         includeDetails: z
           .boolean()
           .default(true)
-          .describe("Fetch per-activity details (self evaluation, exercise sets). Slower but needed for RPE/feel and strength sets."),
+          .describe("Fetch the details (self evaluation, exercise sets) of the returned activities that are not stored yet, up to 30 per call, about 1 second each."),
       },
       annotations: READ_GARMIN,
     },
-    ({ profile, limit, period, weekStart, weekEnd, type, includeDetails }) =>
-      runTool(
-        async () => {
-          const session = getSession(profile);
-          await requireAuth(session);
-
-          const raw = await session.exporter.fetchActivities(limit, includeDetails);
-          if (raw.length === 0) {
-            // Mirror the CLI: don't overwrite the saved file with an empty result.
-            throw new Error("Garmin returned no activities (see log).");
-          }
-
-          let customWeekStart = weekStart;
-          if (!customWeekStart && weekEnd) customWeekStart = "1970-01-01";
-          if (!customWeekStart && period === "last-4-weeks") customWeekStart = getLastNWeeksStart(4);
-          if (!customWeekStart && period === "all") customWeekStart = "1970-01-01";
-
-          const data = session.exporter.buildExtractedActivities(raw, {
-            filterToLastWeek: !customWeekStart && period === "last-week",
-            filterToThisWeek: !customWeekStart && period === "this-week",
-            typeFilter: type,
-            customWeekStart,
-            customWeekEnd: weekEnd,
-          });
-
-          const out = `data/${session.profile.name}/activities.json`;
-          writeJsonDoc(out, data);
-          return { savedTo: out, fetched: raw.length, ...data };
-        },
-        { serialize: true }
-      )
+    (args) => runTool(() => getActivities(args))
   );
 
   server.registerTool(

@@ -87,6 +87,13 @@ export function getSession(requested?: string): Session {
   return session;
 }
 
+/** Log in to Garmin (a cached token is reused), or say why not. */
+export async function requireAuth(session: Session): Promise<void> {
+  if (!(await session.garminClient.ensureAuthenticated())) {
+    throw new Error("Failed to authenticate with Garmin (check the profile credentials; 2FA accounts need a cached token).");
+  }
+}
+
 /** Garmin write operations must never run against the mock client. */
 export function assertLive(session: Session, action: string): void {
   if (session.mock) {

@@ -6,6 +6,7 @@ export * from "./types";
 export { normalizeLogicalPath, profileOfPath, summarizeText } from "./paths";
 export { exportFiles } from "./transfer";
 export { SqliteStore, KEEP_REVISIONS } from "./sqliteStore";
+export * from "./activities";
 
 /** Where the SQLite database lives: GARMIN_STORE_PATH, else <data root>/garmin.db. */
 export const getStorePath = (): string => (process.env.GARMIN_STORE_PATH ? path.resolve(process.env.GARMIN_STORE_PATH) : path.join(getDataRoot(), "garmin.db"));

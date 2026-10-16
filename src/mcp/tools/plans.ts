@@ -270,7 +270,7 @@ export function registerPlanTools(server: McpServer): void {
     {
       title: "List plans",
       description:
-        "List the stored plans and data the other plan tools can reach: workout plans under workout-plans/ and per-profile data under data/<profile>/ (activities.json, workouts.json, training-plan.json, ...). Each entry includes metadata about its content (for plans: dates, source, notes preview, workout count/types/names, uploaded and scheduled counts).",
+        "List the stored plans and data the other plan tools can reach: workout plans under workout-plans/ and per-profile data under data/<profile>/ (workouts.json, training-plan.json, ...; activities are not documents, get_activities reads them). Each entry includes metadata about its content (for plans: dates, source, notes preview, workout count/types/names, uploaded and scheduled counts).",
       inputSchema: {
         profile: z.string().optional().describe("Only list data/<profile>/. Omit to list every profile."),
       },
