@@ -402,7 +402,7 @@ describe("web plan editor", () => {
       expect(a.fetchDetailsNow).not.toHaveBeenCalled(); // a read never calls Garmin
     });
 
-    it("gives each lift of an activity the same one-rep max the Stats view shows: the plan's benchmark, else the best set ever", async () => {
+    it("gives each lift of an activity the same one-rep max the Stats view shows: the best set ever, from the stored sets alone", async () => {
       addProfile("MED");
       const lb = (n: number) => n * 453.6; // Garmin's weight unit
       const day = (id: number, date: string, exercise: string, ...sets: [number, number][]) => {
@@ -411,29 +411,25 @@ describe("web plan editor", () => {
           fullExerciseSets: sets.map(([reps, pounds]) => ({ setType: "ACTIVE", exercises: [{ category: "X", name: exercise }], repetitionCount: reps, weight: lb(pounds) })),
         });
       };
-      day(1, "2026-01-01", "BARBELL_BENCH_PRESS", [1, 300]); // long ago, and the heaviest ever
+      day(1, "2026-01-01", "BARBELL_BENCH_PRESS", [1, 300]); // long ago
       day(2, "2026-07-01", "BARBELL_BENCH_PRESS", [3, 225]);
-      day(3, "2026-08-01", "BARBELL_BENCH_PRESS", [6, 200]); // the activity looked at: no benchmark yet
+      day(3, "2026-08-01", "BARBELL_BENCH_PRESS", [6, 200]); // the activity looked at
       day(4, "2026-08-01", "DUMBBELL_CURL", [10, 30]);
       day(5, "2026-09-01", "BARBELL_BENCH_PRESS", [1, 400]); // later than the activity: still counts, it is the best set ever
-      const max = async (id: number) => (await call("GET", `/api/activity?id=${id}`)).json.liftMax;
+      const max = async (id: number) => (await call("GET", `/api/activity?id=${id}`)).json.oneRepMax;
       expect(Object.keys(await max(3))).toEqual(["Barbell Bench Press"]); // only this activity's exercises
-      expect((await max(3))["Barbell Bench Press"]).toEqual({ oneRm: 400, source: "history", weight: 400, reps: 1, date: "2026-09-01" });
+      expect((await max(3))["Barbell Bench Press"]).toEqual({ oneRm: 400, weight: 400, reps: 1, date: "2026-09-01" });
       expect((await max(1))["Barbell Bench Press"]).toEqual((await max(3))["Barbell Bench Press"]); // the same answer from any activity
-      expect(await max(4)).toEqual({ "Dumbbell Curl": { oneRm: 40, source: "history", weight: 30, reps: 10, date: "2026-08-01" } });
-
-      // the plan's benchmark outranks it, in the activity and in Stats alike, as soon as it is saved
-      seed("data/MED/training-plan.json", { strengthBenchmarks: { BARBELL_BENCH_PRESS: { oneRepMax: 266 }, BARBELL_BACK_SQUAT: { oneRepMax: 306 }, ODD: { oneRepMax: "heavy" }, NONE: null } });
-      expect((await max(3))["Barbell Bench Press"]).toEqual({ oneRm: 266, source: "benchmark", weight: null, reps: null, date: null });
+      expect(await max(4)).toEqual({ "Dumbbell Curl": { oneRm: 40, weight: 30, reps: 10, date: "2026-08-01" } });
       const bench = (await call("GET", "/api/activities/stats")).json.stats.strength.exercises.find((e: any) => e.name === "Barbell Bench Press");
-      expect(bench.max).toEqual((await max(3))["Barbell Bench Press"]);
-      expect(bench.best.oneRm).toBe(400); // the best set is still told, for what it is
+      expect(bench.best).toEqual((await max(3))["Barbell Bench Press"]); // Stats agrees
 
-      seed("data/MED/training-plan.json", "not json"); // an unreadable plan means no benchmarks, not an error
-      expect((await max(3))["Barbell Bench Press"].source).toBe("history");
+      // a training plan with benchmarks is not read: it changes nothing
+      seed("data/MED/training-plan.json", { strengthBenchmarks: { BARBELL_BENCH_PRESS: { oneRepMax: 266 } } });
+      expect((await max(3))["Barbell Bench Press"]).toEqual({ oneRm: 400, weight: 400, reps: 1, date: "2026-09-01" });
 
       keep("MED", item(6, "2026-08-02", "running"));
-      expect((await call("GET", "/api/activity?id=6")).json.liftMax).toEqual({}); // a run has no lifts
+      expect((await call("GET", "/api/activity?id=6")).json.oneRepMax).toEqual({}); // a run has no lifts
     });
 
     it("gives the lifetime stats of the profile, empty without a profile, and current after an activity is added", async () => {

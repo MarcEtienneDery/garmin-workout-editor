@@ -215,11 +215,10 @@
 
   /**
    * Each loaded exercise's sets as a percentage of its one-rep max, in the order they were done, with consecutive sets of one
-   * weight together. The maxes come from the server, by exercise name ({ "Face Pull": { oneRm, source, weight, reps, date } }),
-   * the same ones the Stats view shows: the benchmark of the lift when it has one, else the best estimate from the stored
-   * sets. An exercise with no max is left out.
-   * Returns [{ name, oneRm, source: "benchmark" | "history", from, runs: [{ count, weight, pct, band }] }], `from` being the
-   * set a "history" max was worked out from.
+   * weight together. The maxes come from the server, by exercise name ({ "Face Pull": { oneRm, weight, reps, date } }): the
+   * best set of the lift ever, estimated, the same ones the Stats view shows. An exercise with no max is left out.
+   * Returns [{ name, oneRm, from: { weight, reps, date }, runs: [{ count, weight, pct, band }] }], `from` being the set
+   * the max was worked out from.
    */
   function intensity(lifts, maxes) {
     const byName = new Map();
@@ -240,7 +239,7 @@
         else runs.push({ count: r.count, weight: r.weight });
       }
       out.push({
-        name: e.name, oneRm: Math.round(oneRm), source: max.source, from: max.source === "history" ? { weight: max.weight, reps: max.reps, date: max.date } : null,
+        name: e.name, oneRm: Math.round(oneRm), from: { weight: max.weight, reps: max.reps, date: max.date },
         runs: runs.map((r) => { const pct = Math.round((r.weight / oneRm) * 100); return { ...r, pct, band: intensityBand(pct) }; }),
       });
     }

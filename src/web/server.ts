@@ -47,7 +47,7 @@ import { getSettings, resolveProfileName, runCaptured } from "../mcp/context";
 import { installConsoleRedirect } from "../mcp/logCapture";
 import ActivityExporter from "../activityExporter";
 import { activityStats, buildChart } from "../shared/activityChart";
-import type { LiftMax } from "../shared/oneRepMax";
+import type { BestLift } from "../shared/oneRepMax";
 import { lifetimeStats } from "../shared/lifetimeStats";
 import type { ExerciseSet } from "../shared/types";
 import { syncStatus } from "../shared/activitySync";
@@ -524,29 +524,14 @@ function activityRow(a: Omit<ActivitySummary, "detailed"> & { detailed?: boolean
   };
 }
 
-/** The profile's one-rep maxes from its training plan's strengthBenchmarks, by Garmin exercise key, in pounds. */
-function oneRepMaxes(profile: string): Record<string, number> {
-  const out: Record<string, number> = {};
-  try {
-    const plan = JSON.parse(store().get(`data/${profile}/training-plan.json`)?.text ?? "");
-    for (const [key, b] of Object.entries(plan?.strengthBenchmarks ?? {})) {
-      const v = (b as { oneRepMax?: unknown } | null)?.oneRepMax;
-      if (typeof v === "number" && Number.isFinite(v) && v > 0) out[key] = v;
-    }
-  } catch {
-    // no plan, or one that is not JSON: no benchmarks
-  }
-  return out;
-}
-
 let slimmer: ActivityExporter | undefined;
 
-/** The one-rep max in use for each exercise of this activity: the same ones the Stats view shows (see lifetimeStats). */
-function liftMaxes(profile: string, sets: ExerciseSet[] | undefined): Record<string, LiftMax> {
+/** The one-rep max of each exercise of this activity: the same ones the Stats view shows (see lifetimeStats). */
+function oneRepMaxes(profile: string, sets: ExerciseSet[] | undefined): Record<string, BestLift> {
   const names = new Set((sets ?? []).filter((x) => x.category !== "INTERVAL" && x.exerciseName).map((x) => x.exerciseName));
   if (!names.size) return {};
-  const out: Record<string, LiftMax> = {};
-  for (const e of lifetimeStats(store().activities, profile, oneRepMaxes(profile)).strength?.exercises ?? []) if (e.max && names.has(e.name)) out[e.name] = e.max;
+  const out: Record<string, BestLift> = {};
+  for (const e of lifetimeStats(store().activities, profile).strength?.exercises ?? []) if (e.best && names.has(e.name)) out[e.name] = e.best;
   return out;
 }
 
@@ -567,7 +552,7 @@ function activityDetail(profile: string, a: StoredActivity) {
     slim,
     detailed: a.detail !== null,
     stats: activityStats(raw, a.detail),
-    liftMax: a.type === "strength_training" ? liftMaxes(profile, slim?.exerciseSets) : {},
+    oneRepMax: a.type === "strength_training" ? oneRepMaxes(profile, slim?.exerciseSets) : {},
     // the charts, read from what was stored; null until the chart data has been fetched
     chart: buildChart(store().activities.getChart(profile, a.id)),
     planned: entry ? { path: entry.path, index: entry.index, workout: entry.workout } : null,
@@ -938,7 +923,7 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
     case "GET /api/activities/stats": {
       const profile = profileOrNull(who, url.searchParams.get("profile"));
       if (!profile) return send(res, 200, { profile: null, stats: null });
-      return send(res, 200, { profile, stats: lifetimeStats(store().activities, profile, oneRepMaxes(profile)) });
+      return send(res, 200, { profile, stats: lifetimeStats(store().activities, profile) });
     }
 
     case "GET /api/activity": {

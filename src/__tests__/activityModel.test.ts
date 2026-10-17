@@ -199,17 +199,17 @@ describe("chart helpers", () => {
       { exerciseName: "Face Pull", category: "ROW", sets: 2, repsList: [0, 0], weight: 50 }, // loaded, but the server has no max for it
     ];
     const maxes = {
-      "Barbell Bench Press": { oneRm: 266, source: "benchmark", weight: null, reps: null, date: null },
-      "Weighted Chin Up": { oneRm: 48, source: "history", weight: 40, reps: 6, date: "2026-10-12" },
-      Plank: { oneRm: 100, source: "history", weight: 1, reps: 1, date: "2026-10-12" }, // a max, but no loaded set
+      "Barbell Bench Press": { oneRm: 266.4, weight: 225, reps: 3, date: "2026-09-08" },
+      "Weighted Chin Up": { oneRm: 48, weight: 40, reps: 6, date: "2026-10-12" },
+      Plank: { oneRm: 100, weight: 1, reps: 1, date: "2026-10-12" }, // a max, but no loaded set
     };
     const out = A.intensity(lifts, maxes);
     expect(out.map((e: any) => e.name)).toEqual(["Barbell Bench Press", "Weighted Chin Up"]);
     expect(out[0]).toEqual({
-      name: "Barbell Bench Press", oneRm: 266, source: "benchmark", from: null,
+      name: "Barbell Bench Press", oneRm: 266, from: { weight: 225, reps: 3, date: "2026-09-08" },
       runs: [{ count: 1, weight: 135, pct: 51, band: 0 }, { count: 1, weight: 175, pct: 66, band: 1 }, { count: 2, weight: 200, pct: 75, band: 1 }],
     });
-    expect(out[1]).toEqual({ name: "Weighted Chin Up", oneRm: 48, source: "history", from: { weight: 40, reps: 6, date: "2026-10-12" }, runs: [{ count: 3, weight: 40, pct: 83, band: 2 }] });
+    expect(out[1]).toEqual({ name: "Weighted Chin Up", oneRm: 48, from: { weight: 40, reps: 6, date: "2026-10-12" }, runs: [{ count: 3, weight: 40, pct: 83, band: 2 }] });
     expect(A.intensity(undefined, undefined)).toEqual([]);
     expect(A.intensity(lifts, {})).toEqual([]); // nothing to go by
   });
@@ -219,7 +219,7 @@ describe("chart helpers", () => {
       { exerciseName: "Barbell Back Squat", category: "SQUAT", sets: 1, reps: 5, weight: 300 },
       { exerciseName: "Row", category: "ROW", sets: 1, reps: 10, weight: 100 },
       { exerciseName: "Barbell Back Squat", category: "SQUAT", sets: 1, reps: 3, weight: 320 },
-    ], { "Barbell Back Squat": { oneRm: 306, source: "benchmark" }, Row: { oneRm: 133, source: "history", weight: 100, reps: 10, date: "2026-10-01" } });
+    ], { "Barbell Back Squat": { oneRm: 306, weight: 270, reps: 4, date: "2026-10-01" }, Row: { oneRm: 133, weight: 100, reps: 10, date: "2026-10-01" } });
     expect(out.map((e: any) => e.name)).toEqual(["Barbell Back Squat", "Row"]);
     expect(out[0].runs).toEqual([{ count: 1, weight: 300, pct: 98, band: 3 }, { count: 1, weight: 320, pct: 105, band: 3 }]);
     expect(A.intensityBand(64)).toBe(0);
