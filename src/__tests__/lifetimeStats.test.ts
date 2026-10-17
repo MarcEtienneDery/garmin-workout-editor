@@ -148,6 +148,14 @@ describe("strength", () => {
     expect(lift().exercises.find((x) => x.name === "Plank")!.reps).toBe(60);
   });
 
+  it("gives each exercise the 1RM in use: its benchmark when it has one, else the best estimate", () => {
+    const e = (benchmarks?: Record<string, number>) => computeLifetime(input({ rows, lifts, benchmarks })).strength!.exercises;
+    expect(e().find((x) => x.name === "Barbell Bench Press")!.max).toEqual({ oneRm: 247.5, source: "history", weight: 225, reps: 3, date: "2026-09-08" });
+    expect(e({ BARBELL_BENCH_PRESS: 266 }).find((x) => x.name === "Barbell Bench Press")!.max).toEqual({ oneRm: 266, source: "benchmark", weight: null, reps: null, date: null });
+    expect(e({ BARBELL_BENCH_PRESS: 266 }).find((x) => x.name === "Chin Up")!.max).toBeNull(); // no benchmark, bodyweight
+    expect(e({ BARBELL_BENCH_PRESS: 266 }).find((x) => x.name === "Barbell Bench Press")!.best!.oneRm).toBe(247.5); // the best set is kept as it was
+  });
+
   it("counts the sessions of a lift once even when it comes up twice in one", () => {
     const twice = computeLifetime(input({ rows: [rows[0]], lifts: [{ id: "1", date: "2026-09-01", sets: [
       { exerciseName: "Squat", category: "SQUAT", sets: 1, reps: 5, weight: 100 }, { exerciseName: "Squat", category: "SQUAT", sets: 1, reps: 5, weight: 110 },
@@ -214,6 +222,18 @@ describe("from the database", () => {
     expect(fourth).not.toBe(third);
     expect(fourth.strength!.detailed).toBe(1);
     expect(lifetimeStats(store.activities, "MED")).toBe(fourth);
+  });
+
+  it("works the numbers out again when the benchmarks change, not only when the table does", () => {
+    keep(item(1, "2026-09-02", "strength_training", { totalSets: 3 }));
+    store.activities.setDetail("MED", "1", { fullExerciseSets: [{ setType: "ACTIVE", exercises: [{ name: "BARBELL_BENCH_PRESS" }], repetitionCount: 5, weight: 200 * 453.6 }] });
+    const plain = lifetimeStats(store.activities, "MED");
+    expect(plain.strength!.exercises[0].max!.source).toBe("history");
+    expect(lifetimeStats(store.activities, "MED")).toBe(plain);
+    const withBench = lifetimeStats(store.activities, "MED", { BARBELL_BENCH_PRESS: 266 });
+    expect(withBench).not.toBe(plain);
+    expect(withBench.strength!.exercises[0].max!.source).toBe("benchmark");
+    expect(lifetimeStats(store.activities, "MED", { BARBELL_BENCH_PRESS: 266 })).toBe(withBench); // the same benchmarks: kept
   });
 
   it("keeps each profile to itself, and is empty for one with nothing", () => {

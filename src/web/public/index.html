@@ -2308,12 +2308,12 @@ function renderActivityStats() {
       for (const e of shown) {
         const block = mk("div", "aex"), head = mk("div", "aexh"), chips = mk("div", "aexc");
         head.append(mk("span", "aexn", e.name), mk("span", "aext", `${e.sessions} session${e.sessions === 1 ? "" : "s"}`));
-        if (e.best) chips.append(mk("span", "aexchip", `est. 1RM ${fmtNum(e.best.oneRm)} lb`));
+        if (e.max) chips.append(mk("span", "aexchip", `${e.max.source === "history" ? "est. " : ""}1RM ${fmtNum(e.max.oneRm)} lb`));
         if (e.heaviest) chips.append(mk("span", "aexchip", `heaviest ${+e.heaviest.weight.toFixed(1)} lb × ${e.heaviest.reps || "–"}`));
         chips.append(mk("span", "aexchip", `${fmtNum(e.sets)} sets · ${fmtNum(e.reps)} reps`));
         if (e.volume) chips.append(mk("span", "aexchip", `${fmtNum(e.volume)} lb`));
         block.append(head, chips);
-        const when = [e.best ? `best ${e.best.reps} @ ${+e.best.weight.toFixed(1)} lb on ${e.best.date}` : "", `last ${e.lastDate}`].filter(Boolean).join(" · ");
+        const when = [e.max && e.max.source === "history" ? `from ${e.max.reps} @ ${+e.max.weight.toFixed(1)} lb on ${e.max.date}` : e.max ? "benchmark" : "", `last ${e.lastDate}`].filter(Boolean).join(" · ");
         block.append(mk("div", "aexnote", when));
         list.append(block);
       }
@@ -2323,7 +2323,7 @@ function renderActivityStats() {
         more.onclick = () => { A.allLifts = !A.allLifts; renderActivityStats(); };
         box.append(more);
       }
-      box.append(mk("div", "anote", "est. 1RM: the best set of the exercise by the Epley formula, weight × (1 + reps ÷ 30), over sets of up to 12 counted reps."));
+      box.append(mk("div", "anote", "1RM: the benchmark of the lift in your training plan when it has one; otherwise est., the best set you have done of it by the Epley formula, weight × (1 + reps ÷ 30), over sets of up to 12 counted reps. The % of 1RM section of an activity measures against the same numbers."));
     }
   }
 
@@ -2662,7 +2662,7 @@ function renderActivityDetail() {
     }
     box.append(list);
     // each loaded exercise's sets as a share of its one-rep max
-    const heavy = AM.intensity(lifts, d.oneRepMax, d.liftHistory);
+    const heavy = AM.intensity(lifts, d.liftMax);
     if (heavy.length) {
       box.append(mk("h3", "", "% of 1RM"));
       const pcts = mk("div", "aexs");
@@ -2675,7 +2675,7 @@ function renderActivityDetail() {
         pcts.append(block);
       }
       box.append(pcts);
-      if (heavy.some((e) => e.source === "history")) box.append(mk("div", "anote", "est. 1RM: no benchmark for the lift, so your best set of it in the 6 months up to this activity, by the Epley formula: weight × (1 + reps ÷ 30)."));
+      if (heavy.some((e) => e.source === "history")) box.append(mk("div", "anote", "est. 1RM: no benchmark for the lift, so your best set of it so far, by the Epley formula: weight × (1 + reps ÷ 30). The Stats view shows the same numbers."));
     }
   }
   // the watch's laps say more than the intervals Garmin summarises, so the table is for activities without them

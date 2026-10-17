@@ -402,39 +402,38 @@ describe("web plan editor", () => {
       expect(a.fetchDetailsNow).not.toHaveBeenCalled(); // a read never calls Garmin
     });
 
-    it("carries the profile's one-rep maxes from its training plan, and none when it has no plan or an odd one", async () => {
-      addProfile("MED");
-      keep("MED", item(1, "2026-08-01", "strength_training"));
-      expect((await call("GET", "/api/activity?id=1")).json.oneRepMax).toEqual({});
-      seed("data/MED/training-plan.json", { strengthBenchmarks: { BARBELL_BENCH_PRESS: { oneRepMax: 266 }, BARBELL_BACK_SQUAT: { oneRepMax: 306, unit: "lb" }, ODD: { oneRepMax: "heavy" }, NONE: null } });
-      expect((await call("GET", "/api/activity?id=1")).json.oneRepMax).toEqual({ BARBELL_BENCH_PRESS: 266, BARBELL_BACK_SQUAT: 306 });
-      seed("data/MED/training-plan.json", "not json");
-      expect((await call("GET", "/api/activity?id=1")).json.oneRepMax).toEqual({});
-    });
-
-    it("estimates each lift's one-rep max from the sets of the six months up to the activity, itself included", async () => {
+    it("gives each lift of an activity the same one-rep max the Stats view shows: the plan's benchmark, else the best set ever", async () => {
       addProfile("MED");
       const lb = (n: number) => n * 453.6; // Garmin's weight unit
-      const raw = (exercise: string, ...sets: [number, number][]) => ({
-        fullExerciseSets: sets.map(([reps, pounds]) => ({ setType: "ACTIVE", exercises: [{ category: "X", name: exercise }], repetitionCount: reps, weight: lb(pounds) })),
-      });
       const day = (id: number, date: string, exercise: string, ...sets: [number, number][]) => {
         keep("MED", item(id, date, "strength_training"));
-        store().activities.setDetail("MED", String(id), raw(exercise, ...sets));
+        store().activities.setDetail("MED", String(id), {
+          fullExerciseSets: sets.map(([reps, pounds]) => ({ setType: "ACTIVE", exercises: [{ category: "X", name: exercise }], repetitionCount: reps, weight: lb(pounds) })),
+        });
       };
-      day(1, "2026-01-01", "BARBELL_BENCH_PRESS", [1, 300]); // over six months before: too old
-      day(2, "2026-07-01", "BARBELL_BENCH_PRESS", [3, 225], [0, 135]); // 247.5
-      day(3, "2026-08-01", "BARBELL_BENCH_PRESS", [6, 200]); // the activity: 240
-      day(4, "2026-08-01", "DUMBBELL_CURL", [10, 30]); // a lift of its own, and not one of the exercises of activity 3
-      day(5, "2026-09-01", "BARBELL_BENCH_PRESS", [1, 400]); // later than the activity
-      const got = (await call("GET", "/api/activity?id=3")).json;
-      expect(Object.keys(got.liftHistory)).toEqual(["Barbell Bench Press"]);
-      expect(got.liftHistory["Barbell Bench Press"]).toEqual({ oneRm: 247.5, weight: 225, reps: 3, date: "2026-07-01" });
-      // activity 1 has nothing before it, so its own set is the best
-      expect((await call("GET", "/api/activity?id=1")).json.liftHistory["Barbell Bench Press"]).toEqual({ oneRm: 300, weight: 300, reps: 1, date: "2026-01-01" });
-      // a run has no lifts
+      day(1, "2026-01-01", "BARBELL_BENCH_PRESS", [1, 300]); // long ago, and the heaviest ever
+      day(2, "2026-07-01", "BARBELL_BENCH_PRESS", [3, 225]);
+      day(3, "2026-08-01", "BARBELL_BENCH_PRESS", [6, 200]); // the activity looked at: no benchmark yet
+      day(4, "2026-08-01", "DUMBBELL_CURL", [10, 30]);
+      day(5, "2026-09-01", "BARBELL_BENCH_PRESS", [1, 400]); // later than the activity: still counts, it is the best set ever
+      const max = async (id: number) => (await call("GET", `/api/activity?id=${id}`)).json.liftMax;
+      expect(Object.keys(await max(3))).toEqual(["Barbell Bench Press"]); // only this activity's exercises
+      expect((await max(3))["Barbell Bench Press"]).toEqual({ oneRm: 400, source: "history", weight: 400, reps: 1, date: "2026-09-01" });
+      expect((await max(1))["Barbell Bench Press"]).toEqual((await max(3))["Barbell Bench Press"]); // the same answer from any activity
+      expect(await max(4)).toEqual({ "Dumbbell Curl": { oneRm: 40, source: "history", weight: 30, reps: 10, date: "2026-08-01" } });
+
+      // the plan's benchmark outranks it, in the activity and in Stats alike, as soon as it is saved
+      seed("data/MED/training-plan.json", { strengthBenchmarks: { BARBELL_BENCH_PRESS: { oneRepMax: 266 }, BARBELL_BACK_SQUAT: { oneRepMax: 306 }, ODD: { oneRepMax: "heavy" }, NONE: null } });
+      expect((await max(3))["Barbell Bench Press"]).toEqual({ oneRm: 266, source: "benchmark", weight: null, reps: null, date: null });
+      const bench = (await call("GET", "/api/activities/stats")).json.stats.strength.exercises.find((e: any) => e.name === "Barbell Bench Press");
+      expect(bench.max).toEqual((await max(3))["Barbell Bench Press"]);
+      expect(bench.best.oneRm).toBe(400); // the best set is still told, for what it is
+
+      seed("data/MED/training-plan.json", "not json"); // an unreadable plan means no benchmarks, not an error
+      expect((await max(3))["Barbell Bench Press"].source).toBe("history");
+
       keep("MED", item(6, "2026-08-02", "running"));
-      expect((await call("GET", "/api/activity?id=6")).json.liftHistory).toEqual({});
+      expect((await call("GET", "/api/activity?id=6")).json.liftMax).toEqual({}); // a run has no lifts
     });
 
     it("gives the lifetime stats of the profile, empty without a profile, and current after an activity is added", async () => {

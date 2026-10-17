@@ -1,15 +1,14 @@
 /**
  * oneRepMax.ts — a one-rep max estimated from what was lifted before.
  *
- * Garmin's benchmarks (and the ones in a profile's training plan) cover a few lifts; for every other exercise the max is
- * estimated from the sets in the activities already stored: the best set of the exercise in the months up to the activity
- * being looked at, worked into a one-rep max with the Epley formula. A set of 1 rep counts as itself; sets of more than
- * MAX_REPS reps, or without counted reps (Garmin gives 0 when the watch did not count), say too little to be used.
+ * A lift's one-rep max is its benchmark in the profile's training plan when it has one; for every other exercise it is
+ * estimated from the sets in the stored activities: the best set of the exercise, ever, worked into a one-rep max with the
+ * Epley formula. A set of 1 rep counts as itself; sets of more than MAX_REPS reps, or without counted reps (Garmin gives 0
+ * when the watch did not count), say too little to be used. The one definition (liftMax) serves the Stats view and the
+ * % of 1RM section alike, so they always agree.
  */
 import type { ExerciseSet } from "./types";
 
-/** How far back from an activity its history reaches, in days. A max from long ago says little about a lift today. */
-export const HISTORY_DAYS = 180;
 /** Sets above this many reps are not used for an estimate: the formula is too loose out there. */
 export const MAX_REPS = 12;
 
@@ -61,4 +60,30 @@ export function bestLifts(activities: { date: string; sets: ExerciseSet[] | unde
     }
   }
   return best;
+}
+
+/** An exercise's name as the key a benchmark is filed under: "Barbell Bench Press" and BARBELL_BENCH_PRESS both give BENCH_PRESS. */
+export const liftKey = (name: string): string =>
+  String(name ?? "").toUpperCase().replace(/[^A-Z0-9]+/g, "_").replace(/^_+|_+$/g, "").replace(/^BARBELL_/, "");
+
+/** The one-rep max used for an exercise, and where it comes from. */
+export interface LiftMax {
+  oneRm: number;
+  source: "benchmark" | "history";
+  /** For a "history" max, the set it was worked out from; null for a benchmark. */
+  weight: number | null;
+  reps: number | null;
+  date: string | null;
+}
+
+/**
+ * The one-rep max to use for an exercise: the profile's benchmark for it ({ BARBELL_BENCH_PRESS: 266 }, in pounds) when it
+ * has one, otherwise the best estimate from the stored sets (see bestLifts); null when there is neither.
+ */
+export function liftMax(name: string, benchmarks: Record<string, number> | undefined, best: BestLift | null | undefined): LiftMax | null {
+  const key = liftKey(name);
+  for (const [k, v] of Object.entries(benchmarks ?? {})) {
+    if (typeof v === "number" && v > 0 && liftKey(k) === key) return { oneRm: v, source: "benchmark", weight: null, reps: null, date: null };
+  }
+  return best ? { oneRm: best.oneRm, source: "history", weight: best.weight, reps: best.reps, date: best.date } : null;
 }

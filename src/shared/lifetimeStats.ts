@@ -8,7 +8,7 @@
  * Distances are meters, times seconds, loads pounds, dates the strings of the rows (YYYY-MM-DD; local time).
  */
 import ActivityExporter from "../activityExporter";
-import { bestLifts, expandSets, type BestLift } from "./oneRepMax";
+import { type BestLift, type LiftMax, bestLifts, expandSets, liftMax } from "./oneRepMax";
 import type { ActivityTable, LifetimeRow, StrengthRow } from "./store/activities";
 import type { ExerciseSet } from "./types";
 
@@ -47,6 +47,8 @@ export interface ExerciseStats {
   volume: number;
   /** The best estimated one-rep max (Epley, sets of up to 12 counted reps), and the heaviest weight lifted. */
   best: BestLift | null;
+  /** The one-rep max in use for the exercise (its benchmark, else `best`): what the % of 1RM section measures against. */
+  max: LiftMax | null;
   heaviest: { weight: number; reps: number; date: string } | null;
   firstDate: string;
   lastDate: string;
@@ -96,6 +98,8 @@ export interface LifetimeInput {
   splits: { id: string; meters: number; seconds: number }[];
   /** The exercise sets of the strength sessions whose details are stored. */
   lifts: { id: string; date: string; sets: ExerciseSet[] | undefined }[];
+  /** The profile's one-rep max benchmarks by Garmin exercise key, in pounds. */
+  benchmarks?: Record<string, number>;
 }
 
 const RUN = "running";
@@ -169,7 +173,7 @@ function runStats(rows: LifetimeRow[], splits: LifetimeInput["splits"]): RunStat
   };
 }
 
-function strengthStats(rows: LifetimeRow[], lifts: LifetimeInput["lifts"]): StrengthStats | null {
+function strengthStats(rows: LifetimeRow[], lifts: LifetimeInput["lifts"], benchmarks: LifetimeInput["benchmarks"]): StrengthStats | null {
   const sessions = rows.filter((r) => r.type === STRENGTH);
   if (!sessions.length) return null;
 
@@ -180,7 +184,7 @@ function strengthStats(rows: LifetimeRow[], lifts: LifetimeInput["lifts"]): Stre
     if (!sets.length) continue;
     detailed++;
     for (const x of sets) {
-      const e = by.get(x.exerciseName) ?? { name: x.exerciseName, sessions: 0, sets: 0, reps: 0, volume: 0, best: null, heaviest: null, firstDate: a.date, lastDate: a.date, sessionIds: new Set<string>() };
+      const e = by.get(x.exerciseName) ?? { name: x.exerciseName, sessions: 0, sets: 0, reps: 0, volume: 0, best: null, heaviest: null, max: null, firstDate: a.date, lastDate: a.date, sessionIds: new Set<string>() };
       e.sessionIds.add(a.id);
       for (const s of expandSets(x)) {
         e.sets++; e.reps += s.reps; e.volume += s.reps * s.weight;
@@ -191,7 +195,7 @@ function strengthStats(rows: LifetimeRow[], lifts: LifetimeInput["lifts"]): Stre
     }
   }
   const best = bestLifts(lifts.map((a) => ({ date: a.date, sets: a.sets })));
-  const exercises = [...by.values()].map(({ sessionIds, ...e }) => ({ ...e, sessions: sessionIds.size, volume: Math.round(e.volume), best: best[e.name] ?? null }));
+  const exercises = [...by.values()].map(({ sessionIds, ...e }) => ({ ...e, sessions: sessionIds.size, volume: Math.round(e.volume), best: best[e.name] ?? null, max: liftMax(e.name, benchmarks, best[e.name]) }));
   for (const e of exercises) volume += e.volume;
   exercises.sort((a, b) => b.sessions - a.sessions || b.volume - a.volume || a.name.localeCompare(b.name));
   return {
@@ -227,7 +231,7 @@ export function computeLifetime(input: LifetimeInput): LifetimeStats {
     since: rows.length ? day(rows[0].startLocal) : null, until: rows.length ? day(rows[rows.length - 1].startLocal) : null,
     byType: [...types.values()].map((t) => ({ ...t, seconds: Math.round(t.seconds), meters: Math.round(t.meters) })).sort((a, b) => b.count - a.count),
     running: runStats(rows, input.splits),
-    strength: strengthStats(rows, input.lifts),
+    strength: strengthStats(rows, input.lifts, input.benchmarks),
     years: [...years.values()].map((y) => ({ ...y, seconds: Math.round(y.seconds), runMeters: Math.round(y.runMeters) })).sort((a, b) => b.year.localeCompare(a.year)),
   };
 }
@@ -236,14 +240,15 @@ export function computeLifetime(input: LifetimeInput): LifetimeStats {
 
 let slimmer: ActivityExporter | undefined;
 const cache = new Map<string, { key: string; stats: LifetimeStats }>();
+const NO_BENCHMARKS: Record<string, number> = {};
 
 /**
  * The profile's lifetime stats, read from the activities table. The answer is kept while the table's fingerprint is the
- * same, so a page that asks again costs one small query; when an activity is added, or one gets its details, the numbers
- * are worked out again.
+ * same (and so are the benchmarks), so a page that asks again costs one small query; when an activity is added, or one
+ * gets its details, the numbers are worked out again.
  */
-export function lifetimeStats(activities: ActivityTable, profile: string): LifetimeStats {
-  const key = activities.fingerprint(profile);
+export function lifetimeStats(activities: ActivityTable, profile: string, benchmarks: Record<string, number> = NO_BENCHMARKS): LifetimeStats {
+  const key = `${activities.fingerprint(profile)}|${JSON.stringify(benchmarks)}`;
   const had = cache.get(profile);
   if (had && had.key === key) return had.stats;
   slimmer ??= new ActivityExporter(null as never); // the transform needs no Garmin client
@@ -252,6 +257,7 @@ export function lifetimeStats(activities: ActivityTable, profile: string): Lifet
     profile,
     rows: activities.lifetimeRows(profile),
     splits: activities.fastestSplits(profile),
+    benchmarks,
     lifts: strength.map((r) => ({ id: r.id, date: day(r.startLocal), sets: slimmer!.slim([{ ...r.raw, ...r.detail }])[0]?.exerciseSets as ExerciseSet[] | undefined })),
   });
   cache.set(profile, { key, stats });
