@@ -3,7 +3,6 @@ import {
   DetailedWorkout,
   GarminWorkoutSummary,
   PlannedWorkout,
-  TrainingPlan,
   WeeklyWorkoutPlan,
   WorkoutStep,
 } from "./shared/types";
@@ -890,7 +889,7 @@ export class WorkoutEditor {
   }
 
   /**
-   * Parse and check a workout plan given as JSON text (the file-free half of importWorkoutPlan).
+   * Parse and check a workout plan given as JSON text.
    */
   parseWorkoutPlan(raw: string): WeeklyWorkoutPlan {
     const plan = JSON.parse(raw) as WeeklyWorkoutPlan;
@@ -1705,8 +1704,8 @@ export class WorkoutEditor {
   }
 
   /**
-   * uploadWorkoutsFromFile for workouts that are not in a file: `raw` is the JSON text, `save` receives the
-   * JSON text with the new workoutIds written in, and `source` names where the workouts came from in the log.
+   * Upload the workouts of a plan given as JSON text: `raw` is the JSON text, `save` receives the JSON text with the
+   * new workoutIds written in, and `source` names where the workouts came from in the log.
    */
   async uploadWorkoutsFromText(
     raw: string,

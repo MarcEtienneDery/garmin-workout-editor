@@ -104,14 +104,6 @@ export interface LifetimeRow {
   reps: number | null;
 }
 
-/** A strength session with its details, for the exercise stats. */
-export interface StrengthRow {
-  id: string;
-  startLocal: string;
-  raw: any;
-  detail: any;
-}
-
 /** What a list shows of an activity: columns and a few fields of the list item, read in SQL so the 15-20 KB of raw JSON is not parsed in node. */
 export interface ActivitySummary {
   id: string;
@@ -158,6 +150,12 @@ export interface ActivityCounts {
 }
 
 type Row = Record<string, any>;
+
+/** The calories of an activity: the list item's, else the details'. One definition for the list and the lifetime stats. */
+const CALORIES = "COALESCE(json_extract(raw, '$.calories'), json_extract(detail, '$.summaryDTO.calories'))";
+
+/** A JSON number from SQL, or null. */
+const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
 
 const toActivity = (r: Row): StoredActivity => ({
   id: r.id,
@@ -325,35 +323,26 @@ export class ActivityTable {
     return this.db
       .prepare(
         `SELECT id, start_local, type, name, distance, duration,
-                json_extract(raw, '$.elevationGain') AS gain, json_extract(raw, '$.calories') AS calories,
+                json_extract(raw, '$.elevationGain') AS gain, ${CALORIES} AS calories,
                 json_extract(raw, '$.vO2MaxValue') AS vo2, json_extract(raw, '$.totalSets') AS sets, json_extract(raw, '$.totalReps') AS reps
-         FROM activities WHERE profile = ? ORDER BY start_local`
+         FROM activities WHERE profile = ?`
       )
       .all(profile)
       .map((r) => ({
         id: r.id, startLocal: r.start_local, type: r.type, name: r.name, distance: r.distance ?? null, duration: r.duration ?? null,
-        gain: typeof r.gain === "number" ? r.gain : null, calories: typeof r.calories === "number" ? r.calories : null,
-        vo2: typeof r.vo2 === "number" ? r.vo2 : null, sets: typeof r.sets === "number" ? r.sets : null, reps: typeof r.reps === "number" ? r.reps : null,
+        gain: num(r.gain), calories: num(r.calories), vo2: num(r.vo2), sets: num(r.sets), reps: num(r.reps),
       }));
   }
 
   /** The fastest split the watch timed inside each activity (`fastestSplit_<meters>` in the list item), as distance and seconds. */
   fastestSplits(profile: string): { id: string; meters: number; seconds: number }[] {
     return this.db
-      .prepare("SELECT a.id AS id, j.key AS key, j.value AS value FROM activities a, json_each(a.raw) j WHERE a.profile = ? AND j.key GLOB 'fastestSplit_[0-9]*'")
+      .prepare("SELECT a.id AS id, j.key AS key, j.value AS value FROM activities a, json_each(a.raw) j WHERE a.profile = ? AND a.type = 'running' AND j.key GLOB 'fastestSplit_[0-9]*'")
       .all(profile)
       .flatMap((r) => {
         const meters = Number(String(r.key).slice("fastestSplit_".length)), seconds = typeof r.value === "number" ? r.value : NaN;
-        return Number.isFinite(meters) && meters > 0 && Number.isFinite(seconds) && seconds > 0 ? [{ id: r.id as string, meters, seconds }] : [];
+        return meters > 0 && seconds > 0 ? [{ id: r.id as string, meters, seconds }] : [];
       });
-  }
-
-  /** The strength sessions whose details are stored, oldest first. */
-  strengthRows(profile: string): StrengthRow[] {
-    return this.db
-      .prepare("SELECT id, start_local, raw, detail FROM activities WHERE profile = ? AND type = 'strength_training' AND detail IS NOT NULL ORDER BY start_local")
-      .all(profile)
-      .map((r) => ({ id: r.id as string, startLocal: r.start_local as string, raw: JSON.parse(r.raw as string), detail: JSON.parse(r.detail as string) }));
   }
 
   /** The newest activities as list rows, newest first. */
@@ -365,7 +354,7 @@ export class ActivityTable {
                 COALESCE(json_extract(raw, '$.averageSpeed'), json_extract(detail, '$.summaryDTO.averageSpeed')) AS speed,
                 COALESCE(json_extract(raw, '$.trainingEffectLabel'), json_extract(detail, '$.summaryDTO.trainingEffectLabel')) AS label,
                 json_extract(raw, '$.aerobicTrainingEffect') AS aerobic, json_extract(raw, '$.elevationGain') AS elevation,
-                COALESCE(json_extract(raw, '$.calories'), json_extract(detail, '$.summaryDTO.calories')) AS calories,
+                ${CALORIES} AS calories,
                 json_extract(raw, '$.totalSets') AS sets, json_extract(raw, '$.totalReps') AS reps
          FROM activities WHERE profile = ? ORDER BY start_gmt DESC LIMIT ?`
       )

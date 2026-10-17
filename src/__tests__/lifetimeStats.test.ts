@@ -1,7 +1,7 @@
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
-import { type LifetimeInput, computeLifetime, forgetLifetimeStats, lifetimeStats, mondayOf } from "../shared/lifetimeStats";
+import { type LifetimeInput, computeLifetime, lifetimeStats, mondayOf } from "../shared/lifetimeStats";
 import { toNewActivity } from "../shared/activitySync";
 import { SqliteStore } from "../shared/store";
 
@@ -167,7 +167,6 @@ describe("from the database", () => {
   beforeEach(() => {
     dir = fs.mkdtempSync(path.join(os.tmpdir(), "lifetime-"));
     store = SqliteStore.open(path.join(dir, "garmin.db"));
-    forgetLifetimeStats();
   });
   afterEach(() => {
     store.close();

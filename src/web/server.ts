@@ -45,9 +45,9 @@ import { PROJECT_ROOT, findProfile, getAvailableProfiles, getProfilesDir } from 
 import { type DocMeta, type StoreErrorCode, StoreError, getStore, normalizeLogicalPath, profileOfPath } from "../shared/store";
 import { getSettings, resolveProfileName, runCaptured } from "../mcp/context";
 import { installConsoleRedirect } from "../mcp/logCapture";
-import ActivityExporter from "../activityExporter";
+import { slimStored } from "../activityExporter";
 import { activityStats, buildChart } from "../shared/activityChart";
-import type { BestLift } from "../shared/oneRepMax";
+import { type BestLift, liftSets } from "../shared/oneRepMax";
 import { lifetimeStats } from "../shared/lifetimeStats";
 import type { ExerciseSet } from "../shared/types";
 import { syncStatus } from "../shared/activitySync";
@@ -524,11 +524,9 @@ function activityRow(a: Omit<ActivitySummary, "detailed"> & { detailed?: boolean
   };
 }
 
-let slimmer: ActivityExporter | undefined;
-
 /** The one-rep max of each exercise of this activity: the same ones the Stats view shows (see lifetimeStats). */
 function oneRepMaxes(profile: string, sets: ExerciseSet[] | undefined): Record<string, BestLift> {
-  const names = new Set((sets ?? []).filter((x) => x.category !== "INTERVAL" && x.exerciseName).map((x) => x.exerciseName));
+  const names = new Set(liftSets(sets).map((x) => x.exerciseName));
   if (!names.size) return {};
   const out: Record<string, BestLift> = {};
   for (const e of lifetimeStats(store().activities, profile).strength?.exercises ?? []) if (e.best && names.has(e.name)) out[e.name] = e.best;
@@ -537,7 +535,6 @@ function oneRepMaxes(profile: string, sets: ExerciseSet[] | undefined): Record<s
 
 /** One activity with everything stored: its row, the slim form (sets, intervals, feel and RPE), and the plan workout it came from. */
 function activityDetail(profile: string, a: StoredActivity) {
-  slimmer ??= new ActivityExporter(null as never); // the transform needs no Garmin client
   const raw = a.raw ?? {}, summary = a.detail?.summaryDTO ?? {}; // what the list lacks, the details may carry
   const row = activityRow({
     id: a.id, startLocal: a.startLocal, type: a.type, name: a.name, distance: a.distance, duration: a.duration, avgHr: a.avgHr,
@@ -545,7 +542,7 @@ function activityDetail(profile: string, a: StoredActivity) {
     aerobicEffect: raw.aerobicTrainingEffect ?? null, elevationGain: raw.elevationGain ?? null, calories: raw.calories ?? summary.calories ?? null,
     sets: raw.totalSets ?? null, reps: raw.totalReps ?? null, workoutId: a.workoutId, detailed: a.detail !== null,
   });
-  const slim = slimmer.slim([{ ...raw, ...(a.detail ?? {}) }])[0] ?? null;
+  const slim = slimStored(raw, a.detail);
   const entry = hasId(a.workoutId) ? planEntriesFor(profile).find((e) => sameId(e.workout.workoutId, a.workoutId)) : undefined;
   return {
     activity: row,

@@ -38,7 +38,7 @@ describe("the Garmin token cache", () => {
     const cache = new TokenCache(dataDir);
     cache.saveToken(EMAIL, tokens.oauth1, tokens.oauth2);
     expect(fs.existsSync(dataDir)).toBe(false);
-    expect(getStore().tokens.get("MED")).toEqual({ email: EMAIL, data: expect.objectContaining({ oauth1Token: tokens.oauth1, oauth2Token: tokens.oauth2, email: EMAIL }), savedAt: expect.any(Number) });
+    expect(getStore().tokens.get("MED")).toEqual({ email: EMAIL, data: { oauth1Token: tokens.oauth1, oauth2Token: tokens.oauth2 }, savedAt: expect.any(Number) });
     expect(new TokenCache(dataDir).loadToken(EMAIL)).toEqual({ oauth1Token: tokens.oauth1, oauth2Token: tokens.oauth2 });
     expect(new TokenCache(dataDir).hasCachedToken(EMAIL)).toBe(true);
   });
@@ -50,7 +50,7 @@ describe("the Garmin token cache", () => {
     expect(cache.hasCachedToken("someone@else.com")).toBe(false);
     expect(cache.loadToken(EMAIL)).not.toBeNull(); // the other account's look did not clear it
 
-    getStore().tokens.put("MED", EMAIL, { oauth1Token: 1, oauth2Token: 2, timestamp: Date.now() - 8 * DAY, email: EMAIL });
+    getStore().tokens.put("MED", EMAIL, { oauth1Token: 1, oauth2Token: 2 }, Date.now() - 8 * DAY);
     expect(cache.hasCachedToken(EMAIL)).toBe(false);
     expect(cache.loadToken(EMAIL)).toBeNull(); // too old: a new login is due
     expect(getStore().tokens.get("MED")).toBeNull(); // and the stale row is gone
@@ -117,7 +117,7 @@ describe("the Garmin token cache", () => {
     });
 
     it("replaces the database's login when it is newer: a login made elsewhere and copied in by hand", () => {
-      getStore().tokens.put("MED", EMAIL, { oauth1Token: "stale1", oauth2Token: "stale2", timestamp: Date.now() - 3 * DAY, email: EMAIL }, Date.now() - 3 * DAY);
+      getStore().tokens.put("MED", EMAIL, { oauth1Token: "stale1", oauth2Token: "stale2" }, Date.now() - 3 * DAY);
       const copied = legacy({ oauth1Token: "new1", oauth2Token: "new2", timestamp: Date.now() - 1000 });
       expect(new TokenCache(dataDir).loadToken(EMAIL)).toEqual({ oauth1Token: "new1", oauth2Token: "new2" });
       expect(fs.existsSync(copied)).toBe(false);

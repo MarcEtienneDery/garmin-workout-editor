@@ -810,4 +810,12 @@ export class ActivityExporter {
   }
 }
 
+let stored: ActivityExporter | undefined;
+
+/** The slim form of a stored activity: its list item (`raw`) merged with its details. The transform needs no Garmin client. */
+export function slimStored(raw: any, detail: any): any | null {
+  stored ??= new ActivityExporter(null as never);
+  return stored.slim([{ ...(raw ?? {}), ...(detail ?? {}) }])[0] ?? null;
+}
+
 export default ActivityExporter;

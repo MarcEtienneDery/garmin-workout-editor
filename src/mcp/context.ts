@@ -107,7 +107,7 @@ let validatorEditor: WorkoutEditor | undefined;
 
 /**
  * An editor for the pure validation helpers; needs no profile and never talks to Garmin.
- * Uses a temp data dir because the GarminClient constructor creates its token-cache dir.
+ * Gets a throwaway data dir, so its token cache is never the one of a real profile.
  */
 export function getValidatorEditor(): WorkoutEditor {
   if (!validatorEditor) {

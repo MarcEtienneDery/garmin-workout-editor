@@ -2141,10 +2141,11 @@ async function pollActivities() {
     while (document.body.dataset.view === "activities" && A.sync && A.sync.syncing) {
       await new Promise((r) => setTimeout(r, 4000));
       if (document.body.dataset.view !== "activities") break;
-      const before = A.sync.withDetails + ":" + A.sync.activities + ":" + A.sync.withCharts;
+      const stored = () => A.sync.withDetails + ":" + A.sync.activities; // what the lifetime stats are made of; chart data is not
+      const before = stored(), beforeCharts = A.sync.withCharts;
       await reloadActivityRows();
-      if (A.sync.withDetails + ":" + A.sync.activities + ":" + A.sync.withCharts !== before) {
-        renderActivities(); refreshStats();
+      if (stored() !== before || A.sync.withCharts !== beforeCharts) {
+        renderActivities(); if (stored() !== before) refreshStats();
         const open = A.selected && A.detail && (!A.detail.detailed || !A.detail.chart) ? activityRow(A.selected) : null;
         if (open && (open.detailed !== A.detail.detailed || A.sync.withCharts)) selectActivity(A.selected, false);
       }
@@ -2163,8 +2164,8 @@ function renderActivities() {
   $("aRange").hidden = calendar || stats; $("aSearch").hidden = stats; $("aCalBar").hidden = !calendar;
   $("alist").hidden = calendar || stats; $("acal").hidden = !calendar; $("aDay").hidden = !calendar; $("astats").hidden = !stats;
   $("aPlanned").setAttribute("aria-pressed", String(A.showPlanned));
-  renderActivityTypes();
   if (stats) $("aTypesBar").hidden = true; // the lifetime numbers cover every type
+  else renderActivityTypes();
   renderActivityNote();
   if (stats) { renderActivityStats(); if (!A.stats && !A.statsError && !A.statsLoading) loadStats(); }
   else if (calendar) { renderActivityCalendar(); renderActivityDay(); } else renderActivityList();
@@ -2234,6 +2235,27 @@ async function loadStats() {
 
 const fmtKm = (m) => `${(m / 1000).toLocaleString(undefined, { maximumFractionDigits: 1 })} km`;
 const fmtNum = (n) => Math.round(n).toLocaleString();
+const lb = (w) => `${+w.toFixed(1)} lb`;
+const fromNote = (b) => `from ${b.reps} @ ${lb(b.weight)} on ${b.date}`;
+const ONE_RM_NOTE = "est. 1RM: the best set you have done of the exercise, by the Epley formula, weight × (1 + reps ÷ 30), over sets of up to 12 counted reps. The Stats view and the % of 1RM section of an activity use the same numbers.";
+
+/** A table from header cells and rows of cells, each cell [text, class]. */
+function table(head, rows) {
+  const t = mk("table", "atable"), tr = (cells, tag = "td") => { const row = mk("tr"); cells.forEach(([text, cls]) => row.append(mk(tag, cls || "", text))); t.append(row); };
+  tr(head, "th"); rows.forEach((cells) => tr(cells));
+  return t;
+}
+
+/** One exercise: its name and an aside, a chip for each [text, class], and a note. */
+function exerciseBlock(name, aside, chips, note) {
+  const block = mk("div", "aex"), head = mk("div", "aexh");
+  head.append(mk("span", "aexn", name), mk("span", "aext", aside));
+  block.append(head);
+  if (chips.length) { const row = mk("div", "aexc"); chips.forEach(([text, cls]) => row.append(mk("span", cls ? `aexchip ${cls}` : "aexchip", text))); block.append(row); }
+  if (note) block.append(mk("div", "aexnote", note));
+  return block;
+}
+
 const effortLabel = (m) => (m === 1609 ? "1 mile" : m % 1000 === 0 ? `${m / 1000} km` : `${+(m / 1000).toFixed(2)} km`);
 
 /**
@@ -2306,16 +2328,12 @@ function renderActivityStats() {
       heading("Exercises");
       const list = mk("div", "aexs"), shown = A.allLifts ? g.exercises : g.exercises.slice(0, 12);
       for (const e of shown) {
-        const block = mk("div", "aex"), head = mk("div", "aexh"), chips = mk("div", "aexc");
-        head.append(mk("span", "aexn", e.name), mk("span", "aext", `${e.sessions} session${e.sessions === 1 ? "" : "s"}`));
-        if (e.best) chips.append(mk("span", "aexchip", `est. 1RM ${fmtNum(e.best.oneRm)} lb`));
-        if (e.heaviest) chips.append(mk("span", "aexchip", `heaviest ${+e.heaviest.weight.toFixed(1)} lb × ${e.heaviest.reps || "–"}`));
-        chips.append(mk("span", "aexchip", `${fmtNum(e.sets)} sets · ${fmtNum(e.reps)} reps`));
-        if (e.volume) chips.append(mk("span", "aexchip", `${fmtNum(e.volume)} lb`));
-        block.append(head, chips);
-        const when = [e.best ? `from ${e.best.reps} @ ${+e.best.weight.toFixed(1)} lb on ${e.best.date}` : "", `last ${e.lastDate}`].filter(Boolean).join(" · ");
-        block.append(mk("div", "aexnote", when));
-        list.append(block);
+        const chips = [
+          e.best && [`est. 1RM ${lb(e.best.oneRm)}`], e.heaviest && [`heaviest ${lb(e.heaviest.weight)} × ${e.heaviest.reps || "–"}`],
+          [`${fmtNum(e.sets)} sets · ${fmtNum(e.reps)} reps`], e.volume && [`${fmtNum(e.volume)} lb`],
+        ].filter(Boolean);
+        const when = [e.best ? fromNote(e.best) : "", `last ${e.lastDate}`].filter(Boolean).join(" · ");
+        list.append(exerciseBlock(e.name, `${e.sessions} session${e.sessions === 1 ? "" : "s"}`, chips, when));
       }
       box.append(list);
       if (g.exercises.length > 12) {
@@ -2323,15 +2341,15 @@ function renderActivityStats() {
         more.onclick = () => { A.allLifts = !A.allLifts; renderActivityStats(); };
         box.append(more);
       }
-      box.append(mk("div", "anote", "est. 1RM: the best set you have done of the exercise, by the Epley formula, weight × (1 + reps ÷ 30), over sets of up to 12 counted reps. The % of 1RM section of an activity measures against the same numbers."));
+      box.append(mk("div", "anote", ONE_RM_NOTE));
     }
   }
 
   heading("By year");
-  const table = mk("table", "atable"), tr = (cells, tag = "td") => { const row = mk("tr"); cells.forEach(([text, cls]) => row.append(mk(tag, cls || "", text))); table.append(row); };
-  tr([["Year"], ["Activities", "num"], ["Time", "num"], ["Runs", "num"], ["Distance", "num"], ["Lifts", "num"], ["Sets", "num"]], "th");
-  for (const y of s.years) tr([[y.year], [fmtNum(y.activities), "num"], [AM.duration(y.seconds) || "–", "num"], [y.runs ? fmtNum(y.runs) : "–", "num"], [y.runMeters ? fmtKm(y.runMeters) : "–", "num"], [y.lifts ? fmtNum(y.lifts) : "–", "num"], [y.liftSets ? fmtNum(y.liftSets) : "–", "num"]]);
-  box.append(table);
+  box.append(table(
+    [["Year"], ["Activities", "num"], ["Time", "num"], ["Runs", "num"], ["Distance", "num"], ["Lifts", "num"], ["Sets", "num"]],
+    s.years.map((y) => [[y.year], [fmtNum(y.activities), "num"], [AM.duration(y.seconds) || "–", "num"], [y.runs ? fmtNum(y.runs) : "–", "num"], [y.runMeters ? fmtKm(y.runMeters) : "–", "num"], [y.lifts ? fmtNum(y.lifts) : "–", "num"], [y.liftSets ? fmtNum(y.liftSets) : "–", "num"]]),
+  ));
 }
 
 // ── List ──
@@ -2643,22 +2661,13 @@ function renderActivityDetail() {
 
   const sets = Array.isArray(s.exerciseSets) ? s.exerciseSets : [];
   const lifts = sets.filter((x) => x.category !== "INTERVAL"), intervals = sets.filter((x) => x.category === "INTERVAL");
-  const table = (head, rows) => {
-    const t = mk("table", "atable"), tr = (cells, tag = "td") => { const row = mk("tr"); cells.forEach(([text, cls]) => row.append(mk(tag, cls || "", text))); t.append(row); };
-    tr(head, "th"); rows.forEach((cells) => tr(cells));
-    return t;
-  };
   if (lifts.length) {
     box.append(mk("h3", "", "Exercises"));
     // one block per exercise: its name and set count, then a chip for each run of identical sets
     const list = mk("div", "aexs");
     for (const x of lifts) {
-      const runs = AM.setRuns(x), count = runs.reduce((a, r) => a + r.count, 0), chips = runs.map(AM.runText).filter(Boolean);
-      const block = mk("div", "aex"), head = mk("div", "aexh");
-      head.append(mk("span", "aexn", x.exerciseName), mk("span", "aext", `${x.supersetGroup ? "superset · " : ""}${count} set${count === 1 ? "" : "s"}`));
-      block.append(head);
-      if (chips.length) { const row = mk("div", "aexc"); chips.forEach((c) => row.append(mk("span", "aexchip", c))); block.append(row); }
-      list.append(block);
+      const runs = AM.setRuns(x), count = runs.reduce((a, r) => a + r.count, 0);
+      list.append(exerciseBlock(x.exerciseName, `${x.supersetGroup ? "superset · " : ""}${count} set${count === 1 ? "" : "s"}`, runs.map(AM.runText).filter(Boolean).map((c) => [c])));
     }
     box.append(list);
     // each loaded exercise's sets as a share of its one-rep max
@@ -2666,16 +2675,9 @@ function renderActivityDetail() {
     if (heavy.length) {
       box.append(mk("h3", "", "% of 1RM"));
       const pcts = mk("div", "aexs");
-      for (const e of heavy) {
-        const block = mk("div", "aex"), head = mk("div", "aexh"), row = mk("div", "aexc");
-        head.append(mk("span", "aexn", e.name), mk("span", "aext", `est. 1RM ${e.oneRm.toLocaleString()} lb`));
-        e.runs.forEach((r) => row.append(mk("span", `aexchip b${r.band}`, `${r.count > 1 ? r.count + " × " : ""}${r.pct}% · ${+r.weight.toFixed(1)} lb`)));
-        block.append(head, row);
-        block.append(mk("div", "aexnote", `from ${e.from.reps} @ ${+e.from.weight.toFixed(1)} lb on ${e.from.date}`));
-        pcts.append(block);
-      }
+      for (const e of heavy) pcts.append(exerciseBlock(e.name, `est. 1RM ${lb(e.oneRm)}`, e.runs.map((r) => [`${r.count > 1 ? r.count + " × " : ""}${r.pct}% · ${lb(r.weight)}`, `b${r.band}`]), fromNote(e.from)));
       box.append(pcts);
-      box.append(mk("div", "anote", "est. 1RM: your best set of the lift so far, by the Epley formula: weight × (1 + reps ÷ 30). The Stats view shows the same numbers."));
+      box.append(mk("div", "anote", ONE_RM_NOTE));
     }
   }
   // the watch's laps say more than the intervals Garmin summarises, so the table is for activities without them
@@ -2706,7 +2708,7 @@ function bindActivitiesView() {
   $("aRange").onchange = (e) => { A.range = e.target.value; renderActivities(); };
   $("aSearch").oninput = (e) => { A.query = e.target.value; renderActivities(); };
   $("aSync").onclick = guard(() => syncActivities(false));
-  $("aProfile").onchange = (e) => { A.profile = e.target.value; A.rows = []; A.sync = null; A.loaded = false; A.refreshed = false; A.selected = null; A.detail = null; A.plans = null; A.stats = null; A.statsError = ""; clearActivity(); guard(loadActivities)(); if (A.mode === "stats") loadStats(); };
+  $("aProfile").onchange = (e) => { A.profile = e.target.value; A.rows = []; A.sync = null; A.loaded = false; A.refreshed = false; A.selected = null; A.detail = null; A.plans = null; A.stats = null; A.statsError = ""; clearActivity(); guard(loadActivities)(); };
   $("aPrev").onclick = () => { A.month = addMonths(A.month || todayIso().slice(0, 7), -1); renderActivities(); };
   $("aNext").onclick = () => { A.month = addMonths(A.month || todayIso().slice(0, 7), 1); renderActivities(); };
   $("aToday").onclick = () => { A.month = todayIso().slice(0, 7); A.day = todayIso(); renderActivities(); };

@@ -7,9 +7,9 @@
  *
  * Distances are meters, times seconds, loads pounds, dates the strings of the rows (YYYY-MM-DD; local time).
  */
-import ActivityExporter from "../activityExporter";
-import { type BestLift, bestLifts, expandSets } from "./oneRepMax";
-import type { ActivityTable, LifetimeRow, StrengthRow } from "./store/activities";
+import { slimStored } from "../activityExporter";
+import { type BestLift, bestLifts, expandSets, liftSets } from "./oneRepMax";
+import type { ActivityTable, LifetimeRow } from "./store/activities";
 import type { ExerciseSet } from "./types";
 
 export interface Effort {
@@ -107,7 +107,6 @@ const STRENGTH = "strength_training";
 /** A pace over less than this says little about a runner. */
 const MIN_PACE_METERS = 3000;
 
-const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
 const day = (startLocal: string): string => startLocal.slice(0, 10);
 
 /** The Monday of the week a date (YYYY-MM-DD) falls in. */
@@ -117,10 +116,10 @@ export function mondayOf(date: string): string {
   return new Date(d.getTime() - back * 86_400_000).toISOString().slice(0, 10);
 }
 
-/** The key whose total is the biggest; the later key wins a tie. */
+/** The group with the biggest total; the later one (the map is filled oldest first) wins a tie. */
 function top<T extends { meters: number }>(groups: Map<string, T>): [string, T] | null {
   let best: [string, T] | null = null;
-  for (const entry of [...groups].sort((a, b) => a[0].localeCompare(b[0]))) if (!best || entry[1].meters >= best[1].meters) best = entry;
+  for (const entry of groups) if (!best || entry[1].meters >= best[1].meters) best = entry;
   return best;
 }
 
@@ -177,25 +176,27 @@ function strengthStats(rows: LifetimeRow[], lifts: LifetimeInput["lifts"]): Stre
   const sessions = rows.filter((r) => r.type === STRENGTH);
   if (!sessions.length) return null;
 
-  const by = new Map<string, ExerciseStats & { sessionIds: Set<string> }>();
+  const by = new Map<string, ExerciseStats>();
   let volume = 0, detailed = 0;
-  for (const a of [...lifts].sort((x, y) => x.date.localeCompare(y.date))) { // oldest first
-    const sets = (a.sets ?? []).filter((x) => x && x.category !== "INTERVAL" && x.exerciseName);
+  const ordered = [...lifts].sort((x, y) => x.date.localeCompare(y.date)); // oldest first
+  for (const a of ordered) {
+    const sets = liftSets(a.sets);
     if (!sets.length) continue;
     detailed++;
+    const done = new Set<string>();
     for (const x of sets) {
-      const e = by.get(x.exerciseName) ?? { name: x.exerciseName, sessions: 0, sets: 0, reps: 0, volume: 0, best: null, heaviest: null, firstDate: a.date, lastDate: a.date, sessionIds: new Set<string>() };
-      e.sessionIds.add(a.id);
+      let e = by.get(x.exerciseName);
+      if (!e) by.set(x.exerciseName, (e = { name: x.exerciseName, sessions: 0, sets: 0, reps: 0, volume: 0, best: null, heaviest: null, firstDate: a.date, lastDate: a.date }));
+      if (!done.has(x.exerciseName)) { done.add(x.exerciseName); e.sessions++; }
       for (const s of expandSets(x)) {
         e.sets++; e.reps += s.reps; e.volume += s.reps * s.weight;
         if (s.weight > 0 && (!e.heaviest || s.weight > e.heaviest.weight || (s.weight === e.heaviest.weight && s.reps >= e.heaviest.reps))) e.heaviest = { weight: s.weight, reps: s.reps, date: a.date };
       }
       e.lastDate = a.date;
-      by.set(x.exerciseName, e);
     }
   }
-  const best = bestLifts(lifts.map((a) => ({ date: a.date, sets: a.sets })));
-  const exercises = [...by.values()].map(({ sessionIds, ...e }) => ({ ...e, sessions: sessionIds.size, volume: Math.round(e.volume), best: best[e.name] ?? null }));
+  const best = bestLifts(ordered);
+  const exercises = [...by.values()].map((e) => ({ ...e, volume: Math.round(e.volume), best: best[e.name] ?? null }));
   for (const e of exercises) volume += e.volume;
   exercises.sort((a, b) => b.sessions - a.sessions || b.volume - a.volume || a.name.localeCompare(b.name));
   return {
@@ -238,8 +239,8 @@ export function computeLifetime(input: LifetimeInput): LifetimeStats {
 
 // ── From the database ────────────────────────────────────────────────────
 
-let slimmer: ActivityExporter | undefined;
-const cache = new Map<string, { key: string; stats: LifetimeStats }>();
+/** What was worked out, per table and profile, with the fingerprint it was worked out for. */
+const caches = new WeakMap<ActivityTable, Map<string, { key: string; stats: LifetimeStats }>>();
 
 /**
  * The profile's lifetime stats, read from the activities table. The answer is kept while the table's fingerprint is the
@@ -247,22 +248,20 @@ const cache = new Map<string, { key: string; stats: LifetimeStats }>();
  * are worked out again.
  */
 export function lifetimeStats(activities: ActivityTable, profile: string): LifetimeStats {
+  let cache = caches.get(activities);
+  if (!cache) caches.set(activities, (cache = new Map()));
   const key = activities.fingerprint(profile);
   const had = cache.get(profile);
   if (had && had.key === key) return had.stats;
-  slimmer ??= new ActivityExporter(null as never); // the transform needs no Garmin client
-  const strength: StrengthRow[] = activities.strengthRows(profile);
   const stats = computeLifetime({
     profile,
     rows: activities.lifetimeRows(profile),
     splits: activities.fastestSplits(profile),
-    lifts: strength.map((r) => ({ id: r.id, date: day(r.startLocal), sets: slimmer!.slim([{ ...r.raw, ...r.detail }])[0]?.exerciseSets as ExerciseSet[] | undefined })),
+    lifts: activities
+      .between(profile, { type: STRENGTH })
+      .filter((a) => a.detail)
+      .map((a) => ({ id: a.id, date: day(a.startLocal), sets: slimStored(a.raw, a.detail)?.exerciseSets as ExerciseSet[] | undefined })),
   });
   cache.set(profile, { key, stats });
   return stats;
-}
-
-/** Forget what was kept (for tests; a changed table forgets by itself). */
-export function forgetLifetimeStats(): void {
-  cache.clear();
 }

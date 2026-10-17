@@ -24,6 +24,11 @@ export interface LiftSet {
   reps: number;
 }
 
+/** The sets that are lifts: not the intervals of a workout, and named. */
+export function liftSets(sets: ExerciseSet[] | undefined): ExerciseSet[] {
+  return (sets ?? []).filter((x) => x && x.category !== "INTERVAL" && x.exerciseName);
+}
+
 /** An exercise's sets one by one: `sets` of it, with the per-set lists when the reps or the weight varied. */
 export function expandSets(x: Pick<ExerciseSet, "sets" | "reps" | "repsList" | "weight" | "weightList">): LiftSet[] {
   const n = Math.max(1, x.sets || 1);
@@ -48,8 +53,7 @@ export interface BestLift {
 export function bestLifts(activities: { date: string; sets: ExerciseSet[] | undefined }[]): Record<string, BestLift> {
   const best: Record<string, BestLift> = {};
   for (const a of activities) {
-    for (const x of a.sets ?? []) {
-      if (!x || x.category === "INTERVAL" || !x.exerciseName) continue;
+    for (const x of liftSets(a.sets)) {
       for (const s of expandSets(x)) {
         const raw = epley(s.weight, s.reps);
         if (raw === null) continue;

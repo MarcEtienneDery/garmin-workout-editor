@@ -35,14 +35,15 @@ export class TokenCache {
    * database when it is newer than what the database has, and deleted either way, so the file never lingers.
    */
   private entry(): CacheEntry | null {
-    const row = fs.existsSync(getStorePath()) ? (getStore().tokens.get(this.profile)?.data as CacheEntry | undefined) ?? null : null;
+    const stored = fs.existsSync(getStorePath()) ? getStore().tokens.get(this.profile) : null;
+    const row: CacheEntry | null = stored ? { ...(stored.data as Pick<CacheEntry, "oauth1Token" | "oauth2Token">), email: stored.email, timestamp: stored.savedAt } : null;
     const file = this.readLegacyFile();
     if (!file) return row;
     if (row && !(file.timestamp > row.timestamp)) {
       fs.rmSync(this.legacyFile, { force: true }); // the database already has a newer login
       return row;
     }
-    getStore().tokens.put(this.profile, file.email, file, file.timestamp);
+    getStore().tokens.put(this.profile, file.email, { oauth1Token: file.oauth1Token, oauth2Token: file.oauth2Token }, file.timestamp);
     fs.rmSync(this.legacyFile, { force: true }); // only after the row is in; the other process may have removed it already
     console.log("✓ Token cache moved into the database");
     return file;
@@ -63,15 +64,8 @@ export class TokenCache {
    * Save session cookies to cache
    */
   saveToken(email: string, oauth1Token: any, oauth2Token: any): void {
-    const entry: CacheEntry = {
-      oauth1Token,
-      oauth2Token,
-      timestamp: Date.now(),
-      email,
-    };
-
     try {
-      getStore().tokens.put(this.profile, email, entry, entry.timestamp);
+      getStore().tokens.put(this.profile, email, { oauth1Token, oauth2Token });
       fs.rmSync(this.legacyFile, { force: true }); // the database has the fresh one
       console.log(
         `💾 Token cache saved for ${email} (expires in 7 days)`

@@ -132,39 +132,3 @@ export function getMockProfile(): ProfileConfig {
     dataDir,
   };
 }
-
-/**
- * Resolve the --profile flag from process.argv, or throw with guidance.
- * In mock mode, returns a dummy profile that doesn't require a .env file.
- */
-export function requireProfile(mockMode: boolean = false): ProfileConfig {
-  const profileArg = getProfileArg();
-
-  if (mockMode && !profileArg) {
-    // In mock mode, allow running without a profile for testing
-    return getMockProfile();
-  }
-
-  if (!profileArg) {
-    const available = getAvailableProfiles();
-    const list = available.length > 0
-      ? `\n  Available profiles: ${available.join(", ")}\n  Example: npm run mcp -- --profile ${available[0]}`
-      : `\n  No profiles found. Create .env.<name> files (e.g., .env.MED, .env.Julie) in the project root.`;
-    throw new Error(
-      `❌ No profile specified. Use --profile <name>.${list}`
-    );
-  }
-
-  return loadProfile(profileArg);
-}
-
-/**
- * Extract --profile value from process.argv
- */
-export function getProfileArg(): string | undefined {
-  const idx = process.argv.indexOf("--profile");
-  if (idx !== -1 && idx + 1 < process.argv.length) {
-    return process.argv[idx + 1];
-  }
-  return undefined;
-}
