@@ -1,8 +1,8 @@
 /*
  * activityCharts.js — the pictures of one activity: stacked graphs of heart rate, pace, elevation and cadence with a
- * cursor, bars for laps and kilometer splits, the heart-rate zone bar, and volume bars for a strength workout.
+ * cursor, bars for laps and kilometer splits and the heart-rate zone bar.
  *
- * Plain DOM and SVG, no library. The numbers it needs (ranges, smoothing, zone shares, volumes) come from
+ * Plain DOM and SVG, no library. The numbers it needs (ranges, smoothing, zone shares) come from
  * ActivityModel, which has the tests; this file only draws. ChartData is what GET /api/activity returns as `chart`.
  */
 (function (root) {
@@ -230,21 +230,5 @@
     return box;
   }
 
-  /** Volume per exercise, heaviest first: the name and the total on one line, the bar under it. Exercises without a load have no bar. */
-  function volumeBars(list) {
-    const rows = list.filter((x) => x.volume > 0);
-    const max = Math.max(...rows.map((x) => x.volume), 1);
-    const box = html("div", "avol");
-    for (const x of rows) {
-      const row = html("div", "avrow"), head = html("div", "avh"), track = html("span", "abartrack"), fill = html("span", "abarfill");
-      head.append(html("span", "avn", x.name), html("span", "avt", `${Math.round(x.volume).toLocaleString()} lb · ${x.sets} set${x.sets === 1 ? "" : "s"}`));
-      fill.style.width = `${Math.max(2, Math.round((x.volume / max) * 100))}%`;
-      track.append(fill);
-      row.append(head, track);
-      box.append(row);
-    }
-    return box;
-  }
-
-  root.ActivityCharts = { graphs, paceBars, zoneBar, volumeBars, paceText, ZONE_COLORS };
+  root.ActivityCharts = { graphs, paceBars, zoneBar, paceText, ZONE_COLORS };
 })(typeof self !== "undefined" ? self : this);

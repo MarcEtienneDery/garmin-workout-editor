@@ -193,20 +193,6 @@
     return (seconds || []).map((s, i) => ({ zone: i + 1, seconds: s || 0, pct: total ? Math.round(((s || 0) / total) * 100) : 0 }));
   }
 
-  /** Volume (lb) and sets per exercise of a strength activity, the heaviest first. */
-  function volumeByExercise(sets) {
-    const by = new Map();
-    for (const x of sets || []) {
-      if (!x || x.category === "INTERVAL" || !x.exerciseName) continue;
-      const reps = Array.isArray(x.repsList) ? x.repsList.reduce((a, b) => a + b, 0) : (x.reps || 0) * (x.sets || 1);
-      const volume = x.volume || (Array.isArray(x.weightList) ? 0 : (x.weight || 0) * reps);
-      const e = by.get(x.exerciseName) || { name: x.exerciseName, sets: 0, volume: 0 };
-      e.sets += x.sets || 1; e.volume += volume;
-      by.set(x.exerciseName, e);
-    }
-    return [...by.values()].sort((a, b) => b.volume - a.volume || b.sets - a.sets);
-  }
-
   /**
    * The sets of one exercise as runs of identical sets: [{ count, reps, weight }], in the order they were done. A set
    * with no reps (or no weight) has 0 there, which is what Garmin gives when the watch did not count it.
@@ -267,5 +253,5 @@
     return chart.route.lat.length > 1 ? Math.round((j / (chart.route.lat.length - 1)) * (chart.time.length - 1)) : 0;
   }
 
-  return { setRuns, runText, routeIndexFor, chartIndexFor, niceRange, smooth, trimRange, nearestIndex, zoneShares, volumeByExercise, compare, axisClock, weekOf, totals, groupWeeks, byDate, rangeStart, filterRows, duration, pace, distance, clock, planned, planSport, newestFirst };
+  return { setRuns, runText, routeIndexFor, chartIndexFor, niceRange, smooth, trimRange, nearestIndex, zoneShares, compare, axisClock, weekOf, totals, groupWeeks, byDate, rangeStart, filterRows, duration, pace, distance, clock, planned, planSport, newestFirst };
 });

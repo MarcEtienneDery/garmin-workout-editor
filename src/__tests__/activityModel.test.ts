@@ -175,18 +175,6 @@ describe("chart helpers", () => {
     expect(A.zoneShares(null)).toEqual([]);
   });
 
-  it("totals the volume and the sets per exercise, heaviest first, leaving out intervals", () => {
-    const sets = [
-      { exerciseName: "Squat", category: "SQUAT", sets: 3, reps: 5, weight: 100, volume: 1500 },
-      { exerciseName: "Bench", category: "BENCH", sets: 2, reps: 8, weight: 50 }, // no volume given: sets x reps x weight
-      { exerciseName: "Squat", category: "SQUAT", sets: 1, repsList: [5], weight: 120, volume: 600 },
-      { exerciseName: "Interval 1", category: "INTERVAL", sets: 1, reps: 0 },
-      { exerciseName: "Plank", category: "CORE", sets: 3, repsList: [30, 30, 30] },
-    ];
-    expect(A.volumeByExercise(sets)).toEqual([{ name: "Squat", sets: 4, volume: 2100 }, { name: "Bench", sets: 2, volume: 800 }, { name: "Plank", sets: 3, volume: 0 }]);
-    expect(A.volumeByExercise(undefined)).toEqual([]);
-  });
-
   it("writes an exercise's sets as runs of identical sets, and a run as short text", () => {
     const text = (x: any) => A.setRuns(x).map(A.runText);
     expect(text({ sets: 3, reps: 6, weight: 40 })).toEqual(["3 × 6 @ 40 lb"]);

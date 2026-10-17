@@ -286,10 +286,6 @@
   .aext { color:var(--dim); font-size:11px; white-space:nowrap; }
   .aexc { display:flex; flex-wrap:wrap; gap:4px; margin-top:5px; }
   .aexchip { background:#2f2f2f; border-radius:4px; padding:2px 8px; white-space:nowrap; }
-  .avol { display:grid; gap:9px; }
-  .avh { display:flex; justify-content:space-between; align-items:baseline; gap:10px; margin-bottom:3px; }
-  .avn { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .avt { color:var(--dim); font-size:11px; white-space:nowrap; }
   .anote { color:var(--dim); margin:8px 0; }
 
   /* ── Calendar view: where the plan files put their workouts ── */
@@ -2519,11 +2515,6 @@ function renderActivityDetail() {
       list.append(block);
     }
     box.append(list);
-    const volumes = AM.volumeByExercise(lifts);
-    if (volumes.some((v) => v.volume > 0)) {
-      const total = Math.round(volumes.reduce((a, v) => a + v.volume, 0));
-      box.append(mk("h3", "", `Volume · ${total.toLocaleString()} lb`), ActivityCharts.volumeBars(volumes));
-    }
   }
   // the watch's laps say more than the intervals Garmin summarises, so the table is for activities without them
   if (intervals.length && !(d.chart && d.chart.laps.length > 1)) {
