@@ -3,16 +3,12 @@
   "version": "1.0.0",
   "description": "Extract Garmin activities and manage workouts",
   "main": "dist/index.js",
-  "bin": {
-    "garmin-workout-editor": "dist/cli.js"
-  },
   "scripts": {
     "build": "tsc && node -e \"require('fs').cpSync('src/web/public','dist/web/public',{recursive:true})\"",
     "dev": "tsx src/index.ts",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
-    "manage-workouts": "tsx src/manageWorkouts.ts",
     "mcp": "tsx src/mcp/server.ts",
     "mcp:http": "tsx src/mcp/server.ts --http",
     "web": "tsx src/web/server.ts",

@@ -1,6 +1,6 @@
 # MCP server for claude.ai / Claude Desktop, plus the plan editor web UI.
 #
-#   1. From a checkout of the repo (./workout-plans is imported into the database on first start):
+#   1. From a checkout of the repo (plans and data live in ./data/garmin.db, created on first start):
 #      mkdir -p config data
 #      cp .env.MED config/            # one .env.<profile> per Garmin account
 #   2. echo "MCP_AUTH_TOKEN=$(openssl rand -hex 32)" >> .env     # compose reads .env

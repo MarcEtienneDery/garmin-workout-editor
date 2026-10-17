@@ -10,26 +10,15 @@ jest.mock("@flow-js/garmin-connect", () => ({
 
 import WorkoutEditor from "../workoutEditor";
 import { GarminClient } from "../shared/garminClient";
-import * as fs from "fs";
-import * as path from "path";
-import * as os from "os";
 import { WeeklyWorkoutPlan } from "../shared/types";
 
 describe("WorkoutEditor", () => {
-  let tempDir: string;
   let editor: WorkoutEditor;
   let garminClient: GarminClient;
 
   beforeEach(() => {
-    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "garmin-test-"));
     garminClient = new GarminClient("test@example.com", "password123", true);
     editor = new WorkoutEditor(garminClient);
-  });
-
-  afterEach(() => {
-    if (fs.existsSync(tempDir)) {
-      fs.rmSync(tempDir, { recursive: true });
-    }
   });
 
   describe("Workout Plan Validation", () => {
@@ -78,8 +67,8 @@ describe("WorkoutEditor", () => {
     });
   });
 
-  describe("Workout Import/Export", () => {
-    it("should import workout plan from file", async () => {
+  describe("Workout Plan Parsing", () => {
+    it("should parse a workout plan from JSON text", () => {
       const plan: WeeklyWorkoutPlan = {
         generatedAt: new Date().toISOString(),
         weekStart: "2026-02-01",
@@ -103,21 +92,15 @@ describe("WorkoutEditor", () => {
         ],
       };
 
-      const filePath = path.join(tempDir, "plan.json");
-      fs.writeFileSync(filePath, JSON.stringify(plan, null, 2));
-
-      const imported = await editor.importWorkoutPlan(filePath);
+      const imported = editor.parseWorkoutPlan(JSON.stringify(plan, null, 2));
 
       expect(imported.weekStart).toBe("2026-02-01");
       expect(imported.workouts[0].workoutName).toBe("Chest Day");
       expect(imported.workouts[0].steps).toBeDefined();
     });
 
-    it("should handle invalid JSON file", async () => {
-      const filePath = path.join(tempDir, "invalid.json");
-      fs.writeFileSync(filePath, "not valid json");
-
-      await expect(editor.importWorkoutPlan(filePath)).rejects.toThrow();
+    it("should reject text that is not JSON", () => {
+      expect(() => editor.parseWorkoutPlan("not valid json")).toThrow();
     });
   });
 
@@ -158,225 +141,6 @@ describe("WorkoutEditor", () => {
       };
 
       expect(() => (editor as any).validateWorkout(workout)).not.toThrow();
-    });
-  });
-
-  describe("Date Manipulation", () => {
-    it("should shift dates correctly", () => {
-      const shiftDate = (editor as any).shiftDate.bind(editor);
-
-      expect(shiftDate("2026-02-01", 7)).toBe("2026-02-08");
-      expect(shiftDate("2026-02-01", -7)).toBe("2026-01-25");
-      expect(shiftDate("2026-02-01", 0)).toBe("2026-02-01");
-    });
-
-    it("should handle invalid dates", () => {
-      const shiftDate = (editor as any).shiftDate.bind(editor);
-
-      expect(shiftDate("invalid-date", 7)).toBe("invalid-date");
-    });
-  });
-
-  describe("Copy Workout Plan", () => {
-    it("should copy plan to next week with shifted dates", async () => {
-      const originalPlan: WeeklyWorkoutPlan = {
-        generatedAt: new Date().toISOString(),
-        weekStart: "2026-02-01",
-        weekEnd: "2026-02-07",
-        workouts: [
-          {
-            workoutId: 1,
-            workoutName: "Monday Workout",
-            scheduledDate: "2026-02-02",
-          },
-        ],
-      };
-
-      const inputPath = path.join(tempDir, "original.json");
-      const outputPath = path.join(tempDir, "copied.json");
-      fs.writeFileSync(inputPath, JSON.stringify(originalPlan, null, 2));
-
-      await editor.copyWorkoutPlanToNextWeek(inputPath, outputPath);
-
-      expect(fs.existsSync(outputPath)).toBe(true);
-
-      const copied = JSON.parse(fs.readFileSync(outputPath, "utf-8"));
-      expect(copied.weekStart).toBe("2026-02-08");
-      expect(copied.weekEnd).toBe("2026-02-14");
-      expect(copied.workouts[0].scheduledDate).toBe("2026-02-09");
-      expect(copied.source).toBe("copy-last-week");
-    });
-
-    it("should handle a list of dates in scheduledDate when copying to next week", async () => {
-      const originalPlan = {
-        generatedAt: "2026-02-01T00:00:00.000Z",
-        weekStart: "2026-02-01",
-        weekEnd: "2026-02-07",
-        workouts: [
-          {
-            workoutId: 1,
-            workoutName: "Multi-day Workout",
-            scheduledDate: ["2026-02-02", "2026-02-04"],
-          },
-        ],
-      };
-
-      const inputPath = path.join(tempDir, "original_multi.json");
-      const outputPath = path.join(tempDir, "copied_multi.json");
-      fs.writeFileSync(inputPath, JSON.stringify(originalPlan, null, 2));
-
-      await editor.copyWorkoutPlanToNextWeek(inputPath, outputPath);
-
-      const copied = JSON.parse(fs.readFileSync(outputPath, "utf-8"));
-      expect(copied.workouts[0].scheduledDate).toEqual(["2026-02-09", "2026-02-11"]);
-    });
-  });
-
-  describe("Start New Training Plan", () => {
-    it("should reset training progression and clear workout schedule", async () => {
-      const trainingPlanPath = path.join(tempDir, "training-plan.json");
-      const workoutPlanPath = path.join(tempDir, "next-week.workouts.tmp.json");
-      const templatePath = path.join(tempDir, "periodization-template.json");
-      // data/ is not in the repo, so the test brings its own template.
-      const templatePlan = {
-        periodization: {
-          currentPhase: "Base",
-          weekInPhase: 5,
-          totalWeeksInPhase: 4,
-          phases: [{ name: "Base", totalWeeks: 4 }, { name: "Build", totalWeeks: 6 }],
-        },
-      };
-      fs.writeFileSync(templatePath, JSON.stringify(templatePlan, null, 2));
-
-      const initialTrainingPlan = {
-        version: "1.0",
-        createdAt: "2026-01-01T00:00:00.000Z",
-        updatedAt: "2026-02-01T00:00:00.000Z",
-        athlete: { name: "Tester", experienceLevel: "intermediate" },
-        goals: { primary: "Keep this goal" },
-        strengthBenchmarks: {},
-        runningBenchmarks: {},
-        periodization: {
-          currentPhase: "Custom",
-          weekInPhase: 3,
-          totalWeeksInPhase: 6,
-          phases: [{ name: "Custom", totalWeeks: 6 }],
-        },
-        constraints: { maxDaysPerWeek: 6 },
-        weeklyHistory: [
-          {
-            weekStart: "2026-01-25",
-            weekEnd: "2026-01-31",
-            summary: "Completed week",
-          },
-        ],
-      };
-
-      const workoutPlan: WeeklyWorkoutPlan = {
-        generatedAt: new Date().toISOString(),
-        weekStart: "2026-02-01",
-        weekEnd: "2026-02-07",
-        workouts: [
-          {
-            workoutId: 1,
-            workoutName: "Monday Workout",
-            scheduledDate: "2026-02-02",
-          },
-          {
-            workoutId: 2,
-            workoutName: "Wednesday Workout",
-            scheduledDate: "2026-02-04",
-          },
-        ],
-      };
-
-      fs.writeFileSync(trainingPlanPath, JSON.stringify(initialTrainingPlan, null, 2));
-      fs.writeFileSync(workoutPlanPath, JSON.stringify(workoutPlan, null, 2));
-
-      await editor.startNewTrainingPlan(trainingPlanPath, workoutPlanPath, templatePath);
-
-      const updatedTrainingPlan = JSON.parse(
-        fs.readFileSync(trainingPlanPath, "utf-8")
-      );
-      const updatedWorkoutPlan = JSON.parse(
-        fs.readFileSync(workoutPlanPath, "utf-8")
-      );
-
-      expect(updatedTrainingPlan.goals.primary).toBe("Keep this goal");
-      expect(updatedTrainingPlan.constraints.maxDaysPerWeek).toBe(6);
-      expect(updatedTrainingPlan.weeklyHistory).toEqual([]);
-      expect(updatedTrainingPlan.periodization.currentPhase).toBe(
-        templatePlan.periodization.currentPhase
-      );
-      expect(updatedTrainingPlan.periodization.phases).toEqual(
-        templatePlan.periodization.phases
-      );
-      expect(updatedTrainingPlan.periodization.weekInPhase).toBe(1);
-      expect(updatedTrainingPlan.updatedAt).toBeDefined();
-
-      expect(updatedWorkoutPlan.source).toBe("start-new-training-plan");
-      expect(updatedWorkoutPlan.workouts[0].scheduledDate).toBeUndefined();
-      expect(updatedWorkoutPlan.workouts[1].scheduledDate).toBeUndefined();
-    });
-
-    it("should keep current periodization when template loading fails", async () => {
-      const trainingPlanPath = path.join(tempDir, "training-plan-fallback.json");
-      const workoutPlanPath = path.join(tempDir, "workouts-fallback.json");
-      const missingTemplatePath = path.join(tempDir, "missing-template.json");
-
-      const initialTrainingPlan = {
-        version: "1.0",
-        createdAt: "2026-01-01T00:00:00.000Z",
-        updatedAt: "2026-02-01T00:00:00.000Z",
-        athlete: { name: "Tester", experienceLevel: "intermediate" },
-        goals: { primary: "Keep this goal" },
-        strengthBenchmarks: {},
-        runningBenchmarks: {},
-        periodization: {
-          currentPhase: "Custom",
-          weekInPhase: 4,
-          totalWeeksInPhase: 6,
-          phases: [{ name: "Custom", totalWeeks: 6 }],
-        },
-        constraints: {},
-        weeklyHistory: [
-          {
-            weekStart: "2026-01-25",
-            weekEnd: "2026-01-31",
-            summary: "Completed week",
-          },
-        ],
-      };
-
-      const workoutPlan: WeeklyWorkoutPlan = {
-        generatedAt: new Date().toISOString(),
-        weekStart: "2026-02-01",
-        weekEnd: "2026-02-07",
-        workouts: [
-          {
-            workoutId: 1,
-            workoutName: "Monday Workout",
-            scheduledDate: "2026-02-02",
-          },
-        ],
-      };
-
-      fs.writeFileSync(trainingPlanPath, JSON.stringify(initialTrainingPlan, null, 2));
-      fs.writeFileSync(workoutPlanPath, JSON.stringify(workoutPlan, null, 2));
-
-      await editor.startNewTrainingPlan(
-        trainingPlanPath,
-        workoutPlanPath,
-        missingTemplatePath
-      );
-
-      const updatedTrainingPlan = JSON.parse(
-        fs.readFileSync(trainingPlanPath, "utf-8")
-      );
-
-      expect(updatedTrainingPlan.periodization.currentPhase).toBe("Custom");
-      expect(updatedTrainingPlan.periodization.weekInPhase).toBe(1);
-      expect(updatedTrainingPlan.weeklyHistory).toEqual([]);
     });
   });
 
@@ -459,57 +223,6 @@ describe("WorkoutEditor", () => {
       steps = transform(stepsInGrams);
       // Weight should be converted from grams to lbs (~225)
       expect(steps[0].weight).toBeCloseTo(225, 0);
-    });
-  });
-
-  describe("File Operations", () => {
-    it("should export workouts to file", async () => {
-      const outputPath = path.join(tempDir, "workouts.json");
-
-      // Since we're in mock mode, this will create an empty file
-      await editor.exportWorkouts(outputPath, false);
-
-      expect(fs.existsSync(outputPath)).toBe(true);
-      const content = JSON.parse(fs.readFileSync(outputPath, "utf-8"));
-      expect(Array.isArray(content)).toBe(true);
-    });
-
-    it("should create nested directories for export", async () => {
-      const outputPath = path.join(
-        tempDir,
-        "nested",
-        "deep",
-        "workouts.json"
-      );
-
-      await editor.exportWorkouts(outputPath, false);
-
-      expect(fs.existsSync(outputPath)).toBe(true);
-    });
-
-    it("should format JSON with proper indentation", async () => {
-      const outputPath = path.join(tempDir, "workouts.json");
-
-      // Create a plan with workouts to ensure non-empty JSON
-      const plan: WeeklyWorkoutPlan = {
-        generatedAt: new Date().toISOString(),
-        weekStart: "2026-02-01",
-        weekEnd: "2026-02-07",
-        workouts: [
-          {
-            workoutId: 1,
-            workoutName: "Test Workout",
-          },
-        ],
-      };
-
-      const filePath = path.join(tempDir, "plan-format.json");
-      fs.writeFileSync(filePath, JSON.stringify(plan, null, 2));
-      const content = fs.readFileSync(filePath, "utf-8");
-
-      // Check that JSON is pretty-printed (has newlines and indentation)
-      expect(content).toContain("\n");
-      expect(content).toContain("  ");
     });
   });
 

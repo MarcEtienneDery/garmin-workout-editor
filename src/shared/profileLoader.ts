@@ -148,7 +148,7 @@ export function requireProfile(mockMode: boolean = false): ProfileConfig {
   if (!profileArg) {
     const available = getAvailableProfiles();
     const list = available.length > 0
-      ? `\n  Available profiles: ${available.join(", ")}\n  Example: npm run manage-workouts -- --profile ${available[0]} --export`
+      ? `\n  Available profiles: ${available.join(", ")}\n  Example: npm run mcp -- --profile ${available[0]}`
       : `\n  No profiles found. Create .env.<name> files (e.g., .env.MED, .env.Julie) in the project root.`;
     throw new Error(
       `❌ No profile specified. Use --profile <name>.${list}`

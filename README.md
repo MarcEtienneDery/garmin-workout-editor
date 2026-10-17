@@ -56,149 +56,6 @@ GARMIN_PASSWORD="your_password"
 
 Your Garmin activities are stored in the database (see [Storage](#storage)) and read through the MCP tool `get_activities`; there is no file to extract. The first call lists your whole history and a background job fetches every activity's details (about 1 second each, so a long history takes a while; it can be interrupted and resumes). After the details, the same background job fetches each activity's **chart data** once (three read-only calls: the time series and route, the watch's laps, the heart-rate zones), kept in an `activity_charts` table in the shape Garmin sent it, thinned to 300 samples and without nested objects (about 100 KB an activity at most, so 40-50 MB for 500 activities); the charts are read from that on every view, so a change in how they are read never needs Garmin again. An activity with no GPS or no series (strength, indoor, manual) stores an empty answer and is not retried. Later calls ask Garmin only for what is new. In mock mode (`MOCK_MODE=true` or `--mock`) `get_activities` returns generated activities and stores nothing.
 
-## Manage Workouts (Import/Export & Planning)
-
-All workout commands use the `manage-workouts` script:
-
-```bash
-npm run manage-workouts -- <flags>
-```
-
-### Export Workouts from Garmin
-
-Export all your Garmin workouts with full exercise details to JSON:
-
-```bash
-npm run manage-workouts -- --export
-```
-
-Custom output path:
-
-```bash
-npm run manage-workouts -- --export --output ./data/workouts.json
-```
-
-To save raw workout data for debugging:
-
-```bash
-npm run manage-workouts -- --export --raw
-```
-
-### Transform Workouts (No API Fetch)
-
-Re-transform saved raw workout data without hitting the API:
-
-```bash
-npm run manage-workouts -- --transform-only data/workouts-raw.json
-```
-
-With custom week dates:
-
-```bash
-npm run manage-workouts -- --transform-only data/workouts-raw.json \
-  --week-start 2026-02-02 --week-end 2026-02-08
-```
-
-### Generate a Next-Week Workout Plan Template
-
-Create a workout plan template file for next week that you can edit manually:
-
-```bash
-npm run manage-workouts -- --generate-template
-```
-
-Custom output path:
-
-```bash
-npm run manage-workouts -- --generate-template --template-output ./data/next-week.workouts.tmp.json
-```
-
-### Copy Workout Plan to Next Week (Shift +7 Days)
-
-Copy an existing workout plan and shift all dates to next week:
-
-```bash
-npm run manage-workouts -- --copy-next-week ./data/last-week.plan.json
-```
-
-Custom output path:
-
-```bash
-npm run manage-workouts -- --copy-next-week ./data/last-week.plan.json \
-  --template-output ./data/next-week.plan.json
-```
-
-### Start a New Training Plan Cycle
-
-Reset your training progression state and clear all scheduled workout dates:
-
-```bash
-npm run manage-workouts -- --start-new-plan ./data/next-week.workouts.tmp.json --plan ./data/training-plan.json
-```
-
-This command:
-- Overwrites the selected training plan file
-- Replaces `periodization` from `data/training-plan.json`
-- Resets `periodization.weekInPhase` to `1`
-- Clears `weeklyHistory`
-- Updates `updatedAt`
-- Clears all `scheduledDate` fields in the workout plan file
-
-Note: this is local-file only and does not remove workouts from Garmin calendar.
-
-### Schedule Workouts to Garmin Calendar
-
-Schedule workouts from a plan file (requires existing workout IDs in Garmin):
-
-```bash
-npm run manage-workouts -- --schedule ./data/next-week.workouts.tmp.json
-```
-
-### Upload and Schedule Workouts (Plan File)
-
-Upload workout definitions from a plan file and add them to your Garmin calendar (creates new workouts as needed):
-
-```bash
-npm run manage-workouts -- --upload-and-schedule ./data/next-week.workouts.tmp.json
-```
-
-### Upload Workouts to Garmin (Workout Library)
-
-Upload workouts from a workouts file to your Garmin library (creates or replaces workouts only, no calendar scheduling):
-
-```bash
-npm run manage-workouts -- --upload ./data/workouts.json
-```
-
-Validate workouts without uploading (dry-run):
-
-```bash
-npm run manage-workouts -- --upload ./data/workouts.json --dry-run
-```
-
-Upload a single workout by ID:
-
-```bash
-npm run manage-workouts -- --upload-single 12345678
-```
-
-Specify a custom workouts file:
-
-```bash
-npm run manage-workouts -- --upload-single 12345678 --file ./data/workouts.json
-```
-
-**Note:** After uploading, run `--export` to sync the new workout IDs to your local file.
-
-### Mock Mode for Testing
-
-All workout commands support mock mode for testing without real credentials:
-
-```bash
-npm run manage-workouts -- --export --mock
-npm run manage-workouts -- --generate-template --mock
-```
-
 ## Plan Editor (web UI)
 
 A small website to manage plan files: a Monaco JSON editor (with schema autocompletion) plus CRUD, and buttons to upload, schedule and send plans to your watch.
@@ -247,11 +104,9 @@ There is also an `update_weekly_workouts` prompt that walks through the weekly r
 
 Garmin write tools are marked destructive so the client asks before running them, and the server instructions tell Claude to get your explicit confirmation first. Uploads delete and recreate any workout that already has a `workoutId` and write the new IDs back into the plan file.
 
-Not exposed yet: `--generate-template`, `--copy-next-week`, `--start-new-plan`.
-
 ### Run it in Docker (e.g. on a NAS)
 
-Run this from a checkout of the repo on the NAS. `./workout-plans` already holds the tracked plans and is mounted as-is.
+Run this from a checkout of the repo on the NAS. The plans live in the database (`./data/garmin.db`), so nothing else needs to be mounted.
 
 ```bash
 mkdir -p config data
@@ -280,7 +135,7 @@ Plans and per-profile data (`workout-plans/*.json`, `data/<profile>/*.json`: wor
 - **Command line** (`npm run store -- <command>`, in Docker `docker exec garmin-mcp node dist/storeCli.js <command>`): `list [prefix]`, `history <path>`, `show <path> [id]`, `restore <path> [id]` (the last earlier version by default; also brings back a deleted document), `trash`, `owner <path> <profile|shared>`, `export <dir>`.
 - **Backups**: the database is one file. Copy it while the services are idle, or use `sqlite3 garmin.db ".backup copy.db"`; `export <dir>` writes every document back out as a plain `.json` file for git or editing.
 - **Activities** are not documents but rows of an `activities` table in the same database, one per Garmin activity and profile: Garmin's list item as it came, the activity's details (RPE and feel, strength sets, run splits) once fetched, and the columns the views sort by. An activity is written once and rarely changes on Garmin, so a stored one is never fetched again, except the details of a young one (under 3 days old), which are fetched again at most every 6 hours until they are 3 days old, because feel and RPE are entered after the workout. The first `get_activities` call on a profile lists the whole history (100 per call to Garmin) and stores it, then a background job fetches every activity's details, one call every half second (`GARMIN_DETAIL_GAP_MS`), newest first; it stops on a rate limit or a login failure and says why in the `sync` part of the next answer. After a rate limit it starts again by itself ten minutes later (up to 12 times in a row); after a login failure it never retries on its own, because repeated logins could lock the account, and the next `get_activities` call after ten minutes resumes it. A listing that gets through clears the error. Later calls ask Garmin only for what is new. A lease in the database keeps the MCP server and the web editor from syncing the same profile at once. Mock mode stores nothing.
-- **CLI scripts** (`manage-workouts`, ...) read and write ordinary files; they do not use the database. `export <dir>` hands them the stored plans.
+- **No plan files**: plans and data are never read from or written to the disk by the services. `export <dir>` writes every document out as a `.json` file when you want one for git or editing.
 
 ### Make it reachable from claude.ai
 
@@ -348,8 +203,7 @@ Current coverage:
 ```
 src/
 ├── activityExporter.ts     # Garmin activity -> slim planning format
-├── workoutEditor.ts        # Garmin workouts <-> plan files
-├── manageWorkouts.ts       # Command-line workout management
+├── workoutEditor.ts        # Garmin workouts <-> the plan format, upload and scheduling
 ├── mocks.setup.ts          # Mock Garmin data for mock mode and tests
 ├── index.ts                # Main export
 ├── shared/                 # Garmin client, profiles, the SQLite store, the activity sync

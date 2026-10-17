@@ -217,14 +217,7 @@ afterEach(async () => {
 });
 ```
 
-**Manual Cleanup (if tests crash):**
-```bash
-# List recent workouts
-npm run manage-workouts -- list
-
-# Delete orphaned test workouts by ID
-npm run manage-workouts -- delete <workoutId>
-```
+**Manual Cleanup (if tests crash):** delete the orphaned test workouts in the Workouts view of the plan editor (`npm run web`), the MCP tools, or the Garmin Connect web interface.
 
 #### Troubleshooting Real API Tests
 
@@ -241,7 +234,7 @@ npm run manage-workouts -- delete <workoutId>
 **Cleanup Failures:**
 - Tests will log warnings if deletion fails
 - Manually delete orphaned workouts using Garmin Connect web interface
-- Or use: `npm run manage-workouts -- delete <workoutId>`
+- Or delete them from the Workouts view of the plan editor
 
 **Timeout Issues:**
 - Increase Jest timeout: `jest.setTimeout(60000)`

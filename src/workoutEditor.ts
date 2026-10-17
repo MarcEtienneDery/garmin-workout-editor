@@ -1,5 +1,3 @@
-import * as fs from "fs";
-import * as path from "path";
 import exerciseCategoryMap from "./exercise-category-map.json";
 import {
   DetailedWorkout,
@@ -362,42 +360,6 @@ export class WorkoutEditor {
     });
 
     return errors;
-  }
-
-  /**
-   * Get the start and end of next week (Monday-Sunday) in UTC
-   */
-  private getNextWeekDates(): { weekStart: Date; weekEnd: Date } {
-    // Work in UTC for consistency
-    const now = new Date();
-    const utcDay = now.getUTCDay();
-    const daysSinceMonday = utcDay === 0 ? 6 : utcDay - 1;
-
-    // Start of current week in UTC
-    const weekStart = new Date(now);
-    weekStart.setUTCDate(now.getUTCDate() - daysSinceMonday);
-    weekStart.setUTCHours(0, 0, 0, 0);
-
-    // Next week start
-    const nextWeekStart = new Date(weekStart);
-    nextWeekStart.setUTCDate(weekStart.getUTCDate() + 7);
-
-    // Next week end
-    const nextWeekEnd = new Date(nextWeekStart);
-    nextWeekEnd.setUTCDate(nextWeekStart.getUTCDate() + 6);
-    nextWeekEnd.setUTCHours(23, 59, 59, 999);
-
-    return { weekStart: nextWeekStart, weekEnd: nextWeekEnd };
-  }
-
-  private shiftDate(dateString: string, days: number): string {
-    const date = new Date(dateString);
-    if (Number.isNaN(date.getTime())) {
-      return dateString;
-    }
-
-    date.setDate(date.getDate() + days);
-    return date.toISOString().split("T")[0];
   }
 
   validateWorkoutPlan(plan: WeeklyWorkoutPlan): void {
@@ -880,37 +842,6 @@ export class WorkoutEditor {
   }
 
   /**
-   * Export workouts with full details to JSON file
-   */
-  async exportWorkouts(
-    outputPath: string = "./data/workouts.json",
-    includeDetails: boolean = true,
-    saveRaw: boolean = false
-  ): Promise<void> {
-    // Fetch both raw and transformed in a single session
-    const result = await this.fetchWorkoutsWithRaw(includeDetails);
-    const transformedWorkouts = result.transformed;
-    const rawWorkouts = result.raw;
-
-    // Ensure directory exists
-    const dir = path.dirname(outputPath);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-
-    // Save transformed data
-    fs.writeFileSync(outputPath, JSON.stringify(transformedWorkouts, null, 2));
-    console.log(`✅ Workouts saved to ${outputPath}`);
-
-    // Optionally save raw data for debugging
-    if (saveRaw) {
-      const rawPath = outputPath.replace(".json", "-raw.json");
-      fs.writeFileSync(rawPath, JSON.stringify(rawWorkouts, null, 2));
-      console.log(`📋 Raw workouts saved to ${rawPath}`);
-    }
-  }
-
-  /**
    * Transform a single raw workout into DetailedWorkout format
    * @param workout - Raw workout from Garmin API
    */
@@ -959,225 +890,12 @@ export class WorkoutEditor {
   }
 
   /**
-   * Load raw workouts from a JSON file
-   */
-  async loadRawWorkoutsFromFile(inputPath: string): Promise<any[]> {
-    try {
-      const raw = fs.readFileSync(inputPath, "utf-8");
-      const data = JSON.parse(raw);
-
-      // If it's an array, return it
-      if (Array.isArray(data)) {
-        return data;
-      }
-
-      // If it's an object with workouts array, extract it
-      if (data.workouts && Array.isArray(data.workouts)) {
-        return data.workouts;
-      }
-
-      throw new Error("Invalid raw workouts file format");
-    } catch (error: any) {
-      console.error(`❌ Failed to load raw workouts from ${inputPath}:`, error.message);
-      throw error;
-    }
-  }
-
-  /**
-   * Transform raw workouts and save to file without fetching from Garmin
-   * Useful for re-running transformation logic on previously saved raw data
-   * @param inputPath - Path to raw workouts JSON file
-   * @param outputPath - Output file path for transformed workouts
-   */
-  async transformAndSaveWorkouts(
-    inputPath: string,
-    outputPath?: string
-  ): Promise<boolean> {
-    try {
-      console.log("📂 Loading raw workouts from file...");
-      const rawWorkouts = await this.loadRawWorkoutsFromFile(inputPath);
-
-      if (rawWorkouts.length === 0) {
-        console.warn("⚠️  No workouts found in file");
-        return false;
-      }
-
-      console.log(`📊 Transforming ${rawWorkouts.length} workouts...`);
-      const transformed = this.transformWorkouts(rawWorkouts);
-
-      const outPath = outputPath || inputPath.replace("-raw.json", ".json");
-
-      // Ensure directory exists
-      const dir = path.dirname(outPath);
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-      }
-
-      fs.writeFileSync(outPath, JSON.stringify(transformed, null, 2));
-      console.log(`✅ Transformed workouts saved to ${outPath}`);
-      return true;
-    } catch (error: any) {
-      console.error("❌ Transform failed:", error.message);
-      return false;
-    }
-  }
-
-  /**
-   * Generate next week's workout plan template with all workout details
-   */
-  async generateNextWeekPlanTemplate(
-    outputPath: string = "./data/next-week.workouts.tmp.json"
-  ): Promise<void> {
-    const workouts = await this.fetchWorkouts(true);
-    const { weekStart, weekEnd } = this.getNextWeekDates();
-
-    const plan: WeeklyWorkoutPlan = {
-      generatedAt: new Date().toISOString(),
-      weekStart: weekStart.toISOString().split("T")[0],
-      weekEnd: weekEnd.toISOString().split("T")[0],
-      source: "garmin-workouts-template",
-      workouts: workouts.map((workout) => ({
-        workoutId: workout.workoutId,
-        workoutName: workout.workoutName,
-        workoutType: workout.workoutType,
-        description: workout.description,
-        steps: workout.steps,
-        scheduledDate: undefined,
-      })),
-    };
-
-    // Ensure directory exists
-    const dir = path.dirname(outputPath);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-
-    fs.writeFileSync(outputPath, JSON.stringify(plan, null, 2));
-    console.log(`✅ Next-week workout template saved to ${outputPath}`);
-  }
-
-  /**
-   * Import workout plan from JSON file
-   */
-  async importWorkoutPlan(inputPath: string): Promise<WeeklyWorkoutPlan> {
-    return this.parseWorkoutPlan(fs.readFileSync(inputPath, "utf-8"));
-  }
-
-  /**
    * Parse and check a workout plan given as JSON text (the file-free half of importWorkoutPlan).
    */
   parseWorkoutPlan(raw: string): WeeklyWorkoutPlan {
     const plan = JSON.parse(raw) as WeeklyWorkoutPlan;
     this.validateWorkoutPlan(plan);
     return plan;
-  }
-
-  /**
-   * Copy a workout plan to next week (shift dates by 7 days)
-   */
-  async copyWorkoutPlanToNextWeek(
-    inputPath: string,
-    outputPath: string = "./data/next-week.workouts.tmp.json"
-  ): Promise<void> {
-    const plan = await this.importWorkoutPlan(inputPath);
-    const shifted: WeeklyWorkoutPlan = {
-      ...plan,
-      generatedAt: new Date().toISOString(),
-      weekStart: this.shiftDate(plan.weekStart, 7),
-      weekEnd: this.shiftDate(plan.weekEnd, 7),
-      source: "copy-last-week",
-      workouts: plan.workouts.map((workout) => ({
-        ...workout,
-        scheduledDate: workout.scheduledDate
-          ? Array.isArray(workout.scheduledDate)
-            ? workout.scheduledDate.map((d) => this.shiftDate(d, 7))
-            : this.shiftDate(workout.scheduledDate, 7)
-          : undefined,
-      })),
-    };
-
-    const dir = path.dirname(outputPath);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-
-    fs.writeFileSync(outputPath, JSON.stringify(shifted, null, 2));
-    console.log(`✅ Next-week workout plan saved to ${outputPath}`);
-  }
-
-  /**
-   * Start a new training plan cycle by:
-   * 1) resetting training plan progression state
-   * 2) clearing all scheduled dates in a workout plan
-   */
-  async startNewTrainingPlan(
-    trainingPlanPath: string,
-    workoutPlanPath: string,
-    periodizationTemplatePath?: string
-  ): Promise<void> {
-    const nowIso = new Date().toISOString();
-    const templatePath =
-      periodizationTemplatePath ??
-      path.join(__dirname, "../data/training-plan.json");
-
-    const trainingPlanRaw = fs.readFileSync(trainingPlanPath, "utf-8");
-    const currentPlan = JSON.parse(trainingPlanRaw) as TrainingPlan;
-
-    let periodization = currentPlan.periodization;
-    try {
-      const templateRaw = fs.readFileSync(templatePath, "utf-8");
-      const templatePlan = JSON.parse(templateRaw) as TrainingPlan;
-      if (templatePlan?.periodization) {
-        periodization = templatePlan.periodization;
-      }
-    } catch (error: any) {
-      console.warn(
-        `⚠️  Failed to load periodization template from ${templatePath}. Keeping existing periodization. (${error.message})`
-      );
-    }
-
-    const resetTrainingPlan: TrainingPlan = {
-      ...currentPlan,
-      updatedAt: nowIso,
-      periodization: {
-        ...periodization,
-        weekInPhase: 1,
-      },
-      weeklyHistory: [],
-    };
-
-    const workoutPlan = await this.importWorkoutPlan(workoutPlanPath);
-    const resetWorkoutPlan: WeeklyWorkoutPlan = {
-      ...workoutPlan,
-      generatedAt: nowIso,
-      source: "start-new-training-plan",
-      workouts: workoutPlan.workouts.map((workout) => ({
-        ...workout,
-        scheduledDate: undefined,
-      })),
-    };
-
-    const trainingPlanDir = path.dirname(trainingPlanPath);
-    if (!fs.existsSync(trainingPlanDir)) {
-      fs.mkdirSync(trainingPlanDir, { recursive: true });
-    }
-
-    const workoutPlanDir = path.dirname(workoutPlanPath);
-    if (!fs.existsSync(workoutPlanDir)) {
-      fs.mkdirSync(workoutPlanDir, { recursive: true });
-    }
-
-    fs.writeFileSync(
-      trainingPlanPath,
-      JSON.stringify(resetTrainingPlan, null, 2)
-    );
-    fs.writeFileSync(
-      workoutPlanPath,
-      JSON.stringify(resetWorkoutPlan, null, 2)
-    );
-
-    console.log(`✅ Training plan reset saved to ${trainingPlanPath}`);
-    console.log(`✅ Workout schedule reset saved to ${workoutPlanPath}`);
   }
 
   /**
@@ -1282,14 +1000,6 @@ export class WorkoutEditor {
         }
       }
     }
-  }
-
-  /**
-   * Add workouts to Garmin calendar from imported plan
-   * This is an alias for scheduleWorkoutPlan for clarity
-   */
-  async addToCalendar(plan: WeeklyWorkoutPlan): Promise<void> {
-    return this.scheduleWorkoutPlan(plan);
   }
 
   /**
@@ -1992,22 +1702,6 @@ export class WorkoutEditor {
     }
     await client.deleteWorkout({ workoutId: String(workoutId) });
     console.log(`🗑️  Deleted workout ${workoutId}`);
-  }
-
-  /**
-   * Upload multiple workouts from file with batch processing
-   * Continues on failures and returns summary
-   */
-  async uploadWorkoutsFromFile(
-    inputPath: string,
-    dryRun: boolean = false
-  ): Promise<{ successful: number; failed: number; failedWorkouts: string[] }> {
-    return this.uploadWorkoutsFromText(
-      fs.readFileSync(inputPath, "utf-8"),
-      dryRun,
-      (updated) => fs.writeFileSync(inputPath, updated),
-      inputPath
-    );
   }
 
   /**

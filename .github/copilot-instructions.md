@@ -1,7 +1,7 @@
 # Copilot Instructions for Garmin Workout Editor
 
 ## Big Picture
-- This is a TypeScript tool with a web plan editor, an MCP server and a workout-management CLI (`src/manageWorkouts.ts`).
+- This is a TypeScript tool with a web plan editor and an MCP server. Plans and data are documents in the SQLite database, never files.
 - Activities live in the `activities` table of the SQLite database (`src/shared/store/activities.ts`), filled by `src/shared/activitySync.ts`; `ActivityExporter` in `src/activityExporter.ts` turns them into the slim planning format. Workouts: `WorkoutEditor` in `src/workoutEditor.ts`.
 - Shared API/auth boundary is `GarminClient` (`src/shared/garminClient.ts`). Use `ensureAuthenticated()` for mock-safe flows.
 
@@ -23,8 +23,7 @@
 ## Developer Workflows (Canonical Commands)
 - Install/build: `npm install`, `npm run build`
 - Tests: `npm test`, `npm run test:watch`, `npm run test:coverage`
-- CLI scripts from `package.json`:
-  - `npm run manage-workouts -- ...`
+- Scripts from `package.json`: `npm run web` (plan editor), `npm run mcp` / `npm run mcp:http` (MCP server), `npm run store -- ...` (the document store's command line)
 - Prefer package scripts over README examples when they disagree.
 
 ## Testing Patterns
@@ -35,5 +34,3 @@
 ## Important Integration Notes
 - Auth: direct email/password can fail with Garmin 2FA; session-cookie docs are referenced in README.
 - Rate limiting is explicit in fetch loops (`setTimeout` delays in activity/workout detail fetches); preserve this behavior.
-- `WorkoutEditor` supports `transformAndSaveWorkouts()`, but `src/manageWorkouts.ts` currently does not expose a `--transform-only` execution path despite usage text mentioning it.
-- `--upload <file>` uploads workouts **without scheduling**; `--import-and-schedule <file>` uploads **and** schedules. Use `--dry-run` with either to validate first. After upload, the JSON file is updated with new Garmin `workoutId` values.

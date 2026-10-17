@@ -28,10 +28,10 @@ Steps:
 
 Repository-specific expectations:
 
-- Primary workout file: `data/workouts-full-body-maintenance.json`
+- Plans: `read_plan` / `write_plan` on `workout-plans/*.json` and `data/<profile>/training-plan.json` (documents in the database)
 - Activities: the MCP tool `get_activities` (period `last-week`)
-- Validation command: `npm run manage-workouts -- --upload data/workouts-full-body-maintenance.json --dry-run --mock`
-- Upload command: `npm run manage-workouts -- --import-and-schedule data/workouts-full-body-maintenance.json`
+- Validation: `validate_plan`, then show the result before any upload
+- Upload and schedule: `upload_and_schedule_plan`, only after the user confirms
 
 When responding, keep the summary short and focus on:
 

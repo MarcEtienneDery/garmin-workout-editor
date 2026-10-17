@@ -19,7 +19,7 @@ No linter; TypeScript strict mode is the gate. Run `npx tsc --noEmit` and the re
 | Area | Location |
 |---|---|
 | Activity transform (Garmin activity to the slim planning format) | `src/activityExporter.ts` |
-| Workout management | `src/manageWorkouts.ts`, `src/workoutEditor.ts` |
+| Workout transforms, upload and scheduling | `src/workoutEditor.ts` |
 | Garmin client, types, profiles | `src/shared/` (`garminClient.ts`, `types.ts`, `profileLoader.ts`) |
 | MCP server | `src/mcp/` (`createServer.ts`, `tools/garmin.ts`, `tools/plans.ts`) |
 | Garmin activities | stored in the `activities` table of `garmin.db` (`src/shared/store/activities.ts`), filled by `src/shared/activitySync.ts` (list paging, details, charts, lease, background backfill; the chart data is pruned and read by `src/shared/activityChart.ts`) through `src/mcp/tools/activities.ts`, which also answers `get_activities` from the table. Never write `data/<profile>/activities*.json` documents again |
