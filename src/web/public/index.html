@@ -290,6 +290,20 @@
   .aexchip.b0 { border-left:3px solid #6b6b6b; } .aexchip.b1 { border-left:3px solid #1f78d1; }
   .aexchip.b2 { border-left:3px solid #d7ba7d; } .aexchip.b3 { border-left:3px solid #e0393c; }
   .anote { color:var(--dim); margin:8px 0; }
+  /* Stats mode: the lifetime numbers use the whole width, so the detail pane steps aside */
+  #aview[data-amode="stats"] { grid-template-columns:minmax(0,1fr); }
+  #aview[data-amode="stats"] #adetail { display:none; }
+  #astats { padding:4px 16px 28px; max-width:900px; }
+  #astats h3 { margin:18px 0 6px; font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--dim); }
+  .stiles { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:8px; margin:6px 0 8px; }
+  .stile { background:#2a2a2b; border:1px solid var(--line); border-radius:6px; padding:8px 10px; min-width:0; }
+  .stile b { display:block; font-size:18px; font-weight:600; overflow-wrap:anywhere; }
+  .stile span { color:var(--dim); font-size:11px; }
+  .srec { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:1px 12px; padding:7px 4px; border-bottom:1px solid #2a2a2a; }
+  .srec.go { cursor:pointer; } .srec.go:hover { background:#2a2a2b; }
+  .srec .srl { color:var(--dim); }
+  .srec .srv { text-align:right; font-weight:600; white-space:nowrap; }
+  .srec .srd { grid-column:1 / -1; color:var(--dim); font-size:11px; }
 
   /* ── Calendar view: where the plan files put their workouts ── */
   body:not([data-view="calendar"]) #cview { display:none; }
@@ -431,6 +445,7 @@
     #aview { display:block; position:relative; overflow:hidden; }
     #amain, #adetail { width:100%; height:100%; border:0; }
     body:not([data-wpane="detail"]) #adetail, body[data-wpane="detail"] #amain { display:none; }
+    body[data-wpane="detail"] #aview[data-amode="stats"] #adetail { display:flex; } /* a record opened from Stats: the pane comes over it, and Back returns to Stats */
     .arow { grid-template-columns:6px minmax(0,1fr); padding:10px 12px 10px 10px; font-size:15px; }
     .arow .met { grid-column:2; grid-row:auto; text-align:left; color:var(--dim); font-size:13px; }
     .arow small { font-size:12px; }
@@ -617,6 +632,7 @@
       <div class="seg" id="aModes" role="group" aria-label="How the activities are shown">
         <button data-mode="list" aria-pressed="true">List</button>
         <button data-mode="calendar" aria-pressed="false">Calendar</button>
+        <button data-mode="stats" aria-pressed="false">Stats</button>
       </div>
       <select id="aProfile" title="Garmin profile" hidden></select>
       <select id="aRange" title="How far back the list goes">
@@ -638,6 +654,7 @@
       <div id="alist"></div>
       <div class="acal" id="acal" hidden><div id="adow"></div><div id="agrid"></div></div>
       <div id="aDay" hidden></div>
+      <div id="astats" hidden></div>
     </div>
   </div>
   <aside id="adetail">
@@ -2066,7 +2083,7 @@ function renderSide() {
 // someone presses a button (POST /api/activities/sync and /detail). Dates are the strings of the rows (YYYY-MM-DD, HH:MM),
 // never parsed by Date. The logic (weeks, totals, filters, planned against done) lives in activityModel.js.
 const AM = ActivityModel;
-const A = { profile: null, rows: [], sync: null, mode: "list", types: new Set(), query: "", range: "12w", month: null, day: null, selected: null, showPlanned: false, plans: null, loaded: false, error: "", run: 0, detail: null, detailRun: 0, refreshed: false, polling: false, busy: false };
+const A = { profile: null, rows: [], sync: null, mode: "list", types: new Set(), query: "", range: "12w", month: null, day: null, selected: null, showPlanned: false, plans: null, loaded: false, error: "", run: 0, detail: null, detailRun: 0, refreshed: false, polling: false, busy: false, stats: null, statsError: "", statsLoading: false, statsAgain: false, allLifts: false };
 const activityRow = (id) => A.rows.find((r) => r.id === id);
 const activityQuery = () => (A.profile ? `profile=${encodeURIComponent(A.profile)}&` : "");
 
@@ -2084,7 +2101,7 @@ async function loadActivities() {
   catch (e) { if (run === A.run) { A.error = e.message; A.loaded = true; renderActivities(); } return; }
   if (run !== A.run) return;
   A.rows = r.activities; A.sync = r.sync; A.loaded = true; A.error = "";
-  renderActivities();
+  renderActivities(); refreshStats();
   if (A.selected && !activityRow(A.selected)) clearActivity();
   if (A.sync && A.sync.syncing) pollActivities();
   // The cheap look for what is new (one Garmin call), once per visit to the page: only when there is something stored already,
@@ -2103,7 +2120,7 @@ async function syncActivities(history, quiet = false) {
     if (r.error) A.error = r.error;
     else if (r.busy && !quiet) A.note = "A sync is already running; this view follows it.";
     else if (!quiet) A.note = r.added ? `${r.added} new ${r.added === 1 ? "activity" : "activities"}.` : "Nothing new on Garmin.";
-    if (r.added || history) await reloadActivityRows();
+    if (r.added || history) { await reloadActivityRows(); refreshStats(); }
   } catch (e) { if (!quiet) A.error = e.message; }
   finally { A.busy = false; $("aSync").disabled = false; renderActivities(); }
   if (A.sync && A.sync.syncing) pollActivities();
@@ -2112,6 +2129,9 @@ async function syncActivities(history, quiet = false) {
 async function reloadActivityRows() {
   try { const r = await api("GET", "/api/activities?" + activityQuery()); A.rows = r.activities; A.sync = r.sync; } catch { /* the old rows stay */ }
 }
+
+/** Look again at the lifetime numbers when something new was stored; they are only shown (and fetched) in Stats mode. */
+function refreshStats() { if (A.mode === "stats") loadStats(); }
 
 /** While a sync runs (here or in the MCP server), look again every few seconds, so rows and details appear as they are stored. */
 async function pollActivities() {
@@ -2124,7 +2144,7 @@ async function pollActivities() {
       const before = A.sync.withDetails + ":" + A.sync.activities + ":" + A.sync.withCharts;
       await reloadActivityRows();
       if (A.sync.withDetails + ":" + A.sync.activities + ":" + A.sync.withCharts !== before) {
-        renderActivities();
+        renderActivities(); refreshStats();
         const open = A.selected && A.detail && (!A.detail.detailed || !A.detail.chart) ? activityRow(A.selected) : null;
         if (open && (open.detailed !== A.detail.detailed || A.sync.withCharts)) selectActivity(A.selected, false);
       }
@@ -2138,13 +2158,16 @@ function visibleActivities() {
 
 function renderActivities() {
   $("aModes").querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.mode === A.mode)));
-  const calendar = A.mode === "calendar";
-  $("aRange").hidden = calendar; $("aCalBar").hidden = !calendar;
-  $("alist").hidden = calendar; $("acal").hidden = !calendar; $("aDay").hidden = !calendar;
+  const calendar = A.mode === "calendar", stats = A.mode === "stats";
+  $("aview").dataset.amode = A.mode;
+  $("aRange").hidden = calendar || stats; $("aSearch").hidden = stats; $("aCalBar").hidden = !calendar;
+  $("alist").hidden = calendar || stats; $("acal").hidden = !calendar; $("aDay").hidden = !calendar; $("astats").hidden = !stats;
   $("aPlanned").setAttribute("aria-pressed", String(A.showPlanned));
   renderActivityTypes();
+  if (stats) $("aTypesBar").hidden = true; // the lifetime numbers cover every type
   renderActivityNote();
-  if (calendar) { renderActivityCalendar(); renderActivityDay(); } else renderActivityList();
+  if (stats) { renderActivityStats(); if (!A.stats && !A.statsError && !A.statsLoading) loadStats(); }
+  else if (calendar) { renderActivityCalendar(); renderActivityDay(); } else renderActivityList();
 }
 
 function renderActivityTypes() {
@@ -2189,6 +2212,126 @@ function renderActivityNote() {
   if (garmin.enabled && !s.syncing && (!s.historyComplete || missing)) {
     button(s.historyComplete ? `Fetch ${s.pendingDetails} missing details and ${s.pendingCharts} graphs` : "Fetch the rest of the history", () => syncActivities(true), "Runs in the background; this view follows it. The graphs take about three Garmin calls each.");
   }
+}
+
+// ── Stats: what the stored activities add up to ──
+// The server works the numbers out (GET /api/activities/stats) and keeps the answer until an activity is added or gets
+// its details, so this view only draws them; a new activity shows up here with the next look.
+
+async function loadStats() {
+  if (A.statsLoading) { A.statsAgain = true; return; }
+  A.statsLoading = true;
+  try {
+    do {
+      A.statsAgain = false;
+      const profile = A.profile, r = await api("GET", "/api/activities/stats?" + activityQuery());
+      if (profile === A.profile) { A.stats = r.stats; A.statsError = ""; }
+    } while (A.statsAgain);
+  } catch (e) { A.statsError = e.message; }
+  finally { A.statsLoading = false; }
+  if (A.mode === "stats") renderActivityStats();
+}
+
+const fmtKm = (m) => `${(m / 1000).toLocaleString(undefined, { maximumFractionDigits: 1 })} km`;
+const fmtNum = (n) => Math.round(n).toLocaleString();
+const effortLabel = (m) => (m === 1609 ? "1 mile" : m % 1000 === 0 ? `${m / 1000} km` : `${+(m / 1000).toFixed(2)} km`);
+
+/**
+ * An activity's page, from a record. On a wide screen that is the list with the activity open beside it; on a phone the
+ * detail pane comes over Stats, and Back returns to it.
+ */
+function openFromStats(id) {
+  if (!mobileQuery.matches) { A.mode = "list"; renderActivities(); }
+  selectActivity(id, true);
+}
+
+function renderActivityStats() {
+  const box = $("astats"); box.replaceChildren();
+  if (A.statsError) { box.append(mk("div", "msg err", A.statsError)); return; }
+  const s = A.stats;
+  if (!s) { box.append(mk("div", "empty", A.statsLoading ? "Loading…" : "")); return; }
+  if (!s.activities) { box.append(mk("div", "empty", "No activities are stored yet.")); return; }
+
+  const tiles = (list) => {
+    const grid = mk("div", "stiles");
+    for (const [value, label, title] of list) {
+      const t = mk("div", "stile"); t.append(mk("b", "", value), mk("span", "", label));
+      if (title) t.title = title;
+      grid.append(t);
+    }
+    return grid;
+  };
+  // a record: what it is, its value, and the day; the ones that belong to one activity open it
+  const record = (label, value, note, id) => {
+    const r = mk("div", "srec" + (id ? " go" : ""));
+    r.append(mk("span", "srl", label), mk("span", "srv", value));
+    if (note) r.append(mk("span", "srd", note));
+    if (id) { r.tabIndex = 0; r.setAttribute("role", "button"); r.onclick = () => openFromStats(id); r.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openFromStats(id); } }; }
+    return r;
+  };
+  const heading = (text) => box.append(mk("h3", "", text));
+
+  heading("Overall");
+  box.append(tiles([[fmtNum(s.activities), "activities"], [AM.duration(s.seconds) || "–", "time"], [fmtNum(s.activeDays), "active days"], [s.since || "–", "since", s.until ? `latest ${s.until}` : ""]]));
+  box.append(mk("div", "anote", s.byType.map((t) => `${prettyName(t.type)} ${t.count}`).join(" · ")));
+
+  const r = s.running;
+  if (r) {
+    heading("Running");
+    box.append(tiles([
+      [fmtNum(r.runs), "runs"], [fmtKm(r.meters), "distance"], [AM.duration(r.seconds) || "–", "time"], [`${fmtNum(r.gain)} m`, "climbed"],
+      [r.avgPaceSec ? AM.pace(r.avgPaceSec) : "–", "average pace"], [r.vo2max.latest ? String(r.vo2max.latest.value) : "–", "VO2max", r.vo2max.best ? `best ${r.vo2max.best.value} on ${r.vo2max.best.date}` : ""],
+    ]));
+    if (r.efforts.length) {
+      heading("Best efforts");
+      for (const e of r.efforts) box.append(record(effortLabel(e.meters), AM.axisClock(e.seconds), `${AM.pace(e.seconds / (e.meters / 1000))} · ${e.date} · ${e.name}`, e.id));
+    }
+    heading("Records");
+    if (r.longest) box.append(record("Longest run", fmtKm(r.longest.meters), `${AM.axisClock(r.longest.seconds)} · ${r.longest.date} · ${r.longest.name}`, r.longest.id));
+    if (r.bestPace) box.append(record("Best pace, runs of 3 km or more", AM.pace(r.bestPace.paceSec), `${fmtKm(r.bestPace.meters)} · ${r.bestPace.date} · ${r.bestPace.name}`, r.bestPace.id));
+    if (r.biggestClimb) box.append(record("Biggest climb", `${fmtNum(r.biggestClimb.gain)} m`, `${r.biggestClimb.date} · ${r.biggestClimb.name}`, r.biggestClimb.id));
+    if (r.biggestWeek) box.append(record("Biggest week", fmtKm(r.biggestWeek.meters), `${r.biggestWeek.runs} run${r.biggestWeek.runs === 1 ? "" : "s"}, the week of ${r.biggestWeek.start}`));
+    if (r.biggestMonth) box.append(record("Biggest month", fmtKm(r.biggestMonth.meters), `${r.biggestMonth.runs} run${r.biggestMonth.runs === 1 ? "" : "s"}, ${r.biggestMonth.month}`));
+  }
+
+  const g = s.strength;
+  if (g) {
+    heading("Strength");
+    box.append(tiles([
+      [fmtNum(g.sessions), "sessions"], [AM.duration(g.seconds) || "–", "time"], [fmtNum(g.sets), "sets"], [fmtNum(g.reps), "reps"],
+      [g.detailed ? `${fmtNum(g.volume)} lb` : "–", "volume lifted", `from the ${g.detailed} of ${g.sessions} sessions whose details are stored`],
+    ]));
+    if (g.detailed < g.sessions) box.append(mk("div", "anote", `The exercise figures cover ${g.detailed} of ${g.sessions} sessions; the others have no details stored yet.`));
+    if (g.exercises.length) {
+      heading("Exercises");
+      const list = mk("div", "aexs"), shown = A.allLifts ? g.exercises : g.exercises.slice(0, 12);
+      for (const e of shown) {
+        const block = mk("div", "aex"), head = mk("div", "aexh"), chips = mk("div", "aexc");
+        head.append(mk("span", "aexn", e.name), mk("span", "aext", `${e.sessions} session${e.sessions === 1 ? "" : "s"}`));
+        if (e.best) chips.append(mk("span", "aexchip", `est. 1RM ${fmtNum(e.best.oneRm)} lb`));
+        if (e.heaviest) chips.append(mk("span", "aexchip", `heaviest ${+e.heaviest.weight.toFixed(1)} lb × ${e.heaviest.reps || "–"}`));
+        chips.append(mk("span", "aexchip", `${fmtNum(e.sets)} sets · ${fmtNum(e.reps)} reps`));
+        if (e.volume) chips.append(mk("span", "aexchip", `${fmtNum(e.volume)} lb`));
+        block.append(head, chips);
+        const when = [e.best ? `best ${e.best.reps} @ ${+e.best.weight.toFixed(1)} lb on ${e.best.date}` : "", `last ${e.lastDate}`].filter(Boolean).join(" · ");
+        block.append(mk("div", "aexnote", when));
+        list.append(block);
+      }
+      box.append(list);
+      if (g.exercises.length > 12) {
+        const more = mk("button", "", A.allLifts ? "Show fewer" : `Show all ${g.exercises.length} exercises`);
+        more.onclick = () => { A.allLifts = !A.allLifts; renderActivityStats(); };
+        box.append(more);
+      }
+      box.append(mk("div", "anote", "est. 1RM: the best set of the exercise by the Epley formula, weight × (1 + reps ÷ 30), over sets of up to 12 counted reps."));
+    }
+  }
+
+  heading("By year");
+  const table = mk("table", "atable"), tr = (cells, tag = "td") => { const row = mk("tr"); cells.forEach(([text, cls]) => row.append(mk(tag, cls || "", text))); table.append(row); };
+  tr([["Year"], ["Activities", "num"], ["Time", "num"], ["Runs", "num"], ["Distance", "num"], ["Lifts", "num"], ["Sets", "num"]], "th");
+  for (const y of s.years) tr([[y.year], [fmtNum(y.activities), "num"], [AM.duration(y.seconds) || "–", "num"], [y.runs ? fmtNum(y.runs) : "–", "num"], [y.runMeters ? fmtKm(y.runMeters) : "–", "num"], [y.lifts ? fmtNum(y.lifts) : "–", "num"], [y.liftSets ? fmtNum(y.liftSets) : "–", "num"]]);
+  box.append(table);
 }
 
 // ── List ──
@@ -2559,11 +2702,11 @@ function renderActivityDetail() {
 
 function bindActivitiesView() {
   $("vActivities").onclick = () => setView("activities");
-  $("aModes").querySelectorAll("button").forEach((b) => b.onclick = () => { A.mode = b.dataset.mode; if (A.mode === "calendar" && A.showPlanned) loadPlannedPlans().then(renderActivities); renderActivities(); });
+  $("aModes").querySelectorAll("button").forEach((b) => b.onclick = () => { A.mode = b.dataset.mode; if (A.mode === "calendar" && A.showPlanned) loadPlannedPlans().then(renderActivities); if (A.mode === "stats") { A.statsError = ""; loadStats(); } renderActivities(); });
   $("aRange").onchange = (e) => { A.range = e.target.value; renderActivities(); };
   $("aSearch").oninput = (e) => { A.query = e.target.value; renderActivities(); };
   $("aSync").onclick = guard(() => syncActivities(false));
-  $("aProfile").onchange = (e) => { A.profile = e.target.value; A.rows = []; A.sync = null; A.loaded = false; A.refreshed = false; A.selected = null; A.detail = null; A.plans = null; clearActivity(); guard(loadActivities)(); };
+  $("aProfile").onchange = (e) => { A.profile = e.target.value; A.rows = []; A.sync = null; A.loaded = false; A.refreshed = false; A.selected = null; A.detail = null; A.plans = null; A.stats = null; A.statsError = ""; clearActivity(); guard(loadActivities)(); if (A.mode === "stats") loadStats(); };
   $("aPrev").onclick = () => { A.month = addMonths(A.month || todayIso().slice(0, 7), -1); renderActivities(); };
   $("aNext").onclick = () => { A.month = addMonths(A.month || todayIso().slice(0, 7), 1); renderActivities(); };
   $("aToday").onclick = () => { A.month = todayIso().slice(0, 7); A.day = todayIso(); renderActivities(); };

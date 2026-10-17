@@ -437,6 +437,20 @@ describe("web plan editor", () => {
       expect((await call("GET", "/api/activity?id=6")).json.liftHistory).toEqual({});
     });
 
+    it("gives the lifetime stats of the profile, empty without a profile, and current after an activity is added", async () => {
+      expect((await call("GET", "/api/activities/stats")).json).toEqual({ profile: null, stats: null });
+      addProfile("MED");
+      expect((await call("GET", "/api/activities/stats")).json.stats).toEqual(expect.objectContaining({ activities: 0, running: null, strength: null }));
+      keep("MED", item(1, "2026-08-01", "running", { distance: 10000, elevationGain: 55 }));
+      const one = (await call("GET", "/api/activities/stats")).json;
+      expect(one.profile).toBe("MED");
+      expect(one.stats).toEqual(expect.objectContaining({ activities: 1, since: "2026-08-01" }));
+      expect(one.stats.running).toEqual(expect.objectContaining({ runs: 1, meters: 10000, gain: 55 }));
+      keep("MED", item(2, "2026-08-03", "running", { distance: 5000 }));
+      expect((await call("GET", "/api/activities/stats")).json.stats.running.runs).toBe(2);
+      expect(a.fetchDetailsNow).not.toHaveBeenCalled(); // a read never calls Garmin
+    });
+
     it("answers 404 for an activity that is not stored, and 400 for a bad id", async () => {
       addProfile("MED");
       expect((await call("GET", "/api/activity?id=999")).status).toBe(404);

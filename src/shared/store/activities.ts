@@ -88,6 +88,30 @@ export interface StoredActivity extends Omit<NewActivity, "raw"> {
   syncedAt: number;
 }
 
+/** One activity's columns and the few list-item fields the lifetime stats add up. */
+export interface LifetimeRow {
+  id: string;
+  startLocal: string;
+  type: string;
+  name: string;
+  distance: number | null;
+  duration: number | null;
+  /** Climb in meters, calories, VO2max and, for strength, the sets and reps, as the list item has them. */
+  gain: number | null;
+  calories: number | null;
+  vo2: number | null;
+  sets: number | null;
+  reps: number | null;
+}
+
+/** A strength session with its details, for the exercise stats. */
+export interface StrengthRow {
+  id: string;
+  startLocal: string;
+  raw: any;
+  detail: any;
+}
+
 /** What a list shows of an activity: columns and a few fields of the list item, read in SQL so the 15-20 KB of raw JSON is not parsed in node. */
 export interface ActivitySummary {
   id: string;
@@ -281,6 +305,55 @@ export class ActivityTable {
       .all(profile, MAX_DETAIL_FAILURES, options.limit ?? 1_000_000);
     const wanted = options.ids ? new Set(options.ids) : null;
     return rows.filter((r) => !wanted || wanted.has(r.id)).map((r) => ({ id: r.id, startGmt: r.start_gmt, type: r.type }));
+  }
+
+  // ── For the lifetime stats ──
+
+  /**
+   * A short string that changes whenever an activity is added or gets its details (or a young one's details are fetched
+   * again), so a cached answer can be kept for exactly as long as the table stays the same.
+   */
+  fingerprint(profile: string): string {
+    const r = this.db
+      .prepare("SELECT COUNT(*) AS n, COUNT(detail) AS d, COALESCE(MAX(synced_at), 0) AS s, COALESCE(MAX(detail_at), 0) AS t FROM activities WHERE profile = ?")
+      .get(profile) as Row;
+    return `${r.n}:${r.d}:${r.s}:${r.t}`;
+  }
+
+  /** Every activity's columns and list-item fields, oldest first; the raw JSON is read in SQL, not parsed here. */
+  lifetimeRows(profile: string): LifetimeRow[] {
+    return this.db
+      .prepare(
+        `SELECT id, start_local, type, name, distance, duration,
+                json_extract(raw, '$.elevationGain') AS gain, json_extract(raw, '$.calories') AS calories,
+                json_extract(raw, '$.vO2MaxValue') AS vo2, json_extract(raw, '$.totalSets') AS sets, json_extract(raw, '$.totalReps') AS reps
+         FROM activities WHERE profile = ? ORDER BY start_local`
+      )
+      .all(profile)
+      .map((r) => ({
+        id: r.id, startLocal: r.start_local, type: r.type, name: r.name, distance: r.distance ?? null, duration: r.duration ?? null,
+        gain: typeof r.gain === "number" ? r.gain : null, calories: typeof r.calories === "number" ? r.calories : null,
+        vo2: typeof r.vo2 === "number" ? r.vo2 : null, sets: typeof r.sets === "number" ? r.sets : null, reps: typeof r.reps === "number" ? r.reps : null,
+      }));
+  }
+
+  /** The fastest split the watch timed inside each activity (`fastestSplit_<meters>` in the list item), as distance and seconds. */
+  fastestSplits(profile: string): { id: string; meters: number; seconds: number }[] {
+    return this.db
+      .prepare("SELECT a.id AS id, j.key AS key, j.value AS value FROM activities a, json_each(a.raw) j WHERE a.profile = ? AND j.key GLOB 'fastestSplit_[0-9]*'")
+      .all(profile)
+      .flatMap((r) => {
+        const meters = Number(String(r.key).slice("fastestSplit_".length)), seconds = typeof r.value === "number" ? r.value : NaN;
+        return Number.isFinite(meters) && meters > 0 && Number.isFinite(seconds) && seconds > 0 ? [{ id: r.id as string, meters, seconds }] : [];
+      });
+  }
+
+  /** The strength sessions whose details are stored, oldest first. */
+  strengthRows(profile: string): StrengthRow[] {
+    return this.db
+      .prepare("SELECT id, start_local, raw, detail FROM activities WHERE profile = ? AND type = 'strength_training' AND detail IS NOT NULL ORDER BY start_local")
+      .all(profile)
+      .map((r) => ({ id: r.id as string, startLocal: r.start_local as string, raw: JSON.parse(r.raw as string), detail: JSON.parse(r.detail as string) }));
   }
 
   /** The newest activities as list rows, newest first. */

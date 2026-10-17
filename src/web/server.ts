@@ -22,7 +22,7 @@
  * and the dates of its workouts. It reads the stored plans only, not Garmin's own calendar.
  *
  * The Activities view lists and draws the profile's activities from the database (GET /api/activities,
- * GET /api/activity); it never calls Garmin on a read. POST /api/activities/sync asks Garmin for what is new
+ * GET /api/activity, GET /api/activities/stats for the lifetime totals and records); it never calls Garmin on a read. POST /api/activities/sync asks Garmin for what is new
  * (and, with history: true, starts the background fill of the whole history and the details), and POST
  * /api/activities/detail and /chart fetch one activity's details or chart data now.
  *
@@ -48,6 +48,7 @@ import { installConsoleRedirect } from "../mcp/logCapture";
 import ActivityExporter from "../activityExporter";
 import { activityStats, buildChart } from "../shared/activityChart";
 import { type BestLift, HISTORY_DAYS, bestLifts } from "../shared/oneRepMax";
+import { lifetimeStats } from "../shared/lifetimeStats";
 import type { ExerciseSet } from "../shared/types";
 import { syncStatus } from "../shared/activitySync";
 import type { ActivitySummary, StoredActivity } from "../shared/store";
@@ -938,6 +939,12 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
       const profile = profileOrNull(who, url.searchParams.get("profile"));
       if (!profile) return send(res, 200, { profile: null, activities: [], sync: null });
       return send(res, 200, { profile, activities: store().activities.summaries(profile).map(activityRow), sync: syncStatus(store(), profile) });
+    }
+
+    case "GET /api/activities/stats": {
+      const profile = profileOrNull(who, url.searchParams.get("profile"));
+      if (!profile) return send(res, 200, { profile: null, stats: null });
+      return send(res, 200, { profile, stats: lifetimeStats(store().activities, profile) });
     }
 
     case "GET /api/activity": {
