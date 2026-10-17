@@ -402,6 +402,16 @@ describe("web plan editor", () => {
       expect(a.fetchDetailsNow).not.toHaveBeenCalled(); // a read never calls Garmin
     });
 
+    it("carries the profile's one-rep maxes from its training plan, and none when it has no plan or an odd one", async () => {
+      addProfile("MED");
+      keep("MED", item(1, "2026-08-01", "strength_training"));
+      expect((await call("GET", "/api/activity?id=1")).json.oneRepMax).toEqual({});
+      seed("data/MED/training-plan.json", { strengthBenchmarks: { BARBELL_BENCH_PRESS: { oneRepMax: 266 }, BARBELL_BACK_SQUAT: { oneRepMax: 306, unit: "lb" }, ODD: { oneRepMax: "heavy" }, NONE: null } });
+      expect((await call("GET", "/api/activity?id=1")).json.oneRepMax).toEqual({ BARBELL_BENCH_PRESS: 266, BARBELL_BACK_SQUAT: 306 });
+      seed("data/MED/training-plan.json", "not json");
+      expect((await call("GET", "/api/activity?id=1")).json.oneRepMax).toEqual({});
+    });
+
     it("answers 404 for an activity that is not stored, and 400 for a bad id", async () => {
       addProfile("MED");
       expect((await call("GET", "/api/activity?id=999")).status).toBe(404);

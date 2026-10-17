@@ -210,6 +210,54 @@
     return runs;
   }
 
+  /** A lift's name as the key a benchmark is filed under: "Barbell Bench Press" and BARBELL_BENCH_PRESS both give BENCH_PRESS. */
+  const liftKey = (name) => String(name || "").toUpperCase().replace(/[^A-Z0-9]+/g, "_").replace(/^_+|_+$/g, "").replace(/^BARBELL_/, "");
+
+  /** The Epley estimate of a one-rep max from one set; null when the set cannot say (no weight, no counted reps, or over 12 reps). */
+  function estimate1RM(weight, reps) {
+    if (!(weight > 0) || !(reps > 0) || reps > 12) return null;
+    return reps === 1 ? weight : weight * (1 + reps / 30);
+  }
+
+  /** 0 to 3 for how heavy a set is: under 65% of the max, to 80, to 90, and beyond. */
+  const intensityBand = (pct) => (pct < 65 ? 0 : pct < 80 ? 1 : pct < 90 ? 2 : 3);
+
+  /**
+   * Each loaded exercise's sets as a percentage of its one-rep max, in the order they were done, with consecutive sets of one
+   * weight together. The max is the profile's benchmark for that lift when it has one ({ BARBELL_BENCH_PRESS: 266 }),
+   * otherwise the best Epley estimate among the sets of the activity. An exercise with neither is left out.
+   * Returns [{ name, oneRm, source: "benchmark" | "estimate", runs: [{ count, weight, pct, band }] }].
+   */
+  function intensity(lifts, benchmarks) {
+    const known = {};
+    for (const [k, v] of Object.entries(benchmarks || {})) if (typeof v === "number" && v > 0) known[liftKey(k)] = v;
+    const byName = new Map();
+    for (const x of lifts || []) {
+      if (!x || x.category === "INTERVAL" || !x.exerciseName) continue;
+      const e = byName.get(x.exerciseName) || { name: x.exerciseName, sets: [] };
+      e.sets.push(...setRuns(x).filter((r) => r.weight > 0).map((r) => ({ ...r })));
+      byName.set(x.exerciseName, e);
+    }
+    const out = [];
+    for (const e of byName.values()) {
+      if (!e.sets.length) continue;
+      const benchmark = known[liftKey(e.name)];
+      const oneRm = benchmark || Math.max(0, ...e.sets.map((r) => estimate1RM(r.weight, r.reps) || 0));
+      if (!oneRm) continue;
+      const runs = [];
+      for (const r of e.sets) {
+        const last = runs[runs.length - 1];
+        if (last && last.weight === r.weight) last.count += r.count;
+        else runs.push({ count: r.count, weight: r.weight });
+      }
+      out.push({
+        name: e.name, oneRm: Math.round(oneRm), source: benchmark ? "benchmark" : "estimate",
+        runs: runs.map((r) => { const pct = Math.round((r.weight / oneRm) * 100); return { ...r, pct, band: intensityBand(pct) }; }),
+      });
+    }
+    return out;
+  }
+
   /** One run as text: "6 @ 40 lb", "3 × 6 @ 40 lb", "135 lb" for a set whose reps were not counted, "3 × 12" without weight; "" with neither. */
   function runText(run) {
     const w = run.weight ? `${+run.weight.toFixed(1)} lb` : "";
@@ -253,5 +301,5 @@
     return chart.route.lat.length > 1 ? Math.round((j / (chart.route.lat.length - 1)) * (chart.time.length - 1)) : 0;
   }
 
-  return { setRuns, runText, routeIndexFor, chartIndexFor, niceRange, smooth, trimRange, nearestIndex, zoneShares, compare, axisClock, weekOf, totals, groupWeeks, byDate, rangeStart, filterRows, duration, pace, distance, clock, planned, planSport, newestFirst };
+  return { setRuns, runText, intensity, estimate1RM, intensityBand, liftKey, routeIndexFor, chartIndexFor, niceRange, smooth, trimRange, nearestIndex, zoneShares, compare, axisClock, weekOf, totals, groupWeeks, byDate, rangeStart, filterRows, duration, pace, distance, clock, planned, planSport, newestFirst };
 });

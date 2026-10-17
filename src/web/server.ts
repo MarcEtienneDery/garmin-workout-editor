@@ -521,6 +521,21 @@ function activityRow(a: Omit<ActivitySummary, "detailed"> & { detailed?: boolean
   };
 }
 
+/** The profile's one-rep maxes from its training plan's strengthBenchmarks, by Garmin exercise key, in pounds. */
+function oneRepMaxes(profile: string): Record<string, number> {
+  const out: Record<string, number> = {};
+  try {
+    const plan = JSON.parse(store().get(`data/${profile}/training-plan.json`)?.text ?? "");
+    for (const [key, b] of Object.entries(plan?.strengthBenchmarks ?? {})) {
+      const v = (b as { oneRepMax?: unknown } | null)?.oneRepMax;
+      if (typeof v === "number" && Number.isFinite(v) && v > 0) out[key] = v;
+    }
+  } catch {
+    // no plan, or one that is not JSON: no benchmarks
+  }
+  return out;
+}
+
 let slimmer: ActivityExporter | undefined;
 
 /** One activity with everything stored: its row, the slim form (sets, intervals, feel and RPE), and the plan workout it came from. */
@@ -539,6 +554,7 @@ function activityDetail(profile: string, a: StoredActivity) {
     slim: slimmer.slim([{ ...raw, ...(a.detail ?? {}) }])[0] ?? null,
     detailed: a.detail !== null,
     stats: activityStats(raw, a.detail),
+    oneRepMax: oneRepMaxes(profile),
     // the charts, read from what was stored; null until the chart data has been fetched
     chart: buildChart(store().activities.getChart(profile, a.id)),
     planned: entry ? { path: entry.path, index: entry.index, workout: entry.workout } : null,
