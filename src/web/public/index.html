@@ -285,6 +285,7 @@
   .aexn { font-weight:600; min-width:0; }
   .aext { color:var(--dim); font-size:11px; white-space:nowrap; }
   .aexc { display:flex; flex-wrap:wrap; gap:4px; margin-top:5px; }
+  .aexnote { color:var(--dim); font-size:11px; margin-top:4px; }
   .aexchip { background:#2f2f2f; border-radius:4px; padding:2px 8px; white-space:nowrap; }
   .aexchip.b0 { border-left:3px solid #6b6b6b; } .aexchip.b1 { border-left:3px solid #1f78d1; }
   .aexchip.b2 { border-left:3px solid #d7ba7d; } .aexchip.b3 { border-left:3px solid #e0393c; }
@@ -2518,19 +2519,20 @@ function renderActivityDetail() {
     }
     box.append(list);
     // each loaded exercise's sets as a share of its one-rep max
-    const heavy = AM.intensity(lifts, d.oneRepMax);
+    const heavy = AM.intensity(lifts, d.oneRepMax, d.liftHistory);
     if (heavy.length) {
       box.append(mk("h3", "", "% of 1RM"));
       const pcts = mk("div", "aexs");
       for (const e of heavy) {
         const block = mk("div", "aex"), head = mk("div", "aexh"), row = mk("div", "aexc");
-        head.append(mk("span", "aexn", e.name), mk("span", "aext", `${e.source === "estimate" ? "est. " : ""}1RM ${e.oneRm.toLocaleString()} lb`));
+        head.append(mk("span", "aexn", e.name), mk("span", "aext", `${e.source === "history" ? "est. " : ""}1RM ${e.oneRm.toLocaleString()} lb`));
         e.runs.forEach((r) => row.append(mk("span", `aexchip b${r.band}`, `${r.count > 1 ? r.count + " × " : ""}${r.pct}% · ${+r.weight.toFixed(1)} lb`)));
         block.append(head, row);
+        if (e.from) block.append(mk("div", "aexnote", `from ${e.from.reps} @ ${+e.from.weight.toFixed(1)} lb on ${e.from.date}`));
         pcts.append(block);
       }
       box.append(pcts);
-      if (heavy.some((e) => e.source === "estimate")) box.append(mk("div", "anote", "est. 1RM: no benchmark for the lift, so the best set of this activity by the Epley formula, weight × (1 + reps ÷ 30)."));
+      if (heavy.some((e) => e.source === "history")) box.append(mk("div", "anote", "est. 1RM: no benchmark for the lift, so your best set of it in the 6 months up to this activity, by the Epley formula: weight × (1 + reps ÷ 30)."));
     }
   }
   // the watch's laps say more than the intervals Garmin summarises, so the table is for activities without them

@@ -412,6 +412,31 @@ describe("web plan editor", () => {
       expect((await call("GET", "/api/activity?id=1")).json.oneRepMax).toEqual({});
     });
 
+    it("estimates each lift's one-rep max from the sets of the six months up to the activity, itself included", async () => {
+      addProfile("MED");
+      const lb = (n: number) => n * 453.6; // Garmin's weight unit
+      const raw = (exercise: string, ...sets: [number, number][]) => ({
+        fullExerciseSets: sets.map(([reps, pounds]) => ({ setType: "ACTIVE", exercises: [{ category: "X", name: exercise }], repetitionCount: reps, weight: lb(pounds) })),
+      });
+      const day = (id: number, date: string, exercise: string, ...sets: [number, number][]) => {
+        keep("MED", item(id, date, "strength_training"));
+        store().activities.setDetail("MED", String(id), raw(exercise, ...sets));
+      };
+      day(1, "2026-01-01", "BARBELL_BENCH_PRESS", [1, 300]); // over six months before: too old
+      day(2, "2026-07-01", "BARBELL_BENCH_PRESS", [3, 225], [0, 135]); // 247.5
+      day(3, "2026-08-01", "BARBELL_BENCH_PRESS", [6, 200]); // the activity: 240
+      day(4, "2026-08-01", "DUMBBELL_CURL", [10, 30]); // a lift of its own, and not one of the exercises of activity 3
+      day(5, "2026-09-01", "BARBELL_BENCH_PRESS", [1, 400]); // later than the activity
+      const got = (await call("GET", "/api/activity?id=3")).json;
+      expect(Object.keys(got.liftHistory)).toEqual(["Barbell Bench Press"]);
+      expect(got.liftHistory["Barbell Bench Press"]).toEqual({ oneRm: 247.5, weight: 225, reps: 3, date: "2026-07-01" });
+      // activity 1 has nothing before it, so its own set is the best
+      expect((await call("GET", "/api/activity?id=1")).json.liftHistory["Barbell Bench Press"]).toEqual({ oneRm: 300, weight: 300, reps: 1, date: "2026-01-01" });
+      // a run has no lifts
+      keep("MED", item(6, "2026-08-02", "running"));
+      expect((await call("GET", "/api/activity?id=6")).json.liftHistory).toEqual({});
+    });
+
     it("answers 404 for an activity that is not stored, and 400 for a bad id", async () => {
       addProfile("MED");
       expect((await call("GET", "/api/activity?id=999")).status).toBe(404);

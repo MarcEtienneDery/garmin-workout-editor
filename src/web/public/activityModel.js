@@ -213,22 +213,18 @@
   /** A lift's name as the key a benchmark is filed under: "Barbell Bench Press" and BARBELL_BENCH_PRESS both give BENCH_PRESS. */
   const liftKey = (name) => String(name || "").toUpperCase().replace(/[^A-Z0-9]+/g, "_").replace(/^_+|_+$/g, "").replace(/^BARBELL_/, "");
 
-  /** The Epley estimate of a one-rep max from one set; null when the set cannot say (no weight, no counted reps, or over 12 reps). */
-  function estimate1RM(weight, reps) {
-    if (!(weight > 0) || !(reps > 0) || reps > 12) return null;
-    return reps === 1 ? weight : weight * (1 + reps / 30);
-  }
-
   /** 0 to 3 for how heavy a set is: under 65% of the max, to 80, to 90, and beyond. */
   const intensityBand = (pct) => (pct < 65 ? 0 : pct < 80 ? 1 : pct < 90 ? 2 : 3);
 
   /**
    * Each loaded exercise's sets as a percentage of its one-rep max, in the order they were done, with consecutive sets of one
    * weight together. The max is the profile's benchmark for that lift when it has one ({ BARBELL_BENCH_PRESS: 266 }),
-   * otherwise the best Epley estimate among the sets of the activity. An exercise with neither is left out.
-   * Returns [{ name, oneRm, source: "benchmark" | "estimate", runs: [{ count, weight, pct, band }] }].
+   * otherwise the best estimate from the earlier activities, which the server works out ({ "Face Pull": { oneRm, weight,
+   * reps, date } }, by exercise name). An exercise with neither is left out.
+   * Returns [{ name, oneRm, source: "benchmark" | "history", from, runs: [{ count, weight, pct, band }] }], `from` being the
+   * set the estimate came from.
    */
-  function intensity(lifts, benchmarks) {
+  function intensity(lifts, benchmarks, history) {
     const known = {};
     for (const [k, v] of Object.entries(benchmarks || {})) if (typeof v === "number" && v > 0) known[liftKey(k)] = v;
     const byName = new Map();
@@ -241,8 +237,8 @@
     const out = [];
     for (const e of byName.values()) {
       if (!e.sets.length) continue;
-      const benchmark = known[liftKey(e.name)];
-      const oneRm = benchmark || Math.max(0, ...e.sets.map((r) => estimate1RM(r.weight, r.reps) || 0));
+      const benchmark = known[liftKey(e.name)], past = history && history[e.name];
+      const oneRm = benchmark || (past && past.oneRm > 0 ? past.oneRm : 0);
       if (!oneRm) continue;
       const runs = [];
       for (const r of e.sets) {
@@ -251,7 +247,7 @@
         else runs.push({ count: r.count, weight: r.weight });
       }
       out.push({
-        name: e.name, oneRm: Math.round(oneRm), source: benchmark ? "benchmark" : "estimate",
+        name: e.name, oneRm: Math.round(oneRm), source: benchmark ? "benchmark" : "history", from: benchmark ? null : { weight: past.weight, reps: past.reps, date: past.date },
         runs: runs.map((r) => { const pct = Math.round((r.weight / oneRm) * 100); return { ...r, pct, band: intensityBand(pct) }; }),
       });
     }
@@ -301,5 +297,5 @@
     return chart.route.lat.length > 1 ? Math.round((j / (chart.route.lat.length - 1)) * (chart.time.length - 1)) : 0;
   }
 
-  return { setRuns, runText, intensity, estimate1RM, intensityBand, liftKey, routeIndexFor, chartIndexFor, niceRange, smooth, trimRange, nearestIndex, zoneShares, compare, axisClock, weekOf, totals, groupWeeks, byDate, rangeStart, filterRows, duration, pace, distance, clock, planned, planSport, newestFirst };
+  return { setRuns, runText, intensity, intensityBand, liftKey, routeIndexFor, chartIndexFor, niceRange, smooth, trimRange, nearestIndex, zoneShares, compare, axisClock, weekOf, totals, groupWeeks, byDate, rangeStart, filterRows, duration, pace, distance, clock, planned, planSport, newestFirst };
 });

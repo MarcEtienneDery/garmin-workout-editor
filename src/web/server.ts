@@ -42,11 +42,13 @@ import * as path from "path";
 import { createHash, randomBytes, timingSafeEqual } from "crypto";
 import * as dotenv from "dotenv";
 import { PROJECT_ROOT, findProfile, getAvailableProfiles, getProfilesDir } from "../shared/profileLoader";
-import { type DocMeta, type StoreErrorCode, StoreError, getStore, normalizeLogicalPath, profileOfPath } from "../shared/store";
+import { type DocMeta, type StoreErrorCode, StoreError, getStore, normalizeLogicalPath, profileOfPath, startMs } from "../shared/store";
 import { getSettings, resolveProfileName, runCaptured } from "../mcp/context";
 import { installConsoleRedirect } from "../mcp/logCapture";
 import ActivityExporter from "../activityExporter";
 import { activityStats, buildChart } from "../shared/activityChart";
+import { type BestLift, HISTORY_DAYS, bestLifts } from "../shared/oneRepMax";
+import type { ExerciseSet } from "../shared/types";
 import { syncStatus } from "../shared/activitySync";
 import type { ActivitySummary, StoredActivity } from "../shared/store";
 import { fetchChartNow, fetchDetailsNow, refreshActivities, startBackgroundSync } from "../mcp/tools/activities";
@@ -538,6 +540,20 @@ function oneRepMaxes(profile: string): Record<string, number> {
 
 let slimmer: ActivityExporter | undefined;
 
+const SQL_TIME = (ms: number): string => new Date(ms).toISOString().slice(0, 19).replace("T", " ");
+
+/**
+ * The best estimated one-rep max, from the activities stored for the profile in the months up to this one (and itself), for
+ * each exercise of this activity. Only the exercises of this activity are returned.
+ */
+function liftHistory(profile: string, a: StoredActivity, sets: ExerciseSet[] | undefined): Record<string, BestLift> {
+  const names = new Set((sets ?? []).filter((x) => x.category !== "INTERVAL" && x.exerciseName).map((x) => x.exerciseName));
+  if (!names.size) return {};
+  const rows = store().activities.between(profile, { from: SQL_TIME(startMs(a.startGmt) - HISTORY_DAYS * 86_400_000), to: a.startGmt, type: "strength_training" });
+  const best = bestLifts(rows.filter((r) => r.detail).map((r) => ({ date: r.startLocal.slice(0, 10), sets: slimmer!.slim([{ ...r.raw, ...r.detail }])[0]?.exerciseSets })));
+  return Object.fromEntries(Object.entries(best).filter(([name]) => names.has(name)));
+}
+
 /** One activity with everything stored: its row, the slim form (sets, intervals, feel and RPE), and the plan workout it came from. */
 function activityDetail(profile: string, a: StoredActivity) {
   slimmer ??= new ActivityExporter(null as never); // the transform needs no Garmin client
@@ -548,13 +564,15 @@ function activityDetail(profile: string, a: StoredActivity) {
     aerobicEffect: raw.aerobicTrainingEffect ?? null, elevationGain: raw.elevationGain ?? null, calories: raw.calories ?? summary.calories ?? null,
     sets: raw.totalSets ?? null, reps: raw.totalReps ?? null, workoutId: a.workoutId, detailed: a.detail !== null,
   });
+  const slim = slimmer.slim([{ ...raw, ...(a.detail ?? {}) }])[0] ?? null;
   const entry = hasId(a.workoutId) ? planEntriesFor(profile).find((e) => sameId(e.workout.workoutId, a.workoutId)) : undefined;
   return {
     activity: row,
-    slim: slimmer.slim([{ ...raw, ...(a.detail ?? {}) }])[0] ?? null,
+    slim,
     detailed: a.detail !== null,
     stats: activityStats(raw, a.detail),
     oneRepMax: oneRepMaxes(profile),
+    liftHistory: a.type === "strength_training" ? liftHistory(profile, a, slim?.exerciseSets) : {},
     // the charts, read from what was stored; null until the chart data has been fetched
     chart: buildChart(store().activities.getChart(profile, a.id)),
     planned: entry ? { path: entry.path, index: entry.index, workout: entry.workout } : null,
