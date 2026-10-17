@@ -207,6 +207,30 @@
     return [...by.values()].sort((a, b) => b.volume - a.volume || b.sets - a.sets);
   }
 
+  /**
+   * The sets of one exercise as runs of identical sets: [{ count, reps, weight }], in the order they were done. A set
+   * with no reps (or no weight) has 0 there, which is what Garmin gives when the watch did not count it.
+   */
+  function setRuns(x) {
+    const n = Math.max(1, (x && x.sets) || 1);
+    const reps = x && Array.isArray(x.repsList) ? x.repsList : Array(n).fill((x && x.reps) || 0);
+    const weights = x && Array.isArray(x.weightList) ? x.weightList : Array(n).fill((x && x.weight) || 0);
+    const runs = [];
+    for (let i = 0; i < Math.max(n, reps.length, weights.length); i++) {
+      const r = reps[i] || 0, w = weights[i] || 0, last = runs[runs.length - 1];
+      if (last && last.reps === r && last.weight === w) last.count++;
+      else runs.push({ count: 1, reps: r, weight: w });
+    }
+    return runs;
+  }
+
+  /** One run as text: "6 @ 40 lb", "3 × 6 @ 40 lb", "135 lb" for a set whose reps were not counted, "3 × 12" without weight; "" with neither. */
+  function runText(run) {
+    const w = run.weight ? `${+run.weight.toFixed(1)} lb` : "";
+    const core = run.reps && w ? `${run.reps} @ ${w}` : run.reps ? String(run.reps) : w;
+    return core && run.count > 1 ? `${run.count} × ${core}` : core;
+  }
+
   /** What was planned against what was done: time and distance, each with the difference. */
   function compare(planned, actual) {
     const rows = [];
@@ -243,5 +267,5 @@
     return chart.route.lat.length > 1 ? Math.round((j / (chart.route.lat.length - 1)) * (chart.time.length - 1)) : 0;
   }
 
-  return { routeIndexFor, chartIndexFor, niceRange, smooth, trimRange, nearestIndex, zoneShares, volumeByExercise, compare, axisClock, weekOf, totals, groupWeeks, byDate, rangeStart, filterRows, duration, pace, distance, clock, planned, planSport, newestFirst };
+  return { setRuns, runText, routeIndexFor, chartIndexFor, niceRange, smooth, trimRange, nearestIndex, zoneShares, volumeByExercise, compare, axisClock, weekOf, totals, groupWeeks, byDate, rangeStart, filterRows, duration, pace, distance, clock, planned, planSport, newestFirst };
 });

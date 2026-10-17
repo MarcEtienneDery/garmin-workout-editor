@@ -166,7 +166,7 @@
         part.value.textContent = show ? `${part.p.format(v)} ${part.p.unit}` : "";
       }
       const t = i === null ? null : chart.time[i], d = i === null ? null : chart.distance[i];
-      readout.textContent = i === null ? "" : [valid(d) ? `${+(d / 1000).toFixed(2)} km` : "", valid(t) ? AM.axisClock(t) : ""].filter(Boolean).join(" · ");
+      readout.textContent = i === null ? "" : [hasDistance && valid(d) ? `${+(d / 1000).toFixed(2)} km` : "", valid(t) ? AM.axisClock(t) : ""].filter(Boolean).join(" · ");
     }
 
     draw();
@@ -230,10 +230,20 @@
     return box;
   }
 
-  /** Volume per exercise, heaviest first. */
+  /** Volume per exercise, heaviest first: the name and the total on one line, the bar under it. Exercises without a load have no bar. */
   function volumeBars(list) {
-    const max = Math.max(...list.map((x) => x.volume), 1);
-    return bars(list.map((x) => ({ label: "", value: x.name, share: x.volume / max, extra: x.volume ? `${Math.round(x.volume).toLocaleString()} lb · ${x.sets} sets` : `${x.sets} sets`, cls: "" })));
+    const rows = list.filter((x) => x.volume > 0);
+    const max = Math.max(...rows.map((x) => x.volume), 1);
+    const box = html("div", "avol");
+    for (const x of rows) {
+      const row = html("div", "avrow"), head = html("div", "avh"), track = html("span", "abartrack"), fill = html("span", "abarfill");
+      head.append(html("span", "avn", x.name), html("span", "avt", `${Math.round(x.volume).toLocaleString()} lb · ${x.sets} set${x.sets === 1 ? "" : "s"}`));
+      fill.style.width = `${Math.max(2, Math.round((x.volume / max) * 100))}%`;
+      track.append(fill);
+      row.append(head, track);
+      box.append(row);
+    }
+    return box;
   }
 
   root.ActivityCharts = { graphs, paceBars, zoneBar, volumeBars, paceText, ZONE_COLORS };

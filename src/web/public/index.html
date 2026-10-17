@@ -280,6 +280,16 @@
   .atable td, .atable th { padding:4px 6px 4px 0; text-align:left; border-bottom:1px solid #2a2a2a; vertical-align:top; }
   .atable th { color:var(--dim); font-weight:400; font-size:11px; }
   .atable td.num { text-align:right; white-space:nowrap; }
+  .aex { padding:7px 0; border-bottom:1px solid #2a2a2a; }
+  .aexh { display:flex; justify-content:space-between; align-items:baseline; gap:10px; }
+  .aexn { font-weight:600; min-width:0; }
+  .aext { color:var(--dim); font-size:11px; white-space:nowrap; }
+  .aexc { display:flex; flex-wrap:wrap; gap:4px; margin-top:5px; }
+  .aexchip { background:#2f2f2f; border-radius:4px; padding:2px 8px; white-space:nowrap; }
+  .avol { display:grid; gap:9px; }
+  .avh { display:flex; justify-content:space-between; align-items:baseline; gap:10px; margin-bottom:3px; }
+  .avn { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .avt { color:var(--dim); font-size:11px; white-space:nowrap; }
   .anote { color:var(--dim); margin:8px 0; }
 
   /* ── Calendar view: where the plan files put their workouts ── */
@@ -2498,12 +2508,17 @@ function renderActivityDetail() {
   };
   if (lifts.length) {
     box.append(mk("h3", "", "Exercises"));
-    box.append(table([["Exercise"], ["Sets × reps", "num"], ["Weight", "num"]], lifts.map((x) => {
-      const reps = Array.isArray(x.repsList) ? x.repsList.join(" / ") : x.reps || "";
-      const volume = reps ? `${x.sets || 1} × ${reps}` : `${x.sets || 1} set${(x.sets || 1) === 1 ? "" : "s"}`;
-      const weight = Array.isArray(x.weightList) ? x.weightList.join(" / ") + " lb" : x.weight ? `${x.weight} lb` : "";
-      return [[x.exerciseName + (x.supersetGroup ? " ·ss" : "")], [volume, "num"], [weight, "num"]];
-    })));
+    // one block per exercise: its name and set count, then a chip for each run of identical sets
+    const list = mk("div", "aexs");
+    for (const x of lifts) {
+      const runs = AM.setRuns(x), count = runs.reduce((a, r) => a + r.count, 0), chips = runs.map(AM.runText).filter(Boolean);
+      const block = mk("div", "aex"), head = mk("div", "aexh");
+      head.append(mk("span", "aexn", x.exerciseName), mk("span", "aext", `${x.supersetGroup ? "superset · " : ""}${count} set${count === 1 ? "" : "s"}`));
+      block.append(head);
+      if (chips.length) { const row = mk("div", "aexc"); chips.forEach((c) => row.append(mk("span", "aexchip", c))); block.append(row); }
+      list.append(block);
+    }
+    box.append(list);
     const volumes = AM.volumeByExercise(lifts);
     if (volumes.some((v) => v.volume > 0)) {
       const total = Math.round(volumes.reduce((a, v) => a + v.volume, 0));
