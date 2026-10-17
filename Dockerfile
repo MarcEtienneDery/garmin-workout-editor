@@ -24,7 +24,7 @@ COPY --from=build /app/package.json ./
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 
-# /data must be writable by the runtime user (the database, the token cache); /config only
+# /data must be writable by the runtime user (the database); /config only
 # needs to be readable.
 RUN mkdir -p /config /data && chown node:node /data
 USER node

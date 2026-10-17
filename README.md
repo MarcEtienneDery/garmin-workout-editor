@@ -265,7 +265,7 @@ Volumes (see `docker-compose.yml`):
 | Mount | Purpose |
 |---|---|
 | `./config:/config:ro` | `.env.<profile>` files with the Garmin credentials |
-| `./data:/data` | the database `garmin.db` (all plans and data, see [Storage](#storage)) and the per-profile token cache |
+| `./data:/data` | the database `garmin.db`: all plans and data, the activities and the Garmin login tokens (see [Storage](#storage)) |
 
 The container runs as `PUID:PGID` (default 1000:1000), so `data/` must be writable by that user. Set `PUID`/`PGID` in `.env` to match your NAS user. The port is published on `127.0.0.1:8787` only; set `MCP_BIND=0.0.0.0` to allow LAN clients. `GET /healthz` is the unauthenticated health check.
 
@@ -301,7 +301,7 @@ https://<your-hostname>/mcp/<MCP_AUTH_TOKEN>
 The token is the only credential, so anyone with that URL can change your Garmin account. It is compared in constant time, never logged by the server, and wrong tokens get a plain 404. Reverse proxies and tunnels may log request paths; rotate the token (edit `.env`, `docker compose up -d`) if it leaks. For clients that can send headers, `POST /mcp` with `Authorization: Bearer <token>` also works.
 
 Notes:
-- The first call after a restart logs in to Garmin; the OAuth token is cached in `data/<profile>/.garmin-token-cache.json` for 7 days. If a fresh login fails (2FA accounts), log in once on a machine where it works and copy that file into `./data/<profile>/`.
+- The first call after a restart logs in to Garmin; the OAuth token is cached in the database (the `garmin_tokens` table, shared by the MCP server and the web editor) for 7 days; no file is written. If a fresh login fails (2FA accounts), log in once on a machine where it works and copy its `.garmin-token-cache.json` into `./data/<profile>/`: the next start takes it into the database (when it is newer than what the database has) and deletes the file.
 - Bulk uploads are slow (about a second per workout plus Garmin round trips), and the 14–20 workout plans can take a minute or more. If a client or proxy times out, upload per workout with `upload_single_workout`.
 - Garmin calls are serialized, one at a time.
 

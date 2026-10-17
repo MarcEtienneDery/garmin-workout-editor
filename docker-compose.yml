@@ -28,7 +28,7 @@ services:
       - "${MCP_BIND:-127.0.0.1}:${MCP_PORT:-8787}:8787"
     volumes:
       - ./config:/config:ro            # .env.<profile> files (Garmin credentials)
-      - ./data:/data                   # garmin.db (plans and data) and the token cache
+      - ./data:/data                   # garmin.db: plans and data, activities, Garmin tokens
 
   # Plan editor (Monaco JSON editor + CRUD on the stored plans, plus upload / schedule / send
   # buttons). Same image as garmin-mcp; /config is only used by those Garmin buttons.

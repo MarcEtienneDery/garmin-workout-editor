@@ -1,6 +1,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import { ACTIVITY_SCHEMA, ActivityTable } from "./activities";
+import { TOKEN_SCHEMA, TokenTable } from "./tokens";
 import { profileOfPath, summarizeText } from "./paths";
 import { StoreError, type DocMeta, type PutOptions, type RevisionMeta, type StoredDoc } from "./types";
 
@@ -45,6 +46,7 @@ CREATE TABLE IF NOT EXISTS revisions (
 );
 CREATE INDEX IF NOT EXISTS revisions_by_path ON revisions (path, id);
 ${ACTIVITY_SCHEMA}
+${TOKEN_SCHEMA}
 `;
 
 const META_COLUMNS = "path, owner, size, version, updated_at, source, summary";
@@ -70,6 +72,8 @@ export class SqliteStore {
   private depth = 0;
   /** The Garmin activities of every profile (see activities.ts). */
   readonly activities: ActivityTable;
+  /** The Garmin login tokens of every profile (see tokens.ts). */
+  readonly tokens: TokenTable;
 
   private constructor(
     private readonly db: Database,
@@ -77,6 +81,7 @@ export class SqliteStore {
     readonly location: string
   ) {
     this.activities = new ActivityTable(db, (fn) => this.tx(fn));
+    this.tokens = new TokenTable(db);
   }
 
   static open(file: string): SqliteStore {
