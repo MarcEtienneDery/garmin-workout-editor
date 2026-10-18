@@ -47,7 +47,7 @@ const DETAIL_GAP_MS = 500;
 const sleepFor = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 const message = (error: unknown) => (error instanceof Error ? error.message : String(error));
 /** Errors that mean Garmin will refuse the next call too: rate limits and login problems. */
-const stopsSync = (error: unknown) => /\((429|401|403)\)|too many requests|authenticat/i.test(message(error));
+export const stopsSync = (error: unknown) => /\((429|401|403)\)|too many requests|authenticat/i.test(message(error));
 /** Only a rate limit goes away by waiting; a login failure is not retried on its own, as repeated logins can lock the account. */
 export const isRateLimit = (error: unknown) => /\(429\)|too many requests/i.test(message(error));
 const text = (v: unknown): string | null => (typeof v === "string" && v ? v : null);

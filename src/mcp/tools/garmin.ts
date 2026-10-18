@@ -17,7 +17,7 @@ import type { SyncStatus } from "../../shared/workoutSync";
 import { getActivities } from "./activities";
 import { diffPlanWorkout, extractWorkouts } from "./plans";
 
-const profileArg = z
+export const profileArg = z
   .string()
   .optional()
   .describe("Garmin profile name (see list_profiles). Optional when a default profile is configured or only one exists.");
@@ -26,9 +26,9 @@ const planPath = z
   .string()
   .describe('Logical path starting with "workout-plans/" or "data/", e.g. "workout-plans/workouts-full-body-maintenance.json".');
 
-const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD");
+export const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD");
 
-const READ_GARMIN = { readOnlyHint: true, openWorldHint: true } as const;
+export const READ_GARMIN = { readOnlyHint: true, openWorldHint: true } as const;
 const WRITE_GARMIN = { readOnlyHint: false, destructiveHint: true, openWorldHint: true } as const;
 
 function sameId(a: unknown, b: unknown): boolean {

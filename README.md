@@ -97,12 +97,21 @@ An MCP server exposes this repo's functionality to Claude, so the model can revi
 | Group | Tools |
 |---|---|
 | Garmin reads | `list_profiles`, `get_activities`, `list_workouts`, `get_workout`, `export_workouts`, `list_devices` |
+| Recovery | `get_readiness`, `get_wellness` |
 | Plans | `list_plans`, `read_plan`, `write_plan`, `upsert_plan_workout`, `validate_plan`, `list_exercise_names` |
 | Garmin writes | `upload_workouts`, `upload_single_workout`, `schedule_plan`, `upload_and_schedule_plan`, `send_to_device` |
 
 There is also an `update_weekly_workouts` prompt that walks through the weekly review. Plans are addressed as `workout-plans/<name>.json` or `data/<profile>/<name>.json`; only `.json` documents under those two roots exist (the token cache and `.env` files are never reachable). Every `write_plan` / `upsert_plan_workout` keeps the previous version in the [history](#storage).
 
 Garmin write tools are marked destructive so the client asks before running them, and the server instructions tell Claude to get your explicit confirmation first. Uploads delete and recreate any workout that already has a `workoutId` and write the new IDs back into the plan file.
+
+### Readiness and daily health data
+
+`get_readiness` says how recovered you are on a day (today by default) as a band for that day's workout: **go-harder**, **as-planned** or **back-off**, with a 0-100 score, the signals behind it, what is missing, and a suggestion. It reads: last night's **HRV** against Garmin's own baseline band, your **resting heart rate** against your own 28-day median, the night's **length and score** against the sleep Garmin says you need, the **Body Battery on waking**, **yesterday's stress**, and the **load of the last days** (session RPE × minutes from your activities, else heart rate). Garmin computes no readiness for every watch (the vívoactive 5 has none), which is why this is computed from the signals the watch does have. Each signal scores -2 to +2 with its reason, and a signal Garmin has no data for is left out and lowers the confidence, never counting as fine. It is a heuristic for adjusting training, not medical advice; the thresholds are named constants at the top of `src/shared/readiness.ts`. The prompt `adjust_todays_workout` has Claude read it, look at the day's planned workout and propose a small change (never an upload without your confirmation).
+
+`get_wellness` returns the stored daily numbers (sleep stages and score, HRV and its baseline, resting heart rate, Body Battery, stress, respiration, SpO2, steps, intensity minutes) for a range, with your own baselines; with `rawKinds` and a single day it returns Garmin's full stored responses.
+
+The data is kept in a `wellness` table of the same database, one row per profile, day and kind (`summary`, `sleep`, `hrv`, `heart_rate`, `stress`, `body_battery`, `respiration`, `spo2`), holding **Garmin's response exactly as it came** (about 160 KB a day, mostly the sleep series; roughly 10 MB for 60 days). Nothing derived is stored: the views read the fields out of the responses with SQL, so a better reading of them never needs Garmin again. A call fetches the last days' sleep, HRV and daily summary at once (a day's data keeps changing until the watch has synced, so a response fetched less than 2 days after its day began is fetched again, at most every 30 minutes; older and empty ones are final), then a background job fills in the last 60 days (`WELLNESS_DAYS` to change it), one call per day and kind, the kinds a daily check reads first and the newest day first, so a rate limit half way still leaves a usable baseline. It stops on a rate limit or a login failure and says why in the `sync` part of the answer (a rate limit of the activity sync holds it back too: the limit is the account's); after a rate limit it starts again by itself. Your calendar day is taken from `GARMIN_TZ` (or `TZ`) when set, else from the offset the newest activity shows. A day's sleep and HRV are the night that ended that morning.
 
 ### Run it in Docker (e.g. on a NAS)
 
@@ -168,7 +177,7 @@ MCP_AUTH_TOKEN=$(openssl rand -hex 32) npm run mcp:http -- --mock --port 8787
 npx @modelcontextprotocol/inspector      # then connect to http://127.0.0.1:8787/mcp/<token>
 ```
 
-`--mock` (or `MOCK_MODE=true`) serves mock data and refuses every Garmin write except `dryRun` validation. Use `--profile <name>` or `GARMIN_PROFILE` to choose the default account. `GARMIN_PROFILES_DIR` and `GARMIN_DATA_DIR` relocate the credentials and the data directory (database and token cache); the Docker image sets them to `/config` and `/data`. `GARMIN_STORE_PATH` moves the database (default `<GARMIN_DATA_DIR>/garmin.db`). `GARMIN_DETAIL_GAP_MS` sets the pause between two activity-detail calls of the sync (default 500).
+`--mock` (or `MOCK_MODE=true`) serves mock data and refuses every Garmin write except `dryRun` validation. Use `--profile <name>` or `GARMIN_PROFILE` to choose the default account. `GARMIN_PROFILES_DIR` and `GARMIN_DATA_DIR` relocate the credentials and the data directory (database and token cache); the Docker image sets them to `/config` and `/data`. `GARMIN_STORE_PATH` moves the database (default `<GARMIN_DATA_DIR>/garmin.db`). `GARMIN_DETAIL_GAP_MS` sets the pause between two activity-detail calls of the sync (default 500; the wellness sync uses it too). `GARMIN_TZ` (or `TZ`) is your time zone, for "today" in the readiness tools; `WELLNESS_DAYS` is how many days of health data the background sync keeps (default 60).
 
 ## Testing
 

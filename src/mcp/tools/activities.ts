@@ -13,16 +13,16 @@ import { type Session, getSession, requireAuth, runCaptured } from "../context";
  */
 const PROCESS = `${process.pid}:${Math.random().toString(36).slice(2, 8)}`;
 let operations = 0;
-const holder = () => `${PROCESS}:${++operations}`;
+export const holder = () => `${PROCESS}:${++operations}`;
 /** Activities whose details a get_activities call fetches itself; the rest fill in the background. */
 const INLINE_DETAILS = 30;
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 /** Pause between two detail calls (GARMIN_DETAIL_GAP_MS; the default of the sync, 500 ms, is gentle on Garmin's rate limit). */
-const detailGapMs = (): number | undefined => (process.env.GARMIN_DETAIL_GAP_MS ? Number(process.env.GARMIN_DETAIL_GAP_MS) : undefined);
+export const detailGapMs = (): number | undefined => (process.env.GARMIN_DETAIL_GAP_MS ? Number(process.env.GARMIN_DETAIL_GAP_MS) : undefined);
 
 /** Run one Garmin call alone, queued with the rest of the Garmin work, and give back its value or throw its error. */
-async function locked<T>(fn: () => Promise<T>): Promise<T> {
+export async function locked<T>(fn: () => Promise<T>): Promise<T> {
   const outcome = await runCaptured(fn);
   if (!outcome.ok) throw outcome.error;
   return outcome.value;

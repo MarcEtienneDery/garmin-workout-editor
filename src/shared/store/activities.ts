@@ -104,6 +104,19 @@ export interface LifetimeRow {
   reps: number | null;
 }
 
+/** What a training-load estimate needs of an activity: its length and effort, and how hard the person rated it. */
+export interface LoadRow {
+  id: string;
+  startLocal: string;
+  type: string;
+  name: string;
+  seconds: number | null;
+  avgHr: number | null;
+  maxHr: number | null;
+  /** The self-rated effort Garmin keeps in the details, 0-100. */
+  rpe: number | null;
+}
+
 /** What a list shows of an activity: columns and a few fields of the list item, read in SQL so the 15-20 KB of raw JSON is not parsed in node. */
 export interface ActivitySummary {
   id: string;
@@ -343,6 +356,26 @@ export class ActivityTable {
         const meters = Number(String(r.key).slice("fastestSplit_".length)), seconds = typeof r.value === "number" ? r.value : NaN;
         return meters > 0 && seconds > 0 ? [{ id: r.id as string, meters, seconds }] : [];
       });
+  }
+
+  /** The activities that started on or after a local time ("YYYY-MM-DD HH:MM:SS"), oldest first, with what a load estimate needs. */
+  loadRows(profile: string, sinceLocal: string): LoadRow[] {
+    return this.db
+      .prepare(
+        `SELECT id, start_local, type, name, duration, avg_hr, json_extract(raw, '$.maxHR') AS max_hr, json_extract(detail, '$.summaryDTO.directWorkoutRpe') AS rpe
+         FROM activities WHERE profile = ? AND start_local >= ? ORDER BY start_local`
+      )
+      .all(profile, sinceLocal)
+      .map((r) => ({ id: r.id, startLocal: r.start_local, type: r.type, name: r.name, seconds: num(r.duration), avgHr: num(r.avg_hr), maxHr: num(r.max_hr), rpe: num(r.rpe) }));
+  }
+
+  /** The local time's offset from GMT in minutes, as the newest activity shows it; null without activities. */
+  localOffsetMinutes(profile: string): number | null {
+    const r = this.db.prepare("SELECT start_gmt, start_local FROM activities WHERE profile = ? ORDER BY start_gmt DESC LIMIT 1").get(profile);
+    if (!r) return null;
+    const at = (s: string) => Date.parse(`${String(s).replace(" ", "T")}Z`);
+    const minutes = (at(r.start_local) - at(r.start_gmt)) / 60_000;
+    return Number.isFinite(minutes) ? Math.round(minutes / 15) * 15 : null;
   }
 
   /** The newest activities as list rows, newest first. */

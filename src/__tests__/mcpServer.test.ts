@@ -23,6 +23,8 @@ import { getAvailableProfiles, getMockProfile } from "../shared/profileLoader";
 const EXPECTED_TOOLS = [
   "export_workouts",
   "get_activities",
+  "get_readiness",
+  "get_wellness",
   "get_workout",
   "list_devices",
   "list_exercise_names",
