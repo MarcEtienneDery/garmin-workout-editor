@@ -230,5 +230,5 @@
     return box;
   }
 
-  root.ActivityCharts = { graphs, paceBars, zoneBar, paceText, ZONE_COLORS };
+  root.ActivityCharts = { graphs, paceBars, zoneBar, paceText, ZONE_COLORS, make, html };
 })(typeof self !== "undefined" ? self : this);

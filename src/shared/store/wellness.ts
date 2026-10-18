@@ -164,6 +164,12 @@ export class WellnessTable {
     return r ? { data: JSON.parse(r.data), fetchedAt: r.fetched_at } : null;
   }
 
+  /** What is stored for a day, without the responses: each kind, when it was fetched and how many bytes it holds. */
+  rowsOfDay(profile: string, day: string): { kind: WellnessKind; fetchedAt: number; bytes: number }[] {
+    const rows = this.db.prepare("SELECT kind, fetched_at, length(data) AS bytes FROM wellness WHERE profile = ? AND day = ?").all(profile, day);
+    return WELLNESS_KINDS.flatMap((kind) => rows.filter((r) => r.kind === kind).map((r) => ({ kind, fetchedAt: r.fetched_at as number, bytes: r.bytes as number })));
+  }
+
   /** When each stored response was fetched, keyed "day|kind", for the days from `from` to `to` inclusive. */
   fetchedAt(profile: string, from: string, to: string): Map<string, number> {
     const rows = this.db.prepare("SELECT day, kind, fetched_at FROM wellness WHERE profile = ? AND day BETWEEN ? AND ?").all(profile, from, to);

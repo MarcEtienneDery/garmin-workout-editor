@@ -26,6 +26,11 @@
  * (and, with history: true, starts the background fill of the whole history and the details), and POST
  * /api/activities/detail and /chart fetch one activity's details or chart data now.
  *
+ * The Recovery view shows the daily health data the database keeps (GET /api/wellness: the readiness for a day, the days
+ * of a range with the person's own normal, and what is stored for the day; GET /api/wellness/raw: Garmin's complete stored
+ * response of one kind for a day); it never calls Garmin on a read. POST /api/wellness/sync fetches the last days now and
+ * starts the background fill of the rest.
+ *
  * The workout picture times steps that name no pace from the profile's recent runs (GET /api/runs),
  * read from the activities table that the Garmin sync fills.
  *
@@ -42,7 +47,7 @@ import * as path from "path";
 import { createHash, randomBytes, timingSafeEqual } from "crypto";
 import * as dotenv from "dotenv";
 import { PROJECT_ROOT, findProfile, getAvailableProfiles, getProfilesDir } from "../shared/profileLoader";
-import { type DocMeta, type StoreErrorCode, StoreError, getStore, normalizeLogicalPath, profileOfPath } from "../shared/store";
+import { type DocMeta, type StoreErrorCode, StoreError, WELLNESS_KINDS, type WellnessKind, getStore, normalizeLogicalPath, profileOfPath } from "../shared/store";
 import { getSettings, resolveProfileName, runCaptured } from "../mcp/context";
 import { installConsoleRedirect } from "../mcp/logCapture";
 import { slimStored } from "../activityExporter";
@@ -54,6 +59,9 @@ import { syncStatus } from "../shared/activitySync";
 import type { ActivitySummary, StoredActivity } from "../shared/store";
 import { fetchChartNow, fetchDetailsNow, refreshActivities, startBackgroundSync } from "../mcp/tools/activities";
 import { diffPlanWorkout, extractWorkouts, validatePlanData } from "../mcp/tools/plans";
+import { refreshWellness, startBackgroundWellness, wellnessSyncStatus } from "../mcp/tools/wellness";
+import { readinessAt, wellnessRange } from "../shared/wellnessReport";
+import { addDays, localToday } from "../shared/wellnessSync";
 import {
   LIBRARY_LIMIT,
   type LibraryWorkout,
@@ -921,6 +929,40 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
       const profile = profileOrNull(who, url.searchParams.get("profile"));
       if (!profile) return send(res, 200, { profile: null, stats: null });
       return send(res, 200, { profile, stats: lifetimeStats(store().activities, profile) });
+    }
+
+    case "GET /api/wellness": {
+      const profile = profileOrNull(who, url.searchParams.get("profile"));
+      if (!profile) return send(res, 200, { profile: null });
+      const today = localToday(store(), profile), asked = url.searchParams.get("date");
+      const date = asked && /^\d{4}-\d{2}-\d{2}$/.test(asked) ? asked : today;
+      const days = Math.min(90, Math.max(7, Math.floor(Number(url.searchParams.get("days"))) || 30));
+      return send(res, 200, {
+        profile, today, date,
+        ...readinessAt(store(), profile, date),
+        ...wellnessRange(store(), profile, addDays(date, -(days - 1)), date),
+        stored: store().wellness.rowsOfDay(profile, date),
+        sync: wellnessSyncStatus(profile),
+      });
+    }
+
+    case "GET /api/wellness/raw": {
+      const profile = profileOrNull(who, url.searchParams.get("profile"));
+      const day = url.searchParams.get("date") ?? "", kind = url.searchParams.get("kind") ?? "";
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || !(WELLNESS_KINDS as readonly string[]).includes(kind)) throw new HttpError(400, "Missing or invalid date or kind");
+      const found = profile ? store().wellness.get(profile, day, kind as WellnessKind) : null;
+      if (!profile || !found) throw new HttpError(404, `No ${kind} data is stored for ${day}.`);
+      return send(res, 200, { profile, date: day, kind, fetchedAt: found.fetchedAt, data: found.data });
+    }
+
+    case "POST /api/wellness/sync": {
+      // Fetches the last days' sleep, HRV and summary now, and starts the background fill of the rest.
+      requireGarmin(who);
+      const body = await readBody(req);
+      const profile = profileFor(who, "", body.profile);
+      const refreshed = await refreshWellness(profile);
+      const background = startBackgroundWellness(profile);
+      return send(res, 200, { ...refreshed, background, sync: wellnessSyncStatus(profile) });
     }
 
     case "GET /api/activity": {

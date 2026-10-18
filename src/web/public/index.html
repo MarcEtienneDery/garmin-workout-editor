@@ -191,6 +191,65 @@
   .plans div { padding:2px 0; }
   details.plan-version { margin-top:10px; } details.plan-version summary { cursor:pointer; color:var(--dim); }
 
+  /* ── Recovery view: the readiness for a day, the trends, the stored numbers and Garmin's responses ── */
+  body:not([data-view="recovery"]) #rview { display:none; }
+  #rview { display:flex; flex-direction:column; min-height:0; min-width:0; }
+  #rbar { flex-wrap:wrap; }
+  #rNote { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  #rNote.err { color:var(--err); }
+  #rscroll { flex:1; min-height:0; overflow:auto; overscroll-behavior:contain; }
+  #rbody { max-width:1040px; margin:0 auto; padding:12px 16px 32px; }
+  #rbody h3 { margin:22px 0 8px; font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--dim); }
+  .rready { display:grid; grid-template-columns:auto minmax(0,1fr); gap:4px 20px; align-items:center; padding:14px 16px; background:var(--panel); border:1px solid var(--line); border-left:4px solid var(--c); border-radius:4px; }
+  .rready.go { --c:var(--ok); } .rready.plan { --c:var(--accent); } .rready.back { --c:var(--warn); } .rready.unknown { --c:var(--dim); }
+  .rband { font-size:22px; font-weight:600; color:var(--c); line-height:1.2; }
+  .rscore { font-size:30px; font-weight:600; line-height:1.1; } .rscore small { margin-left:4px; font-size:12px; font-weight:400; color:var(--dim); }
+  .rwhen { color:var(--dim); } .rwhen .chip { margin-left:6px; }
+  .rsug { grid-column:1 / -1; margin:8px 0 0; line-height:1.5; }
+  .rsigs { grid-column:1 / -1; display:grid; grid-template-columns:auto minmax(0,9em) minmax(0,auto) minmax(0,1fr); gap:6px 12px; align-items:baseline; margin-top:10px; padding-top:10px; border-top:1px solid var(--line); }
+  .rsigs .nm { font-weight:600; } .rsigs .val { white-space:nowrap; } .rsigs .why { color:var(--dim); }
+  .rsigs .why small { display:block; }
+  .pip { align-self:center; width:10px; height:10px; border-radius:50%; background:#8b8b8b; }
+  .pip.m2 { background:#e0393c; } .pip.m1 { background:#e0883c; } .pip.p1 { background:#6cc08b; } .pip.p2 { background:var(--ok); }
+  .rmiss { grid-column:1 / -1; margin-top:6px; color:var(--dim); font-size:12px; }
+  .rcharts { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+  .rc { background:var(--panel); border:1px solid var(--line); border-radius:4px; padding:8px 10px 6px; min-width:0; }
+  .rch { display:flex; gap:8px; align-items:baseline; justify-content:space-between; }
+  .rch b { font-size:12px; white-space:nowrap; } .rcr { min-height:1.4em; color:var(--dim); font-size:12px; text-align:right; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .rcnone { color:var(--dim); padding:18px 0; }
+  .rcsvg { display:block; width:100%; height:auto; touch-action:pan-y; }
+  .rc-grid { stroke:#333; stroke-width:1; } .rc-tick, .rc-x { fill:var(--dim); font-size:9px; }
+  .rc-line { fill:none; stroke:var(--accent); stroke-width:1.6; } .rc-dot { fill:var(--accent); }
+  .rc-band { fill:rgba(78,201,176,.16); stroke:none; }
+  .rc-ref { fill:none; stroke:var(--dim); stroke-width:1.2; stroke-dasharray:3 3; }
+  .rc-sel { fill:rgba(255,255,255,.08); } .rc-cursor { stroke:#aaa; stroke-width:1; pointer-events:none; } .rc-over { fill:transparent; cursor:pointer; }
+  .rc-part.deep, .sw-part.deep { fill:#3b5bdb; background:#3b5bdb; } .rc-part.rem, .sw-part.rem { fill:#9b6bd1; background:#9b6bd1; }
+  .rc-part.light, .sw-part.light { fill:#4a90c2; background:#4a90c2; } .rc-part.awake, .sw-part.awake { fill:#e0883c; background:#e0883c; }
+  .rc-bar { fill:var(--accent); } .rc-bar.s0 { fill:#4a90c2; } .rc-bar.s1 { fill:#6cc08b; } .rc-bar.s2 { fill:#d7ba7d; } .rc-bar.s3 { fill:#e0693c; }
+  .rc-range { stroke:#4a90c2; stroke-width:6; stroke-linecap:round; opacity:.55; }
+  .rcl { display:flex; gap:4px 12px; flex-wrap:wrap; margin-top:2px; color:var(--dim); font-size:11px; }
+  .rck { display:inline-flex; align-items:center; gap:4px; } .rck i { display:inline-block; width:10px; height:10px; border-radius:2px; }
+  .rck i.sw-band { background:rgba(78,201,176,.4); } .rck i.sw-ref { height:0; border-top:2px dashed var(--dim); border-radius:0; } .rck i.sw-range { background:#4a90c2; opacity:.6; }
+  .rtable { overflow:auto; max-height:440px; border:1px solid var(--line); border-radius:4px; }
+  table.rmetrics { border-collapse:separate; border-spacing:0; font-size:12px; white-space:nowrap; }
+  table.rmetrics th, table.rmetrics td { padding:3px 10px; border-bottom:1px solid #2f2f2f; text-align:right; }
+  table.rmetrics thead th { position:sticky; top:0; z-index:2; background:var(--panel); color:var(--dim); font-weight:600; }
+  table.rmetrics thead tr:nth-child(2) th { top:25px; font-weight:400; }
+  table.rmetrics th.g { text-align:left; border-left:1px solid var(--line); color:var(--fg); }
+  table.rmetrics td.day, table.rmetrics th.day { position:sticky; left:0; z-index:1; text-align:left; background:var(--panel); }
+  table.rmetrics thead th.day { z-index:3; }
+  table.rmetrics tr.pick { cursor:pointer; } table.rmetrics tr.pick:hover td { background:#2d2d2e; }
+  table.rmetrics tr.sel td { background:#37373d; } table.rmetrics tr.sel td.day { box-shadow:inset 2px 0 0 var(--accent); }
+  table.rmetrics td.gap { border-left:1px solid var(--line); }
+  .rraw { margin:0 0 6px; background:var(--panel); border:1px solid var(--line); border-radius:4px; }
+  .rraw > summary { cursor:pointer; padding:7px 10px; display:flex; gap:10px; align-items:baseline; flex-wrap:wrap; }
+  .rraw > summary small { color:var(--dim); }
+  .rraw.none > summary { color:var(--dim); cursor:default; }
+  .rjson { margin:0; padding:8px 10px; max-height:380px; overflow:auto; background:#1b1b1b; border-top:1px solid var(--line); font:11px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace; white-space:pre-wrap; word-break:break-all; }
+  .rfoot { margin-top:18px; color:var(--dim); font-size:12px; }
+  @media (max-width:700px) { .rcharts { grid-template-columns:minmax(0,1fr); } .rsigs { grid-template-columns:auto minmax(0,1fr); } .rsigs .val, .rsigs .why { grid-column:2; } .rsigs .val { margin-top:-4px; } #rDate { min-width:0; flex:1 1 130px; } .rch { flex-wrap:wrap; row-gap:0; } .rcr { flex-basis:100%; text-align:left; white-space:normal; } }
+  @media (max-width:480px) { #views button { font-size:12px; flex:1 1 auto; } } /* five views fit the phone's header */
+
   /* ── Activities view: the stored activities as a list and as a calendar ── */
   body:not([data-view="activities"]) #aview { display:none; }
   #aview { display:grid; grid-template-columns:minmax(0,1fr) 400px; min-height:0; }
@@ -502,6 +561,7 @@
     <button id="vWorkouts" aria-pressed="false">Workouts</button>
     <button id="vCalendar" aria-pressed="false">Calendar</button>
     <button id="vActivities" aria-pressed="false">Activities</button>
+    <button id="vRecovery" aria-pressed="false">Recovery</button>
   </nav>
   <div class="dd account" id="account" hidden>
     <button id="accountBtn" class="menubtn" aria-expanded="false" aria-controls="accountMenu" title="Account"><span class="avatar" id="accountAvatar" aria-hidden="true"></span><span id="accountName"></span></button>
@@ -665,6 +725,21 @@
     <div id="abody"><div class="empty">Select an activity.</div></div>
   </aside>
 </section>
+<section id="rview">
+  <div class="wbar" id="rbar">
+    <select id="rProfile" title="Garmin profile" hidden></select>
+    <button id="rPrev" title="Previous day" aria-label="Previous day">◀</button>
+    <input type="date" id="rDate" aria-label="Day">
+    <button id="rNext" title="Next day" aria-label="Next day">▶</button>
+    <button id="rToday">Today</button>
+    <select id="rRange" title="How many days the charts and the table show">
+      <option value="14">14 days</option><option value="30" selected>30 days</option><option value="60">60 days</option><option value="90">90 days</option>
+    </select>
+    <button id="rSync" title="Ask Garmin for the last days' sleep, HRV and summary, and fill in the rest in the background" hidden>↻ Sync</button>
+  </div>
+  <div id="rNote" class="empty" hidden></div>
+  <div id="rscroll"><div id="rbody"><div class="empty">Loading…</div></div></div>
+</section>
 <nav id="tabbar" role="tablist">
   <button role="tab" data-tab="files"><span>📁</span>Files</button>
   <button role="tab" data-tab="editor"><span>✎</span>Editor</button>
@@ -707,6 +782,8 @@
 <script src="/activityModel.js"></script>
 <script src="/activityCharts.js"></script>
 <script src="/activityMap.js"></script>
+<script src="/recoveryModel.js"></script>
+<script src="/recoveryCharts.js"></script>
 <script src="/workoutListModel.js"></script>
 <script src="/vendor/monaco/loader.js"></script>
 <script>
@@ -1435,10 +1512,12 @@ function setView(view) {
   $("vWorkouts").setAttribute("aria-pressed", String(view === "workouts"));
   $("vCalendar").setAttribute("aria-pressed", String(view === "calendar"));
   $("vActivities").setAttribute("aria-pressed", String(view === "activities"));
+  $("vRecovery").setAttribute("aria-pressed", String(view === "recovery"));
   if (!navRestoring) document.body.dataset.wpane = "list"; // a pane belongs to its view: switching views starts on the list
   if (view === "workouts") guard(loadWorkouts)();
   else if (view === "calendar") guard(loadCalendar)(); // plans change in the editor, so look again on every visit
   else if (view === "activities") guard(loadActivities)();
+  else if (view === "recovery") guard(loadRecovery)();
   else if (editor) requestAnimationFrame(() => editor.layout());
   navSync();
 }
@@ -2702,6 +2781,200 @@ function renderActivityDetail() {
   }
 }
 
+// ── Recovery ──────────────────────────────────────────────────────────────
+// The readiness for a day, the trends, every stored number and Garmin's own responses, read from the wellness table through
+// /api/wellness; Garmin is asked only when someone presses Sync (POST /api/wellness/sync), or once per visit for the last
+// days when something is stored already. The logic (labels, scales, the table's fields) is recoveryModel.js; the charts are recoveryCharts.js.
+const RM = RecoveryModel;
+const R = { profile: null, date: null, range: 30, data: null, error: "", run: 0, refreshed: false, polling: false, busy: false, note: "", raw: new Map(), open: new Set(), loaded: false };
+const recoveryQuery = () => `${R.profile ? `profile=${encodeURIComponent(R.profile)}&` : ""}${R.date ? `date=${R.date}&` : ""}days=${R.range}`;
+const SIGNAL_NAMES = { hrv: "HRV", restingHr: "Resting heart rate", sleep: "Sleep", bodyBattery: "Body Battery", stress: "Stress yesterday", load: "Training load" };
+
+async function loadRecovery() {
+  await garminReady;
+  const run = ++R.run, sel = $("rProfile");
+  if (!sel.options.length) for (const name of garmin.profiles) sel.add(new Option(name, name));
+  sel.hidden = !(garmin.user && garmin.user.admin && garmin.profiles.length > 1);
+  R.profile = R.profile || garmin.defaultProfile || garmin.profiles[0] || null;
+  sel.value = R.profile || "";
+  $("rSync").hidden = !garmin.enabled;
+  let d;
+  try { d = await api("GET", "/api/wellness?" + recoveryQuery()); }
+  catch (e) { if (run === R.run) { R.error = e.message; R.loaded = true; renderRecovery(); } return; }
+  if (run !== R.run) return;
+  R.data = d; R.error = ""; R.loaded = true;
+  renderRecovery();
+  if (d.sync && d.sync.syncing) pollRecovery();
+  // The cheap look at the last days, once per visit, and only when something is stored already: the first fill is the person's call.
+  if (garmin.enabled && !R.refreshed && d.sync && d.sync.days > 0) { R.refreshed = true; syncRecovery(true); }
+}
+
+/** Ask Garmin for the last days now and start the background fill of the rest. */
+async function syncRecovery(quiet = false) {
+  if (R.busy) return;
+  R.busy = true; $("rSync").disabled = true;
+  if (!quiet) { R.note = "Asking Garmin…"; renderRecoveryNote(); }
+  try {
+    const r = await api("POST", "/api/wellness/sync", { profile: R.profile });
+    R.note = r.error ? `Garmin: ${r.error}` : r.busy && !quiet ? "A sync is already running; this view follows it." : quiet ? "" : r.fetched ? `${r.fetched} responses fetched.` : "Nothing new on Garmin.";
+    await reloadRecovery();
+  } catch (e) { if (!quiet) R.error = e.message; }
+  finally { R.busy = false; $("rSync").disabled = false; renderRecovery(); }
+  if (R.data && R.data.sync && R.data.sync.syncing) pollRecovery();
+}
+
+async function reloadRecovery() {
+  try { R.data = await api("GET", "/api/wellness?" + recoveryQuery()); } catch { /* what is shown stays */ }
+}
+
+/** While the background fill runs, look again every few seconds so the days appear as they are stored. */
+async function pollRecovery() {
+  if (R.polling) return;
+  R.polling = true;
+  try {
+    while (document.body.dataset.view === "recovery" && R.data && R.data.sync && R.data.sync.syncing) {
+      await new Promise((r) => setTimeout(r, 5000));
+      if (document.body.dataset.view !== "recovery") break;
+      await reloadRecovery();
+      renderRecovery();
+    }
+  } finally { R.polling = false; renderRecovery(); }
+}
+
+function renderRecoveryNote() {
+  const note = $("rNote"), d = R.data, s = d && d.sync;
+  const parts = [];
+  if (R.note) parts.push(R.note);
+  if (s && s.days) parts.push(`${s.days} days stored (${RM.shortDay(s.oldest)} to ${RM.shortDay(s.newest)})`);
+  if (s && s.pending && (s.syncing || R.data.profile)) parts.push(s.syncing ? `filling in the background: ${s.pending} responses to go` : `${s.pending} responses not fetched yet`);
+  const error = R.error || (s && s.error ? `Garmin: ${s.error}` : "");
+  note.className = error ? "empty err" : "empty";
+  note.textContent = error || parts.join(" · ");
+  note.hidden = !(error || parts.length);
+}
+
+function renderRecovery() {
+  const box = $("rbody");
+  $("rDate").value = R.data && R.data.date ? R.data.date : "";
+  $("rNext").disabled = !(R.data && R.data.date && R.data.date < R.data.today);
+  $("rRange").value = String(R.range);
+  renderRecoveryNote();
+  const keep = $("rscroll").scrollTop;
+  box.replaceChildren();
+  const d = R.data;
+  if (!R.loaded) { box.append(mk("div", "empty", "Loading…")); return; }
+  if (R.error && !d) { box.append(mk("div", "msg err", R.error)); return; }
+  if (!d || !d.profile) { box.append(mk("div", "empty", "No Garmin profile is configured.")); return; }
+  if (!d.sync || !d.sync.days) {
+    box.append(mk("div", "empty", garmin.enabled ? "No health data is stored yet." : "No health data is stored yet, and Garmin is not available here to fetch it."));
+    if (garmin.enabled) { const b = mk("button", "primary", "Fetch the last 60 days from Garmin"); b.onclick = guard(() => syncRecovery(false)); box.append(b); }
+    return;
+  }
+
+  renderReadiness(box, d);
+  box.append(mk("h3", "", `Trends, ${d.days.length} days`));
+  box.append(RecoveryCharts.trends(d.days, RM.CHARTS, { selected: d.date, onPick: pickRecoveryDay }));
+  box.append(mk("h3", "", "Every stored number"));
+  box.append(renderMetricsTable(d));
+  box.append(mk("h3", "", `Garmin's responses for ${RM.dayLabel(d.date)}`));
+  box.append(renderRawResponses(d));
+  box.append(mk("div", "rfoot", "The band is a heuristic from watch data for adjusting training, not medical advice. A day's sleep and HRV are the night that ended that morning. Its thresholds are named constants in src/shared/readiness.ts."));
+  $("rscroll").scrollTop = keep;
+}
+
+function pickRecoveryDay(day) {
+  R.date = day === (R.data && R.data.today) ? null : day;
+  guard(loadRecovery)();
+}
+
+function renderReadiness(box, d) {
+  const r = d.readiness, info = RM.bandInfo(r.band);
+  const card = mk("div", "rready " + info.cls);
+  const left = mk("div"); left.append(mk("div", "rband", info.label));
+  if (r.score !== null) { const s = mk("div", "rscore", String(r.score)); s.append(mk("small", "", "/ 100")); left.append(s); }
+  const right = mk("div", "rwhen");
+  right.append(`${RM.dayLabel(d.date)}${d.date === d.today ? " (today)" : ""}`, mk("span", "chip", `${r.confidence} confidence`));
+  card.append(left, right, mk("p", "rsug", r.suggestion));
+  if (r.signals.length) {
+    const grid = mk("div", "rsigs");
+    for (const s of r.signals) {
+      const why = mk("div", "why", s.reason);
+      if (s.baseline) why.append(mk("small", "", s.baseline));
+      grid.append(mk("i", "pip " + RM.pip(s.score)), mk("div", "nm", SIGNAL_NAMES[s.name] || s.name), mk("div", "val", s.value), why);
+    }
+    card.append(grid);
+  }
+  if (r.load) {
+    const l = r.load;
+    card.append(mk("div", "rmiss", `Load, 3 days before: ${l.sessions} session${l.sessions === 1 ? "" : "s"}, ${RM.num(l.acute)} units${l.usual !== null ? ` against ${RM.num(l.usual)} usual` : ""}${l.hoursSinceHard !== null ? `; last hard session ${l.hoursSinceHard} h before the day` : ""}.`));
+  }
+  if (r.missing.length) card.append(mk("div", "rmiss", "Not counted: " + r.missing.map((m) => m.replace(/^(\w+): /, (_, k) => `${SIGNAL_NAMES[k] || k}: `)).join("; ") + "."));
+  box.append(card);
+}
+
+/** One row per day, newest first, one column per stored number in groups; a click picks the day. */
+function renderMetricsTable(d) {
+  const wrap = mk("div", "rtable"), table = mk("table", "rmetrics"), head = mk("thead");
+  const top = mk("tr"), sub = mk("tr");
+  top.append(mk("th", "day", "")); sub.append(mk("th", "day", "Day"));
+  for (const g of RM.GROUPS) {
+    const th = mk("th", "g", g.name); th.colSpan = g.fields.length; top.append(th);
+    g.fields.forEach((f, i) => { const c = mk("th", "", f.label); if (!i) c.style.borderLeft = "1px solid var(--line)"; sub.append(c); });
+  }
+  head.append(top, sub); table.append(head);
+  const body = mk("tbody");
+  for (const day of [...d.days].reverse()) {
+    const tr = mk("tr", "pick" + (day.day === d.date ? " sel" : ""));
+    tr.append(mk("td", "day", RM.dayLabel(day.day)));
+    for (const g of RM.GROUPS) g.fields.forEach((f, i) => tr.append(mk("td", i ? "" : "gap", RM.cell(f, day))));
+    tr.onclick = () => pickRecoveryDay(day.day);
+    body.append(tr);
+  }
+  table.append(body); wrap.append(table);
+  return wrap;
+}
+
+/** Garmin's complete stored response of each kind for the day: listed with its size, fetched when opened. */
+function renderRawResponses(d) {
+  const box = mk("div"), stored = new Map(d.stored.map((s) => [s.kind, s]));
+  for (const { kind, label } of RM.KINDS) {
+    const s = stored.get(kind), key = `${d.date}|${kind}`;
+    const det = mk("details", "rraw" + (s ? "" : " none"));
+    const sum = mk("summary"); sum.append(mk("b", "", label), mk("small", "", s ? `${kind} · ${RM.size(s.bytes)} · fetched ${new Date(s.fetchedAt).toLocaleString()}` : "not stored for this day"));
+    det.append(sum);
+    if (!s) { sum.onclick = (e) => e.preventDefault(); box.append(det); continue; }
+    const fill = async () => {
+      let pre = det.querySelector("pre");
+      if (!pre) { pre = mk("pre", "rjson", "Loading…"); det.append(pre); }
+      const cached = R.raw.get(key);
+      if (cached && cached.fetchedAt === s.fetchedAt) { pre.textContent = cached.text; return; }
+      try {
+        const r = await api("GET", `/api/wellness/raw?${R.profile ? `profile=${encodeURIComponent(R.profile)}&` : ""}date=${d.date}&kind=${kind}`);
+        const text = RM.compactJson(r.data);
+        R.raw.set(key, { fetchedAt: s.fetchedAt, text });
+        pre.textContent = text;
+      } catch (e) { pre.textContent = e.message; }
+    };
+    det.open = R.open.has(key);
+    if (det.open) fill();
+    det.ontoggle = () => { if (det.open) { R.open.add(key); fill(); } else R.open.delete(key); };
+    box.append(det);
+  }
+  return box;
+}
+
+function bindRecoveryView() {
+  $("vRecovery").onclick = () => setView("recovery");
+  const go = (date) => { R.date = date && R.data && date >= R.data.today ? null : date; return guard(loadRecovery)(); };
+  $("rPrev").onclick = () => R.data && go(RM.addDays(R.data.date, -1));
+  $("rNext").onclick = () => R.data && go(RM.addDays(R.data.date, 1));
+  $("rToday").onclick = () => go(null);
+  $("rDate").onchange = (e) => e.target.value && go(e.target.value);
+  $("rRange").onchange = (e) => { R.range = Number(e.target.value); guard(loadRecovery)(); };
+  $("rSync").onclick = guard(() => syncRecovery(false));
+  $("rProfile").onchange = (e) => { R.profile = e.target.value; R.date = null; R.data = null; R.loaded = false; R.refreshed = false; R.raw.clear(); R.open.clear(); R.error = ""; guard(loadRecovery)(); };
+}
+
 function bindActivitiesView() {
   $("vActivities").onclick = () => setView("activities");
   $("aModes").querySelectorAll("button").forEach((b) => b.onclick = () => { A.mode = b.dataset.mode; if (A.mode === "calendar" && A.showPlanned) loadPlannedPlans().then(renderActivities); if (A.mode === "stats") { A.statsError = ""; loadStats(); } renderActivities(); });
@@ -3098,6 +3371,7 @@ const garminReady = sessionReady.then(() => {
 });
 bindWorkoutsView();
 bindCalendarView();
+bindRecoveryView();
 bootSession();
 </script>
 </body>

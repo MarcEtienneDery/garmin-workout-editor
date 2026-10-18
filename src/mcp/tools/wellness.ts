@@ -6,8 +6,8 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { LeaseLost } from "../../shared/activitySync";
-import { BASELINE_DAYS, baselines, computeReadiness } from "../../shared/readiness";
 import { WELLNESS_KINDS, type WellnessKind, getStore } from "../../shared/store";
+import { readinessAt, wellnessRange } from "../../shared/wellnessReport";
 import { BACKFILL_DAYS, type WellnessSource, addDays, isWellnessBackfilling, localToday, startWellnessBackfill, syncWellness, wellnessStatus, withWellnessLease } from "../../shared/wellnessSync";
 import { type Session, getSession, requireAuth, runTool } from "../context";
 import { detailGapMs, holder, locked } from "./activities";
@@ -79,9 +79,15 @@ export function startBackgroundWellness(profile?: string): { started: boolean; r
   return { started, reason };
 }
 
+/** How the wellness sync stands, for a profile: what is stored, what is still to fetch, whether it runs, and why it stopped. */
+export function wellnessSyncStatus(profile: string) {
+  const store = getStore();
+  return wellnessStatus(store, profile, localToday(store, profile), Date.now(), keptDays());
+}
+
 /** What a result says of the sync: how much is stored, whether it fills in the background, and why it stopped early. */
 function syncNote(profile: string, refreshError: string | null, background: { started: boolean }) {
-  const store = getStore(), status = wellnessStatus(store, profile, localToday(store, profile), Date.now(), keptDays());
+  const status = wellnessSyncStatus(profile);
   return {
     ...status,
     ...(refreshError || status.error ? { error: refreshError ?? status.error } : {}),
@@ -103,14 +109,8 @@ export async function getReadiness(args: GetReadinessArgs) {
   const store = getStore(), name = session.profile.name, today = localToday(store, name), date = args.date ?? today;
   const refreshed = date >= addDays(today, -RECENT_DAYS) ? await refreshWellness(args.profile) : { fetched: 0, busy: false, error: null };
   const background = startBackgroundWellness(args.profile);
-  const metrics = store.wellness.metrics(name, addDays(date, -BASELINE_DAYS), date);
-  const loadRows = store.activities.loadRows(name, `${addDays(date, -31)} 00:00:00`);
-  return {
-    profile: name,
-    ...computeReadiness(metrics, loadRows, date),
-    daysStored: metrics.length,
-    sync: syncNote(name, refreshed.error, background),
-  };
+  const { readiness, daysStored } = readinessAt(store, name, date);
+  return { profile: name, ...readiness, daysStored, sync: syncNote(name, refreshed.error, background) };
 }
 
 export interface GetWellnessArgs {
@@ -133,14 +133,14 @@ export async function getWellness(args: GetWellnessArgs) {
 
   const refreshed = to >= addDays(today, -RECENT_DAYS) ? await refreshWellness(args.profile) : { fetched: 0, busy: false, error: null };
   const background = startBackgroundWellness(args.profile);
-  const all = store.wellness.metrics(name, addDays(from, -BASELINE_DAYS), to);
+  const { baselines, days } = wellnessRange(store, name, from, to);
   const raw = args.rawKinds?.length ? Object.fromEntries(args.rawKinds.map((k) => [k, store.wellness.get(name, from, k)])) : undefined;
   return {
     profile: name,
     from,
     to,
-    baselines: baselines(all, to),
-    days: all.filter((m) => m.day >= from).reverse(),
+    baselines,
+    days: days.reverse(),
     ...(raw && { raw }),
     sync: syncNote(name, refreshed.error, background),
   };

@@ -8,6 +8,8 @@ import * as garmin from "../mcp/tools/garmin";
 import * as activitiesTools from "../mcp/tools/activities";
 import { closeStore, getStore } from "../shared/store";
 import { toNewActivity } from "../shared/activitySync";
+import * as wellnessTools from "../mcp/tools/wellness";
+import { hrvResponse, sleepResponse, summaryResponse } from "./fixtures/wellness";
 
 // The Garmin actions are the MCP tool bodies; stub them so no test touches Garmin.
 jest.mock("../mcp/tools/garmin", () => ({
@@ -30,8 +32,19 @@ jest.mock("../mcp/tools/activities", () => ({
   fetchDetailsNow: jest.fn(async () => ({ fetched: 1, error: null })),
   fetchChartNow: jest.fn(async () => ({ fetched: 1, error: null })),
 }));
+// And Garmin's side of the wellness sync; what the sync status says is read from the real tables.
+jest.mock("../mcp/tools/wellness", () => {
+  const sync = jest.requireActual("../shared/wellnessSync");
+  const stores = jest.requireActual("../shared/store");
+  return {
+    refreshWellness: jest.fn(async () => ({ fetched: 3, busy: false, error: null })),
+    startBackgroundWellness: jest.fn(() => ({ started: true })),
+    wellnessSyncStatus: (profile: string) => sync.wellnessStatus(stores.getStore(), profile, sync.localToday(stores.getStore(), profile)),
+  };
+});
 const g = garmin as jest.Mocked<typeof garmin>;
 const a = activitiesTools as jest.Mocked<typeof activitiesTools>;
+const w = wellnessTools as jest.Mocked<typeof wellnessTools>;
 
 const store = () => getStore();
 const seed = (logical: string, value: unknown) => store().put(logical, typeof value === "string" ? value : JSON.stringify(value), { source: "test" });
@@ -444,6 +457,102 @@ describe("web plan editor", () => {
       keep("MED", item(2, "2026-08-03", "running", { distance: 5000 }));
       expect((await call("GET", "/api/activities/stats")).json.stats.running.runs).toBe(2);
       expect(a.fetchDetailsNow).not.toHaveBeenCalled(); // a read never calls Garmin
+    });
+
+    describe("the Recovery view", () => {
+      const savedTz = process.env.GARMIN_TZ;
+      beforeEach(() => {
+        process.env.GARMIN_TZ = "UTC";
+      });
+      afterEach(() => {
+        if (savedTz === undefined) delete process.env.GARMIN_TZ; else process.env.GARMIN_TZ = savedTz;
+      });
+      const today = () => new Date().toISOString().slice(0, 10);
+      const dayOf = (back: number) => new Date(Date.parse(`${today()}T00:00:00Z`) - back * 86_400_000).toISOString().slice(0, 10);
+      const fill = (profile: string, days: number) => {
+        for (let i = 0; i < days; i++) {
+          const d = dayOf(i);
+          store().wellness.put(profile, d, "sleep", sleepResponse({ hrv: 50 + (i % 5) }));
+          store().wellness.put(profile, d, "hrv", hrvResponse({ last: 50 + (i % 5) }));
+          store().wellness.put(profile, d, "summary", summaryResponse({ rhr: 50 }));
+        }
+      };
+
+      it("gives the readiness, the days and what is stored, from the database alone", async () => {
+        expect((await call("GET", "/api/wellness")).json).toEqual({ profile: null });
+        addProfile("MED");
+        const empty = (await call("GET", "/api/wellness")).json;
+        expect(empty).toEqual(expect.objectContaining({ profile: "MED", date: today(), today: today(), days: [], stored: [] }));
+        expect(empty.readiness.band).toBe("unknown");
+        expect(empty.sync).toEqual(expect.objectContaining({ days: 0, rows: 0, syncing: false }));
+
+        fill("MED", 40);
+        const out = (await call("GET", "/api/wellness")).json;
+        expect(out.days).toHaveLength(30); // the last 30 days by default, oldest first
+        expect(out.days[0].day).toBe(dayOf(29));
+        expect(out.days[29]).toEqual(expect.objectContaining({ day: today(), hrvLastNight: 50, restingHr: 50, sleepSeconds: 27_000 }));
+        expect(out.readiness).toEqual(expect.objectContaining({ date: today(), band: expect.stringMatching(/go-harder|as-planned|back-off/) }));
+        expect(out.baselines).toEqual(expect.objectContaining({ restingHr: 50 }));
+        expect(out.stored.map((s: any) => s.kind)).toEqual(["summary", "sleep", "hrv"]);
+        expect(out.stored[0]).toEqual({ kind: "summary", fetchedAt: expect.any(Number), bytes: expect.any(Number) });
+        expect(out.sync).toEqual(expect.objectContaining({ days: 40, rows: 120 }));
+        expect(w.refreshWellness).not.toHaveBeenCalled(); // a read never calls Garmin
+        expect(w.startBackgroundWellness).not.toHaveBeenCalled();
+      });
+
+      it("answers for another day and another number of days, and ignores what is not a date", async () => {
+        addProfile("MED");
+        fill("MED", 40);
+        const past = (await call("GET", `/api/wellness?date=${dayOf(10)}&days=14`)).json;
+        expect(past.date).toBe(dayOf(10));
+        expect(past.readiness.date).toBe(dayOf(10));
+        expect(past.days).toHaveLength(14);
+        expect(past.days[13].day).toBe(dayOf(10));
+        expect((await call("GET", "/api/wellness?days=3")).json.days).toHaveLength(7); // at least a week
+        expect((await call("GET", "/api/wellness?days=500")).json.days).toHaveLength(40); // at most 90, and only what is stored
+        expect((await call("GET", "/api/wellness?date=yesterday")).json.date).toBe(today());
+      });
+
+      it("keeps one profile's data from another's", async () => {
+        addProfile("MED");
+        addProfile("SAM");
+        fill("MED", 5);
+        expect((await call("GET", "/api/wellness?profile=SAM")).json.days).toEqual([]);
+        expect((await call("GET", "/api/wellness?profile=MED")).json.days).toHaveLength(5);
+      });
+
+      it("returns Garmin's complete stored response of one kind, and says when there is none", async () => {
+        addProfile("MED");
+        fill("MED", 2);
+        const raw = (await call("GET", `/api/wellness/raw?date=${today()}&kind=sleep`)).json;
+        expect(raw).toEqual({ profile: "MED", date: today(), kind: "sleep", fetchedAt: expect.any(Number), data: sleepResponse({ hrv: 50 }) });
+        expect((await call("GET", `/api/wellness/raw?date=${today()}&kind=stress`)).status).toBe(404);
+        expect((await call("GET", `/api/wellness/raw?date=${dayOf(9)}&kind=sleep`)).status).toBe(404);
+        expect((await call("GET", `/api/wellness/raw?date=${today()}&kind=nonsense`)).status).toBe(400);
+        expect((await call("GET", "/api/wellness/raw?date=today&kind=sleep")).status).toBe(400);
+      });
+
+      it("syncs only through a POST that needs a Garmin profile, and starts the background fill with it", async () => {
+        expect((await call("POST", "/api/wellness/sync", {})).status).toBe(409); // no profile configured
+        addProfile("MED");
+        const out = await call("POST", "/api/wellness/sync", {});
+        expect(out.status).toBe(200);
+        expect(out.json).toEqual(expect.objectContaining({ fetched: 3, busy: false, error: null, background: { started: true } }));
+        expect(w.refreshWellness).toHaveBeenLastCalledWith("MED");
+        expect(w.startBackgroundWellness).toHaveBeenCalledWith("MED");
+        expect(out.json.sync).toEqual(expect.objectContaining({ days: 0, syncing: false }));
+      });
+
+      it("shows each person only their own profile's data", async () => {
+        addProfile("MED", "med-pw");
+        addProfile("SAM", "sam-pw");
+        fill("MED", 3);
+        fill("SAM", 8);
+        const login = (user: string, pass: string) => ({ ...H, Authorization: `Basic ${Buffer.from(`${user}:${pass}`).toString("base64")}` });
+        expect((await call("GET", "/api/wellness", undefined, login("SAM", "sam-pw"))).json.days).toHaveLength(8);
+        expect((await call("GET", "/api/wellness?profile=MED", undefined, login("SAM", "sam-pw"))).json.days).toHaveLength(8); // SAM asking for MED gets SAM's
+        expect((await call("GET", "/api/wellness", undefined, login("MED", "med-pw"))).json.days).toHaveLength(3);
+      });
     });
 
     it("answers 404 for an activity that is not stored, and 400 for a bad id", async () => {
