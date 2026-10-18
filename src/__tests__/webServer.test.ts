@@ -3,7 +3,7 @@ import * as http from "http";
 import * as os from "os";
 import * as path from "path";
 import { AddressInfo } from "net";
-import { startWebServer, isLoopback } from "../web/server";
+import { assetVersion, startWebServer, isLoopback, stampScripts } from "../web/server";
 import * as garmin from "../mcp/tools/garmin";
 import * as activitiesTools from "../mcp/tools/activities";
 import { closeStore, getStore } from "../shared/store";
@@ -712,6 +712,41 @@ describe("web plan editor", () => {
         expect((await call("GET", "/api/foods/search?q=rice")).status).toBe(401);
         expect((await call("GET", "/api/foods/barcode?code=3017620422003")).status).toBe(401);
         expect(fs_.searchFoods).not.toHaveBeenCalled();
+      });
+
+      it("stamps the page's own scripts with a version, so a deploy is not hidden by a cache that keeps scripts for hours", async () => {
+        const html = await (await fetch(base + "/")).text();
+        const stamped = [...html.matchAll(/<script src="(\/[^"]+\.js)\?v=([0-9a-f]{10})"><\/script>/g)];
+        expect(stamped.map((m) => m[1])).toEqual(expect.arrayContaining(["/nutritionModel.js", "/barcodeScanner.js", "/workoutModel.js"]));
+        expect(new Set(stamped.map((m) => m[2]))).toEqual(new Set([assetVersion()]));
+        expect(html).toContain('<script src="/vendor/monaco/loader.js"></script>'); // a vendored library has its own version
+        expect((await fetch(base + "/nutritionModel.js?v=abc")).status).toBe(200); // the stamp is ignored when a script is asked for
+        expect((await fetch(base + "/")).headers.get("cache-control")).toBe("no-cache");
+      });
+
+      it("changes the version when a script changes, and only then", () => {
+        const scripts = fs.mkdtempSync(path.join(os.tmpdir(), "assets-"));
+        try {
+          fs.writeFileSync(path.join(scripts, "a.js"), "one");
+          fs.writeFileSync(path.join(scripts, "readme.md"), "not a script");
+          const v1 = assetVersion(scripts);
+          expect(assetVersion(scripts)).toBe(v1);
+          fs.writeFileSync(path.join(scripts, "readme.md"), "still not a script");
+          expect(assetVersion(scripts)).toBe(v1);
+          fs.writeFileSync(path.join(scripts, "a.js"), "two");
+          const v2 = assetVersion(scripts);
+          expect(v2).not.toBe(v1);
+          expect(v2).toMatch(/^[0-9a-f]{10}$/);
+          fs.writeFileSync(path.join(scripts, "b.js"), "one");
+          expect(assetVersion(scripts)).not.toBe(v2);
+        } finally {
+          fs.rmSync(scripts, { recursive: true, force: true });
+        }
+      });
+
+      it("stamps local scripts only, once", () => {
+        const html = '<script src="/a.js"></script><script src="/vendor/x/y.js"></script><script src="https://cdn.example/z.js"></script><script>inline()</script><script src="/b.js?v=old"></script>';
+        expect(stampScripts(html, "123")).toBe('<script src="/a.js?v=123"></script><script src="/vendor/x/y.js"></script><script src="https://cdn.example/z.js"></script><script>inline()</script><script src="/b.js?v=old"></script>');
       });
 
       it("serves the scanner and the barcode reader the page loads", async () => {

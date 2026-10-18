@@ -819,6 +819,22 @@ const MIME: Record<string, string> = {
   ".png": "image/png",
 };
 
+/**
+ * A short hash of the page's own scripts. The page stamps it on their URLs (?v=), so a browser or CDN that keeps a script for
+ * hours fetches the new one after a deploy: behind Cloudflare every .js is kept 4 hours by the browser whatever the server
+ * says, and a page that ran new code against an old script failed without a word. The page itself is never cached. A page
+ * load reads a few hundred KB to work it out, which a single-user editor does not notice.
+ */
+export function assetVersion(dir = PUBLIC_DIR): string {
+  const hash = createHash("sha1");
+  for (const file of fs.readdirSync(dir).filter((f) => f.endsWith(".js")).sort()) hash.update(file).update(fs.readFileSync(path.join(dir, file)));
+  return hash.digest("hex").slice(0, 10);
+}
+
+/** The page with ?v=<version> on the URL of each of its own scripts (the vendored libraries have versions of their own). */
+export const stampScripts = (html: string, version: string): string =>
+  html.replace(/(<script\s+src="\/)([^"?#]+\.js)"/g, (match, head: string, file: string) => (file.startsWith("vendor/") ? match : `${head}${file}?v=${version}"`));
+
 function serveStatic(pathname: string, res: http.ServerResponse): void {
   let root = PUBLIC_DIR;
   let name = pathname === "/" ? "index.html" : pathname.slice(1);
@@ -842,7 +858,8 @@ function serveStatic(pathname: string, res: http.ServerResponse): void {
     res.writeHead(404, { "Content-Type": "text/plain" });
     return void res.end("Not found");
   }
-  const content = fs.readFileSync(full); // read first: a failure must still be able to send a 500
+  let content = fs.readFileSync(full); // read first: a failure must still be able to send a 500
+  if (full === path.join(PUBLIC_DIR, "index.html")) content = Buffer.from(stampScripts(content.toString("utf-8"), assetVersion()));
   res.writeHead(200, {
     "Content-Type": MIME[path.extname(full)] ?? "application/octet-stream",
     "Cache-Control": "no-cache",

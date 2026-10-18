@@ -3248,8 +3248,8 @@ function foodFinder(meal) {
   out.dataset.results = meal;
   const q = mk("input", "fq");
   q.type = "search"; q.placeholder = "Search a food"; q.value = st.q; q.autocomplete = "off"; q.enterKeyHint = "search"; q.setAttribute("aria-label", "Search a food");
-  q.oninput = () => { st.q = q.value; clearTimeout(st.timer); st.timer = setTimeout(() => runFind(meal), 450); };
-  q.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); clearTimeout(st.timer); runFind(meal); } };
+  q.oninput = () => { st.q = q.value; clearTimeout(st.timer); st.timer = setTimeout(guard(() => runFind(meal)), 450); };
+  q.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); clearTimeout(st.timer); guard(() => runFind(meal))(); } };
   const scan = mk("button", "", "📷 Scan");
   scan.type = "button"; scan.title = "Scan a barcode with the camera";
   scan.onclick = () => scanBarcode(meal);
