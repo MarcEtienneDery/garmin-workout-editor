@@ -4,6 +4,7 @@ import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { PROJECT_ROOT } from "../shared/profileLoader";
 import { registerGarminTools } from "./tools/garmin";
+import { registerNutritionTools } from "./tools/nutrition";
 import { registerPlanTools } from "./tools/plans";
 import { registerWellnessTools } from "./tools/wellness";
 
@@ -16,6 +17,8 @@ Typical weekly flow:
 4. Summarize the proposed changes and the validation result to the user.
 
 To adjust a single day's workout to how recovered the person is: get_readiness (a band of go-harder, as-planned or back-off with the signals behind it: HRV, resting heart rate, sleep, Body Battery, stress, recent load), then read the planned workout and propose a small change that fits the band. get_wellness has the daily numbers and the person's own baselines behind it. These are heuristics from watch data, not medical advice.
+
+To log what the person ate: log_meal (a meal of a day, one item per food, with calories and protein, carbs and fat in grams that you estimate from their description and say are estimates). get_nutrition reads the log back with the day totals and the calories Garmin says the day burned; update_meal_entry and delete_meal_entry correct it. The log is kept here, never sent to Garmin, and a day with nothing logged is not a day of zero.
 
 Tools that change the Garmin account — upload_workouts, upload_single_workout, schedule_plan, upload_and_schedule_plan, send_to_device — must NEVER be called without the user's explicit confirmation after you have shown them the validation result. Uploading replaces any existing workout that has a workoutId and writes the new workoutIds back into the plan file, which is what keeps later uploads from creating duplicates.`;
 
@@ -67,6 +70,7 @@ export function createServer(): McpServer {
   registerGarminTools(server);
   registerPlanTools(server);
   registerWellnessTools(server);
+  registerNutritionTools(server);
 
   server.registerPrompt(
     "update_weekly_workouts",

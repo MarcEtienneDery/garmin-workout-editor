@@ -18,6 +18,10 @@
  * and creates / replaces / deletes workouts in the plan files and on Garmin together
  * (POST, PUT, DELETE /api/garmin/workout). Each write that touches Garmin needs confirm: true.
  *
+ * The Food view logs what was eaten per meal (GET /api/nutrition: a day's meals with their totals, the totals of a range next to
+ * the calories Garmin says were burned, and the foods used lately; POST /api/nutrition adds, changes or deletes entries). The log
+ * is in the database only, Garmin has nowhere to keep food, so it needs no Garmin login and works with Garmin disabled.
+ *
  * The Calendar view shows where the plan files put their workouts (GET /api/calendar): each plan's span
  * and the dates of its workouts. It reads the stored plans only, not Garmin's own calendar.
  *
@@ -67,6 +71,7 @@ import { recentFit, testRenphoLogin } from "../shared/renphoSync";
 import { runRenpho, startRenphoTimer } from "../mcp/tools/renpho";
 import { testGarminLogin } from "../mcp/tools/settings";
 import { addDays, localToday } from "../shared/wellnessSync";
+import { MEALS, NutritionError, addFoods, averageOf, changeFood, deleteFoods, nutritionDays, parseDay, recentFoods } from "../shared/nutrition";
 import {
   LIBRARY_LIMIT,
   type LibraryWorkout,
@@ -836,6 +841,31 @@ function serveStatic(pathname: string, res: http.ServerResponse): void {
   res.end(content);
 }
 
+/** What the Food view shows: one day with its meals, the days of a range for the trend, and the foods the form offers again. */
+function nutritionView(profile: string, asked: unknown, daysAsked: unknown) {
+  const today = localToday(store(), profile);
+  let date = today;
+  try {
+    date = parseDay(asked, today);
+  } catch {
+    // a date that is not one shows today
+  }
+  const n = Math.min(90, Math.max(7, Math.floor(Number(daysAsked)) || 30));
+  const days = nutritionDays(store(), profile, addDays(today, -(n - 1)), today, today);
+  const day = days.find((d) => d.day === date) ?? nutritionDays(store(), profile, date, date, today)[0];
+  return {
+    profile,
+    today,
+    date,
+    meals: MEALS,
+    day,
+    // the trend carries totals only; the entries are in `day`
+    days: days.map(({ meals, ...totals }) => totals),
+    average: averageOf(days, today),
+    recent: recentFoods(store(), profile),
+  };
+}
+
 async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, url: URL, who: Principal): Promise<void> {
   const route = `${req.method} ${url.pathname}`;
   const queryPath = url.searchParams.get("path");
@@ -960,6 +990,34 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
       // the day whose stored responses are listed: the one asked for, else the last weigh-in, else today
       const date = asked && /^\d{4}-\d{2}-\d{2}$/.test(asked) ? asked : range.body.latest?.day ?? today;
       return send(res, 200, { profile, today, date, ...range, stored: store().wellness.rowsOfDay(profile, date), sync: wellnessSyncStatus(profile) });
+    }
+
+    case "GET /api/nutrition": {
+      const profile = profileOrNull(who, url.searchParams.get("profile"));
+      if (!profile) return send(res, 200, { profile: null });
+      return send(res, 200, nutritionView(profile, url.searchParams.get("date"), url.searchParams.get("days")));
+    }
+
+    case "POST /api/nutrition": {
+      // The food log: add the foods of a meal, change one entry, delete one. It touches the database only, never Garmin.
+      const body = await readBody(req);
+      const profile = profileFor(who, "", body.profile);
+      const today = localToday(store(), profile);
+      let date: string;
+      try {
+        if (body.action === "add") date = addFoods(store(), profile, body, today, "web")[0].day;
+        else if (body.action === "update") date = changeFood(store(), profile, Number(body.id), body).day;
+        else if (body.action === "delete") {
+          const ids = [Number(body.id)];
+          const found = store().nutrition.get(profile, ids[0]);
+          deleteFoods(store(), profile, ids);
+          date = found?.day ?? parseDay(body.date, today);
+        } else throw new HttpError(400, `Unknown action "${body.action}".`);
+      } catch (error) {
+        if (error instanceof NutritionError) throw new HttpError(400, error.message);
+        throw error;
+      }
+      return send(res, 200, nutritionView(profile, date, body.days));
     }
 
     case "GET /api/settings": {

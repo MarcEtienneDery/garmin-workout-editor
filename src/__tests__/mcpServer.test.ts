@@ -21,8 +21,10 @@ import { GarminClient } from "../shared/garminClient";
 import { getAvailableProfiles, getMockProfile } from "../shared/profileLoader";
 
 const EXPECTED_TOOLS = [
+  "delete_meal_entry",
   "export_workouts",
   "get_activities",
+  "get_nutrition",
   "get_readiness",
   "get_wellness",
   "get_workout",
@@ -31,9 +33,11 @@ const EXPECTED_TOOLS = [
   "list_plans",
   "list_profiles",
   "list_workouts",
+  "log_meal",
   "read_plan",
   "schedule_plan",
   "send_to_device",
+  "update_meal_entry",
   "upload_and_schedule_plan",
   "upload_single_workout",
   "upload_workouts",
@@ -147,9 +151,13 @@ describe("MCP server (mock mode, in-memory transport)", () => {
     for (const name of ["upload_workouts", "upload_and_schedule_plan", "schedule_plan", "send_to_device", "write_plan"]) {
       expect(byName[name].annotations?.destructiveHint).toBe(true);
     }
-    for (const name of ["list_workouts", "get_activities", "validate_plan", "read_plan"]) {
+    for (const name of ["list_workouts", "get_activities", "validate_plan", "read_plan", "get_nutrition"]) {
       expect(byName[name].annotations?.readOnlyHint).toBe(true);
     }
+    // the food log is the database only: nothing there reaches Garmin, and only a delete is destructive
+    for (const name of ["log_meal", "update_meal_entry", "delete_meal_entry", "get_nutrition"]) expect(byName[name].annotations?.openWorldHint).toBe(false);
+    expect(byName.delete_meal_entry.annotations?.destructiveHint).toBe(true);
+    expect(byName.log_meal.annotations?.destructiveHint).toBe(false);
   });
 
   it("exposes the weekly update prompt", async () => {
@@ -398,6 +406,97 @@ describe("MCP server (mock mode, in-memory transport)", () => {
       const out = await callTool(client, "list_exercise_names", { category: "squat", limit: 5 });
       expect(out.value.exercises.length).toBeGreaterThan(0);
       expect(out.value.exercises.every((e: any) => e.category === "SQUAT")).toBe(true);
+    });
+  });
+
+  describe("the food log", () => {
+    beforeEach(() => {
+      getStore().nutrition.remove("mock", getStore().nutrition.range("mock", "2000-01-01", "2100-01-01").map((e) => e.id));
+    });
+
+    it("logs the foods of a meal, works the calories out, and answers with the ids and the day's totals", async () => {
+      const out = await callTool(client, "log_meal", {
+        date: "2026-10-17",
+        meal: "breakfast",
+        items: [{ name: "Oats", kcal: 300, proteinG: 10, carbsG: 50, fatG: 6 }, { name: "Egg", proteinG: 6, fatG: 5 }],
+      });
+      expect(out.isError).toBe(false);
+      expect(out.value).toMatchObject({
+        profile: "mock",
+        date: "2026-10-17",
+        meal: "breakfast",
+        added: [expect.objectContaining({ name: "Oats", kcal: 300 }), expect.objectContaining({ name: "Egg", kcal: 69, proteinG: 6, fatG: 5 })],
+        mealTotals: { kcal: 369, proteinG: 16, carbsG: 50, fatG: 11, entries: 2 },
+        dayTotals: { kcal: 369, entries: 2 },
+        burnedKcal: null,
+        netKcal: null,
+      });
+      const ids = out.value.added.map((a: any) => a.id);
+      expect(new Set(ids).size).toBe(2);
+    });
+
+    it("logs on the user's today when no date is given", async () => {
+      const out = await callTool(client, "log_meal", { meal: "snack", items: [{ name: "Apple", kcal: 80 }] });
+      const today = (await callTool(client, "get_nutrition", { days: 1 })).value;
+      expect(out.value.date).toBe(today.to);
+      expect(today.days).toHaveLength(1);
+    });
+
+    it("reads the log back newest first, leaves unlogged days out and counts them", async () => {
+      await callTool(client, "log_meal", { date: "2026-10-15", meal: "dinner", items: [{ name: "Fish", kcal: 400, proteinG: 40, carbsG: 0, fatG: 20 }] });
+      await callTool(client, "log_meal", { date: "2026-10-17", meal: "lunch", items: [{ name: "Wrap", kcal: 500, proteinG: 25, carbsG: 50, fatG: 20 }] });
+      const out = await callTool(client, "get_nutrition", { from: "2026-10-14", to: "2026-10-17" });
+      expect(out.isError).toBe(false);
+      expect(out.value).toMatchObject({ loggedDays: 2, unloggedDays: 2, total: { kcal: 900, proteinG: 65, entries: 2 } });
+      expect(out.value.days.map((d: any) => d.day)).toEqual(["2026-10-17", "2026-10-15"]);
+      expect(out.value.days[0].meals).toEqual([expect.objectContaining({ meal: "lunch", entries: [expect.objectContaining({ id: expect.any(Number), name: "Wrap" })] })]);
+    });
+
+    it("corrects and deletes an entry by id", async () => {
+      const added = (await callTool(client, "log_meal", { date: "2026-10-17", meal: "lunch", items: [{ name: "Rice", kcal: 200, carbsG: 45 }, { name: "Rice", kcal: 200, carbsG: 45 }] })).value.added;
+      const fixed = await callTool(client, "update_meal_entry", { id: added[0].id, kcal: 260, meal: "dinner" });
+      expect(fixed.value.entry).toMatchObject({ id: added[0].id, name: "Rice", kcal: 260, carbsG: 45, meal: "dinner", day: "2026-10-17" });
+      const gone = await callTool(client, "delete_meal_entry", { ids: [added[1].id, 999999] });
+      expect(gone.value).toMatchObject({ deleted: [added[1].id], missing: [999999] });
+      const left = (await callTool(client, "get_nutrition", { from: "2026-10-17", to: "2026-10-17" })).value;
+      expect(left.total).toMatchObject({ kcal: 260, entries: 1 });
+    });
+
+    it("explains what was refused, and keeps none of a bad call", async () => {
+      const bad = await callTool(client, "log_meal", { date: "2026-10-17", meal: "lunch", items: [{ name: "Fine", kcal: 100 }, { name: "Air" }] });
+      expect(bad.isError).toBe(true);
+      expect(bad.text).toMatch(/needs calories or at least one macro/);
+      expect((await callTool(client, "log_meal", { date: "2026-02-30", meal: "lunch", items: [{ name: "x", kcal: 1 }] })).text).toMatch(/not a day/);
+      expect((await callTool(client, "update_meal_entry", { id: 424242, kcal: 1 })).text).toMatch(/no food entry 424242/);
+      expect((await callTool(client, "get_nutrition", { from: "2026-10-17", to: "2026-10-01" })).text).toMatch(/after to/);
+      expect((await callTool(client, "get_nutrition", { from: "2026-10-14", to: "2026-10-17" })).value.loggedDays).toBe(0);
+    });
+
+    it("refuses a profile that does not exist, as the web editor does, rather than logging under a made-up name", async () => {
+      const configDir = process.env.GARMIN_PROFILES_DIR!, file = path.join(configDir, ".env.TESTER");
+      fs.mkdirSync(configDir, { recursive: true });
+      fs.writeFileSync(file, 'GARMIN_EMAIL=t@example.com\nGARMIN_PASSWORD="pw"\n');
+      configureMcp({ mock: false, defaultProfile: undefined });
+      try {
+        const item = { name: "Soup", kcal: 120 };
+        const bad = await callTool(client, "log_meal", { profile: "NOPE", date: "2026-10-17", meal: "lunch", items: [item] });
+        expect(bad.isError).toBe(true);
+        expect(bad.text).toMatch(/Unknown profile "NOPE".*list_profiles/);
+        expect((await callTool(client, "get_nutrition", { profile: "NOPE", days: 1 })).isError).toBe(true);
+        expect(getStore().nutrition.range("NOPE", "2000-01-01", "2100-01-01")).toEqual([]);
+        const ok = await callTool(client, "log_meal", { profile: "tester", date: "2026-10-17", meal: "lunch", items: [item] }); // any case
+        expect(ok.value.profile).toBe("TESTER");
+        getStore().nutrition.remove("TESTER", getStore().nutrition.range("TESTER", "2000-01-01", "2100-01-01").map((e) => e.id));
+      } finally {
+        configureMcp({ mock: true, defaultProfile: undefined });
+        fs.rmSync(file, { force: true });
+      }
+    });
+
+    it("needs no Garmin login: it works from the database in mock mode", async () => {
+      const out = await callTool(client, "log_meal", { date: "2026-10-17", meal: "snack", items: [{ name: "Nuts", kcal: 180 }] });
+      expect(out.isError).toBe(false);
+      expect(out.log).toBe("");
     });
   });
 

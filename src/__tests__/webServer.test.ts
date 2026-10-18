@@ -575,6 +575,100 @@ describe("web plan editor", () => {
       });
     });
 
+    describe("the Food view", () => {
+      const savedTz = process.env.GARMIN_TZ;
+      beforeEach(() => {
+        process.env.GARMIN_TZ = "UTC";
+      });
+      afterEach(() => {
+        if (savedTz === undefined) delete process.env.GARMIN_TZ; else process.env.GARMIN_TZ = savedTz;
+      });
+      const today = () => new Date().toISOString().slice(0, 10);
+      const dayOf = (back: number) => new Date(Date.parse(`${today()}T00:00:00Z`) - back * 86_400_000).toISOString().slice(0, 10);
+      const rice = { name: "Rice", kcal: 200, proteinG: 4, carbsG: 45, fatG: 0.5 };
+
+      it("has no profile, no log", async () => {
+        expect((await call("GET", "/api/nutrition")).json).toEqual({ profile: null });
+        expect((await call("POST", "/api/nutrition", { action: "add", meal: "lunch", items: [rice] })).status).toBe(400);
+      });
+
+      it("adds the foods of a meal to a day, and answers with the day as it is now", async () => {
+        addProfile("MED");
+        const empty = (await call("GET", "/api/nutrition")).json;
+        expect(empty).toEqual(expect.objectContaining({ profile: "MED", today: today(), date: today(), meals: ["breakfast", "lunch", "dinner", "snack"], average: null, recent: [] }));
+        expect(empty.day.entries).toBe(0);
+        expect(empty.days).toHaveLength(30);
+
+        const out = await call("POST", "/api/nutrition", { action: "add", day: today(), meal: "lunch", items: [rice, { name: "Chicken", proteinG: 30, fatG: 5 }] });
+        expect(out.status).toBe(200);
+        expect(out.json.day).toMatchObject({ day: today(), kcal: 365, entries: 2, proteinG: 34 });
+        expect(out.json.day.meals.find((m: any) => m.meal === "lunch").entries.map((e: any) => [e.name, e.source])).toEqual([["Rice", "web"], ["Chicken", "web"]]);
+        expect(out.json.days.at(-1)).toMatchObject({ day: today(), kcal: 365 });
+        expect(out.json.days[0].meals).toBeUndefined(); // the trend carries totals only
+        expect(out.json.recent.map((r: any) => r.name)).toEqual(["Chicken", "Rice"]);
+      });
+
+      it("changes and deletes an entry", async () => {
+        addProfile("MED");
+        const id = (await call("POST", "/api/nutrition", { action: "add", day: dayOf(2), meal: "dinner", items: [rice] })).json.day.meals[2].entries[0].id;
+        const changed = await call("POST", "/api/nutrition", { action: "update", id, name: "Brown rice", kcal: 220, proteinG: 5, carbsG: 46, fatG: 2, meal: "lunch" });
+        expect(changed.json.date).toBe(dayOf(2));
+        expect(changed.json.day.meals[1].entries).toEqual([expect.objectContaining({ id, name: "Brown rice", kcal: 220 })]);
+        expect(changed.json.day.meals[2].entries).toEqual([]);
+        const gone = await call("POST", "/api/nutrition", { action: "delete", id });
+        expect(gone.status).toBe(200);
+        expect(gone.json.date).toBe(dayOf(2));
+        expect(gone.json.day.entries).toBe(0);
+        expect((await call("POST", "/api/nutrition", { action: "update", id, kcal: 1 })).status).toBe(400);
+        expect((await call("POST", "/api/nutrition", { action: "delete", id })).status).toBe(200); // a retry finds it gone
+        expect((await call("POST", "/api/nutrition", { action: "explode" })).status).toBe(400);
+      });
+
+      it("refuses a bad food with its reason, and keeps none of the request", async () => {
+        addProfile("MED");
+        const bad = await call("POST", "/api/nutrition", { action: "add", meal: "lunch", items: [rice, { name: "Air" }] });
+        expect(bad.status).toBe(400);
+        expect(bad.json.error).toMatch(/needs calories or at least one macro/);
+        expect((await call("POST", "/api/nutrition", { action: "add", meal: "brunch", items: [rice] })).json.error).toMatch(/meal must be/);
+        expect((await call("POST", "/api/nutrition", { action: "add", day: "2026-02-30", meal: "lunch", items: [rice] })).json.error).toMatch(/not a day/);
+        expect((await call("GET", "/api/nutrition")).json.day.entries).toBe(0);
+      });
+
+      it("shows another day, the range asked for, the burn Garmin stored and the average of the days that are over", async () => {
+        addProfile("MED");
+        await call("POST", "/api/nutrition", { action: "add", day: dayOf(1), meal: "lunch", items: [rice] });
+        store().wellness.put("MED", dayOf(1), "summary", summaryResponse());
+        const view = (await call("GET", `/api/nutrition?date=${dayOf(1)}&days=7`)).json;
+        expect(view.date).toBe(dayOf(1));
+        expect(view.days).toHaveLength(7);
+        expect(view.day).toMatchObject({ kcal: 200, burnedKcal: 2600, burnedSoFar: false, netKcal: -2400 });
+        expect(view.average).toMatchObject({ days: 1, kcal: 200 });
+        const old = (await call("GET", `/api/nutrition?date=${dayOf(200)}`)).json; // beyond the range: still shown
+        expect(old.date).toBe(dayOf(200));
+        expect(old.day.entries).toBe(0);
+        expect((await call("GET", "/api/nutrition?date=yesterday")).json.date).toBe(today());
+        expect((await call("GET", "/api/nutrition?days=500")).json.days).toHaveLength(90);
+        expect((await call("GET", "/api/nutrition?days=2")).json.days).toHaveLength(7);
+      });
+
+      it("keeps each profile's food apart: a profile login acts as itself and cannot touch another's entries", async () => {
+        addProfile("MED", "med-pw");
+        addProfile("SAM", "sam-pw");
+        const login = (user: string, pass: string) => ({ ...H, Authorization: "Basic " + Buffer.from(`${user}:${pass}`).toString("base64") });
+        const med = login("MED", "med-pw"), sam = login("SAM", "sam-pw");
+        await call("POST", "/api/nutrition", { action: "add", meal: "lunch", items: [rice] }, med);
+        expect((await call("GET", "/api/nutrition", undefined, sam)).json).toMatchObject({ profile: "SAM", day: { entries: 0 } });
+        expect((await call("GET", "/api/nutrition?profile=MED", undefined, sam)).json).toMatchObject({ profile: "SAM", day: { entries: 0 } }); // whichever profile it names
+        const samFood = (await call("POST", "/api/nutrition", { action: "add", profile: "MED", meal: "snack", items: [rice] }, sam)).json;
+        expect(samFood).toMatchObject({ profile: "SAM", day: { entries: 1 } });
+        const medId = (await call("GET", "/api/nutrition", undefined, med)).json.day.meals[1].entries[0].id;
+        expect((await call("POST", "/api/nutrition", { action: "delete", id: samFood.day.meals[3].entries[0].id }, med)).json.day.entries).toBe(1); // nothing of SAM's was deleted
+        expect((await call("POST", "/api/nutrition", { action: "update", id: samFood.day.meals[3].entries[0].id, kcal: 1 }, med)).status).toBe(400);
+        expect((await call("GET", "/api/nutrition", undefined, sam)).json.day.entries).toBe(1);
+        expect((await call("GET", "/api/nutrition", undefined, med)).json.day.meals[1].entries[0].id).toBe(medId);
+      });
+    });
+
     describe("the Weight view", () => {
       const savedTz = process.env.GARMIN_TZ;
       beforeEach(() => {

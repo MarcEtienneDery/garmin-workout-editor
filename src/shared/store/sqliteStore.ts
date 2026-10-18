@@ -2,6 +2,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { ACTIVITY_SCHEMA, ActivityTable } from "./activities";
 import { CREDENTIAL_SCHEMA, CredentialTable } from "./credentials";
+import { NUTRITION_SCHEMA, NutritionTable } from "./nutrition";
 import { RENPHO_SCHEMA, RenphoTable } from "./renpho";
 import { TOKEN_SCHEMA, TokenTable } from "./tokens";
 import { WELLNESS_SCHEMA, WellnessTable } from "./wellness";
@@ -53,6 +54,7 @@ ${TOKEN_SCHEMA}
 ${WELLNESS_SCHEMA}
 ${CREDENTIAL_SCHEMA}
 ${RENPHO_SCHEMA}
+${NUTRITION_SCHEMA}
 `;
 
 const META_COLUMNS = "path, owner, size, version, updated_at, source, summary";
@@ -86,6 +88,8 @@ export class SqliteStore {
   readonly credentials: CredentialTable;
   /** The Renpho scale sync of every profile: settings, weigh-ins, state and log (see renpho.ts). */
   readonly renpho: RenphoTable;
+  /** The food each profile ate: one row per item, with its meal, calories and macros (see nutrition.ts). */
+  readonly nutrition: NutritionTable;
 
   private constructor(
     private readonly db: Database,
@@ -97,6 +101,7 @@ export class SqliteStore {
     this.wellness = new WellnessTable(db, (fn) => this.tx(fn));
     this.credentials = new CredentialTable(db);
     this.renpho = new RenphoTable(db, (fn) => this.tx(fn));
+    this.nutrition = new NutritionTable(db, (fn) => this.tx(fn));
   }
 
   static open(file: string): SqliteStore {

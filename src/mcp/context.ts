@@ -60,6 +60,17 @@ export function resolveProfileName(requested?: string): string {
 }
 
 /**
+ * The profile a tool that only uses the database acts on: no login is read and no Garmin client is made. It must exist, as
+ * for the web editor, or the tool would write rows under a name nothing ever reads (the Garmin tools fail at their login).
+ */
+export function dataProfile(requested?: string): string {
+  if (settings.mock) return getMockProfile().name;
+  const name = resolveProfileName(requested);
+  if (!getAvailableProfiles().includes(name)) throw new Error(`Unknown profile "${name}" (list_profiles shows the ones that exist).`);
+  return name;
+}
+
+/**
  * Get (or lazily create) the Garmin client/editor/exporter for a profile.
  * The client is cached so the Garmin login and token cache are reused across calls.
  */
