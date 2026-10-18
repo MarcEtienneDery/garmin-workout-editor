@@ -22,6 +22,9 @@
  * the calories Garmin says were burned, and the foods used lately; POST /api/nutrition adds, changes or deletes entries). The log
  * is in the database only, Garmin has nowhere to keep food, so it needs no Garmin login and works with Garmin disabled.
  *
+ * Food search and the barcode scan look foods up on Open Food Facts from the server (GET /api/foods/search?q=, GET
+ * /api/foods/barcode?code=): the page scales what they return to the quantity eaten and logs it with POST /api/nutrition.
+ *
  * The Calendar view shows where the plan files put their workouts (GET /api/calendar): each plan's span
  * and the dates of its workouts. It reads the stored plans only, not Garmin's own calendar.
  *
@@ -71,6 +74,7 @@ import { recentFit, testRenphoLogin } from "../shared/renphoSync";
 import { runRenpho, startRenphoTimer } from "../mcp/tools/renpho";
 import { testGarminLogin } from "../mcp/tools/settings";
 import { addDays, localToday } from "../shared/wellnessSync";
+import { FoodInputError, FoodSourceError, lookupBarcode, searchFoods } from "../shared/foodSearch";
 import { MEALS, NutritionError, addFoods, averageOf, changeFood, deleteFoods, nutritionDays, parseDay, recentFoods } from "../shared/nutrition";
 import {
   LIBRARY_LIMIT,
@@ -96,6 +100,8 @@ const PUBLIC_DIR = path.join(__dirname, "public");
 // Monaco is served from node_modules so the editor works offline (e.g. on the NAS).
 const MONACO_DIR = path.join(PROJECT_ROOT, "node_modules", "monaco-editor", "min", "vs");
 const LEAFLET_DIR = path.join(PROJECT_ROOT, "node_modules", "leaflet", "dist");
+// ZXing reads barcodes in browsers that have no BarcodeDetector (Safari on iPhone); the page loads it only then.
+const ZXING_DIR = path.join(PROJECT_ROOT, "node_modules", "@zxing", "library", "umd");
 const MAX_BODY_BYTES = 10 * 1024 * 1024;
 const SESSION_COOKIE = "plan_editor_session";
 /** Set by sign out: a browser that cached Basic credentials (earlier versions asked for them) keeps sending them, so they are ignored while this is set. */
@@ -822,6 +828,9 @@ function serveStatic(pathname: string, res: http.ServerResponse): void {
   } else if (name.startsWith("vendor/leaflet/")) {
     root = LEAFLET_DIR;
     name = name.slice("vendor/leaflet/".length);
+  } else if (name.startsWith("vendor/zxing/")) {
+    root = ZXING_DIR;
+    name = name.slice("vendor/zxing/".length);
   }
   let full: string;
   try {
@@ -839,6 +848,17 @@ function serveStatic(pathname: string, res: http.ServerResponse): void {
     "Cache-Control": "no-cache",
   });
   res.end(content);
+}
+
+/** A food lookup, its refusals and failures as the status and words the page shows: a bad question is 400, Open Food Facts not answering 502. */
+async function foodLookup<T>(ask: () => Promise<T>): Promise<T> {
+  try {
+    return await ask();
+  } catch (error) {
+    if (error instanceof FoodInputError) throw new HttpError(400, error.message);
+    if (error instanceof FoodSourceError) throw new HttpError(502, error.message);
+    throw error;
+  }
 }
 
 /** What the Food view shows: one day with its meals, the days of a range for the trend, and the foods the form offers again. */
@@ -990,6 +1010,16 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
       // the day whose stored responses are listed: the one asked for, else the last weigh-in, else today
       const date = asked && /^\d{4}-\d{2}-\d{2}$/.test(asked) ? asked : range.body.latest?.day ?? today;
       return send(res, 200, { profile, today, date, ...range, stored: store().wellness.rowsOfDay(profile, date), sync: wellnessSyncStatus(profile) });
+    }
+
+    case "GET /api/foods/search": {
+      // Foods by name from Open Food Facts, with their nutrition per 100 g. The server asks them; nothing about the person is sent.
+      return send(res, 200, { foods: await foodLookup(() => searchFoods(url.searchParams.get("q"))) });
+    }
+
+    case "GET /api/foods/barcode": {
+      // The food of a scanned barcode; null when Open Food Facts has none.
+      return send(res, 200, { food: await foodLookup(() => lookupBarcode(store(), url.searchParams.get("code"))) });
     }
 
     case "GET /api/nutrition": {

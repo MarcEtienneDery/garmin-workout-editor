@@ -2,6 +2,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { ACTIVITY_SCHEMA, ActivityTable } from "./activities";
 import { CREDENTIAL_SCHEMA, CredentialTable } from "./credentials";
+import { FOOD_CACHE_SCHEMA, FoodCacheTable } from "./foods";
 import { NUTRITION_SCHEMA, NutritionTable } from "./nutrition";
 import { RENPHO_SCHEMA, RenphoTable } from "./renpho";
 import { TOKEN_SCHEMA, TokenTable } from "./tokens";
@@ -55,6 +56,7 @@ ${WELLNESS_SCHEMA}
 ${CREDENTIAL_SCHEMA}
 ${RENPHO_SCHEMA}
 ${NUTRITION_SCHEMA}
+${FOOD_CACHE_SCHEMA}
 `;
 
 const META_COLUMNS = "path, owner, size, version, updated_at, source, summary";
@@ -90,6 +92,8 @@ export class SqliteStore {
   readonly renpho: RenphoTable;
   /** The food each profile ate: one row per item, with its meal, calories and macros (see nutrition.ts). */
   readonly nutrition: NutritionTable;
+  /** Products looked up by barcode on Open Food Facts, kept so a rescan needs no call (see foods.ts). */
+  readonly foods: FoodCacheTable;
 
   private constructor(
     private readonly db: Database,
@@ -102,6 +106,7 @@ export class SqliteStore {
     this.credentials = new CredentialTable(db);
     this.renpho = new RenphoTable(db, (fn) => this.tx(fn));
     this.nutrition = new NutritionTable(db, (fn) => this.tx(fn));
+    this.foods = new FoodCacheTable(db);
   }
 
   static open(file: string): SqliteStore {

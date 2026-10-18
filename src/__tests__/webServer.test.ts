@@ -11,6 +11,7 @@ import { toNewActivity } from "../shared/activitySync";
 import * as wellnessTools from "../mcp/tools/wellness";
 import * as renphoTools from "../mcp/tools/renpho";
 import * as settingsTools from "../mcp/tools/settings";
+import * as foodSearch from "../shared/foodSearch";
 import { Decoder, Stream } from "@garmin/fitsdk";
 import { renphoRow } from "./fixtures/renpho";
 import { hrvResponse, noWeighIn, sleepResponse, summaryResponse, weightResponse } from "./fixtures/wellness";
@@ -57,7 +58,14 @@ jest.mock("../shared/renphoSync", () => ({
   ...jest.requireActual("../shared/renphoSync"),
   testRenphoLogin: jest.fn(async () => ({ ok: true, message: "Renpho accepted the login (1 scale table on the account)." })),
 }));
+// Open Food Facts: no network either.
+jest.mock("../shared/foodSearch", () => ({
+  ...jest.requireActual("../shared/foodSearch"),
+  searchFoods: jest.fn(async () => []),
+  lookupBarcode: jest.fn(async () => null),
+}));
 const g = garmin as jest.Mocked<typeof garmin>;
+const fs_ = foodSearch as jest.Mocked<typeof foodSearch>;
 const a = activitiesTools as jest.Mocked<typeof activitiesTools>;
 const w = wellnessTools as jest.Mocked<typeof wellnessTools>;
 const rt = renphoTools as jest.Mocked<typeof renphoTools>;
@@ -666,6 +674,53 @@ describe("web plan editor", () => {
         expect((await call("POST", "/api/nutrition", { action: "update", id: samFood.day.meals[3].entries[0].id, kcal: 1 }, med)).status).toBe(400);
         expect((await call("GET", "/api/nutrition", undefined, sam)).json.day.entries).toBe(1);
         expect((await call("GET", "/api/nutrition", undefined, med)).json.day.meals[1].entries[0].id).toBe(medId);
+      });
+    });
+
+    describe("finding a food", () => {
+      const yogurt = { code: "0894700010137", name: "Greek Yogurt", brand: "chobani", per100: { kcal: 52.9, proteinG: 9.5, carbsG: 4, fatG: 0 }, unit: "g", servingG: 170, servingText: "1 serving (170 g)" };
+
+      it("searches Open Food Facts by name through the server, and needs no Garmin profile", async () => {
+        fs_.searchFoods.mockResolvedValueOnce([yogurt as any]);
+        const out = await call("GET", "/api/foods/search?q=greek%20yogurt");
+        expect(out).toEqual({ status: 200, json: { foods: [yogurt] } });
+        expect(fs_.searchFoods).toHaveBeenCalledWith("greek yogurt");
+        expect((await call("GET", "/api/foods/search?q=zzzz")).json).toEqual({ foods: [] });
+      });
+
+      it("looks a scanned barcode up, and says null when there is no such food", async () => {
+        fs_.lookupBarcode.mockResolvedValueOnce(yogurt as any);
+        const found = await call("GET", "/api/foods/barcode?code=894700010137");
+        expect(found.json).toEqual({ food: yogurt });
+        expect(fs_.lookupBarcode).toHaveBeenLastCalledWith(expect.anything(), "894700010137");
+        expect(await call("GET", "/api/foods/barcode?code=00000017")).toEqual({ status: 200, json: { food: null } });
+      });
+
+      it("says 400 for a question that cannot be asked and 502 when Open Food Facts cannot answer", async () => {
+        fs_.searchFoods.mockRejectedValueOnce(new foodSearch.FoodInputError("Search for 2 to 80 characters."));
+        expect(await call("GET", "/api/foods/search?q=a")).toEqual({ status: 400, json: { error: "Search for 2 to 80 characters." } });
+        fs_.lookupBarcode.mockRejectedValueOnce(new foodSearch.FoodSourceError("Open Food Facts is unavailable right now (503)."));
+        expect(await call("GET", "/api/foods/barcode?code=3017620422003")).toEqual({ status: 502, json: { error: "Open Food Facts is unavailable right now (503)." } });
+        const quiet = jest.spyOn(console, "error").mockImplementation(() => undefined);
+        fs_.searchFoods.mockRejectedValueOnce(new Error("boom"));
+        expect((await call("GET", "/api/foods/search?q=rice")).status).toBe(500);
+        quiet.mockRestore();
+      });
+
+      it("is for signed-in people only", async () => {
+        addProfile("MED", "med-pw");
+        expect((await call("GET", "/api/foods/search?q=rice")).status).toBe(401);
+        expect((await call("GET", "/api/foods/barcode?code=3017620422003")).status).toBe(401);
+        expect(fs_.searchFoods).not.toHaveBeenCalled();
+      });
+
+      it("serves the scanner and the barcode reader the page loads", async () => {
+        for (const file of ["/barcodeScanner.js", "/nutritionModel.js", "/vendor/zxing/index.min.js"]) {
+          const res = await fetch(base + file);
+          expect(res.status).toBe(200);
+          expect(res.headers.get("content-type")).toMatch(/javascript/);
+        }
+        expect((await fetch(base + "/vendor/zxing/../../package.json")).status).toBe(404);
       });
     });
 

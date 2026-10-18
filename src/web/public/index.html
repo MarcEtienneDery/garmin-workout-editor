@@ -244,7 +244,22 @@
   .fform { display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin-top:8px; }
   .fform input { min-width:0; box-sizing:border-box; background:#333; color:var(--fg); border:1px solid var(--line); border-radius:3px; padding:4px 6px; font:inherit; }
   .fform .fname { flex:3 1 12em; } .fform .fnum { flex:1 1 4.2em; width:4.2em; }
-  @media (max-width:700px) { .fform .fname { flex-basis:100%; } .fe button { min-width:34px; min-height:34px; } }
+  @media (max-width:700px) { .fform .fname { flex-basis:100%; } .fe button { min-width:34px; min-height:34px; } .fform input, .fpq input, .fpq select { min-height:40px; font-size:16px; } #scandlg { width:94vw; } }
+  .ffrow { display:flex; gap:6px; align-items:center; margin-top:8px; } .ffrow .fq { flex:1 1 auto; min-width:0; box-sizing:border-box; }
+  .fresults { display:grid; gap:4px; margin-top:6px; } .fresults:empty { display:none; }
+  .fnote { color:var(--dim); font-size:13px; line-height:1.4; } .fnote.err { color:var(--err); }
+  .fr { display:block; width:100%; text-align:left; padding:6px 10px; background:#2b2b2b; } .fr b { font-weight:600; } .fr .frb { margin-left:6px; color:var(--dim); font-size:12px; } .fr .frm { margin-top:2px; color:var(--dim); font-size:12px; }
+  .fcredit { color:var(--dim); font-size:11px; } .fcredit a { color:var(--accent); }
+  .fpick { margin-top:8px; padding:8px 10px; background:#2b2b2b; border:1px solid var(--line); border-left:3px solid var(--accent); border-radius:4px; }
+  .fpt { display:flex; gap:8px; align-items:flex-start; } .fpn { flex:1; min-width:0; overflow-wrap:anywhere; } .fpn span { margin-left:6px; color:var(--dim); font-size:12px; }
+  .fph { margin:2px 0 8px; color:var(--dim); font-size:12px; }
+  .fpq { display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
+  .fpq input { width:6.5em; box-sizing:border-box; background:#333; color:var(--fg); border:1px solid var(--line); border-radius:3px; padding:4px 6px; font:inherit; }
+  .fpv { margin:8px 0; font-weight:600; }
+  .fhand { margin-top:8px; } .fhand > summary { cursor:pointer; color:var(--dim); font-size:12px; }
+  #scandlg .scanwrap { position:relative; } #scandlg video { display:block; width:100%; max-height:60vh; background:#000; border-radius:4px; }
+  #scandlg .scanwrap::after { content:""; position:absolute; left:8%; right:8%; top:50%; height:2px; background:rgba(224,57,60,.8); pointer-events:none; }
+  #scanNote { margin-top:8px; } #scanNote.err { color:var(--err); }
   .sform { display:grid; grid-template-columns:minmax(0,9em) minmax(0,1fr); gap:8px 12px; align-items:center; max-width:560px; }
   .sform label { color:var(--dim); }
   .sform :is(input[type="text"], input[type="password"], input[type="date"], select) { width:100%; box-sizing:border-box; }
@@ -843,6 +858,15 @@
   <div class="dfoot"><span class="spacer"></span><button id="dlgCancel">Cancel</button><button id="dlgOk" class="primary">OK</button></div>
 </dialog>
 
+<dialog id="scandlg">
+  <div class="dhead"><b>Scan a barcode</b></div>
+  <div class="dbody">
+    <div class="scanwrap"><video id="scanVideo" playsinline muted autoplay></video></div>
+    <div id="scanNote" class="meta">Starting the camera…</div>
+  </div>
+  <div class="dfoot"><span class="spacer"></span><button id="scanCancel">Cancel</button></div>
+</dialog>
+
 <dialog id="hdlg">
   <div class="dhead"><b id="hdlgTitle"></b></div>
   <div class="dbody"><div id="hdlgText" class="meta"></div><div class="hlist" id="hdlgList"></div></div>
@@ -856,6 +880,7 @@
 <script src="/recoveryModel.js"></script>
 <script src="/weightModel.js"></script>
 <script src="/nutritionModel.js"></script>
+<script src="/barcodeScanner.js"></script>
 <script src="/settingsModel.js"></script>
 <script src="/trendCharts.js"></script>
 <script src="/workoutListModel.js"></script>
@@ -3113,7 +3138,8 @@ function bindWeightView() {
 // says the day burned, and the days of a range. The log is in the database only, Garmin has nowhere to keep food, so the view
 // works without a Garmin login. The logic (totals, shares, the form's checks) is nutritionModel.js.
 const NM = NutritionModel;
-const F = { profile: null, date: null, range: 30, data: null, error: "", run: 0, loaded: false, busy: false, drafts: new Map(), editing: null };
+// finds: per meal, what its search box holds and found; pick: the food chosen to say a quantity of (one at a time); hand: the meals whose by-hand form is open
+const F = { profile: null, date: null, range: 30, data: null, error: "", run: 0, loaded: false, busy: false, drafts: new Map(), editing: null, finds: new Map(), pick: null, hand: new Set() };
 const foodQuery = () => `${F.profile ? `profile=${encodeURIComponent(F.profile)}&` : ""}${F.date ? `date=${F.date}&` : ""}days=${F.range}`;
 
 async function loadFood() {
@@ -3170,7 +3196,7 @@ function renderFood() {
   box.append(TrendCharts.trends(NM.chartDays(d.days), NM.charts(), { selected: d.date, onPick: pickFoodDay }));
   box.append(mk("h3", "", "Every day"));
   box.append(metricsTable(d.days, NM.GROUPS, NM.cell, d.date, pickFoodDay));
-  box.append(mk("div", "rfoot", "The calories and macros are what you typed in or an assistant estimated from your description, so they are estimates. A day with nothing logged is not a day of zero. What Garmin says the day burned comes from the watch: today's is only what has burned so far. The food is kept here; Garmin has no place to store it."));
+  box.append(mk("div", "rfoot", "The calories and macros are what you typed in or an assistant estimated from your description, so they are estimates. A day with nothing logged is not a day of zero. Foods found by search or barcode come from Open Food Facts, a community-made database: check the numbers against the package when they matter. What Garmin says the day burned comes from the watch: today's is only what has burned so far. The food is kept here; Garmin has no place to store it."));
   $("fscroll").scrollTop = keep;
 }
 
@@ -3181,7 +3207,12 @@ function foodMeal(block) {
   if (block.entries.length) head.append(mk("span", "", `${NM.kcal(block.totals.kcal)} · ${NM.macros(block.totals)}`));
   sec.append(head);
   for (const e of block.entries) sec.append(foodEntry(e, block.meal));
-  sec.append(foodForm(block.meal));
+  sec.append(F.pick && F.pick.meal === block.meal ? foodPicker(F.pick) : foodFinder(block.meal));
+  const hand = mk("details", "fhand"), editing = F.editing && F.editing.meal === block.meal;
+  hand.append(mk("summary", "", editing ? "Change the food" : "Enter by hand"), foodForm(block.meal));
+  hand.open = editing || F.hand.has(block.meal);
+  hand.ontoggle = () => { if (hand.open) F.hand.add(block.meal); else F.hand.delete(block.meal); };
+  sec.append(hand);
   return sec;
 }
 
@@ -3206,6 +3237,159 @@ function focusFoodName(meal) {
   if (input) input.focus();
 }
 
+// Finding a food: by name (Open Food Facts, through the server) or by scanning its barcode with the camera. A food found has its
+// nutrition per 100 g; the person says how much of it, and the log gets the calories and macros worked out for that quantity.
+const findState = (meal) => { let st = F.finds.get(meal); if (!st) F.finds.set(meal, st = { q: "", foods: [], note: "", error: false, run: 0, timer: 0 }); return st; };
+const offLink = (food) => { const a = mk("a", "", "Open Food Facts"); a.href = food && food.code ? `https://world.openfoodfacts.org/product/${food.code}` : "https://world.openfoodfacts.org/"; a.target = "_blank"; a.rel = "noopener"; return a; };
+const credit = (food) => { const c = mk("div", "fcredit", "Data: "); c.append(offLink(food), " (ODbL)"); return c; };
+
+function foodFinder(meal) {
+  const st = findState(meal), box = mk("div", "ffind"), row = mk("div", "ffrow"), out = mk("div", "fresults");
+  out.dataset.results = meal;
+  const q = mk("input", "fq");
+  q.type = "search"; q.placeholder = "Search a food"; q.value = st.q; q.autocomplete = "off"; q.enterKeyHint = "search"; q.setAttribute("aria-label", "Search a food");
+  q.oninput = () => { st.q = q.value; clearTimeout(st.timer); st.timer = setTimeout(() => runFind(meal), 450); };
+  q.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); clearTimeout(st.timer); runFind(meal); } };
+  const scan = mk("button", "", "📷 Scan");
+  scan.type = "button"; scan.title = "Scan a barcode with the camera";
+  scan.onclick = () => scanBarcode(meal);
+  row.append(q, scan);
+  box.append(row, out);
+  paintFind(meal, out);
+  return box;
+}
+
+/** Draw the results of a meal's search in place, so the search box keeps its focus while they arrive. */
+function paintFind(meal, out) {
+  out = out || document.querySelector(`#fbody [data-results="${meal}"]`);
+  if (!out) return;
+  const st = findState(meal);
+  out.replaceChildren();
+  if (st.note) out.append(mk("div", "fnote" + (st.error ? " err" : ""), st.note));
+  for (const food of st.foods) {
+    const b = mk("button", "fr"), title = mk("div", "frt");
+    b.type = "button";
+    title.append(mk("b", "", food.name));
+    if (NM.brandOf(food)) title.append(mk("span", "frb", NM.brandOf(food)));
+    b.append(title, mk("div", "frm", NM.per100Line(food)));
+    b.onclick = () => pickFood(meal, food);
+    out.append(b);
+  }
+  if (st.foods.length) out.append(credit());
+}
+
+/** Search by name after a pause in typing; a barcode typed or pasted is looked up as one. */
+async function runFind(meal) {
+  const st = findState(meal), text = st.q.trim(), run = ++st.run, code = NM.normalizeBarcode(text);
+  if (code) return lookupCode(meal, code);
+  st.error = false;
+  if (text.length < 3) { st.foods = []; st.note = ""; return paintFind(meal); }
+  st.note = "Searching…"; paintFind(meal);
+  try {
+    const r = await api("GET", `/api/foods/search?q=${encodeURIComponent(text)}`);
+    if (run !== st.run) return;
+    st.foods = r.foods; st.note = r.foods.length ? "" : "Nothing found. Try other words, or enter it by hand.";
+  } catch (e) {
+    if (run !== st.run) return;
+    st.foods = []; st.note = e.message; st.error = true;
+  }
+  paintFind(meal);
+}
+
+async function lookupCode(meal, code) {
+  const st = findState(meal), run = ++st.run;
+  st.q = code; st.foods = []; st.error = false; st.note = `Looking up ${code}…`;
+  const input = document.querySelector(`#fbody [data-meal="${meal}"] .fq`);
+  if (input) input.value = code;
+  paintFind(meal);
+  try {
+    const r = await api("GET", `/api/foods/barcode?code=${code}`);
+    if (run !== st.run) return;
+    if (r.food) return pickFood(meal, r.food);
+    st.note = `${code} is not in Open Food Facts, or has no nutrition values. Enter it by hand.`;
+    F.hand.add(meal);
+    renderFood();
+  } catch (e) {
+    if (run !== st.run) return;
+    st.note = e.message; st.error = true;
+    paintFind(meal);
+  }
+}
+
+function pickFood(meal, food) {
+  F.finds.delete(meal);
+  F.pick = { meal, food, amount: food.servingG ? "1" : "100", unit: food.servingG ? "portion" : "g" };
+  renderFood();
+  const amount = document.querySelector(`#fbody [data-meal="${meal}"] .fpq input`);
+  if (amount) { amount.focus(); amount.select(); }
+  const p = F.pick;
+  if (food.code && !food.servingG) {
+    api("GET", `/api/foods/barcode?code=${food.code}`).then((r) => { if (r.food && F.pick === p && p.onServing) p.onServing(r.food); }).catch(() => { /* the portion is a convenience: grams work without it */ });
+  }
+}
+
+/** The food chosen: its nutrition per 100 g, a quantity (grams, or portions when the product says how big one is) and what that comes to. */
+function foodPicker(p) {
+  const food = p.food, card = mk("div", "fpick"), head = mk("div", "fpt"), name = mk("div", "fpn");
+  name.append(mk("b", "", food.name));
+  if (NM.brandOf(food)) name.append(mk("span", "", NM.brandOf(food)));
+  const back = mk("button", "", "✕");
+  back.type = "button"; back.title = "Choose another food"; back.setAttribute("aria-label", "Choose another food");
+  back.onclick = () => { F.pick = null; renderFood(); const q = document.querySelector(`#fbody [data-meal="${p.meal}"] .fq`); if (q) q.focus(); };
+  head.append(name, back);
+  const row = mk("div", "fpq"), amount = mk("input"), unit = mk("select"), preview = mk("div", "fpv"), add = mk("button", "primary", "Add");
+  amount.type = "number"; amount.min = "0"; amount.step = "any"; amount.inputMode = "decimal"; amount.value = p.amount; amount.setAttribute("aria-label", "Quantity");
+  unit.setAttribute("aria-label", "Unit");
+  unit.add(new Option(food.unit === "ml" ? "ml" : "g", "g"));
+  const addPortion = () => unit.add(new Option(`portion (${Math.round(food.servingG * 10) / 10} ${food.unit})`, "portion"));
+  if (food.servingG) addPortion();
+  unit.value = p.unit;
+  // a search hit rarely says how big a portion is; the product's own page may, and is fetched in the background (see pickFood)
+  p.onServing = (full) => { if (food.servingG || !full.servingG) return; food.servingG = full.servingG; food.servingText = full.servingText; addPortion(); };
+  const paint = () => {
+    const r = NM.portion(food, p.amount, p.unit);
+    preview.textContent = r ? `${NM.kcal(r.nutrition.kcal)} · ${NM.macros(r.nutrition)}` : `Give a quantity (up to ${NM.MAX_AMOUNT} g).`;
+    add.disabled = !r;
+  };
+  amount.oninput = () => { p.amount = amount.value; paint(); };
+  amount.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); if (!add.disabled) add.click(); } };
+  unit.onchange = () => { p.unit = unit.value; p.amount = p.unit === "portion" ? "1" : String(food.servingG || 100); amount.value = p.amount; paint(); };
+  add.type = "button";
+  add.onclick = guard(async () => {
+    const r = NM.portion(food, p.amount, p.unit);
+    if (!r) return toast(`Give a quantity (up to ${NM.MAX_AMOUNT} g).`, 4000);
+    if (!(await foodAction({ action: "add", day: F.data.date, meal: p.meal, items: [{ name: r.name, ...r.nutrition }] }))) return;
+    F.pick = null;
+    renderFood();
+    const q = document.querySelector(`#fbody [data-meal="${p.meal}"] .fq`);
+    if (q) q.focus();
+  });
+  row.append(amount, unit);
+  card.append(head, mk("div", "fph", NM.per100Line(food)), row, preview, add, credit(food));
+  paint();
+  return card;
+}
+
+/** The camera, in a dialog: it stops with the dialog however that closes (Cancel, Back, Esc), and a code read looks the product up. */
+async function scanBarcode(meal) {
+  const dlg = $("scandlg"), video = $("scanVideo"), note = $("scanNote");
+  note.className = "meta"; note.textContent = "Starting the camera…";
+  dlg.showModal(); navDialog(dlg);
+  let scanner = null;
+  dlg.addEventListener("close", () => { if (scanner) scanner.stop(); scanner = null; }, { once: true });
+  try {
+    const started = await BarcodeScanner.start(video, (code) => {
+      if (navigator.vibrate) navigator.vibrate(60);
+      dlg.close();
+      lookupCode(meal, code);
+    });
+    if (!dlg.open) return started.stop(); // closed while the camera was starting
+    scanner = started;
+    note.textContent = "Point the camera at the barcode.";
+  } catch (e) {
+    note.className = "meta err"; note.textContent = e.message;
+  }
+}
 /** The form of a meal: add a food, or change the one picked (its fields are filled in and the button says Save). */
 function foodForm(meal) {
   const editing = F.editing && F.editing.meal === meal ? F.editing : null;
@@ -3269,13 +3453,15 @@ function pickFoodDay(day) {
 
 function bindFoodView() {
   $("vFood").onclick = () => setView("food");
-  const go = (date) => { F.date = date && F.data && date >= F.data.today ? null : date; F.editing = null; return guard(loadFood)(); };
+  const go = (date) => { F.date = date && F.data && date >= F.data.today ? null : date; F.editing = null; F.pick = null; return guard(loadFood)(); };
   $("fPrev").onclick = () => F.data && go(RM.addDays(F.data.date, -1));
   $("fNext").onclick = () => F.data && go(RM.addDays(F.data.date, 1));
   $("fToday").onclick = () => go(null);
   $("fDate").onchange = (e) => e.target.value && go(e.target.value);
   $("fRange").onchange = (e) => { F.range = Number(e.target.value); guard(loadFood)(); };
-  $("fProfile").onchange = (e) => { Object.assign(F, { profile: e.target.value, date: null, data: null, loaded: false, error: "", editing: null }); F.drafts.clear(); guard(loadFood)(); };
+  $("fProfile").onchange = (e) => { Object.assign(F, { profile: e.target.value, date: null, data: null, loaded: false, error: "", editing: null, pick: null }); F.drafts.clear(); F.finds.clear(); guard(loadFood)(); };
+  $("scanCancel").onclick = () => $("scandlg").close();
+  addEventListener("pagehide", () => { if ($("scandlg").open) $("scandlg").close(); }); // the camera light must not stay on
 }
 
 // ── Settings ─────────────────────────────────────────────────────────────

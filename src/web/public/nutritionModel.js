@@ -139,5 +139,73 @@
     return key ? (recent || []).find((r) => r.name.toLowerCase() === key) || null : null;
   }
 
-  return { MEAL_LABELS, mealLabel, kcal, grams, signed, macros, shares, figures, averageNote, GROUPS, cell, chartDays, charts, kcalOf, parseDraft, draftOf, EMPTY_DRAFT, recentMatch };
+  // ── Barcodes ────────────────────────────────────────────────────────────
+
+  /** A digit string of 8, 12, 13 or 14 digits whose last digit is the GTIN check digit (alternate weights 3 and 1 from the right). */
+  function gtinOk(code) {
+    if (!/^\d+$/.test(code) || ![8, 12, 13, 14].includes(code.length)) return false;
+    let sum = 0;
+    for (let i = code.length - 2, w = 3; i >= 0; i--, w = 4 - w) sum += Number(code[i]) * w;
+    return (10 - (sum % 10)) % 10 === Number(code[code.length - 1]);
+  }
+
+  /** The 12-digit UPC-A a UPC-E (8 digits) stands for, or null when it is not a valid one. */
+  function expandUpcE(code) {
+    if (!/^[01]\d{7}$/.test(code)) return null;
+    const n = code[0], x = code.slice(1, 7), check = code[7], last = Number(x[5]);
+    const body = last <= 2 ? `${n}${x.slice(0, 2)}${x[5]}0000${x.slice(2, 5)}` : last === 3 ? `${n}${x.slice(0, 3)}00000${x.slice(3, 5)}` : last === 4 ? `${n}${x.slice(0, 4)}00000${x[4]}` : `${n}${x.slice(0, 5)}0000${x[5]}`;
+    const full = body + check;
+    return gtinOk(full) ? full : null;
+  }
+
+  /** What a barcode reader or the person typed as the code to look up: digits only, with a good check digit, a UPC-E expanded; null when it is not a barcode. */
+  function normalizeBarcode(text) {
+    const code = String(text == null ? "" : text).replace(/[\s-]/g, "");
+    if (!/^\d{8,14}$/.test(code)) return null;
+    if (code.length === 8) return gtinOk(code) ? code : expandUpcE(code);
+    return gtinOk(code) ? code : null;
+  }
+
+  // ── A food found by name or barcode, and how much of it was eaten ───────
+
+  const MAX_AMOUNT = 2000;
+  /** A quantity typed in (grams, or a number of portions): a number above 0, else null. */
+  function parseAmount(text) {
+    const n = Number(String(text == null ? "" : text).trim().replace(",", "."));
+    return Number.isFinite(n) && n > 0 ? n : null;
+  }
+
+  const round1 = (v) => Math.round(v * 10) / 10;
+  /** Grams eaten: the amount typed, or portions times the portion's size (a food with no portion size has no portions). */
+  const amountGrams = (food, amount, unit) => (unit === "portion" && food.servingG ? amount * food.servingG : amount);
+  /** The calories and macros of `grams` of a food that holds `per100` in 100 g; liquids are taken as 1 g a ml. */
+  const scale = (per100, grams) => ({ kcal: Math.round((per100.kcal * grams) / 100), proteinG: round1((per100.proteinG * grams) / 100), carbsG: round1((per100.carbsG * grams) / 100), fatG: round1((per100.fatG * grams) / 100) });
+
+  /** The brand to show next to a food's name: none when the name has it already ("Nutella" by Nutella). */
+  const brandOf = (food) => (food.brand && !food.name.toLowerCase().includes(food.brand.toLowerCase()) ? food.brand : "");
+
+  const unitOf = (food) => (food.unit === "ml" ? "ml" : "g");
+  const plain = (v) => String(round1(v));
+  /** What the log calls a food that was scaled: "Greek yogurt (Chobani) · 170 g" or "· 2 × 30 g", at most 120 characters. */
+  function entryName(food, amount, unit) {
+    const base = brandOf(food) ? `${food.name} (${brandOf(food)})` : food.name;
+    const tail = unit === "portion" && food.servingG ? ` · ${plain(amount)} × ${plain(food.servingG)} ${unitOf(food)}` : ` · ${plain(amount)} ${unitOf(food)}`;
+    return base.length + tail.length <= 120 ? base + tail : `${base.slice(0, 120 - tail.length - 1).trimEnd()}…${tail}`;
+  }
+
+  /** What eating `amountText` (grams, or portions) of a food comes to: the grams, the calories and macros, and the name to log it under; null when the quantity is no number or more than MAX_AMOUNT g. */
+  function portion(food, amountText, unit) {
+    const amount = parseAmount(amountText);
+    if (amount === null) return null;
+    const grams = amountGrams(food, amount, unit);
+    if (grams > MAX_AMOUNT) return null;
+    return { amount, grams, nutrition: scale(food.per100, grams), name: entryName(food, amount, unit) };
+  }
+
+  /** "52 kcal · P 9.5 · C 4 · F 0" per 100 g (or ml). */
+  const per100Line = (food) => `${num(food.per100.kcal)} kcal · ${macros(food.per100)} per 100 ${unitOf(food)}`;
+  /** A food as the results list shows it: the name and the brand. */
+  const foodTitle = (food) => (brandOf(food) ? `${food.name} · ${brandOf(food)}` : food.name);
+
+  return { gtinOk, expandUpcE, normalizeBarcode, MAX_AMOUNT, parseAmount, amountGrams, scale, brandOf, entryName, portion, per100Line, foodTitle, MEAL_LABELS, mealLabel, kcal, grams, signed, macros, shares, figures, averageNote, GROUPS, cell, chartDays, charts, kcalOf, parseDraft, draftOf, EMPTY_DRAFT, recentMatch };
 });

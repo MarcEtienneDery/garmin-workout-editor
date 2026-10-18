@@ -135,3 +135,82 @@ describe("the form", () => {
     expect(NM.recentMatch(undefined, "rice")).toBeNull();
   });
 });
+
+describe("barcodes", () => {
+  it("checks the digit a barcode ends with", () => {
+    for (const ok of ["3017620422003", "894700010137", "0894700010137", "96385074", "40170725"]) expect(NM.gtinOk(ok)).toBe(true);
+    for (const bad of ["3017620422004", "894700010138", "12345678", "1234", "abc", "", "301762042200"]) expect(NM.gtinOk(bad)).toBe(false);
+  });
+
+  it("expands a UPC-E to the UPC-A it stands for", () => {
+    expect(NM.expandUpcE("04252614")).toBe("042100005264"); // the Wikipedia example
+    expect(NM.expandUpcE("04252615")).toBeNull();
+    expect(NM.expandUpcE("23456789")).toBeNull(); // number system must be 0 or 1
+    expect(NM.expandUpcE("0425261")).toBeNull();
+  });
+
+  it("accepts what a reader or a person gives only when it is a real barcode", () => {
+    expect(NM.normalizeBarcode("3017620422003")).toBe("3017620422003");
+    expect(NM.normalizeBarcode(" 3017 6204 22003 ")).toBe("3017620422003");
+    expect(NM.normalizeBarcode("3017-6204-22003")).toBe("3017620422003");
+    expect(NM.normalizeBarcode("04252614")).toBe("042100005264"); // UPC-E, looked up as the UPC-A
+    expect(NM.normalizeBarcode("96385074")).toBe("96385074");
+    for (const no of ["3017620422004", "1234567", "greek yogurt", "", null, undefined, "123456789012345"]) expect(NM.normalizeBarcode(no)).toBeNull();
+  });
+});
+
+describe("a food by quantity", () => {
+  const yogurt = { name: "Greek Yogurt", brand: "chobani", per100: { kcal: 52.9, proteinG: 9.5, carbsG: 4, fatG: 0 }, unit: "g", servingG: 170 };
+  const juice = { name: "Orange juice", brand: null, per100: { kcal: 45, proteinG: 0.7, carbsG: 10, fatG: 0.2 }, unit: "ml", servingG: null };
+
+  it("works the calories and macros out for the grams eaten", () => {
+    expect(NM.scale(yogurt.per100, 170)).toEqual({ kcal: 90, proteinG: 16.2, carbsG: 6.8, fatG: 0 });
+    expect(NM.scale(yogurt.per100, 100)).toEqual({ kcal: 53, proteinG: 9.5, carbsG: 4, fatG: 0 });
+    expect(NM.scale(yogurt.per100, 0)).toEqual({ kcal: 0, proteinG: 0, carbsG: 0, fatG: 0 });
+  });
+
+  it("counts portions as the product's portion size, and has none when it states no size", () => {
+    expect(NM.amountGrams(yogurt, 2, "portion")).toBe(340);
+    expect(NM.amountGrams(yogurt, 150, "g")).toBe(150);
+    expect(NM.amountGrams(juice, 2, "portion")).toBe(2);
+  });
+
+  it("says what the quantity comes to, and the name to log it under", () => {
+    expect(NM.portion(yogurt, "1", "portion")).toEqual({ amount: 1, grams: 170, nutrition: { kcal: 90, proteinG: 16.2, carbsG: 6.8, fatG: 0 }, name: "Greek Yogurt (chobani) · 1 × 170 g" });
+    expect(NM.portion(yogurt, "1,5", "portion")).toMatchObject({ grams: 255, name: "Greek Yogurt (chobani) · 1.5 × 170 g" });
+    expect(NM.portion(yogurt, "250", "g")).toMatchObject({ grams: 250, name: "Greek Yogurt (chobani) · 250 g" });
+    expect(NM.portion(juice, "330", "g")).toMatchObject({ nutrition: { kcal: 149 }, name: "Orange juice · 330 ml" });
+  });
+
+  it("refuses a quantity that is not a number, is not above 0 or is more than a person eats", () => {
+    for (const bad of ["", "abc", "0", "-5", "2001", null]) expect(NM.portion(yogurt, bad, "g")).toBeNull();
+    expect(NM.portion(yogurt, "2000", "g")).not.toBeNull();
+    expect(NM.portion(yogurt, "12", "portion")).toBeNull(); // 2040 g
+    expect(NM.parseAmount("1e2")).toBe(100);
+  });
+
+  it("keeps the logged name within 120 characters, whatever the product is called", () => {
+    const long = { ...yogurt, name: "x".repeat(100), brand: "y".repeat(40) };
+    const name = NM.entryName(long, 170, "g");
+    expect(name.length).toBeLessThanOrEqual(120);
+    expect(name).toMatch(/…\s·\s170 g$|…\) · 170 g$/);
+    expect(name.endsWith(" · 170 g")).toBe(true);
+  });
+
+  it("leaves the brand out when the name has it already", () => {
+    const nutella = { name: "Nutella", brand: "Nutella", per100: yogurt.per100, unit: "g", servingG: null };
+    expect(NM.brandOf(nutella)).toBe("");
+    expect(NM.entryName(nutella, 30, "g")).toBe("Nutella · 30 g");
+    expect(NM.foodTitle({ ...nutella, name: "Hazelnut spread", brand: "Nutella" })).toBe("Hazelnut spread · Nutella");
+    expect(NM.brandOf({ ...nutella, name: "Nutella B-ready", brand: "nutella" })).toBe("");
+    expect(NM.brandOf(yogurt)).toBe("chobani");
+    expect(NM.brandOf(juice)).toBe("");
+  });
+
+  it("lists a food as the results show it", () => {
+    expect(NM.per100Line(yogurt)).toBe("53 kcal · P 9.5 · C 4 · F 0 per 100 g");
+    expect(NM.per100Line(juice)).toBe("45 kcal · P 0.7 · C 10 · F 0.2 per 100 ml");
+    expect(NM.foodTitle(yogurt)).toBe("Greek Yogurt · chobani");
+    expect(NM.foodTitle(juice)).toBe("Orange juice");
+  });
+});
