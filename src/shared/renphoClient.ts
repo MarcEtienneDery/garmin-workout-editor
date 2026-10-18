@@ -27,8 +27,8 @@ export const decrypt = (data: string): string => {
   return Buffer.concat([decipher.update(Buffer.from(data, "base64")), decipher.final()]).toString("utf8");
 };
 
-/** Parse JSON without losing the long integers (ids) that a number cannot hold: they are kept as text. */
-export const parseJson = (text: string): any => JSON.parse(text.replace(/(:\s*)(-?\d{16,})(?=\s*[,}\]])/g, '$1"$2"'));
+/** Parse JSON without losing the long integers (ids, as an object's value or an array's item) that a number cannot hold: they are kept as text. Strings are skipped over, so their digits stay as they are. */
+export const parseJson = (text: string): any => JSON.parse(text.replace(/"(?:[^"\\]|\\.)*"|(?<![\w.+-])(-?\d{16,})(?=\s*[,}\]])/g, (match, long) => (long ? `"${long}"` : match)));
 
 /** What went wrong: "login" (Renpho refused the login), "rate" (too many requests), "other" (the network, an error answer, an answer that makes no sense). */
 export class RenphoError extends Error {

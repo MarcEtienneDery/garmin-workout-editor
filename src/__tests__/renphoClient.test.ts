@@ -20,6 +20,13 @@ describe("the protocol", () => {
     expect(parsed.small).toBe(12);
     expect(parsed.nested[0]).toEqual({ bUserId: "9007199254740993", w: 81.7 });
   });
+
+  it("keeps the long integers of an array as text too (the scale's user ids), and leaves strings and decimals alone", () => {
+    const parsed = parseJson('{"userIds":[803389103430472706, 5],"note":"id: 1234567890123456789, ok","precise":1.2345678901234567}');
+    expect(parsed.userIds).toEqual(["803389103430472706", 5]);
+    expect(parsed.note).toBe("id: 1234567890123456789, ok");
+    expect(parsed.precise).toBe(1.2345678901234567);
+  });
 });
 
 describe("signing in", () => {

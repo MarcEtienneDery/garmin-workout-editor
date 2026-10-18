@@ -135,6 +135,7 @@ async function fetchFromRenpho(store: SqliteStore, profile: string, credential: 
   for (const table of tables) {
     const { rows, complete } = await client.measurements(table);
     if (!complete) log("warn", `Stopped reading table ${table.tableName} at the page limit: older weigh-ins are not kept.`, now);
+    if (!rows.length && table.count > 0) log("warn", `Renpho counts ${table.count} weigh-ins in table ${table.tableName} but returned none (the app's protocol may have changed).`, now);
     for (const row of rows) {
       const id = row.id === undefined || row.id === null ? "" : String(row.id), seconds = Number(row.timeStamp);
       if (!id || !Number.isFinite(seconds) || seconds <= 0) continue;

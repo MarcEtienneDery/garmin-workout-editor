@@ -70,6 +70,13 @@ describe("fetching", () => {
     expect(store.renpho.counts("MED").total).toBe(3);
   });
 
+  it("warns when Renpho counts weigh-ins in a table and returns none", async () => {
+    const { fetchFn } = renphoWith([], { "renpho-aggregation/device/count": () => ({ scale: [{ tableName: "t1", userIds: ["7"], count: 415 }] }) });
+    await run(fetchFn);
+    expect(store.renpho.logLines("MED").map((l) => l.level)).toContain("warn");
+    expect(store.renpho.logLines("MED").map((l) => l.message).join("\n")).toMatch(/counts 415 weigh-ins in table t1 but returned none/);
+  });
+
   it("takes the day of a weigh-in in the user's zone", async () => {
     process.env.GARMIN_TZ = "America/Toronto";
     const late = renphoRow(1, { timeStamp: Date.parse("2026-10-18T02:30:00Z") / 1000 }); // 22:30 the evening before in Toronto
