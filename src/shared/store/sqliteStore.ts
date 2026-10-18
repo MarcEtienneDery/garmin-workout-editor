@@ -1,6 +1,8 @@
 import * as fs from "fs";
 import * as path from "path";
 import { ACTIVITY_SCHEMA, ActivityTable } from "./activities";
+import { CREDENTIAL_SCHEMA, CredentialTable } from "./credentials";
+import { RENPHO_SCHEMA, RenphoTable } from "./renpho";
 import { TOKEN_SCHEMA, TokenTable } from "./tokens";
 import { WELLNESS_SCHEMA, WellnessTable } from "./wellness";
 import { profileOfPath, summarizeText } from "./paths";
@@ -49,6 +51,8 @@ CREATE INDEX IF NOT EXISTS revisions_by_path ON revisions (path, id);
 ${ACTIVITY_SCHEMA}
 ${TOKEN_SCHEMA}
 ${WELLNESS_SCHEMA}
+${CREDENTIAL_SCHEMA}
+${RENPHO_SCHEMA}
 `;
 
 const META_COLUMNS = "path, owner, size, version, updated_at, source, summary";
@@ -78,6 +82,10 @@ export class SqliteStore {
   readonly tokens: TokenTable;
   /** The daily health data (sleep, HRV, resting heart rate, Body Battery, stress) of every profile (see wellness.ts). */
   readonly wellness: WellnessTable;
+  /** The logins of every profile for Garmin and Renpho (see credentials.ts). */
+  readonly credentials: CredentialTable;
+  /** The Renpho scale sync of every profile: settings, weigh-ins, state and log (see renpho.ts). */
+  readonly renpho: RenphoTable;
 
   private constructor(
     private readonly db: Database,
@@ -87,6 +95,8 @@ export class SqliteStore {
     this.activities = new ActivityTable(db, (fn) => this.tx(fn));
     this.tokens = new TokenTable(db);
     this.wellness = new WellnessTable(db, (fn) => this.tx(fn));
+    this.credentials = new CredentialTable(db);
+    this.renpho = new RenphoTable(db, (fn) => this.tx(fn));
   }
 
   static open(file: string): SqliteStore {

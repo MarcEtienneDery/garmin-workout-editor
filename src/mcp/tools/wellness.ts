@@ -7,6 +7,7 @@ import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { LeaseLost } from "../../shared/activitySync";
 import { WELLNESS_KINDS, type WellnessKind, getStore } from "../../shared/store";
+import { bodyTrend } from "../../shared/bodyTrend";
 import { readinessAt, wellnessRange } from "../../shared/wellnessReport";
 import { BACKFILL_DAYS, type WellnessSource, addDays, isWellnessBackfilling, localToday, startWellnessBackfill, syncWellness, wellnessStatus, withWellnessLease } from "../../shared/wellnessSync";
 import { type Session, getSession, requireAuth, runTool } from "../context";
@@ -25,10 +26,11 @@ const URLS: Record<WellnessKind, (day: string, name: string) => string> = {
   body_battery: (d) => `/wellness-service/wellness/bodyBattery/reports/daily?startDate=${d}&endDate=${d}`,
   respiration: (d) => `/wellness-service/wellness/daily/respiration/${d}`,
   spo2: (d) => `/wellness-service/wellness/daily/spo2/${d}`,
+  weight: (d) => `/weight-service/weight/dayview/${d}`,
 };
 
-/** What a readiness is made of: fetched at once for the last days, the rest of the kinds fill in the background. */
-const READINESS_KINDS: WellnessKind[] = ["summary", "sleep", "hrv"];
+/** What a readiness is made of, and the weigh-in (one call, and a person who has just weighed in wants to see it): fetched at once for the last days, the rest of the kinds fill in the background. */
+const NOW_KINDS: WellnessKind[] = ["summary", "sleep", "hrv", "weight"];
 /** The last days whose responses are fetched again by a call, as the watch syncs late. */
 const RECENT_DAYS = 3;
 const MAX_RANGE_DAYS = 120;
@@ -62,13 +64,19 @@ export async function refreshWellness(profile?: string): Promise<{ fetched: numb
   if (Date.now() < wait) return { fetched: 0, busy: false, error: store.wellness.state(name).error ?? store.activities.state(name).error ?? "Garmin asked to wait." };
   try {
     const leased = await withWellnessLease(store, name, holder(), (renew) =>
-      syncWellness(store, name, wellnessSourceFor(session), { today: localToday(store, name), days: RECENT_DAYS, kinds: READINESS_KINDS, renew, gapMs: detailGapMs() })
+      syncWellness(store, name, wellnessSourceFor(session), { today: localToday(store, name), days: RECENT_DAYS, kinds: NOW_KINDS, renew, gapMs: detailGapMs() })
     );
     if (!leased.ok) return { fetched: 0, busy: true, error: null };
     return { fetched: leased.value.fetched, busy: false, error: leased.value.stopped };
   } catch (error) {
     return { fetched: 0, busy: error instanceof LeaseLost, error: error instanceof LeaseLost ? null : errorText(error) };
   }
+}
+
+/** Forget the empty weigh-in answers of the kept days, so the next fill asks Garmin again (a weigh-in may have been added there since). */
+export function rereadWeighIns(profile?: string): number {
+  const store = getStore(), name = getSession(profile).profile.name, today = localToday(store, name);
+  return store.wellness.forgetEmptyWeighIns(name, addDays(today, -(keptDays() - 1)), today);
 }
 
 /** Keep filling the table in the background: the last 60 days, every kind. A no-op when all is stored. */
@@ -140,6 +148,7 @@ export async function getWellness(args: GetWellnessArgs) {
     from,
     to,
     baselines,
+    body: bodyTrend(days),
     days: days.reverse(),
     ...(raw && { raw }),
     sync: syncNote(name, refreshed.error, background),
@@ -152,7 +161,7 @@ export function registerWellnessTools(server: McpServer): void {
     {
       title: "Get readiness for a day's workout",
       description:
-        "How recovered the person is on a day (today by default), as a band for that day's workout: \"go-harder\", \"as-planned\" or \"back-off\", with a 0-100 score, the signals behind it (last night's HRV against Garmin's baseline band, resting heart rate against their own 28-day normal, sleep length and score against the sleep needed, Body Battery on waking, yesterday's stress, and the load of the last days from session RPE and duration), what is missing, and a suggestion. Use it before planning or adjusting a day's workout: push a little when recovered, ease off when not. Each signal says why it scored as it did, so explain the call to the user rather than just repeating the band. It is a heuristic, not medical advice. Reads the database; Garmin is asked only for the last days' sleep, HRV and daily summary, and the last 60 days of everything fill in the background (see `sync`).",
+        "How recovered the person is on a day (today by default), as a band for that day's workout: \"go-harder\", \"as-planned\" or \"back-off\", with a 0-100 score, the signals behind it (last night's HRV against Garmin's baseline band, resting heart rate against their own 28-day normal, sleep length and score against the sleep needed, Body Battery on waking, yesterday's stress, and the load of the last days from session RPE and duration), what is missing, and a suggestion. Use it before planning or adjusting a day's workout: push a little when recovered, ease off when not. Each signal says why it scored as it did, so explain the call to the user rather than just repeating the band. It is a heuristic, not medical advice. Reads the database; Garmin is asked only for the last days' sleep, HRV, daily summary and weigh-in, and the last 60 days of everything fill in the background (see `sync`).",
       inputSchema: {
         profile: profileArg,
         date: isoDate.optional().describe("The day, YYYY-MM-DD (the user's local day). Default: today."),
@@ -167,7 +176,7 @@ export function registerWellnessTools(server: McpServer): void {
     {
       title: "Get daily health data",
       description:
-        "The stored daily health data per day, newest first: sleep (length, stages, score, need, awakenings), HRV (last night, 7-day average, Garmin's balanced range, status), resting heart rate and its 7-day average, Body Battery (on waking, high, low, charged, drained), stress, respiration, SpO2, steps and intensity minutes, plus the person's own normal (`baselines`, 28-day medians). Default: the last 14 days; at most 120. A day's sleep and HRV are the night that ended that morning. With rawKinds and a single day (from = to) it also returns Garmin's complete stored responses for those kinds. Reads the database; the last days are refreshed from Garmin, the rest of the last 60 days fills in the background (see `sync`).",
+        "The stored daily health data per day, newest first: sleep (length, stages, score, need, awakenings), HRV (last night, 7-day average, Garmin's balanced range, status), resting heart rate and its 7-day average, Body Battery (on waking, high, low, charged, drained), stress, respiration, SpO2, steps and intensity minutes, calories burned (total, active, resting), weight and body composition (weight and muscle in kg, body fat %, BMI; null on days with no weigh-in), plus the person's own normal (`baselines`, 28-day medians) and `body`, the weight trend over the range (latest, first, change and kg per week). Default: the last 14 days; at most 120. A day's sleep and HRV are the night that ended that morning. With rawKinds and a single day (from = to) it also returns Garmin's complete stored responses for those kinds. Reads the database; the last days are refreshed from Garmin, the rest of the last 60 days fills in the background (see `sync`).",
       inputSchema: {
         profile: profileArg,
         from: isoDate.optional().describe("First day, YYYY-MM-DD. Default: `days` before `to`."),

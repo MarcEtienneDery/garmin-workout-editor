@@ -229,7 +229,7 @@ export function computeReadiness(metrics: DayMetrics[], load: LoadRow[], date: s
 }
 
 /** The person's own normal over the days before `date`: medians of the signals that have enough days. */
-export function baselines(metrics: DayMetrics[], date: string): { days: number; hrv: NumOrNull; restingHr: NumOrNull; sleepHours: NumOrNull; bodyBatteryWake: NumOrNull } {
+export function baselines(metrics: DayMetrics[], date: string): { days: number; hrv: NumOrNull; restingHr: NumOrNull; sleepHours: NumOrNull; bodyBatteryWake: NumOrNull; sleepRespiration: NumOrNull } {
   const from = addDays(date, -BASELINE_DAYS), history = metrics.filter((m) => m.day >= from && m.day < date);
   const med = (values: NumOrNull[], scale = 1): NumOrNull => {
     const xs = values.filter(present);
@@ -241,5 +241,6 @@ export function baselines(metrics: DayMetrics[], date: string): { days: number; 
     restingHr: med(history.map((h) => h.restingHr)),
     sleepHours: med(history.map((h) => h.sleepSeconds), 3600),
     bodyBatteryWake: med(history.map((h) => h.bodyBatteryWake)),
+    sleepRespiration: med(history.map((h) => h.avgSleepRespiration)),
   };
 }

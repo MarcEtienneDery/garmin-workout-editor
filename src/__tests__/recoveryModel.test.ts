@@ -2,6 +2,8 @@ import { metricsFor } from "./fixtures/wellness";
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const RM = require("../web/public/recoveryModel.js");
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const WM = require("../web/public/weightModel.js");
 
 describe("days and numbers", () => {
   it("says a day without putting it through Date's parser", () => {
@@ -43,8 +45,10 @@ describe("the daily table", () => {
     const sent = Object.keys(metricsFor("2026-01-01"));
     expect(all.map((f: any) => f.key).filter((k: string) => !sent.includes(k))).toEqual([]);
     expect(new Set(all.map((f: any) => f.key)).size).toBe(all.length);
-    // and the table shows everything the server sends but the day itself
-    expect(sent.filter((k) => k !== "day" && !all.some((f: any) => f.key === k))).toEqual([]);
+    // and the two tables show everything the server sends but the day itself, none of it twice
+    const weightView = WM.GROUPS.flatMap((g: any) => g.fields.map((f: any) => f.key));
+    expect(sent.filter((k) => k !== "day" && !all.some((f: any) => f.key === k) && !weightView.includes(k))).toEqual([]);
+    expect(weightView.filter((k: string) => all.some((f: any) => f.key === k))).toEqual([]);
   });
 
   it("reads each field the way its kind says", () => {
@@ -93,12 +97,13 @@ describe("scales", () => {
 });
 
 describe("the charts", () => {
-  const day = metricsFor("2026-01-01", { hrvLastNight: 57, hrvBalancedLow: 50, hrvBalancedHigh: 65, restingHr: 50, restingHr7d: 51, sleepSeconds: 27_000, sleepScore: 82, bodyBatteryWake: 75, bodyBatteryLow: 20, bodyBatteryHigh: 90, avgStress: 28, maxStress: 80, steps: 8000 });
+  const day = metricsFor("2026-01-01", { hrvLastNight: 57, hrvBalancedLow: 50, hrvBalancedHigh: 65, restingHr: 50, restingHr7d: 51, sleepSeconds: 27_000, sleepScore: 82, bodyBatteryWake: 75, bodyBatteryLow: 20, bodyBatteryHigh: 90, avgStress: 28, maxStress: 80, steps: 8000, avgSleepRespiration: 14.44, avgWakingRespiration: 15.2 });
   const by = (id: string) => RM.CHARTS.find((c: any) => c.id === id);
 
   it("says what is under the cursor for each chart", () => {
     expect(by("hrv").read(day)).toBe("57 ms · balanced 50–65");
     expect(by("rhr").read(day)).toBe("50 bpm · 7-day 51");
+    expect(by("resp").read(day)).toBe("14.4 /min asleep · 15.2 awake");
     expect(by("sleep").read(day)).toBe("7 h 30 · score 82");
     expect(by("bb").read(day)).toBe("75 on waking · 20–90 over the day");
     expect(by("stress").read(day)).toBe("average 28 · max 80");

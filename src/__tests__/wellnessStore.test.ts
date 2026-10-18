@@ -1,5 +1,5 @@
 import { SqliteStore } from "../shared/store";
-import { hrvResponse, sleepResponse, summaryResponse } from "./fixtures/wellness";
+import { hrvResponse, noWeighIn, sleepResponse, summaryResponse, weightResponse } from "./fixtures/wellness";
 
 let store: SqliteStore;
 beforeEach(() => {
@@ -47,6 +47,50 @@ describe("the wellness table", () => {
       restingHr: 51, restingHr7d: 50, avgStress: 33, bodyBatteryWake: 68, steps: 9000, moderateMinutes: 20, vigorousMinutes: 10,
     }));
     expect(m.lowestSpo2).toBeNull();
+  });
+
+  it("reads the calories burned from the summary and the weigh-in from the weight response, in kilograms", () => {
+    store.wellness.put("MED", "2026-01-01", "summary", summaryResponse());
+    store.wellness.put("MED", "2026-01-01", "weight", weightResponse({ grams: 81_850, fat: 17.9, muscle: 35_500, bmi: 24.3 }));
+    expect(store.wellness.metrics("MED", "2026-01-01", "2026-01-01")[0]).toEqual(
+      expect.objectContaining({ totalKcal: 2600, activeKcal: 650, bmrKcal: 1950, weightKg: 81.85, bodyFatPercent: 17.9, muscleKg: 35.5, bmi: 24.3 })
+    );
+  });
+
+  it("gives no weight for a day nobody weighed, and a body without a scale's extras has only the weight", () => {
+    store.wellness.put("MED", "2026-01-01", "weight", noWeighIn);
+    store.wellness.put("MED", "2026-01-02", "weight", { dateWeightList: [{ weight: 90_000 }], totalAverage: { weight: null } });
+    const [a, b] = store.wellness.metrics("MED", "2026-01-01", "2026-01-02");
+    expect(a).toEqual(expect.objectContaining({ weightKg: null, bodyFatPercent: null, muscleKg: null, bmi: null }));
+    expect(b).toEqual(expect.objectContaining({ weightKg: 90, bodyFatPercent: null }));
+  });
+
+  it("forgets the stored weigh-in answers that held none, so Garmin is asked again, and keeps the ones that did", () => {
+    store.wellness.put("MED", "2026-01-01", "weight", noWeighIn);
+    store.wellness.put("MED", "2026-01-02", "weight", undefined); // an answer of nothing
+    store.wellness.put("MED", "2026-01-03", "weight", weightResponse());
+    store.wellness.put("MED", "2026-01-04", "weight", noWeighIn);
+    store.wellness.put("MED", "2026-01-01", "summary", summaryResponse());
+    store.wellness.put("SAM", "2026-01-01", "weight", noWeighIn);
+    expect(store.wellness.forgetEmptyWeighIns("MED", "2026-01-01", "2026-01-03")).toBe(2);
+    expect(store.wellness.get("MED", "2026-01-01", "weight")).toBeNull();
+    expect(store.wellness.get("MED", "2026-01-02", "weight")).toBeNull();
+    expect(store.wellness.get("MED", "2026-01-03", "weight")).not.toBeNull();
+    expect(store.wellness.get("MED", "2026-01-04", "weight")).not.toBeNull(); // outside the days
+    expect(store.wellness.get("MED", "2026-01-01", "summary")).not.toBeNull(); // another kind
+    expect(store.wellness.get("SAM", "2026-01-01", "weight")).not.toBeNull(); // another profile
+  });
+
+  it("reads the breathing of a day from the respiration response, and from the summary and sleep when it is missing", () => {
+    store.wellness.put("MED", "2026-01-01", "sleep", sleepResponse());
+    store.wellness.put("MED", "2026-01-01", "summary", { ...summaryResponse(), avgWakingRespirationValue: 16, highestRespirationValue: 24, lowestRespirationValue: 9 });
+    expect(store.wellness.metrics("MED", "2026-01-01", "2026-01-01")[0]).toEqual(
+      expect.objectContaining({ avgSleepRespiration: 14, avgWakingRespiration: 16, highRespiration: 24, lowRespiration: 9 })
+    );
+    store.wellness.put("MED", "2026-01-01", "respiration", { avgSleepRespirationValue: 13.5, avgWakingRespirationValue: 15, highestRespirationValue: 22, lowestRespirationValue: 10 });
+    expect(store.wellness.metrics("MED", "2026-01-01", "2026-01-01")[0]).toEqual(
+      expect.objectContaining({ avgSleepRespiration: 13.5, avgWakingRespiration: 15, highRespiration: 22, lowRespiration: 10 })
+    );
   });
 
   it("falls back to another kind for a field, and gives null for what no response has", () => {

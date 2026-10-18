@@ -1,6 +1,8 @@
 import * as fs from "fs";
 import * as path from "path";
 import * as dotenv from "dotenv";
+import { getStore, getStorePath } from "./store";
+import { SealKeyError } from "./store/seal";
 
 export interface ProfileConfig {
   name: string;
@@ -32,24 +34,50 @@ export function getDataRoot(): string {
     : path.join(PROJECT_ROOT, "data");
 }
 
+export interface Login {
+  email: string;
+  password: string;
+}
+
+/** The Garmin login saved in the database (the Settings view), when there is a database and one is saved; it comes before the .env file's. */
+export function storedLogin(name: string): Login | null {
+  try {
+    return fs.existsSync(getStorePath()) ? getStore().credentials.get(name, "garmin") : null;
+  } catch (error) {
+    if (error instanceof SealKeyError) throw error; // the login is there but cannot be read: say so, do not fall back as if it were not
+    return null;
+  }
+}
+
+/** The Garmin login in the profile's .env.<name> file, when there is one. */
+export function fileLogin(name: string): Login | null {
+  const file = path.join(getProfilesDir(), `.env.${name}`);
+  if (!fs.existsSync(file)) return null;
+  const parsed = dotenv.parse(fs.readFileSync(file, "utf-8"));
+  return parsed.GARMIN_EMAIL && parsed.GARMIN_PASSWORD ? { email: parsed.GARMIN_EMAIL, password: parsed.GARMIN_PASSWORD } : null;
+}
+
 /**
- * Discover available profiles by scanning for .env.<name> files in the profiles directory.
- * Excludes .env.example.
+ * Discover available profiles: the .env.<name> files in the profiles directory (not .env.example) and the profiles that
+ * have a Garmin login saved in the database.
  */
 export function getAvailableProfiles(): string[] {
   const profilesDir = getProfilesDir();
-  if (!fs.existsSync(profilesDir)) return [];
-  const files = fs.readdirSync(profilesDir);
-  const profiles: string[] = [];
-  for (const file of files) {
-    if (file.startsWith(".env.") && file !== ".env.example") {
-      const name = file.slice(5); // remove ".env." prefix
-      if (PROFILE_NAME_REGEX.test(name)) {
-        profiles.push(name);
+  const profiles = new Set<string>();
+  if (fs.existsSync(profilesDir)) {
+    for (const file of fs.readdirSync(profilesDir)) {
+      if (file.startsWith(".env.") && file !== ".env.example") {
+        const name = file.slice(5); // remove ".env." prefix
+        if (PROFILE_NAME_REGEX.test(name)) profiles.add(name);
       }
     }
   }
-  return profiles.sort();
+  try {
+    if (fs.existsSync(getStorePath())) for (const name of getStore().credentials.profiles("garmin")) if (PROFILE_NAME_REGEX.test(name)) profiles.add(name);
+  } catch {
+    // an unreadable database leaves the files' profiles
+  }
+  return [...profiles].sort();
 }
 
 /**
@@ -77,7 +105,8 @@ export function loadProfile(requested: string): ProfileConfig {
   const name = findProfile(requested) ?? requested;
 
   const envFile = path.join(getProfilesDir(), `.env.${name}`);
-  if (!fs.existsSync(envFile)) {
+  const saved = storedLogin(name);
+  if (!fs.existsSync(envFile) && !saved) {
     const available = getAvailableProfiles();
     const list = available.length > 0
       ? `Available profiles: ${available.join(", ")}`
@@ -88,10 +117,11 @@ export function loadProfile(requested: string): ProfileConfig {
   }
 
   // Load the profile's env file (does NOT override existing process.env vars)
-  const parsed = dotenv.parse(fs.readFileSync(envFile, "utf-8"));
+  const parsed = fs.existsSync(envFile) ? dotenv.parse(fs.readFileSync(envFile, "utf-8")) : {};
 
-  const email = parsed.GARMIN_EMAIL;
-  const password = parsed.GARMIN_PASSWORD;
+  // the login saved in Settings wins over the file's
+  const email = saved?.email ?? parsed.GARMIN_EMAIL;
+  const password = saved?.password ?? parsed.GARMIN_PASSWORD;
 
   if (!email || !password) {
     throw new Error(

@@ -150,7 +150,9 @@ describe("the load of the last days", () => {
 describe("baselines", () => {
   it("gives the medians of the 28 days before, once there are enough", () => {
     const b = baselines(month(), DATE);
-    expect(b).toEqual({ days: 28, hrv: 57, restingHr: 50, sleepHours: 7.5, bodyBatteryWake: 75 });
-    expect(baselines(month().slice(-5), DATE)).toEqual({ days: 4, hrv: null, restingHr: null, sleepHours: null, bodyBatteryWake: null });
+    expect(b).toEqual({ days: 28, hrv: 57, restingHr: 50, sleepHours: 7.5, bodyBatteryWake: 75, sleepRespiration: null });
+    const breathing = baselines(month().map((m) => ({ ...m, avgSleepRespiration: 14.4 })), DATE);
+    expect(breathing.sleepRespiration).toBe(14.4);
+    expect(baselines(month().slice(-5), DATE)).toEqual({ days: 4, hrv: null, restingHr: null, sleepHours: null, bodyBatteryWake: null, sleepRespiration: null });
   });
 });

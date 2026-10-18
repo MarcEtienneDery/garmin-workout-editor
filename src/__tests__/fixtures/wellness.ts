@@ -51,7 +51,18 @@ export const summaryResponse = (over: { rhr?: number; rhr7?: number; stress?: nu
   bodyBatteryDrainedValue: 65,
   moderateIntensityMinutes: 20,
   vigorousIntensityMinutes: 10,
+  totalKilocalories: 2600,
+  activeKilocalories: 650,
+  bmrKilocalories: 1950,
 });
+
+/** A weigh-in the way Garmin's day view gives it: weights in grams. */
+export const weightResponse = (over: { grams?: number; fat?: number | null; muscle?: number | null; bmi?: number } = {}) => {
+  const entry = { samplePk: 1, calendarDate: "2026-01-01", weight: over.grams ?? 82_000, bmi: over.bmi ?? 24.5, bodyFat: over.fat === undefined ? 18.5 : over.fat, bodyWater: 55, boneMass: 3_800, muscleMass: over.muscle === undefined ? 36_000 : over.muscle, sourceType: "INDEX_SCALE", weightDelta: 0 };
+  return { startDate: "2026-01-01", endDate: "2026-01-01", dateWeightList: [entry], totalAverage: { from: 0, until: 0, weight: entry.weight, bmi: entry.bmi, bodyFat: entry.bodyFat, muscleMass: entry.muscleMass } };
+};
+/** What Garmin gives for a day nobody weighed. */
+export const noWeighIn = { startDate: "2026-01-01", endDate: "2026-01-01", dateWeightList: [], totalAverage: null };
 
 /** A day's metrics with every field empty, then what the test sets. */
 export const metricsFor = (day: string, over: Partial<DayMetrics> = {}): DayMetrics => ({
@@ -60,6 +71,7 @@ export const metricsFor = (day: string, over: Partial<DayMetrics> = {}): DayMetr
   hrvLastNight: null, hrvWeeklyAvg: null, hrvLowUpper: null, hrvBalancedLow: null, hrvBalancedHigh: null, hrvStatus: null,
   restingHr: null, restingHr7d: null, avgStress: null, maxStress: null,
   bodyBatteryWake: null, bodyBatteryHigh: null, bodyBatteryLow: null, bodyBatteryCharged: null, bodyBatteryDrained: null,
-  steps: null, moderateMinutes: null, vigorousMinutes: null, avgSleepRespiration: null, avgSleepSpo2: null, lowestSpo2: null,
+  steps: null, moderateMinutes: null, vigorousMinutes: null, avgSleepRespiration: null, avgWakingRespiration: null, highRespiration: null, lowRespiration: null, avgSleepSpo2: null, lowestSpo2: null,
+  totalKcal: null, activeKcal: null, bmrKcal: null, weightKg: null, bodyFatPercent: null, muscleKg: null, bmi: null,
   ...over,
 });

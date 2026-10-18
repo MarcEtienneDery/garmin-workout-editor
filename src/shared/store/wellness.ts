@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS wellness_sync (
 `;
 
 /** What is kept, most useful for a daily readiness first: the sync fetches the kinds in this order. */
-export const WELLNESS_KINDS = ["summary", "sleep", "hrv", "heart_rate", "stress", "body_battery", "respiration", "spo2"] as const;
+export const WELLNESS_KINDS = ["summary", "sleep", "hrv", "heart_rate", "stress", "body_battery", "respiration", "spo2", "weight"] as const;
 export type WellnessKind = (typeof WELLNESS_KINDS)[number];
 
 export interface WellnessCounts {
@@ -89,9 +89,22 @@ export interface DayMetrics {
   steps: NumOrNull;
   moderateMinutes: NumOrNull;
   vigorousMinutes: NumOrNull;
+  /** Breaths per minute: asleep, awake and the day's extremes. */
   avgSleepRespiration: NumOrNull;
+  avgWakingRespiration: NumOrNull;
+  highRespiration: NumOrNull;
+  lowRespiration: NumOrNull;
   avgSleepSpo2: NumOrNull;
   lowestSpo2: NumOrNull;
+  /** Calories the day burned: all of it, what the activity and movement added, and what the body burns at rest. */
+  totalKcal: NumOrNull;
+  activeKcal: NumOrNull;
+  bmrKcal: NumOrNull;
+  /** The day's weigh-in (the average when there are several) and what the scale measured with it; null on a day nobody weighed. */
+  weightKg: NumOrNull;
+  bodyFatPercent: NumOrNull;
+  muscleKg: NumOrNull;
+  bmi: NumOrNull;
 }
 
 type Field = keyof Omit<DayMetrics, "day">;
@@ -127,9 +140,22 @@ const SOURCES: Record<Field, [WellnessKind, string][]> = {
   moderateMinutes: [["summary", "$.moderateIntensityMinutes"]],
   vigorousMinutes: [["summary", "$.vigorousIntensityMinutes"]],
   avgSleepRespiration: [["respiration", "$.avgSleepRespirationValue"], ["sleep", "$.dailySleepDTO.averageRespirationValue"]],
+  avgWakingRespiration: [["respiration", "$.avgWakingRespirationValue"], ["summary", "$.avgWakingRespirationValue"]],
+  highRespiration: [["respiration", "$.highestRespirationValue"], ["summary", "$.highestRespirationValue"]],
+  lowRespiration: [["respiration", "$.lowestRespirationValue"], ["summary", "$.lowestRespirationValue"]],
   avgSleepSpo2: [["spo2", "$.avgSleepSpO2"]],
   lowestSpo2: [["spo2", "$.lowestSpO2"]],
+  totalKcal: [["summary", "$.totalKilocalories"]],
+  activeKcal: [["summary", "$.activeKilocalories"]],
+  bmrKcal: [["summary", "$.bmrKilocalories"]],
+  weightKg: [["weight", "$.totalAverage.weight"], ["weight", "$.dateWeightList[0].weight"]],
+  bodyFatPercent: [["weight", "$.totalAverage.bodyFat"], ["weight", "$.dateWeightList[0].bodyFat"]],
+  muscleKg: [["weight", "$.totalAverage.muscleMass"], ["weight", "$.dateWeightList[0].muscleMass"]],
+  bmi: [["weight", "$.totalAverage.bmi"], ["weight", "$.dateWeightList[0].bmi"]],
 };
+
+/** Garmin gives weights in grams: these fields are read in kilograms. */
+const DIVISOR: Partial<Record<Field, number>> = { weightKg: 1000, muscleKg: 1000 };
 
 const FIELDS = Object.keys(SOURCES) as Field[];
 const TEXT_FIELDS = new Set<Field>(["hrvStatus"]);
@@ -137,7 +163,8 @@ const TEXT_FIELDS = new Set<Field>(["hrvStatus"]);
 /** One column per field: the first of its places that holds a value. Paths and kinds are constants above, never input. */
 const column = (f: Field): string => {
   const places = SOURCES[f].map(([kind, path]) => `MAX(CASE WHEN kind = '${kind}' THEN json_extract(data, '${path}') END)`);
-  return `${places.length > 1 ? `COALESCE(${places.join(", ")})` : places[0]} AS ${f}`;
+  const value = places.length > 1 ? `COALESCE(${places.join(", ")})` : places[0];
+  return `${DIVISOR[f] ? `(${value}) / ${DIVISOR[f]}.0` : value} AS ${f}`;
 };
 const METRICS_SQL = `SELECT day, ${FIELDS.map(column).join(", ")}
 FROM wellness WHERE profile = ? AND day BETWEEN ? AND ? GROUP BY day ORDER BY day`;
@@ -162,6 +189,19 @@ export class WellnessTable {
   get(profile: string, day: string, kind: WellnessKind): { data: any; fetchedAt: number } | null {
     const r = this.db.prepare("SELECT data, fetched_at FROM wellness WHERE profile = ? AND day = ? AND kind = ?").get(profile, day, kind);
     return r ? { data: JSON.parse(r.data), fetchedAt: r.fetched_at } : null;
+  }
+
+  /** Forget a stored response, so the sync fetches it again (as when a weigh-in has been added on Garmin for a day already stored empty). */
+  forget(profile: string, day: string, kind: WellnessKind): void {
+    this.db.prepare("DELETE FROM wellness WHERE profile = ? AND day = ? AND kind = ?").run(profile, day, kind);
+  }
+
+  /** Forget the stored weigh-in answers that held no weigh-in, from `from` to `to`: Garmin may have been given one since (typed in, imported), and an empty answer would otherwise stand for good. Returns how many were forgotten. */
+  forgetEmptyWeighIns(profile: string, from: string, to: string): number {
+    const r = this.db
+      .prepare("DELETE FROM wellness WHERE profile = ? AND kind = 'weight' AND day BETWEEN ? AND ? AND (data = 'null' OR COALESCE(json_array_length(json_extract(data, '$.dateWeightList')), 0) = 0)")
+      .run(profile, from, to) as { changes: number | bigint };
+    return Number(r.changes);
   }
 
   /** What is stored for a day, without the responses: each kind, when it was fetched and how many bytes it holds. */

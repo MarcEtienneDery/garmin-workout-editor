@@ -9,7 +9,11 @@ import * as activitiesTools from "../mcp/tools/activities";
 import { closeStore, getStore } from "../shared/store";
 import { toNewActivity } from "../shared/activitySync";
 import * as wellnessTools from "../mcp/tools/wellness";
-import { hrvResponse, sleepResponse, summaryResponse } from "./fixtures/wellness";
+import * as renphoTools from "../mcp/tools/renpho";
+import * as settingsTools from "../mcp/tools/settings";
+import { Decoder, Stream } from "@garmin/fitsdk";
+import { renphoRow } from "./fixtures/renpho";
+import { hrvResponse, noWeighIn, sleepResponse, summaryResponse, weightResponse } from "./fixtures/wellness";
 
 // The Garmin actions are the MCP tool bodies; stub them so no test touches Garmin.
 jest.mock("../mcp/tools/garmin", () => ({
@@ -39,12 +43,25 @@ jest.mock("../mcp/tools/wellness", () => {
   return {
     refreshWellness: jest.fn(async () => ({ fetched: 3, busy: false, error: null })),
     startBackgroundWellness: jest.fn(() => ({ started: true })),
+    rereadWeighIns: jest.fn(() => 4),
     wellnessSyncStatus: (profile: string) => sync.wellnessStatus(stores.getStore(), profile, sync.localToday(stores.getStore(), profile)),
   };
 });
+// The Renpho and Garmin sides of the Settings view: no network.
+jest.mock("../mcp/tools/renpho", () => ({
+  runRenpho: jest.fn(async () => ({ ran: true, seen: 2, added: 2, others: 0, uploaded: 0, error: null })),
+  startRenphoTimer: jest.fn(),
+}));
+jest.mock("../mcp/tools/settings", () => ({ testGarminLogin: jest.fn(async () => ({ ok: true, message: "Garmin accepted the login." })) }));
+jest.mock("../shared/renphoSync", () => ({
+  ...jest.requireActual("../shared/renphoSync"),
+  testRenphoLogin: jest.fn(async () => ({ ok: true, message: "Renpho accepted the login (1 scale table on the account)." })),
+}));
 const g = garmin as jest.Mocked<typeof garmin>;
 const a = activitiesTools as jest.Mocked<typeof activitiesTools>;
 const w = wellnessTools as jest.Mocked<typeof wellnessTools>;
+const rt = renphoTools as jest.Mocked<typeof renphoTools>;
+const st = settingsTools as jest.Mocked<typeof settingsTools>;
 
 const store = () => getStore();
 const seed = (logical: string, value: unknown) => store().put(logical, typeof value === "string" ? value : JSON.stringify(value), { source: "test" });
@@ -540,6 +557,9 @@ describe("web plan editor", () => {
         expect(out.json).toEqual(expect.objectContaining({ fetched: 3, busy: false, error: null, background: { started: true } }));
         expect(w.refreshWellness).toHaveBeenLastCalledWith("MED");
         expect(w.startBackgroundWellness).toHaveBeenCalledWith("MED");
+        expect(w.rereadWeighIns).not.toHaveBeenCalled(); // only when the Weight view asks
+        await call("POST", "/api/wellness/sync", { rereadWeight: true });
+        expect(w.rereadWeighIns).toHaveBeenCalledWith("MED");
         expect(out.json.sync).toEqual(expect.objectContaining({ days: 0, syncing: false }));
       });
 
@@ -552,6 +572,136 @@ describe("web plan editor", () => {
         expect((await call("GET", "/api/wellness", undefined, login("SAM", "sam-pw"))).json.days).toHaveLength(8);
         expect((await call("GET", "/api/wellness?profile=MED", undefined, login("SAM", "sam-pw"))).json.days).toHaveLength(8); // SAM asking for MED gets SAM's
         expect((await call("GET", "/api/wellness", undefined, login("MED", "med-pw"))).json.days).toHaveLength(3);
+      });
+    });
+
+    describe("the Weight view", () => {
+      const savedTz = process.env.GARMIN_TZ;
+      beforeEach(() => {
+        process.env.GARMIN_TZ = "UTC";
+      });
+      afterEach(() => {
+        if (savedTz === undefined) delete process.env.GARMIN_TZ; else process.env.GARMIN_TZ = savedTz;
+      });
+      const dayOf = (back: number) => new Date(Date.parse(`${new Date().toISOString().slice(0, 10)}T00:00:00Z`) - back * 86_400_000).toISOString().slice(0, 10);
+      const fill = (profile: string, days: number, weighEvery = 3) => {
+        for (let i = 0; i < days; i++) {
+          store().wellness.put(profile, dayOf(i), "summary", summaryResponse());
+          store().wellness.put(profile, dayOf(i), "weight", i % weighEvery === 0 ? weightResponse({ grams: 80_000 + i * 50 }) : noWeighIn);
+        }
+      };
+
+      it("gives the weight, the calories and the trend of the last days from the database alone", async () => {
+        expect((await call("GET", "/api/weight")).json).toEqual({ profile: null });
+        addProfile("MED");
+        const empty = (await call("GET", "/api/weight")).json;
+        expect(empty).toEqual(expect.objectContaining({ profile: "MED", days: [], stored: [] }));
+        expect(empty.body.weighIns).toBe(0);
+
+        fill("MED", 30);
+        const out = (await call("GET", "/api/weight")).json;
+        expect(out.days).toHaveLength(30);
+        expect(out.days[29]).toEqual({ day: dayOf(0), weightKg: 80, bodyFatPercent: 18.5, muscleKg: 36, bmi: 24.5, totalKcal: 2600, activeKcal: 650, bmrKcal: 1950 });
+        expect(out.days[28]).toEqual(expect.objectContaining({ day: dayOf(1), weightKg: null, totalKcal: 2600 }));
+        expect(out.body).toEqual(expect.objectContaining({ weighIns: 10, latest: { day: dayOf(0), kg: 80, bodyFatPercent: 18.5 }, direction: "losing" })); // the older days are heavier
+        expect(out.date).toBe(dayOf(0)); // the day whose responses are listed: the last weigh-in
+        expect(out.stored.map((s: any) => s.kind)).toEqual(["summary", "weight"]);
+        expect((await call("GET", `/api/weight?date=${dayOf(5)}&days=14`)).json).toEqual(expect.objectContaining({ date: dayOf(5) }));
+        expect((await call("GET", "/api/weight?days=14")).json.days).toHaveLength(14);
+        expect(w.refreshWellness).not.toHaveBeenCalled(); // a read never calls Garmin
+      });
+
+      it("keeps one person's weight from another's", async () => {
+        addProfile("MED", "med-pw");
+        addProfile("SAM", "sam-pw");
+        fill("MED", 10);
+        const login = (user: string, pass: string) => ({ ...H, Authorization: `Basic ${Buffer.from(`${user}:${pass}`).toString("base64")}` });
+        expect((await call("GET", "/api/weight", undefined, login("SAM", "sam-pw"))).json.days).toEqual([]);
+        expect((await call("GET", "/api/weight?profile=MED", undefined, login("SAM", "sam-pw"))).json.days).toEqual([]);
+        expect((await call("GET", "/api/weight", undefined, login("MED", "med-pw"))).json.days).toHaveLength(10);
+      });
+    });
+
+    describe("the Settings view", () => {
+      const login = (user: string, pass: string) => ({ ...H, Authorization: `Basic ${Buffer.from(`${user}:${pass}`).toString("base64")}` });
+      const prevKey = process.env.CREDENTIALS_KEY;
+      beforeEach(() => { delete process.env.CREDENTIALS_KEY; });
+      afterEach(() => { if (prevKey === undefined) delete process.env.CREDENTIALS_KEY; else process.env.CREDENTIALS_KEY = prevKey; });
+
+      it("shows where each login comes from, and never a password", async () => {
+        expect((await call("GET", "/api/settings")).json).toEqual({ profile: null });
+        addProfile("MED");
+        const out = (await call("GET", "/api/settings")).json;
+        expect(out).toEqual(expect.objectContaining({ profile: "MED", garmin: { source: "file", email: "a@b.c", hasPassword: true, fileHasLogin: true } }));
+        expect(out.renpho).toEqual(expect.objectContaining({ account: null, settings: expect.objectContaining({ fetchEnabled: false, pushEnabled: false }), log: [], recent: [] }));
+        expect(out.encryption).toEqual({ enabled: false, plain: 0 });
+        expect(JSON.stringify(out)).not.toMatch(/"x"|password":"/);
+      });
+
+      it("saves the Garmin login in the database, where it comes before the .env file, checks it and gives the file's back", async () => {
+        addProfile("MED");
+        expect((await call("POST", "/api/settings/garmin", { action: "save", email: "new@x.y", password: "" })).json.error).toBe("Enter the password.");
+        const saved = await call("POST", "/api/settings/garmin", { action: "save", email: "new@x.y", password: "newpw" });
+        expect(saved.status).toBe(200);
+        expect(saved.json.garmin).toEqual({ source: "settings", email: "new@x.y", hasPassword: true, fileHasLogin: true });
+        expect(JSON.stringify(saved.json)).not.toContain("newpw");
+        expect(store().credentials.get("MED", "garmin")).toEqual(expect.objectContaining({ email: "new@x.y", password: "newpw" }));
+        expect((await call("POST", "/api/settings/garmin", { action: "test" })).json).toEqual(expect.objectContaining({ ok: true, message: "Garmin accepted the login." }));
+        expect(st.testGarminLogin).toHaveBeenCalledWith("MED");
+        expect((await call("POST", "/api/settings/garmin", { action: "remove" })).json.garmin.source).toBe("file");
+        expect((await call("POST", "/api/settings/garmin", { action: "import-env" })).json.garmin.source).toBe("settings");
+        expect((await call("POST", "/api/settings/garmin", { action: "nonsense" })).status).toBe(400);
+      });
+
+      it("saves the Renpho login and switches, tests the login, runs a sync by hand and clears what is kept", async () => {
+        addProfile("MED");
+        expect((await call("POST", "/api/settings/renpho", { action: "save", fetchEnabled: true })).json.error).toBe("Save the Renpho login first.");
+        const saved = (await call("POST", "/api/settings/renpho", { action: "save", email: "me@x.y", password: "rpw", areaCode: "CA", fetchEnabled: true, intervalHours: 6 })).json;
+        expect(saved.renpho.account).toEqual({ email: "me@x.y", hasPassword: true });
+        expect(saved.renpho.settings).toEqual(expect.objectContaining({ areaCode: "CA", fetchEnabled: true, intervalHours: 6 }));
+        expect(JSON.stringify(saved)).not.toContain("rpw");
+        expect((await call("POST", "/api/settings/renpho", { action: "test" })).json).toEqual(expect.objectContaining({ ok: true, message: expect.stringMatching(/accepted the login/) }));
+        const run = await call("POST", "/api/settings/renpho", { action: "sync" });
+        expect(run.json.run).toEqual(expect.objectContaining({ ran: true, added: 2 }));
+        expect(rt.runRenpho).toHaveBeenCalledWith("MED", true);
+        store().renpho.addMeasurement("MED", { id: "1", measuredAt: 1, day: "2026-01-01", data: renphoRow(1) });
+        store().renpho.log("MED", "info", "hello");
+        const view = (await call("GET", "/api/settings")).json.renpho;
+        expect(view.recent[0].fields.weight).toBe(81.7);
+        expect(view.log.some((l: any) => l.message === "hello")).toBe(true);
+        expect((await call("POST", "/api/settings/renpho", { action: "clear-log" })).json.renpho.log).toEqual([]);
+        expect((await call("POST", "/api/settings/renpho", { action: "clear-weighins" })).json.renpho.counts.total).toBe(0);
+        const removed = (await call("POST", "/api/settings/renpho", { action: "remove" })).json.renpho;
+        expect(removed.account).toBeNull();
+        expect(removed.settings.fetchEnabled).toBe(false);
+        expect((await call("POST", "/api/settings/renpho", { action: "nonsense" })).status).toBe(400);
+        expect((await call("POST", "/api/settings/renpho", { action: "save", areaCode: "x" })).status).toBe(400);
+      });
+
+      it("hands out the newest weigh-ins as a FIT file the FIT SDK reads, and says when there are none", async () => {
+        addProfile("MED");
+        expect((await call("GET", "/api/settings/renpho/fit")).status).toBe(404);
+        for (const id of [1, 2, 3, 4]) store().renpho.addMeasurement("MED", { id: String(id), measuredAt: renphoRow(id).timeStamp * 1000, day: "2026-01-01", data: renphoRow(id) });
+        const res = await fetch(`${base}/api/settings/renpho/fit?count=3`, { headers: H });
+        expect(res.status).toBe(200);
+        expect(res.headers.get("content-type")).toBe("application/octet-stream");
+        expect(res.headers.get("content-disposition")).toMatch(/^attachment; filename="renpho-\d{4}-\d{2}-\d{2}\.fit"$/);
+        const bytes = new Uint8Array(await res.arrayBuffer());
+        const decoder = new Decoder(Stream.fromByteArray(Array.from(bytes)));
+        expect(decoder.isFIT() && decoder.checkIntegrity()).toBe(true);
+        expect((decoder.read().messages as any).weightScaleMesgs).toHaveLength(3);
+      });
+
+      it("lets a profile login change only its own logins", async () => {
+        addProfile("MED", "med-pw");
+        addProfile("SAM", "sam-pw");
+        const as = (user: string, pass: string) => login(user, pass);
+        expect((await call("GET", "/api/settings")).status).toBe(401);
+        const out = await call("POST", "/api/settings/garmin", { profile: "MED", action: "save", email: "sam-new@x.y", password: "pw" }, as("SAM", "sam-pw"));
+        expect(out.json.profile).toBe("SAM"); // a profile login always acts as itself
+        expect(store().credentials.get("SAM", "garmin")!.email).toBe("sam-new@x.y");
+        expect(store().credentials.get("MED", "garmin")).toBeNull();
+        expect((await call("GET", "/api/settings?profile=MED", undefined, as("SAM", "sam-pw"))).json.profile).toBe("SAM");
       });
     });
 

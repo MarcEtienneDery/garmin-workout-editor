@@ -29,7 +29,8 @@
  * The Recovery view shows the daily health data the database keeps (GET /api/wellness: the readiness for a day, the days
  * of a range with the person's own normal, and what is stored for the day; GET /api/wellness/raw: Garmin's complete stored
  * response of one kind for a day); it never calls Garmin on a read. POST /api/wellness/sync fetches the last days now and
- * starts the background fill of the rest.
+ * starts the background fill of the rest. The Weight view (GET /api/weight: the weight, body composition and calories
+ * burned of the last days, with the weight trend) reads the same table and syncs through that POST.
  *
  * The workout picture times steps that name no pace from the profile's recent runs (GET /api/runs),
  * read from the activities table that the Garmin sync fills.
@@ -59,8 +60,12 @@ import { syncStatus } from "../shared/activitySync";
 import type { ActivitySummary, StoredActivity } from "../shared/store";
 import { fetchChartNow, fetchDetailsNow, refreshActivities, startBackgroundSync } from "../mcp/tools/activities";
 import { diffPlanWorkout, extractWorkouts, validatePlanData } from "../mcp/tools/plans";
-import { refreshWellness, startBackgroundWellness, wellnessSyncStatus } from "../mcp/tools/wellness";
-import { readinessAt, wellnessRange } from "../shared/wellnessReport";
+import { refreshWellness, rereadWeighIns, startBackgroundWellness, wellnessSyncStatus } from "../mcp/tools/wellness";
+import { bodyRange, readinessAt, wellnessRange } from "../shared/wellnessReport";
+import { SettingsError, moveGarminLoginFromFile, removeGarminLogin, removeRenpho, saveGarminLogin, saveRenpho, settingsView } from "../shared/accounts";
+import { recentFit, testRenphoLogin } from "../shared/renphoSync";
+import { runRenpho, startRenphoTimer } from "../mcp/tools/renpho";
+import { testGarminLogin } from "../mcp/tools/settings";
 import { addDays, localToday } from "../shared/wellnessSync";
 import {
   LIBRARY_LIMIT,
@@ -946,6 +951,73 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
       });
     }
 
+    case "GET /api/weight": {
+      const profile = profileOrNull(who, url.searchParams.get("profile"));
+      if (!profile) return send(res, 200, { profile: null });
+      const today = localToday(store(), profile), asked = url.searchParams.get("date");
+      const days = Math.min(90, Math.max(7, Math.floor(Number(url.searchParams.get("days"))) || 60));
+      const range = bodyRange(store(), profile, addDays(today, -(days - 1)), today);
+      // the day whose stored responses are listed: the one asked for, else the last weigh-in, else today
+      const date = asked && /^\d{4}-\d{2}-\d{2}$/.test(asked) ? asked : range.body.latest?.day ?? today;
+      return send(res, 200, { profile, today, date, ...range, stored: store().wellness.rowsOfDay(profile, date), sync: wellnessSyncStatus(profile) });
+    }
+
+    case "GET /api/settings": {
+      const profile = profileOrNull(who, url.searchParams.get("profile"));
+      if (!profile) return send(res, 200, { profile: null });
+      return send(res, 200, settingsView(store(), profile));
+    }
+
+    case "POST /api/settings/garmin": {
+      // The Garmin login of a profile: saved in the database (which comes before the profile's .env file), checked, moved in from the file or removed.
+      const body = await readBody(req);
+      const profile = profileFor(who, "", body.profile);
+      let result: Record<string, unknown> = {};
+      try {
+        if (body.action === "save") saveGarminLogin(store(), profile, body);
+        else if (body.action === "import-env") moveGarminLoginFromFile(store(), profile);
+        else if (body.action === "remove") removeGarminLogin(store(), profile);
+        else if (body.action === "test") {
+          requireGarmin(who);
+          result = await testGarminLogin(profile);
+        } else throw new HttpError(400, `Unknown action "${body.action}".`);
+      } catch (error) {
+        if (error instanceof SettingsError) throw new HttpError(400, error.message);
+        throw error;
+      }
+      return send(res, 200, { ...result, ...settingsView(store(), profile) });
+    }
+
+    case "POST /api/settings/renpho": {
+      // The Renpho scale's login and sync: settings, a login check, a run now, or clearing what is kept.
+      const body = await readBody(req);
+      const profile = profileFor(who, "", body.profile);
+      let result: Record<string, unknown> = {};
+      try {
+        if (body.action === "save") saveRenpho(store(), profile, body);
+        else if (body.action === "remove") removeRenpho(store(), profile);
+        else if (body.action === "test") result = await testRenphoLogin(store(), profile);
+        else if (body.action === "sync") result = { run: await runRenpho(profile, true) };
+        else if (body.action === "clear-log") store().renpho.clearLog(profile);
+        else if (body.action === "clear-weighins") store().renpho.clearMeasurements(profile);
+        else throw new HttpError(400, `Unknown action "${body.action}".`);
+      } catch (error) {
+        if (error instanceof SettingsError) throw new HttpError(400, error.message);
+        throw error;
+      }
+      return send(res, 200, { ...result, ...settingsView(store(), profile) });
+    }
+
+    case "GET /api/settings/renpho/fit": {
+      // The newest weigh-ins as a FIT file, to try an import on Garmin Connect's website by hand.
+      const profile = profileOrNull(who, url.searchParams.get("profile"));
+      const count = Math.min(100, Math.max(1, Math.floor(Number(url.searchParams.get("count"))) || 3));
+      const fit = profile ? recentFit(store(), profile, count) : null;
+      if (!profile || !fit) throw new HttpError(404, "No weigh-in is kept yet: run a sync first.");
+      res.writeHead(200, { "Content-Type": "application/octet-stream", "Content-Disposition": `attachment; filename="renpho-${localToday(store(), profile)}.fit"`, "Cache-Control": "no-store" });
+      return void res.end(Buffer.from(fit.bytes));
+    }
+
     case "GET /api/wellness/raw": {
       const profile = profileOrNull(who, url.searchParams.get("profile"));
       const day = url.searchParams.get("date") ?? "", kind = url.searchParams.get("kind") ?? "";
@@ -960,6 +1032,8 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
       requireGarmin(who);
       const body = await readBody(req);
       const profile = profileFor(who, "", body.profile);
+      // the Weight view's button asks for the weigh-ins again: one may have been added on Garmin since the empty answer was stored
+      if (body.rereadWeight === true) rereadWeighIns(profile);
       const refreshed = await refreshWellness(profile);
       const background = startBackgroundWellness(profile);
       return send(res, 200, { ...refreshed, background, sync: wellnessSyncStatus(profile) });
@@ -1213,7 +1287,10 @@ if (require.main === module) {
   const host = process.env.WEB_HOST ?? "127.0.0.1";
   const port = Number(process.env.WEB_PORT ?? 8788);
   startWebServer({ host, port, token: process.env.WEB_AUTH_TOKEN || undefined })
-    .then(() => console.log(`Plan editor on http://${host}:${port}  (store: ${store().location})`))
+    .then(() => {
+      console.log(`Plan editor on http://${host}:${port}  (store: ${store().location})`);
+      startRenphoTimer(); // the Renpho runs that are due, from the Settings view's switches
+    })
     .catch((error) => {
       console.error(error.message);
       process.exit(1);

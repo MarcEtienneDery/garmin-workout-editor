@@ -67,8 +67,9 @@ export function getSession(requested?: string): Session {
   const mock = settings.mock;
   const profile = mock ? getMockProfile() : loadProfile(resolveProfileName(requested));
 
+  // a login changed in Settings (by the other process, perhaps) makes a new client
   const cached = sessions.get(profile.name);
-  if (cached) return cached;
+  if (cached && cached.profile.email === profile.email && cached.profile.password === profile.password) return cached;
 
   const garminClient = new GarminClient(
     profile.email,

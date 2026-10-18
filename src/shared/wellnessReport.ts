@@ -2,6 +2,7 @@
  * wellnessReport.ts — what the stored daily health data says, read from the database: the readiness for a day, and the
  * days of a range with the person's own normal. The MCP tools and the web view both answer from these, so they cannot disagree.
  */
+import { type BodyTrend, bodyTrend } from "./bodyTrend";
 import { BASELINE_DAYS, baselines, computeReadiness, type Readiness } from "./readiness";
 import type { DayMetrics, SqliteStore } from "./store";
 import { addDays } from "./wellnessSync";
@@ -20,4 +21,13 @@ export function readinessAt(store: SqliteStore, profile: string, date: string): 
 export function wellnessRange(store: SqliteStore, profile: string, from: string, to: string): { baselines: ReturnType<typeof baselines>; days: DayMetrics[] } {
   const all = store.wellness.metrics(profile, addDays(from, -BASELINE_DAYS), to);
   return { baselines: baselines(all, to), days: all.filter((m) => m.day >= from) };
+}
+
+/** What the Weight view shows of a day: the weigh-in, what the scale measured with it, and the calories burned. */
+export type BodyDay = Pick<DayMetrics, "day" | "weightKg" | "bodyFatPercent" | "muscleKg" | "bmi" | "totalKcal" | "activeKcal" | "bmrKcal">;
+
+/** The stored days from `from` to `to`, oldest first, with their weight and calories, and the weight trend over them. */
+export function bodyRange(store: SqliteStore, profile: string, from: string, to: string): { body: BodyTrend; days: BodyDay[] } {
+  const days = store.wellness.metrics(profile, from, to).map(({ day, weightKg, bodyFatPercent, muscleKg, bmi, totalKcal, activeKcal, bmrKcal }) => ({ day, weightKg, bodyFatPercent, muscleKg, bmi, totalKcal, activeKcal, bmrKcal }));
+  return { body: bodyTrend(days), days };
 }

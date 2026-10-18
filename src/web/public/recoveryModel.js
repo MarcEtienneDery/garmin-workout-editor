@@ -79,7 +79,9 @@
     { name: "Stress", fields: [{ key: "avgStress", label: "Average" }, { key: "maxStress", label: "Max" }] },
     { name: "Day", fields: [{ key: "steps", label: "Steps" }, { key: "moderateMinutes", label: "Moderate min" }, { key: "vigorousMinutes", label: "Vigorous min" }] },
     { name: "Breathing", fields: [
-      { key: "avgSleepRespiration", label: "In sleep", unit: " /min", digits: 1 }, { key: "avgSleepSpo2", label: "SpO2 in sleep", unit: "%" }, { key: "lowestSpo2", label: "Lowest SpO2", unit: "%" },
+      { key: "avgSleepRespiration", label: "In sleep", unit: " /min", digits: 1 }, { key: "avgWakingRespiration", label: "Awake", unit: " /min", digits: 1 },
+      { key: "lowRespiration", label: "Lowest", unit: " /min", digits: 1 }, { key: "highRespiration", label: "Highest", unit: " /min", digits: 1 },
+      { key: "avgSleepSpo2", label: "SpO2 in sleep", unit: "%" }, { key: "lowestSpo2", label: "Lowest SpO2", unit: "%" },
     ] },
   ];
 
@@ -136,6 +138,10 @@
     {
       id: "rhr", title: "Resting heart rate", unit: "bpm", kind: "line", value: (d) => d.restingHr, ref: { label: "7-day average", value: (d) => d.restingHr7d },
       read: (d) => (valid(d.restingHr) ? `${num(d.restingHr)} bpm${valid(d.restingHr7d) ? ` · 7-day ${num(d.restingHr7d)}` : ""}` : "–"),
+    },
+    {
+      id: "resp", title: "Breathing", unit: "/min", kind: "line", value: (d) => d.avgSleepRespiration, ref: { label: "Awake average", value: (d) => d.avgWakingRespiration },
+      read: (d) => (valid(d.avgSleepRespiration) ? `${num(d.avgSleepRespiration, 1)} /min asleep${valid(d.avgWakingRespiration) ? ` · ${num(d.avgWakingRespiration, 1)} awake` : ""}` : "–"),
     },
     {
       id: "sleep", title: "Sleep", unit: "h", kind: "stack", min: 0,

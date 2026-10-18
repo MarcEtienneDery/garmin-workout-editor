@@ -1,7 +1,7 @@
 /*
- * recoveryCharts.js — the pictures of the Recovery view: one small chart per measure over the days (a line with Garmin's
- * balanced range, stacked sleep stages, a Body Battery range, bars), all sharing one hover cursor, and a click that picks
- * the day. Plain DOM and SVG, no library. What to draw and the scales come from RecoveryModel, which has the tests.
+ * trendCharts.js — the pictures of the Recovery and Weight views: one small chart per measure over the days (a line with
+ * Garmin's balanced range, stacked parts, a range, bars), all sharing one hover cursor, and a click that picks the day.
+ * Plain DOM and SVG, no library. What to draw comes from RecoveryModel / WeightModel, the scales from RecoveryModel; they have the tests.
  */
 (function (root) {
   "use strict";
@@ -10,16 +10,20 @@
   const { make, html } = root.ActivityCharts;
   const W = 600, H = 124, LEFT = 40, RIGHT = 8, TOP = 8, BOTTOM = 18;
 
-  /** A path through the points, broken wherever a day has no value. */
-  function pathOf(points) {
+  /** A path through the points, broken wherever a day has no value (`connect`: joined across them, for what is measured now and then). */
+  function pathOf(points, connect = false) {
     let d = "", pen = false;
     for (const p of points) {
+      if (!p && connect) continue;
       if (!p) { pen = false; continue; }
       d += `${pen ? "L" : "M"}${p[0].toFixed(1)} ${p[1].toFixed(1)}`;
       pen = true;
     }
     return d;
   }
+
+  /** Decimals for the tick labels: enough that neighbouring ticks do not read the same. */
+  const tickDigits = (ticks) => { const step = ticks.length > 1 ? ticks[1] - ticks[0] : 1; return step < 0.1 ? 2 : step < 1 ? 1 : 0; };
 
   /** One chart. Returns the element and a function that puts its cursor on a day (null: back to the picked day). */
   function chart(days, spec, { selected, onHover, onPick }) {
@@ -52,7 +56,7 @@
     const svg = make("svg", { viewBox: `0 0 ${W} ${H}`, class: "rcsvg", role: "img", "aria-label": spec.title });
     for (const t of sc.ticks) {
       svg.append(make("line", { x1: LEFT, x2: W - RIGHT, y1: yAt(t), y2: yAt(t), class: "rc-grid" }));
-      svg.append(make("text", { x: LEFT - 4, y: yAt(t) + 3, class: "rc-tick", "text-anchor": "end" }, RM.num(t, sc.ticks.length && sc.ticks[1] - sc.ticks[0] < 1 ? 1 : 0)));
+      svg.append(make("text", { x: LEFT - 4, y: yAt(t) + 3, class: "rc-tick", "text-anchor": "end" }, RM.num(t, tickDigits(sc.ticks))));
     }
     const every = n <= 14 ? 2 : n <= 35 ? 7 : 14; // a label every few days, counted back from the last day
     days.forEach((d, i) => {
@@ -88,7 +92,7 @@
         svg.append(make("line", { x1: xAt(i), x2: xAt(i), y1: yAt(lows[i]), y2: yAt(highs[i]), class: "rc-range" }));
       }
     });
-    if (spec.kind === "line") svg.append(make("path", { class: "rc-line", d: pathOf(vals.map((v, i) => (v === null ? null : [xAt(i), yAt(v)]))) }));
+    if (spec.kind === "line") svg.append(make("path", { class: "rc-line", d: pathOf(vals.map((v, i) => (v === null ? null : [xAt(i), yAt(v)])), spec.connect) }));
     if (spec.kind === "line" || spec.kind === "range") vals.forEach((v, i) => { if (v !== null) svg.append(make("circle", { cx: xAt(i), cy: yAt(v), r: 2.4, class: "rc-dot" })); });
 
     const cursor = make("line", { y1: TOP, y2: H - BOTTOM, class: "rc-cursor", visibility: "hidden" });
@@ -125,7 +129,7 @@
     };
   }
 
-  /** The charts of the view for the days (oldest first); `selected` is the day picked, onPick(day) is called on a click. */
+  /** The charts of a view for the days (oldest first); `selected` is the day picked, onPick(day) is called on a click. */
   function trends(days, specs, { selected, onPick }) {
     const box = html("div", "rcharts");
     const cards = [];
@@ -138,5 +142,5 @@
     return box;
   }
 
-  root.RecoveryCharts = { trends, chart };
+  root.TrendCharts = { trends, chart };
 })(typeof self !== "undefined" ? self : this);

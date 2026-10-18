@@ -9,6 +9,9 @@ export { SqliteStore, KEEP_REVISIONS } from "./sqliteStore";
 export * from "./activities";
 export { TokenTable, type StoredToken } from "./tokens";
 export * from "./wellness";
+export * from "./credentials";
+export { SealKeyError, sealing } from "./seal";
+export * from "./renpho";
 
 /** Where the SQLite database lives: GARMIN_STORE_PATH, else <data root>/garmin.db. */
 export const getStorePath = (): string => (process.env.GARMIN_STORE_PATH ? path.resolve(process.env.GARMIN_STORE_PATH) : path.join(getDataRoot(), "garmin.db"));
