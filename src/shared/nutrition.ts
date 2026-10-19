@@ -3,6 +3,7 @@
  * the calories Garmin says they burned. The MCP tools and the web view both write and answer from these functions, so they
  * cannot disagree. Garmin has nowhere to store food, so the log lives in the `nutrition` table (store/nutrition.ts).
  */
+import { NUTRIENTS, type NutrientTotals, type Nutrients, maxOf, nutrientTotals } from "./nutrients";
 import { type FoodEntry, type FoodFields, MEALS, type Meal, type SqliteStore } from "./store";
 import { addDays } from "./wellnessSync";
 
@@ -54,6 +55,23 @@ export interface FoodInput {
   proteinG?: unknown;
   carbsG?: unknown;
   fatG?: unknown;
+  /** The nutrients beyond the macros, by key (see shared/nutrients.ts): `{ fiberG: 3, sodiumMg: 410 }`. A key left out, null or empty is unknown, never zero. */
+  nutrients?: unknown;
+}
+
+/** The nutrients of a food as given: known keys with a number from 0; null, empty or left out means unknown. Anything else is refused. */
+export function parseNutrients(input: unknown): Nutrients {
+  if (input === undefined || input === null) return {};
+  if (typeof input !== "object" || Array.isArray(input)) throw new NutritionError(`nutrients must be an object like { ${NUTRIENTS[0].key}: 3 }.`);
+  const given = input as Record<string, unknown>, known = new Set<string>(NUTRIENTS.map((n) => n.key));
+  const unknown = Object.keys(given).find((key) => !known.has(key));
+  if (unknown) throw new NutritionError(`"${unknown}" is not a nutrient the log holds (${NUTRIENTS.map((n) => n.key).join(", ")}).`);
+  const found: Nutrients = {};
+  for (const def of NUTRIENTS) {
+    const v = amount(given[def.key], def.label, maxOf(def));
+    if (v !== undefined) found[def.key] = v;
+  }
+  return found;
 }
 
 export function parseFood(input: FoodInput, where: { day: string; meal: Meal }): FoodFields {
@@ -66,7 +84,7 @@ export function parseFood(input: FoodInput, where: { day: string; meal: Meal }):
     if (proteinG === undefined && carbsG === undefined && fatG === undefined) throw new NutritionError(`"${name}" needs calories or at least one macro.`);
     kcal = kcalOfMacros(proteinG ?? 0, carbsG ?? 0, fatG ?? 0);
   }
-  return { ...where, name, kcal: Math.round(kcal), proteinG: proteinG ?? 0, carbsG: carbsG ?? 0, fatG: fatG ?? 0 };
+  return { ...where, name, kcal: Math.round(kcal), proteinG: proteinG ?? 0, carbsG: carbsG ?? 0, fatG: fatG ?? 0, nutrients: parseNutrients(input.nutrients) };
 }
 
 export interface AddFoods {
@@ -88,13 +106,19 @@ export interface FoodPatch extends FoodInput {
   meal?: unknown;
 }
 
-/** Change a food item: what the patch leaves out stays (the calories are not worked out again from changed macros). */
+/**
+ * Change a food item: what the patch leaves out stays (the calories are not worked out again from changed macros). A nutrient of the
+ * patch is set, one given as null is removed (unknown again), one the patch does not mention stays.
+ */
 export function changeFood(store: SqliteStore, profile: string, id: number, patch: FoodPatch): FoodEntry {
   const current = store.nutrition.get(profile, id);
   if (!current) throw new NutritionError(`There is no food entry ${id}.`);
   const keep = (key: "name" | "kcal" | "proteinG" | "carbsG" | "fatG") => (patch[key] === undefined ? current[key] : patch[key]);
+  parseNutrients(patch.nutrients); // refuses a patch that is not an object, names no nutrient or holds a bad number
+  const nutrients: Record<string, unknown> = { ...current.nutrients };
+  for (const [key, value] of Object.entries((patch.nutrients ?? {}) as Record<string, unknown>)) if (value !== undefined) nutrients[key] = value;
   const food = parseFood(
-    { name: keep("name"), kcal: keep("kcal"), proteinG: keep("proteinG"), carbsG: keep("carbsG"), fatG: keep("fatG") },
+    { name: keep("name"), kcal: keep("kcal"), proteinG: keep("proteinG"), carbsG: keep("carbsG"), fatG: keep("fatG"), nutrients },
     { day: parseDay(patch.day, current.day), meal: patch.meal === undefined ? current.meal : parseMeal(patch.meal) }
   );
   const changed = store.nutrition.update(profile, id, food);
@@ -117,11 +141,13 @@ export interface Totals {
   fatG: number;
   /** How many food items. */
   entries: number;
+  /** The nutrients beyond the macros that at least one food states, each with how many foods state it: one stated by fewer than `entries` is a lower bound. */
+  nutrients: NutrientTotals;
 }
 
 export function totalsOf(entries: FoodFields[]): Totals {
   const sum = (pick: (f: FoodFields) => number) => round1(entries.reduce((t, f) => t + pick(f), 0));
-  return { kcal: Math.round(sum((f) => f.kcal)), proteinG: sum((f) => f.proteinG), carbsG: sum((f) => f.carbsG), fatG: sum((f) => f.fatG), entries: entries.length };
+  return { kcal: Math.round(sum((f) => f.kcal)), proteinG: sum((f) => f.proteinG), carbsG: sum((f) => f.carbsG), fatG: sum((f) => f.fatG), entries: entries.length, nutrients: nutrientTotals(entries) };
 }
 
 export interface MealBlock {
@@ -177,6 +203,6 @@ export function averageOf(days: NutritionDay[], today: string): Average | null {
 }
 
 /** The foods the entry form offers to fill in again, the newest of each name first. */
-export function recentFoods(store: SqliteStore, profile: string): { name: string; meal: Meal; kcal: number; proteinG: number; carbsG: number; fatG: number }[] {
-  return store.nutrition.recentFoods(profile, RECENT_FOODS).map(({ name, meal, kcal, proteinG, carbsG, fatG }) => ({ name, meal, kcal, proteinG, carbsG, fatG }));
+export function recentFoods(store: SqliteStore, profile: string): { name: string; meal: Meal; kcal: number; proteinG: number; carbsG: number; fatG: number; nutrients: Nutrients }[] {
+  return store.nutrition.recentFoods(profile, RECENT_FOODS).map(({ name, meal, kcal, proteinG, carbsG, fatG, nutrients }) => ({ name, meal, kcal, proteinG, carbsG, fatG, nutrients }));
 }

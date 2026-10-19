@@ -1,9 +1,13 @@
+import { NUTRIENTS, type Nutrients } from "../nutrients";
 import type { Database } from "./sqliteStore";
 
 /**
  * The food a profile ate, one row per food item: the day, the meal it belongs to, its name, its calories and its
  * protein, carbohydrate and fat in grams. Garmin has no place to write food to, so this is the only copy; the web editor
  * and the MCP server both write it (`source` says which).
+ *
+ * The nutrients beyond the macros (fiber, sodium...: see shared/nutrients.ts) are one JSON object in `extras`, holding only the ones
+ * the food states; NULL is none. A database made before they existed gets the column when it is opened (migrateNutrition).
  *
  * A meal is a name for the rows that share a day and a meal slot: one row per meal is a total typed in, several rows are a
  * meal broken into foods. Nothing is derived here: totals are summed on read (see shared/nutrition.ts).
@@ -19,12 +23,21 @@ CREATE TABLE IF NOT EXISTS nutrition (
   protein_g  REAL NOT NULL,
   carbs_g    REAL NOT NULL,
   fat_g      REAL NOT NULL,
+  extras     TEXT,
   source     TEXT NOT NULL,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS nutrition_by_day ON nutrition (profile, day);
 `;
+
+/**
+ * Give a table made before the nutrients the `extras` column. The store runs it inside the transaction that creates the schema, and
+ * a transaction is exclusive, so the MCP server and the web editor opening the same file together cannot both add the column.
+ */
+export function migrateNutrition(db: Database): void {
+  if (!db.prepare("PRAGMA table_info(nutrition)").all().some((column) => column.name === "extras")) db.exec("ALTER TABLE nutrition ADD COLUMN extras TEXT");
+}
 
 /** The slots of a day, in the order they are listed. */
 export const MEALS = ["breakfast", "lunch", "dinner", "snack"] as const;
@@ -39,14 +52,32 @@ export interface FoodFields {
   proteinG: number;
   carbsG: number;
   fatG: number;
+  /** The nutrients beyond the macros the food states; none when left out. */
+  nutrients?: Nutrients;
 }
 
 export interface FoodEntry extends FoodFields {
+  nutrients: Nutrients;
   id: number;
   source: string;
   createdAt: number;
   updatedAt: number;
 }
+
+/** The nutrients of an `extras` cell: the known keys with a number, whatever else the text holds is ignored. */
+function readExtras(text: unknown): Nutrients {
+  let raw: unknown;
+  try {
+    raw = typeof text === "string" ? JSON.parse(text) : null;
+  } catch {
+    return {};
+  }
+  const found: Nutrients = {};
+  if (raw && typeof raw === "object") for (const { key } of NUTRIENTS) if (typeof (raw as Record<string, unknown>)[key] === "number" && Number.isFinite((raw as Record<string, number>)[key])) found[key] = (raw as Record<string, number>)[key];
+  return found;
+}
+
+const writeExtras = (nutrients: Nutrients | undefined): string | null => (nutrients && Object.keys(nutrients).length ? JSON.stringify(nutrients) : null);
 
 const toEntry = (r: any): FoodEntry => ({
   id: r.id,
@@ -57,6 +88,7 @@ const toEntry = (r: any): FoodEntry => ({
   proteinG: r.protein_g,
   carbsG: r.carbs_g,
   fatG: r.fat_g,
+  nutrients: readExtras(r.extras),
   source: r.source,
   createdAt: r.created_at,
   updatedAt: r.updated_at,
@@ -71,10 +103,10 @@ export class NutritionTable {
   /** Keep food items, all or none; returns them with their ids, in the order given. */
   add(profile: string, items: FoodFields[], source: string, now = Date.now()): FoodEntry[] {
     return this.tx(() => {
-      const insert = this.db.prepare("INSERT INTO nutrition (profile, day, meal, name, kcal, protein_g, carbs_g, fat_g, source, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+      const insert = this.db.prepare("INSERT INTO nutrition (profile, day, meal, name, kcal, protein_g, carbs_g, fat_g, extras, source, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
       return items.map((f) => {
-        const r = insert.run(profile, f.day, f.meal, f.name, f.kcal, f.proteinG, f.carbsG, f.fatG, source, now, now) as { lastInsertRowid: number | bigint };
-        return { ...f, id: Number(r.lastInsertRowid), source, createdAt: now, updatedAt: now };
+        const r = insert.run(profile, f.day, f.meal, f.name, f.kcal, f.proteinG, f.carbsG, f.fatG, writeExtras(f.nutrients), source, now, now) as { lastInsertRowid: number | bigint };
+        return { ...f, nutrients: f.nutrients ?? {}, id: Number(r.lastInsertRowid), source, createdAt: now, updatedAt: now };
       });
     });
   }
@@ -88,8 +120,8 @@ export class NutritionTable {
   update(profile: string, id: number, f: FoodFields, now = Date.now()): FoodEntry | null {
     return this.tx(() => {
       const r = this.db
-        .prepare("UPDATE nutrition SET day = ?, meal = ?, name = ?, kcal = ?, protein_g = ?, carbs_g = ?, fat_g = ?, updated_at = ? WHERE profile = ? AND id = ?")
-        .run(f.day, f.meal, f.name, f.kcal, f.proteinG, f.carbsG, f.fatG, now, profile, id) as { changes: number | bigint };
+        .prepare("UPDATE nutrition SET day = ?, meal = ?, name = ?, kcal = ?, protein_g = ?, carbs_g = ?, fat_g = ?, extras = ?, updated_at = ? WHERE profile = ? AND id = ?")
+        .run(f.day, f.meal, f.name, f.kcal, f.proteinG, f.carbsG, f.fatG, writeExtras(f.nutrients), now, profile, id) as { changes: number | bigint };
       return Number(r.changes) ? this.get(profile, id) : null;
     });
   }

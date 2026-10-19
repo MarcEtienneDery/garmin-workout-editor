@@ -462,6 +462,46 @@ describe("MCP server (mock mode, in-memory transport)", () => {
       expect(left.total).toMatchObject({ kcal: 260, entries: 1 });
     });
 
+    it("logs the nutrients a food states, answers with the totals and how many foods state each, and reads them back", async () => {
+      const out = await callTool(client, "log_meal", {
+        date: "2026-10-17",
+        meal: "lunch",
+        items: [{ name: "Lentil soup", kcal: 230, nutrients: { fiberG: 15.6, sodiumMg: 480, ironMg: 6.6 } }, { name: "Bread", kcal: 90, nutrients: { fiberG: 2 } }, { name: "Tea", kcal: 2 }],
+      });
+      expect(out.isError).toBe(false);
+      expect(out.value.added[0].nutrients).toEqual({ fiberG: 15.6, sodiumMg: 480, ironMg: 6.6 });
+      expect(out.value.added[2].nutrients).toEqual({}); // unknown, not zero
+      expect(out.value.dayTotals).toMatchObject({ entries: 3, nutrients: { fiberG: { amount: 17.6, foods: 2 }, sodiumMg: { amount: 480, foods: 1 }, ironMg: { amount: 6.6, foods: 1 } } });
+      const read = (await callTool(client, "get_nutrition", { from: "2026-10-17", to: "2026-10-17" })).value;
+      expect(read.total.nutrients.fiberG).toEqual({ amount: 17.6, foods: 2 });
+      expect(read.days[0].nutrients.fiberG).toEqual({ amount: 17.6, foods: 2 });
+      expect(read.days[0].meals[0].entries[0]).toMatchObject({ name: "Lentil soup", nutrients: { fiberG: 15.6, sodiumMg: 480, ironMg: 6.6 } });
+    });
+
+    it("sets, keeps and clears the nutrients of an entry, a null making a nutrient unknown again", async () => {
+      const [rice] = (await callTool(client, "log_meal", { date: "2026-10-17", meal: "lunch", items: [{ name: "Rice", kcal: 200, nutrients: { fiberG: 1, sodiumMg: 5 } }] })).value.added;
+      expect((await callTool(client, "update_meal_entry", { id: rice.id, kcal: 210 })).value.entry.nutrients).toEqual({ fiberG: 1, sodiumMg: 5 });
+      expect((await callTool(client, "update_meal_entry", { id: rice.id, nutrients: { fiberG: 2.5 } })).value.entry.nutrients).toEqual({ fiberG: 2.5, sodiumMg: 5 });
+      expect((await callTool(client, "update_meal_entry", { id: rice.id, nutrients: { sodiumMg: null } })).value.entry.nutrients).toEqual({ fiberG: 2.5 });
+      expect((await callTool(client, "update_meal_entry", { id: rice.id, nutrients: { fiberG: null } })).value.entry.nutrients).toEqual({});
+    });
+
+    it("refuses a nutrient that is negative or too large, and keeps none of the call", async () => {
+      const items = (nutrients: object) => [{ name: "Fine", kcal: 100 }, { name: "Odd", kcal: 100, nutrients }];
+      expect((await callTool(client, "log_meal", { date: "2026-10-17", meal: "lunch", items: items({ fiberG: -1 }) })).isError).toBe(true);
+      expect((await callTool(client, "log_meal", { date: "2026-10-17", meal: "lunch", items: items({ sodiumMg: 100001 }) })).isError).toBe(true);
+      expect((await callTool(client, "get_nutrition", { from: "2026-10-17", to: "2026-10-17" })).value.loggedDays).toBe(0);
+    });
+
+    it("refuses a nutrient key it does not know, so a misspelling is not a nutrient quietly lost", async () => {
+      const bad = await callTool(client, "log_meal", { date: "2026-10-17", meal: "lunch", items: [{ name: "Bread", kcal: 90, nutrients: { fibreG: 3 } }] });
+      expect(bad.isError).toBe(true);
+      expect(bad.text).toMatch(/fibreG|unrecognized/i);
+      const rice = (await callTool(client, "log_meal", { date: "2026-10-17", meal: "lunch", items: [{ name: "Rice", kcal: 200 }] })).value.added[0];
+      expect((await callTool(client, "update_meal_entry", { id: rice.id, nutrients: { fibreG: 3 } })).isError).toBe(true);
+      expect((await callTool(client, "get_nutrition", { from: "2026-10-17", to: "2026-10-17" })).value.total.entries).toBe(1); // only the rice was logged
+    });
+
     it("explains what was refused, and keeps none of a bad call", async () => {
       const bad = await callTool(client, "log_meal", { date: "2026-10-17", meal: "lunch", items: [{ name: "Fine", kcal: 100 }, { name: "Air" }] });
       expect(bad.isError).toBe(true);

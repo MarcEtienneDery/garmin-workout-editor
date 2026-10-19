@@ -6,6 +6,7 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { MAX_ITEMS, MAX_RANGE_DAYS, MEALS, addFoods, averageOf, changeFood, deleteFoods, nutritionDays, totalsOf } from "../../shared/nutrition";
+import { NUTRIENTS, type Nutrients, maxOf } from "../../shared/nutrients";
 import { getStore } from "../../shared/store";
 import { addDays, localToday } from "../../shared/wellnessSync";
 import { dataProfile, runTool } from "../context";
@@ -21,6 +22,29 @@ const foodFields = {
   fatG: grams.optional().describe("Fat in grams."),
 };
 
+/**
+ * The nutrients beyond the macros, one optional number each. They are the ones on a Canadian Nutrition Facts table; the unit is in the name
+ * (G grams, Mg milligrams). `clearable`: a null removes the value from an entry that has one (a change), as there is no other way to say
+ * "that was wrong, it is not known".
+ */
+const nutrientsArg = (clearable: boolean) => {
+  const shape = Object.fromEntries(
+    NUTRIENTS.map((def) => {
+      const value = z.number().min(0).max(maxOf(def));
+      return [def.key, (clearable ? value.nullable() : value).optional().describe(`${def.label} in ${def.unit === "g" ? "grams" : "milligrams"}.`)];
+    })
+  );
+  return z
+    .object(shape)
+    .strict() // a misspelt key ("fibreG") is an error the assistant can read, not a nutrient quietly dropped
+    .optional()
+    .describe(
+      clearable
+        ? "Nutrients to set on the entry, by key. A key left out stays as it was; null removes that nutrient (unknown again). Never send 0 for a nutrient you do not know: 0 means none."
+        : "Optional nutrients of the food for the amount eaten (fiber, sugars, saturated and trans fat, cholesterol, sodium, potassium, calcium, iron), only the ones you know or can reasonably estimate. Leave a key out when it is not known: 0 means there is none, and a day's total counts only the foods that state it."
+    );
+};
+
 /** Run a nutrition tool body: a refused food is an error the assistant can read and fix. */
 const run = (fn: () => unknown) => runTool(async () => fn());
 
@@ -28,7 +52,7 @@ export interface LogMealArgs {
   profile?: string;
   date?: string;
   meal: (typeof MEALS)[number];
-  items: { name: string; kcal?: number; proteinG?: number; carbsG?: number; fatG?: number }[];
+  items: { name: string; kcal?: number; proteinG?: number; carbsG?: number; fatG?: number; nutrients?: Nutrients }[];
 }
 
 export function logMeal(args: LogMealArgs) {
@@ -40,9 +64,9 @@ export function logMeal(args: LogMealArgs) {
     profile,
     date: day,
     meal: args.meal,
-    added: added.map(({ id, name, kcal, proteinG, carbsG, fatG }) => ({ id, name, kcal, proteinG, carbsG, fatG })),
+    added: added.map(({ id, name, kcal, proteinG, carbsG, fatG, nutrients }) => ({ id, name, kcal, proteinG, carbsG, fatG, nutrients })),
     mealTotals: shown.meals.find((m) => m.meal === args.meal)?.totals,
-    dayTotals: { kcal: shown.kcal, proteinG: shown.proteinG, carbsG: shown.carbsG, fatG: shown.fatG, entries: shown.entries },
+    dayTotals: { kcal: shown.kcal, proteinG: shown.proteinG, carbsG: shown.carbsG, fatG: shown.fatG, entries: shown.entries, nutrients: shown.nutrients },
     burnedKcal: shown.burnedKcal,
     burnedSoFar: shown.burnedSoFar,
     netKcal: shown.netKcal,
@@ -71,7 +95,7 @@ export function getNutrition(args: GetNutritionArgs) {
     average: averageOf(all, today),
     total: totalsOf(logged.flatMap((d) => d.meals.flatMap((m) => m.entries))),
     days: logged
-      .map(({ meals, ...day }) => ({ ...day, meals: meals.filter((m) => m.entries.length).map(({ meal, totals, entries }) => ({ meal, totals, entries: entries.map(({ id, name, kcal, proteinG, carbsG, fatG }) => ({ id, name, kcal, proteinG, carbsG, fatG })) })) }))
+      .map(({ meals, ...day }) => ({ ...day, meals: meals.filter((m) => m.entries.length).map(({ meal, totals, entries }) => ({ meal, totals, entries: entries.map(({ id, name, kcal, proteinG, carbsG, fatG, nutrients }) => ({ id, name, kcal, proteinG, carbsG, fatG, nutrients })) })) }))
       .reverse(),
   };
 }
@@ -82,12 +106,12 @@ export function registerNutritionTools(server: McpServer): void {
     {
       title: "Log food eaten",
       description:
-        "Add food the person ate to their food log, for one meal (breakfast, lunch, dinner or snack) of a day (today by default). Give one item per food, each with calories and protein, carbs and fat in grams; calories left out are worked out from the macros. The person describes the food in words, so estimate the numbers from the description and the portion, say that they are estimates and ask for the portion when it matters (a bowl of rice is not a cup of rice). Prefer a few items with real names to one item per meal, so an entry can be corrected later. Returns the new entry ids, the meal and day totals so far, and the calories Garmin says the day burned. Calling it twice adds the foods twice: if unsure whether a call went through, read get_nutrition first. Writes to the database only, never to Garmin.",
+        "Add food the person ate to their food log, for one meal (breakfast, lunch, dinner or snack) of a day (today by default). Give one item per food, each with calories and protein, carbs and fat in grams; calories left out are worked out from the macros. Add `nutrients` (fiber, sugars, saturated and trans fat, cholesterol, sodium, potassium, calcium, iron) when you know them or can estimate them from the food and portion, and leave a nutrient out when you do not: it is unknown, not zero. The person describes the food in words, so estimate the numbers from the description and the portion, say that they are estimates and ask for the portion when it matters (a bowl of rice is not a cup of rice). Prefer a few items with real names to one item per meal, so an entry can be corrected later. Returns the new entry ids, the meal and day totals so far (each nutrient total with `foods`, how many of the foods state it), and the calories Garmin says the day burned. Calling it twice adds the foods twice: if unsure whether a call went through, read get_nutrition first. Writes to the database only, never to Garmin.",
       inputSchema: {
         profile: profileArg,
         date: isoDate.optional().describe("The day eaten, YYYY-MM-DD (the user's local day). Default: today."),
         meal: mealArg,
-        items: z.array(z.object(foodFields)).min(1).max(MAX_ITEMS).describe("The foods of the meal."),
+        items: z.array(z.object({ ...foodFields, nutrients: nutrientsArg(false) })).min(1).max(MAX_ITEMS).describe("The foods of the meal."),
       },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     },
@@ -99,7 +123,7 @@ export function registerNutritionTools(server: McpServer): void {
     {
       title: "Get the food log",
       description:
-        "The food the person logged, per day (newest first, days with nothing logged left out and counted in `unloggedDays`): the entries of each meal with their ids, the meal and day totals (calories, protein, carbs, fat), the calories Garmin says the day burned and the net (eaten minus burned; today's burn is only what has burned so far, flagged by `burnedSoFar`). Also the mean of the logged days that are over (`average`) and the `total` of the range. Default: the last 7 days; at most 120. A day that was not logged is not a day of zero: do not read it as fasting. Calories and macros are estimates the person or an assistant typed in.",
+        "The food the person logged, per day (newest first, days with nothing logged left out and counted in `unloggedDays`): the entries of each meal with their ids, the meal and day totals (calories, protein, carbs, fat, and each nutrient beyond them that a food states, as `{ amount, foods }`: when `foods` is smaller than `entries` the amount only counts the foods that state it, so it is a lower bound, not the day's intake), the calories Garmin says the day burned and the net (eaten minus burned; today's burn is only what has burned so far, flagged by `burnedSoFar`). Also the mean of the logged days that are over (`average`) and the `total` of the range. Default: the last 7 days; at most 120. A day that was not logged is not a day of zero: do not read it as fasting. Calories and macros are estimates the person or an assistant typed in.",
       inputSchema: {
         profile: profileArg,
         from: isoDate.optional().describe("First day, YYYY-MM-DD. Default: `days` before `to`."),
@@ -115,7 +139,7 @@ export function registerNutritionTools(server: McpServer): void {
     "update_meal_entry",
     {
       title: "Correct a food entry",
-      description: "Change one food entry of the log by its id (from log_meal or get_nutrition): its name, calories, macros, meal or day. What is left out stays as it was; calories are not worked out again from changed macros, so give them too when they should change. Returns the entry as it is now.",
+      description: "Change one food entry of the log by its id (from log_meal or get_nutrition): its name, calories, macros, nutrients, meal or day. What is left out stays as it was; calories are not worked out again from changed macros, so give them too when they should change. Returns the entry as it is now.",
       inputSchema: {
         profile: profileArg,
         id: z.number().int().positive().describe("The entry id."),
@@ -124,6 +148,7 @@ export function registerNutritionTools(server: McpServer): void {
         proteinG: foodFields.proteinG,
         carbsG: foodFields.carbsG,
         fatG: foodFields.fatG,
+        nutrients: nutrientsArg(true),
         meal: mealArg.optional(),
         date: isoDate.optional().describe("Move the entry to this day, YYYY-MM-DD."),
       },

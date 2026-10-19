@@ -759,6 +759,38 @@ describe("web plan editor", () => {
         expect((await call("POST", "/api/nutrition", { action: "explode" })).status).toBe(400);
       });
 
+      it("keeps the nutrients of a food, sums them with how many foods state each, and offers them again", async () => {
+        addProfile("MED");
+        const lentils = { name: "Lentils", kcal: 230, proteinG: 18, carbsG: 40, fatG: 1, nutrients: { fiberG: 15.6, sodiumMg: 4 } };
+        const out = await call("POST", "/api/nutrition", { action: "add", day: today(), meal: "lunch", items: [lentils, rice] });
+        expect(out.status).toBe(200);
+        expect(out.json.day.nutrients).toEqual({ fiberG: { amount: 15.6, foods: 1 }, sodiumMg: { amount: 4, foods: 1 } });
+        const [kept, unknown] = out.json.day.meals.find((m: any) => m.meal === "lunch").entries;
+        expect(kept.nutrients).toEqual({ fiberG: 15.6, sodiumMg: 4 });
+        expect(unknown.nutrients).toEqual({}); // rice states none: unknown, not zero
+        expect(out.json.days.at(-1).nutrients.fiberG).toEqual({ amount: 15.6, foods: 1 }); // the trend carries them too
+        expect(out.json.recent.find((r: any) => r.name === "Lentils").nutrients).toEqual({ fiberG: 15.6, sodiumMg: 4 });
+      });
+
+      it("changes the nutrients of an entry: sets one, keeps the rest, and removes one given as null", async () => {
+        addProfile("MED");
+        const id = (await call("POST", "/api/nutrition", { action: "add", day: today(), meal: "dinner", items: [{ ...rice, nutrients: { fiberG: 1, ironMg: 0.4 } }] })).json.day.meals[2].entries[0].id;
+        const entry = (json: any) => json.day.meals[2].entries[0];
+        expect(entry((await call("POST", "/api/nutrition", { action: "update", id, nutrients: { fiberG: 2 } })).json).nutrients).toEqual({ fiberG: 2, ironMg: 0.4 });
+        expect(entry((await call("POST", "/api/nutrition", { action: "update", id, kcal: 210 })).json)).toMatchObject({ kcal: 210, nutrients: { fiberG: 2, ironMg: 0.4 } });
+        expect(entry((await call("POST", "/api/nutrition", { action: "update", id, nutrients: { ironMg: null } })).json).nutrients).toEqual({ fiberG: 2 });
+        expect(entry((await call("POST", "/api/nutrition", { action: "update", id, nutrients: { fiberG: null } })).json).nutrients).toEqual({});
+      });
+
+      it("refuses a nutrient that is not one, or not a number, and logs nothing", async () => {
+        addProfile("MED");
+        const bad = (nutrients: unknown) => call("POST", "/api/nutrition", { action: "add", day: today(), meal: "lunch", items: [rice, { ...rice, nutrients }] });
+        expect((await bad({ zinc: 3 })).json.error).toMatch(/"zinc" is not a nutrient/);
+        expect((await bad({ fiberG: "lots" })).json.error).toMatch(/Fiber must be a number/);
+        expect((await bad([1])).status).toBe(400);
+        expect((await call("GET", "/api/nutrition")).json.day.entries).toBe(0);
+      });
+
       it("refuses a bad food with its reason, and keeps none of the request", async () => {
         addProfile("MED");
         const bad = await call("POST", "/api/nutrition", { action: "add", meal: "lunch", items: [rice, { name: "Air" }] });

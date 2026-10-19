@@ -1,5 +1,6 @@
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const NM = require("../web/public/nutritionModel.js");
+import { NUTRIENTS } from "../shared/nutrients";
 
 const TODAY = "2026-10-18";
 const day = (over: Record<string, unknown> = {}) => ({ day: "2026-10-17", kcal: 2000, proteinG: 150, carbsG: 200, fatG: 44, entries: 5, burnedKcal: 2500, burnedSoFar: false, netKcal: -500, ...over });
@@ -78,7 +79,8 @@ describe("the table and the charts", () => {
   });
 
   it("lists only fields the server sends", () => {
-    expect(all.map((f: any) => f.key).filter((k: string) => !Object.keys(day()).includes(k))).toEqual([]);
+    const sent = [...Object.keys(day()), ...NUTRIENTS.map((n) => n.key)]; // the nutrients come as `nutrients.<key>`
+    expect(all.map((f: any) => f.key).filter((k: string) => !sent.includes(k))).toEqual([]);
   });
 
   it("leaves the eaten numbers out of the charts for a day nothing was logged on, not as zeros", () => {
@@ -107,8 +109,25 @@ describe("the form", () => {
   });
 
   it("sends every field when changing a food: an empty macro is 0 and empty calories are the macros' sum", () => {
-    expect(NM.parseDraft({ name: "Oats", kcal: "", proteinG: "10", carbsG: "", fatG: "" }, true)).toEqual({ item: { name: "Oats", proteinG: 10, carbsG: 0, fatG: 0, kcal: 40 } });
-    expect(NM.parseDraft({ name: "Oats", kcal: "300", proteinG: "", carbsG: "", fatG: "" }, true)).toEqual({ item: { name: "Oats", kcal: 300, proteinG: 0, carbsG: 0, fatG: 0 } });
+    expect(NM.parseDraft({ name: "Oats", kcal: "", proteinG: "10", carbsG: "", fatG: "" }, true)).toMatchObject({ item: { name: "Oats", proteinG: 10, carbsG: 0, fatG: 0, kcal: 40 } });
+    expect(NM.parseDraft({ name: "Oats", kcal: "300", proteinG: "", carbsG: "", fatG: "" }, true)).toMatchObject({ item: { name: "Oats", kcal: 300, proteinG: 0, carbsG: 0, fatG: 0 } });
+  });
+
+  it("leaves the nutrients out of a new food unless they are filled in, and sends a number as a number", () => {
+    expect(NM.parseDraft({ name: "Oats", kcal: "300", fiberG: "", sodiumMg: "" }).item).toEqual({ name: "Oats", kcal: 300 });
+    expect(NM.parseDraft({ name: "Oats", kcal: "300", fiberG: "8,5", sodiumMg: "0", ironMg: " 2 " }).item).toEqual({ name: "Oats", kcal: 300, nutrients: { fiberG: 8.5, sodiumMg: 0, ironMg: 2 } });
+  });
+
+  it("sends an emptied nutrient as null when changing a food, so it is removed and never becomes zero", () => {
+    const { item } = NM.parseDraft({ name: "Oats", kcal: "300", fiberG: "8", sodiumMg: "", ironMg: "" }, true);
+    expect(item.nutrients).toMatchObject({ fiberG: 8, sodiumMg: null, ironMg: null });
+    expect(Object.values(item.nutrients).filter((v) => v === 0)).toEqual([]);
+    expect(Object.keys(item.nutrients)).toEqual(NUTRIENTS.map((n) => n.key));
+  });
+
+  it("says which nutrient is wrong", () => {
+    expect(NM.parseDraft({ name: "x", kcal: "10", fiberG: "lots" })).toEqual({ error: "Fiber must be a number from 0." });
+    expect(NM.parseDraft({ name: "x", kcal: "10", sodiumMg: "-3" })).toEqual({ error: "Sodium must be a number from 0." });
   });
 
   it("says what is wrong", () => {
@@ -127,8 +146,10 @@ describe("the form", () => {
 
   it("fills the form from a food, and finds a food used lately by name in any case", () => {
     const entry = { name: "Rice", kcal: 200, proteinG: 4, carbsG: 45, fatG: 0.5 };
-    expect(NM.draftOf(entry)).toEqual({ name: "Rice", kcal: "200", proteinG: "4", carbsG: "45", fatG: "0.5" });
-    expect(NM.EMPTY_DRAFT()).toEqual({ name: "", kcal: "", proteinG: "", carbsG: "", fatG: "" });
+    const noNutrients = Object.fromEntries(NUTRIENTS.map((n) => [n.key, ""]));
+    expect(NM.draftOf(entry)).toEqual({ name: "Rice", kcal: "200", proteinG: "4", carbsG: "45", fatG: "0.5", ...noNutrients });
+    expect(NM.EMPTY_DRAFT()).toEqual({ name: "", kcal: "", proteinG: "", carbsG: "", fatG: "", ...noNutrients });
+    expect(NM.draftOf({ ...entry, nutrients: { fiberG: 3.5, sodiumMg: 0 } })).toMatchObject({ fiberG: "3.5", sodiumMg: "0", ironMg: "" }); // a stated zero is filled in as 0
     expect(NM.recentMatch([entry], " rice ")).toBe(entry);
     expect(NM.recentMatch([entry], "pasta")).toBeNull();
     expect(NM.recentMatch([entry], "")).toBeNull();
@@ -176,7 +197,7 @@ describe("a food by quantity", () => {
   });
 
   it("says what the quantity comes to, and the name to log it under", () => {
-    expect(NM.portion(yogurt, "1", "portion")).toEqual({ amount: 1, grams: 170, nutrition: { kcal: 90, proteinG: 16.2, carbsG: 6.8, fatG: 0 }, name: "Greek Yogurt (chobani) · 1 × 170 g" });
+    expect(NM.portion(yogurt, "1", "portion")).toEqual({ amount: 1, grams: 170, nutrition: { kcal: 90, proteinG: 16.2, carbsG: 6.8, fatG: 0 }, nutrients: {}, name: "Greek Yogurt (chobani) · 1 × 170 g" });
     expect(NM.portion(yogurt, "1,5", "portion")).toMatchObject({ grams: 255, name: "Greek Yogurt (chobani) · 1.5 × 170 g" });
     expect(NM.portion(yogurt, "250", "g")).toMatchObject({ grams: 250, name: "Greek Yogurt (chobani) · 250 g" });
     expect(NM.portion(juice, "330", "g")).toMatchObject({ nutrition: { kcal: 149 }, name: "Orange juice · 330 ml" });
@@ -212,5 +233,62 @@ describe("a food by quantity", () => {
     expect(NM.per100Line(juice)).toBe("45 kcal · P 0.7 · C 10 · F 0.2 per 100 ml");
     expect(NM.foodTitle(yogurt)).toBe("Greek Yogurt · chobani");
     expect(NM.foodTitle(juice)).toBe("Orange juice");
+  });
+});
+
+describe("the nutrients beyond the macros", () => {
+  it("are the server's list, in the same order and units", () => {
+    expect(NM.NUTRIENTS).toEqual(NUTRIENTS.map(({ key, label, unit }) => ({ key, label, unit })));
+  });
+
+  it("scale with the quantity eaten, and a nutrient the food does not state stays unknown", () => {
+    const food = { code: "1", name: "Kraft Dinner", brand: "Kraft", per100: { kcal: 360, proteinG: 13, carbsG: 72, fatG: 2.5 }, nutrients: { fiberG: 2.35, sodiumMg: 660, ironMg: 3 }, unit: "g", servingG: null };
+    const r = NM.portion(food, "85", "g");
+    expect(r.nutrients).toEqual({ fiberG: 2, sodiumMg: 561, ironMg: 2.6 });
+    expect(r.nutrients).not.toHaveProperty("calciumMg");
+    expect(NM.portion({ ...food, nutrients: undefined }, "100", "g").nutrients).toEqual({}); // a food kept before they were read
+    expect(NM.scaleNutrients({ fiberG: 0 }, 50)).toEqual({ fiberG: 0 }); // a stated zero stays a value
+  });
+
+  it("read as a line for an entry: the stated ones, in the list's order", () => {
+    expect(NM.nutrientLine({ sodiumMg: 410, fiberG: 3, ironMg: 1.5 })).toBe("Fiber 3 g · Sodium 410 mg · Iron 1.5 mg");
+    expect(NM.nutrientLine({})).toBe("");
+    expect(NM.nutrientLine(undefined)).toBe("");
+    expect(NM.nutrientLine({ transFatG: 0 })).toBe("Trans fat 0 g");
+    expect(NM.nutrientLine({ calciumMg: 212.5, ironMg: 5.1, sodiumMg: 1122.4, fiberG: 12.5 })).toBe(`Fiber 12.5 g · Sodium ${(1122).toLocaleString()} mg · Calcium 213 mg · Iron 5.1 mg`); // grams keep their decimal, milligrams from 10 up are whole
+  });
+
+  it("make a tile each for a day: a dash for one no food states, and a lower bound when some foods leave it out", () => {
+    const tiles = NM.nutrientTiles(day({ entries: 3, nutrients: { fiberG: { amount: 18.2, foods: 2 }, sodiumMg: { amount: 2100, foods: 3 } } }));
+    expect(tiles.map((t: any) => t.label)).toEqual(NUTRIENTS.map((n) => n.label));
+    expect(tiles[0]).toEqual({ key: "fiberG", label: "Fiber", value: "≥ 18.2 g", note: "from 2 of 3 foods", partial: true });
+    expect(tiles.find((t: any) => t.key === "sodiumMg")).toMatchObject({ value: `${(2100).toLocaleString()} mg`, note: "from all 3 foods", partial: false });
+    expect(tiles.find((t: any) => t.key === "ironMg")).toMatchObject({ value: "–", note: "no food states it", partial: false });
+    expect(NM.nutrientTiles(day({ entries: 1, nutrients: { fiberG: { amount: 3, foods: 1 } } }))[0].note).toBe("from the food");
+  });
+
+  it("have no tiles for a day nothing was logged on", () => {
+    expect(NM.nutrientTiles(day({ entries: 0, nutrients: {} }))).toEqual([]);
+    expect(NM.nutrientTiles(null)).toEqual([]);
+  });
+
+  it("fill their own group of the daily table, a lower bound reading with ≥ and a day with none a dash", () => {
+    const group = NM.GROUPS.find((g: any) => g.name === "Nutrients");
+    expect(group.fields.map((f: any) => f.key)).toEqual(NUTRIENTS.map((n) => n.key));
+    const fiber = group.fields[0], sodium = group.fields[5];
+    const d = day({ entries: 3, nutrients: { fiberG: { amount: 18.2, foods: 2 }, sodiumMg: { amount: 2100, foods: 3 } } });
+    expect(NM.cell(fiber, d)).toBe("≥ 18.2 g");
+    expect(NM.cell(sodium, d)).toBe(`${(2100).toLocaleString()} mg`);
+    expect(NM.cell(group.fields[8], d)).toBe("–");
+    expect(NM.cell(fiber, day({ entries: 0, nutrients: {} }))).toBe("–");
+    expect(NM.cell(fiber, day())).toBe("–"); // a day from a server that sends none
+  });
+
+  it("tell the form whether the person has typed any number, and whether any is a nutrient", () => {
+    expect(NM.hasNumbers(NM.EMPTY_DRAFT())).toBe(false);
+    expect(NM.hasNumbers({ ...NM.EMPTY_DRAFT(), kcal: "100" })).toBe(true);
+    expect(NM.hasNumbers({ ...NM.EMPTY_DRAFT(), ironMg: "0" })).toBe(true);
+    expect(NM.hasNutrients({ ...NM.EMPTY_DRAFT(), kcal: "100" })).toBe(false);
+    expect(NM.hasNutrients({ ...NM.EMPTY_DRAFT(), fiberG: "3" })).toBe(true);
   });
 });

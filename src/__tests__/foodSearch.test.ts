@@ -38,6 +38,8 @@ describe("a food from an Open Food Facts product", () => {
       name: "Greek Yogurt Nonfat Plain",
       brand: "chobani",
       per100: { kcal: 52.9, proteinG: 9.5, carbsG: 4, fatG: 0 },
+      nutrients: {},
+      complete: true,
       unit: "g",
       servingG: 170,
       servingText: "1 serving (170 g)",
@@ -91,6 +93,77 @@ describe("a food from an Open Food Facts product", () => {
     expect(toFood("food")).toBeNull();
     expect(toFood({ ...YOGURT, nutriments: "none" })).toBeNull();
     expect(toFood({ ...YOGURT, code: 42 })!.code).toBeNull();
+  });
+});
+
+// a Canadian product as Open Food Facts gives it from the product call: every `_100g` value in grams
+const KD = {
+  code: "0068100904901",
+  product_name: "Kraft Dinner",
+  nutriments: {
+    "energy-kcal_100g": 360, proteins_100g: 13, carbohydrates_100g: 72, fat_100g: 2.5,
+    fiber_100g: 2.35, sugars_100g: 12.9, "saturated-fat_100g": 1.76, "trans-fat_100g": 0.1, cholesterol_100g: 0.01,
+    sodium_100g: 0.66, salt_100g: 1.65, potassium_100g: 0.4, calcium_100g: 0.125, iron_100g: 0.003,
+  },
+};
+
+describe("the nutrients of a product", () => {
+  it("are read in the unit of the list: grams for fiber and fats, milligrams for the minerals", () => {
+    expect(toFood(KD)?.nutrients).toEqual({ fiberG: 2.35, sugarsG: 12.9, satFatG: 1.76, transFatG: 0.1, cholesterolMg: 10, sodiumMg: 660, potassiumMg: 400, calciumMg: 125, ironMg: 3 });
+  });
+
+  it("leave out what the product does not state, rather than turning it into zero", () => {
+    expect(toFood(YOGURT)?.nutrients).toEqual({});
+    const blank = toFood({ ...KD, nutriments: { ...KD.nutriments, "trans-fat_100g": undefined, potassium_100g: null, calcium_100g: "", iron_100g: " " } })?.nutrients;
+    for (const key of ["transFatG", "potassiumMg", "calciumMg", "ironMg"]) expect(blank).not.toHaveProperty(key);
+    expect(toFood({ ...KD, nutriments: { ...KD.nutriments, calcium_100g: 0 } })?.nutrients?.calciumMg).toBe(0); // a stated zero is a value
+  });
+
+  it("take the sodium from the salt when a label states the salt only (a gram of salt holds 0.4 g of sodium)", () => {
+    const { sodium_100g, ...saltOnly } = KD.nutriments;
+    expect(sodium_100g).toBe(0.66);
+    expect(toFood({ ...KD, nutriments: saltOnly })?.nutrients?.sodiumMg).toBe(660);
+  });
+
+  it("drop a nutrient that cannot be right, not the whole food", () => {
+    const food = toFood({ ...KD, nutriments: { ...KD.nutriments, fiber_100g: 450, sodium_100g: -1, salt_100g: undefined, iron_100g: 70 } });
+    expect(food?.per100.kcal).toBe(360);
+    expect(food?.nutrients).toMatchObject({ sugarsG: 12.9, calciumMg: 125 });
+    expect(food?.nutrients).not.toHaveProperty("fiberG");
+    expect(food?.nutrients).not.toHaveProperty("sodiumMg");
+    expect(food?.nutrients).not.toHaveProperty("ironMg"); // 70 g of iron in 100 g
+  });
+
+  it("do not have to fit inside the carbohydrate: some labels count the fiber apart from it", () => {
+    expect(toFood({ ...KD, nutriments: { ...KD.nutriments, carbohydrates_100g: 20, fiber_100g: 30 } })?.nutrients?.fiberG).toBe(30);
+  });
+
+  it("make a barcode lookup complete and a search result not, the search index holding only some nutrients", async () => {
+    expect(await lookupBarcode(store, "0068100904901", fake(() => ({ body: { status: 1, product: KD } })).fetcher)).toMatchObject({ complete: true, nutrients: { fiberG: 2.35, ironMg: 3 } });
+    const found = await searchFoods("kraft dinner", fake(() => ({ body: { hits: [KD] } })).fetcher);
+    expect(found[0]).toMatchObject({ complete: false, nutrients: { fiberG: 2.35 } });
+  });
+});
+
+describe("a product kept before the nutrients were read", () => {
+  const old = { code: "0894700010137", name: "Greek Yogurt Nonfat Plain", brand: "chobani", per100: { kcal: 52.9, proteinG: 9.5, carbsG: 4, fatG: 0 }, unit: "g", servingG: 170, servingText: "1 serving (170 g)" };
+  const t0 = Date.parse("2026-10-18T12:00:00Z");
+
+  it("is asked for again and kept in its new shape", async () => {
+    store.foods.put("0894700010137", old, t0);
+    const up = fake(() => ({ body: { status: 1, product: { ...YOGURT, nutriments: { ...YOGURT.nutriments, fiber_100g: 0, sodium_100g: 0.04 } } } }));
+    expect(await lookupBarcode(store, "0894700010137", up.fetcher, t0 + 1000)).toMatchObject({ complete: true, nutrients: { fiberG: 0, sodiumMg: 40 } });
+    expect(await lookupBarcode(store, "0894700010137", up.fetcher, t0 + 2000)).toMatchObject({ nutrients: { sodiumMg: 40 } });
+    expect(up.calls).toHaveLength(1); // the second answer is the kept one
+  });
+
+  it("is still the answer, with no nutrients, when the service cannot be asked", async () => {
+    store.foods.put("0894700010137", old, t0);
+    const down = fake(() => ({ status: 503 }));
+    expect(await lookupBarcode(store, "0894700010137", down.fetcher, t0 + 1000)).toEqual({ ...old, nutrients: {}, complete: true });
+    expect(down.calls).toHaveLength(1);
+    const gone = fake(() => ({ status: 404 }));
+    expect(await lookupBarcode(store, "0894700010137", gone.fetcher, t0 + 1000)).toMatchObject({ name: "Greek Yogurt Nonfat Plain", nutrients: {} });
   });
 });
 

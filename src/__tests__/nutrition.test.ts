@@ -15,7 +15,7 @@ describe("checking a food", () => {
   const where = { day: TODAY, meal: "lunch" as const };
 
   it("works the calories out from the macros when they are left out", () => {
-    expect(parseFood({ name: "Chicken", proteinG: 30, carbsG: 0, fatG: 5 }, where)).toEqual({ ...where, name: "Chicken", kcal: 165, proteinG: 30, carbsG: 0, fatG: 5 });
+    expect(parseFood({ name: "Chicken", proteinG: 30, carbsG: 0, fatG: 5 }, where)).toEqual({ ...where, name: "Chicken", kcal: 165, proteinG: 30, carbsG: 0, fatG: 5, nutrients: {} });
     expect(kcalOfMacros(10, 20, 3)).toBe(147);
     expect(parseFood({ name: "Oil", fatG: 14 }, where)).toMatchObject({ kcal: 126, proteinG: 0, carbsG: 0, fatG: 14 });
   });
@@ -117,7 +117,7 @@ describe("the days", () => {
     const d17 = days[2];
     expect(d17.meals.map((m) => m.meal)).toEqual(["breakfast", "lunch", "dinner", "snack"]);
     expect(d17.meals[0].entries.map((e) => e.name)).toEqual(["Oats", "Egg"]);
-    expect(d17.meals[0].totals).toEqual({ kcal: 380, proteinG: 16.5, carbsG: 50, fatG: 11.5, entries: 2 });
+    expect(d17.meals[0].totals).toEqual({ kcal: 380, proteinG: 16.5, carbsG: 50, fatG: 11.5, entries: 2, nutrients: {} });
     expect(d17).toMatchObject({ kcal: 580, proteinG: 22.5, carbsG: 56, fatG: 28.5, entries: 3 });
   });
 
@@ -147,7 +147,7 @@ describe("the days", () => {
   });
 
   it("sums foods", () => {
-    expect(totalsOf([])).toEqual({ kcal: 0, proteinG: 0, carbsG: 0, fatG: 0, entries: 0 });
+    expect(totalsOf([])).toEqual({ kcal: 0, proteinG: 0, carbsG: 0, fatG: 0, entries: 0, nutrients: {} });
   });
 });
 

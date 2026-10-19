@@ -4,8 +4,11 @@
  * wants an application name in the User-Agent. Nothing about the person is sent, only the barcode or the words searched.
  *
  * A food comes back as the nutrition per 100 g (or ml), plus the size of one portion when the product says it, so the page
- * can scale it to the quantity eaten. Products with no usable numbers are left out: bad data is worse than none.
+ * can scale it to the quantity eaten. Products with no usable numbers are left out: bad data is worse than none. Beyond the
+ * calories and macros it carries the nutrients of shared/nutrients.ts the product states (fiber, sodium...): the product call
+ * has all of them, the search index only some, which `complete` says.
  */
+import { NUTRIENTS, type Nutrients } from "./nutrients";
 import type { SqliteStore } from "./store";
 
 /** A food looked up, as the Food view shows and scales it. Liquids are per 100 ml and taken as 1 g a ml. */
@@ -14,6 +17,10 @@ export interface Food {
   name: string;
   brand: string | null;
   per100: { kcal: number; proteinG: number; carbsG: number; fatG: number };
+  /** The nutrients beyond the macros the product states, per 100 g (or ml), in the unit of shared/nutrients.ts. Unknown ones are absent. */
+  nutrients: Nutrients;
+  /** True for a product asked for by its barcode, which carries every nutrient it has; the search index leaves some out, so a food from a search has them only in part. */
+  complete: boolean;
   unit: "g" | "ml";
   /** The grams (or ml) of one portion as the product states it, and how it says it. */
   servingG: number | null;
@@ -52,8 +59,31 @@ const firstText = (v: unknown): string => {
   return typeof first === "string" ? first.split(",")[0].trim() : "";
 };
 
-/** A food from an Open Food Facts product, or null when it lacks a name or numbers that add up. */
-export function toFood(raw: any): Food | null {
+/** A gram of salt holds 0.4 g of sodium. */
+const SODIUM_PER_SALT = 0.4;
+/** What 100 g (or ml) of a food can hold of a nutrient: a gram of anything is at most 100 g, and salt is 40 % sodium. */
+const MAX_PER_100G = { g: 100, mg: 40_000 };
+
+/** The nutrients of an Open Food Facts `nutriments` object (every `_100g` value is in grams): the ones in range, in the list's unit. One out of range is dropped alone, not the food. */
+function nutrientsOf(n: Record<string, unknown>): Nutrients {
+  const found: Nutrients = {};
+  // an empty string is no number here, though num() would read it as 0: a nutrient the product leaves blank is unknown
+  const stated = (key: string): number | null => (typeof n[key] === "string" && !(n[key] as string).trim() ? null : num(n[key]));
+  for (const def of NUTRIENTS) {
+    let grams = stated(`${def.off}_100g`);
+    if (grams === null && def.key === "sodiumMg") {
+      const salt = stated("salt_100g");
+      if (salt !== null) grams = salt * SODIUM_PER_SALT; // a label that states salt only
+    }
+    if (grams === null) continue;
+    const value = def.unit === "mg" ? grams * 1000 : grams;
+    if (value >= 0 && value <= MAX_PER_100G[def.unit]) found[def.key] = Math.round(value * 100) / 100;
+  }
+  return found;
+}
+
+/** A food from an Open Food Facts product, or null when it lacks a name or numbers that add up. `complete`: it came from the product call, not the search index. */
+export function toFood(raw: any, complete = true): Food | null {
   if (!raw || typeof raw !== "object") return null;
   const n = raw.nutriments && typeof raw.nutriments === "object" ? raw.nutriments : {};
   const kj = num(n["energy-kj_100g"] ?? n["energy_100g"]);
@@ -73,6 +103,8 @@ export function toFood(raw: any): Food | null {
     name: name.slice(0, 100),
     brand: firstText(raw.brands).slice(0, 40) || null,
     per100: { kcal: round1(kcal), proteinG: round1(macros[0]), carbsG: round1(macros[1]), fatG: round1(macros[2]) },
+    nutrients: nutrientsOf(n),
+    complete,
     unit: /\d\s*(ml|cl|dl|l)\b/i.test(sized) ? "ml" : "g",
     servingG: serving !== null && serving > 0 && serving <= 2000 ? serving : null,
     servingText,
@@ -105,12 +137,19 @@ async function getJson(url: string, fetcher: Fetcher): Promise<{ status: number;
 export async function lookupBarcode(store: SqliteStore, code: unknown, fetcher: Fetcher = fetch as unknown as Fetcher, now = Date.now()): Promise<Food | null> {
   const digits = typeof code === "string" ? code.trim() : "";
   if (!/^\d{8,14}$/.test(digits)) throw new FoodInputError("A barcode is 8 to 14 digits.");
-  const kept = store.foods.get(digits, BARCODE_KEEP_MS, now);
-  if (kept) return kept as Food;
-  const { body } = await getJson(`${PRODUCT_URL}/${digits}.json?fields=${FIELDS}`, fetcher);
-  const food = body && body.status !== 0 ? toFood(body.product) : null;
-  if (food) store.foods.put(digits, food, now);
-  return food;
+  const kept = store.foods.get(digits, BARCODE_KEEP_MS, now) as Food | null;
+  if (kept && kept.nutrients) return kept;
+  // A food kept before the nutrients were read has none: ask again, and if the service cannot answer the kept food is still the better answer.
+  const old = kept && { ...kept, nutrients: {}, complete: true };
+  try {
+    const { body } = await getJson(`${PRODUCT_URL}/${digits}.json?fields=${FIELDS}`, fetcher);
+    const food = body && body.status !== 0 ? toFood(body.product) : null;
+    if (food) store.foods.put(digits, food, now);
+    return food ?? old;
+  } catch (error) {
+    if (old && error instanceof FoodSourceError) return old;
+    throw error;
+  }
 }
 
 const searches = new Map<string, { at: number; foods: Food[] }>();
@@ -126,7 +165,7 @@ export async function searchFoods(query: unknown, fetcher: Fetcher = fetch as un
   const seen = new Set<string>();
   const foods: Food[] = [];
   for (const hit of Array.isArray(body?.hits) ? body.hits : []) {
-    const food = toFood(hit);
+    const food = toFood(hit, false);
     if (!food || (food.code && seen.has(food.code))) continue;
     if (food.code) seen.add(food.code);
     foods.push(food);

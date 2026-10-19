@@ -273,6 +273,11 @@
   .fpq { display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
   .fpq input { width:6.5em; box-sizing:border-box; background:#333; color:var(--fg); border:1px solid var(--line); border-radius:3px; padding:4px 6px; font:inherit; }
   .fpv { margin:8px 0; font-weight:600; }
+  .fnut { grid-template-columns:repeat(3,minmax(0,1fr)); } .fnut .rfig b { font-size:17px; } .fnut .rfig.part span { color:var(--warn); }
+  .fmore { flex:1 1 100%; } .fmore > summary { cursor:pointer; color:var(--dim); font-size:12px; }
+  .fnl-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:6px 8px; margin-top:6px; }
+  .fnl { display:flex; flex-direction:column; gap:2px; font-size:12px; color:var(--dim); } .fform .fnn { width:100%; }
+  .fpv .fpm { margin-top:2px; font-size:12px; font-weight:400; color:var(--dim); }
   .fhand { margin-top:8px; } .fhand > summary { cursor:pointer; color:var(--dim); font-size:12px; }
   #scandlg .scanwrap { position:relative; } #scandlg video { display:block; width:100%; max-height:60vh; background:#000; border-radius:4px; }
   #scandlg .scanwrap::after { content:""; position:absolute; left:8%; right:8%; top:50%; height:2px; background:rgba(224,57,60,.8); pointer-events:none; }
@@ -309,7 +314,7 @@
   .rraw.none > summary { color:var(--dim); cursor:default; }
   .rjson { margin:0; padding:8px 10px; max-height:380px; overflow:auto; background:#1b1b1b; border-top:1px solid var(--line); font:11px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace; white-space:pre-wrap; word-break:break-all; }
   .rfoot { margin-top:18px; color:var(--dim); font-size:12px; }
-  @media (max-width:700px) { .sform { grid-template-columns:minmax(0,1fr); } .rcharts { grid-template-columns:minmax(0,1fr); } .rfigs { grid-template-columns:repeat(2,minmax(0,1fr)); } .rsigs { grid-template-columns:auto minmax(0,1fr); } .rsigs .val, .rsigs .why { grid-column:2; } .rsigs .val { margin-top:-4px; } #rDate { min-width:0; flex:1 1 130px; } .rch { flex-wrap:wrap; row-gap:0; } .rcr { flex-basis:100%; text-align:left; white-space:normal; } }
+  @media (max-width:700px) { .sform { grid-template-columns:minmax(0,1fr); } .rcharts { grid-template-columns:minmax(0,1fr); } .rfigs, .fnut { grid-template-columns:repeat(2,minmax(0,1fr)); } .fnl-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } .rsigs { grid-template-columns:auto minmax(0,1fr); } .rsigs .val, .rsigs .why { grid-column:2; } .rsigs .val { margin-top:-4px; } #rDate { min-width:0; flex:1 1 130px; } .rch { flex-wrap:wrap; row-gap:0; } .rcr { flex-basis:100%; text-align:left; white-space:normal; } }
 
   /* ── Activities view: the stored activities as a list and as a calendar ── */
   body:not([data-view="activities"]) #aview { display:none; }
@@ -3229,11 +3234,18 @@ function renderFood() {
   box.append(recent);
   for (const block of d.day.meals) box.append(foodMeal(block));
 
+  const nutrients = NM.nutrientTiles(d.day);
+  if (nutrients.length) {
+    const grid = mk("div", "rfigs fnut");
+    for (const t of nutrients) { const tile = mk("div", "rfig" + (t.partial ? " part" : "")); tile.append(mk("small", "", t.label), mk("b", "", t.value), mk("span", "", t.note)); grid.append(tile); }
+    box.append(mk("h3", "", "Nutrients"), grid);
+  }
+
   box.append(mk("h3", "", `Trends, ${d.days.length} days`));
   box.append(TrendCharts.trends(NM.chartDays(d.days), NM.charts(), { selected: d.date, onPick: pickFoodDay }));
   box.append(mk("h3", "", "Every day"));
   box.append(metricsTable(d.days, NM.GROUPS, NM.cell, d.date, pickFoodDay));
-  box.append(mk("div", "rfoot", "The calories and macros are what you typed in or an assistant estimated from your description, so they are estimates. A day with nothing logged is not a day of zero. Foods found by search or barcode come from Open Food Facts, a community-made database: check the numbers against the package when they matter. What Garmin says the day burned comes from the watch: today's is only what has burned so far. The food is kept here; Garmin has no place to store it."));
+  box.append(mk("div", "rfoot", "The calories and macros are what you typed in or an assistant estimated from your description, so they are estimates. A day with nothing logged is not a day of zero. Fiber, sodium and the other nutrients are only what a food states: a total that counts fewer foods than the day has reads “≥”, because the foods that do not state it are unknown, not zero. Foods found by search or barcode come from Open Food Facts, a community-made database: check the numbers against the package when they matter. What Garmin says the day burned comes from the watch: today's is only what has burned so far. The food is kept here; Garmin has no place to store it."));
   $("fscroll").scrollTop = keep;
 }
 
@@ -3265,6 +3277,8 @@ function foodEntry(e, meal) {
   });
   const label = mk("div", "ft");
   label.append(mk("div", "fn", e.name), mk("div", "fm", NM.macros(e)));
+  const more = NM.nutrientLine(e.nutrients);
+  if (more) label.append(mk("div", "fm", more));
   row.append(label, mk("span", "fk", NM.kcal(e.kcal)), edit, del);
   return row;
 }
@@ -3355,13 +3369,17 @@ async function lookupCode(meal, code) {
 
 function pickFood(meal, food) {
   F.finds.delete(meal);
-  F.pick = { meal, food, amount: food.servingG ? "1" : "100", unit: food.servingG ? "portion" : "g" };
+  // a search hit has some of the nutrients only (the search index holds a few) and rarely the portion: the product's own page is fetched for both, and Add waits for it
+  F.pick = { meal, food, amount: food.servingG ? "1" : "100", unit: food.servingG ? "portion" : "g", loading: !!(food.code && !food.complete) };
   renderFood();
   const amount = document.querySelector(`#fbody [data-meal="${meal}"] .fpq input`);
   if (amount) { amount.focus(); amount.select(); }
   const p = F.pick;
-  if (food.code && !food.servingG) {
-    api("GET", `/api/foods/barcode?code=${food.code}`).then((r) => { if (r.food && F.pick === p && p.onServing) p.onServing(r.food); }).catch(() => { /* the portion is a convenience: grams work without it */ });
+  if (food.code && (!food.complete || !food.servingG)) {
+    api("GET", `/api/foods/barcode?code=${food.code}`)
+      .then((r) => { if (r.food && F.pick === p && p.onFull) p.onFull(r.food); })
+      .catch(() => { /* the portion and the other nutrients are conveniences: grams and what the search gave work without them */ })
+      .finally(() => { if (F.pick === p) { p.loading = false; if (p.repaint) p.repaint(); } });
   }
 }
 
@@ -3381,13 +3399,22 @@ function foodPicker(p) {
   const addPortion = () => unit.add(new Option(`portion (${Math.round(food.servingG * 10) / 10} ${food.unit})`, "portion"));
   if (food.servingG) addPortion();
   unit.value = p.unit;
-  // a search hit rarely says how big a portion is; the product's own page may, and is fetched in the background (see pickFood)
-  p.onServing = (full) => { if (food.servingG || !full.servingG) return; food.servingG = full.servingG; food.servingText = full.servingText; addPortion(); };
+  // the product's own page has every nutrient and may say how big a portion is: it is fetched in the background (see pickFood)
+  p.onFull = (full) => {
+    if (!food.complete) { food.nutrients = full.nutrients || food.nutrients; food.complete = true; }
+    if (!food.servingG && full.servingG) { food.servingG = full.servingG; food.servingText = full.servingText; addPortion(); }
+    paint();
+  };
   const paint = () => {
     const r = NM.portion(food, p.amount, p.unit);
-    preview.textContent = r ? `${NM.kcal(r.nutrition.kcal)} · ${NM.macros(r.nutrition)}` : `Give a quantity (up to ${NM.MAX_AMOUNT} g).`;
-    add.disabled = !r;
+    preview.replaceChildren();
+    if (r) {
+      preview.append(mk("div", "", `${NM.kcal(r.nutrition.kcal)} · ${NM.macros(r.nutrition)}`));
+      preview.append(mk("div", "fpm", NM.nutrientLine(r.nutrients) || (p.loading ? "Loading the other nutrients…" : "This product states no fiber or other nutrients.")));
+    } else preview.append(`Give a quantity (up to ${NM.MAX_AMOUNT} g).`);
+    add.disabled = !r || !!p.loading;
   };
+  p.repaint = paint;
   amount.oninput = () => { p.amount = amount.value; paint(); };
   amount.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); if (!add.disabled) add.click(); } };
   unit.onchange = () => { p.unit = unit.value; p.amount = p.unit === "portion" ? "1" : String(food.servingG || 100); amount.value = p.amount; paint(); };
@@ -3395,7 +3422,7 @@ function foodPicker(p) {
   add.onclick = guard(async () => {
     const r = NM.portion(food, p.amount, p.unit);
     if (!r) return toast(`Give a quantity (up to ${NM.MAX_AMOUNT} g).`, 4000);
-    if (!(await foodAction({ action: "add", day: F.data.date, meal: p.meal, items: [{ name: r.name, ...r.nutrition }] }))) return;
+    if (!(await foodAction({ action: "add", day: F.data.date, meal: p.meal, items: [{ name: r.name, ...r.nutrition, nutrients: r.nutrients }] }))) return;
     F.pick = null;
     renderFood();
     const q = document.querySelector(`#fbody [data-meal="${p.meal}"] .fq`);
@@ -3444,6 +3471,15 @@ function foodForm(meal) {
   // while the calories are empty the placeholder says what the macros add up to, which is what is kept
   const hint = () => { const k = NM.kcalOf(draft); inputs.kcal.placeholder = k === null ? "kcal" : `≈ ${k} kcal`; };
   const numAttrs = { type: "number", min: "0", step: "any", inputMode: "decimal" };
+  // the nutrients beyond the macros: left empty they are unknown (never saved as zero); the section opens by itself when one is filled in
+  const more = mk("details", "fmore"), nutrientGrid = mk("div", "fnl-grid");
+  more.append(mk("summary", "", "More nutrients (fiber, sodium…)"), nutrientGrid);
+  more.open = NM.hasNutrients(draft);
+  for (const n of NM.NUTRIENTS) {
+    const box = mk("label", "fnl", `${n.label} (${n.unit})`), input = field(n.key, `${n.label} (${n.unit})`, "fnn", numAttrs);
+    input.placeholder = n.unit;
+    box.append(input); nutrientGrid.append(box);
+  }
   form.append(
     field("name", "Food", "fname", { type: "text", maxLength: 120, autocomplete: "off", name: "food" }),
     field("kcal", "kcal", "fnum", numAttrs), field("proteinG", "P g", "fnum", numAttrs), field("carbsG", "C g", "fnum", numAttrs), field("fatG", "F g", "fnum", numAttrs)
@@ -3453,9 +3489,10 @@ function foodForm(meal) {
   // a food used lately fills the numbers in, unless some are typed already
   inputs.name.onchange = () => {
     const r = NM.recentMatch(F.data.recent, inputs.name.value);
-    if (!r || draft.kcal || draft.proteinG || draft.carbsG || draft.fatG) return;
+    if (!r || NM.hasNumbers(draft)) return;
     Object.assign(draft, NM.draftOf(r));
     for (const key of Object.keys(inputs)) inputs[key].value = draft[key];
+    more.open = more.open || NM.hasNutrients(draft);
     hint();
   };
   const save = mk("button", "primary", editing ? "Save" : "Add");
@@ -3467,6 +3504,7 @@ function foodForm(meal) {
     cancel.onclick = () => { F.editing = null; F.drafts.set(meal, NM.EMPTY_DRAFT()); renderFood(); };
     form.append(cancel);
   }
+  form.append(more);
   form.onsubmit = (ev) => {
     ev.preventDefault();
     guard(async () => {

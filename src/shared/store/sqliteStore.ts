@@ -3,7 +3,7 @@ import * as path from "path";
 import { ACTIVITY_SCHEMA, ActivityTable } from "./activities";
 import { CREDENTIAL_SCHEMA, CredentialTable } from "./credentials";
 import { FOOD_CACHE_SCHEMA, FoodCacheTable } from "./foods";
-import { NUTRITION_SCHEMA, NutritionTable } from "./nutrition";
+import { NUTRITION_SCHEMA, NutritionTable, migrateNutrition } from "./nutrition";
 import { RENPHO_SCHEMA, RenphoTable } from "./renpho";
 import { TOKEN_SCHEMA, TokenTable } from "./tokens";
 import { WELLNESS_SCHEMA, WellnessTable } from "./wellness";
@@ -116,7 +116,10 @@ export class SqliteStore {
     const db = new DatabaseSync(file);
     db.exec("PRAGMA busy_timeout = 5000");
     const store = new SqliteStore(db, file);
-    store.tx(() => db.exec(SCHEMA));
+    store.tx(() => {
+      db.exec(SCHEMA);
+      migrateNutrition(db);
+    });
     return store;
   }
 
