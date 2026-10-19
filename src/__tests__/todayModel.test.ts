@@ -39,6 +39,19 @@ describe("how old the numbers are", () => {
     expect(TM.freshness(old, NOW)).toEqual({ text: "Fetched 40 min ago", stale: true });
   });
 
+  it("tells you to sync the watch from the Garmin Connect app once it has been three hours without", () => {
+    const at = (hours: number) => view({ progress: { ...view().progress, watchSyncedAt: NOW - hours * 3_600_000 } });
+    expect(TM.watchHint(at(3), NOW)).toBe(""); // exactly three hours is not yet
+    expect(TM.watchHint(at(3.01), NOW)).toMatch(/Open Garmin Connect on your phone.*press Sync here/);
+    expect(TM.watchHint(view(), NOW)).toBe(""); // synced 3 h ago in the default view, which is the boundary
+    expect(TM.watchHint(at(0.2), NOW)).toBe("");
+  });
+
+  it("has nothing to say without the watch's time or without a summary", () => {
+    expect(TM.watchHint(view({ progress: { ...view().progress, watchSyncedAt: null } }), NOW)).toBe("");
+    expect(TM.watchHint(view({ progress: null }), NOW)).toBe("");
+  });
+
   it("says plainly that nothing is stored when there is no summary", () => {
     const none = TM.freshness(view({ progress: null }), NOW);
     expect(none.stale).toBe(true);

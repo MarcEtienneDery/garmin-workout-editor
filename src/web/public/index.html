@@ -236,6 +236,7 @@
   .scard .sub { margin:0 0 10px; color:var(--dim); font-size:12px; line-height:1.5; }
   /* ── Today view: the day so far (tiles with a bar), the workouts planned, what was done ── */
   #tTitle { flex:0 0 auto; font-size:14px; } #tAsOf { flex:1 1 12em; min-width:0; color:var(--dim); } #tAsOf.stale { color:var(--warn); }
+  .thint { padding:8px 10px; border:1px solid #7a6a3d; border-left-width:3px; border-radius:4px; background:#2f2b1f; line-height:1.4; }
   .tfig { cursor:pointer; } .tfig:hover { border-color:#5a5a5a; }
   .tbar { height:6px; margin-top:8px; background:#3a3a3a; border-radius:3px; overflow:hidden; } .tbar i { display:block; height:100%; width:var(--w); background:var(--accent); } .tbar.done i { background:var(--ok); }
   .tcard { margin-bottom:12px; padding:12px 14px; background:var(--panel); border:1px solid var(--line); border-radius:4px; }
@@ -3573,6 +3574,8 @@ function renderToday() {
   if (T.error && !d) { box.append(mk("div", "msg err", T.error)); return; }
   if (!ready) { box.append(mk("div", "empty", "No Garmin profile is configured.")); return; }
 
+  const hint = TM.watchHint(d, Date.now());
+  if (hint) box.append(mk("div", "msg warn thint", hint));
   box.append(todayWorkouts(d));
   box.append(todayTiles(TM.progressTiles(d)));
   box.append(mk("h3", "", "Food"));

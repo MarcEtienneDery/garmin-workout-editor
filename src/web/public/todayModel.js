@@ -20,6 +20,8 @@
   const MINUTE_MS = 60_000;
   /** The server fetches today's summary again once it is this old, so older than this is worth a Sync. */
   const STALE_MS = 30 * MINUTE_MS;
+  /** The watch has been this long without a sync with the phone before the page says so. */
+  const WATCH_STALE_MS = 3 * 60 * MINUTE_MS;
 
   // ── How old ─────────────────────────────────────────────────────────────
 
@@ -46,6 +48,17 @@
     if (valid(p.watchSyncedAt)) parts.push(`Watch synced ${ago(p.watchSyncedAt, now)}`);
     parts.push(`${parts.length ? "fetched" : "Fetched"} ${ago(p.fetchedAt, now)}`);
     return { text: parts.join(" · "), stale: now - p.fetchedAt > STALE_MS };
+  }
+
+  /**
+   * What to do when the watch has not synced with Garmin for a while, or "". Garmin gives no way to ask the watch to sync from
+   * here: it uploads through the Garmin Connect app on the phone, so the numbers stay as they were however often Sync is pressed.
+   * Said only when Garmin gave the watch's time: without it there is nothing to say.
+   */
+  function watchHint(view, now) {
+    const p = view.progress;
+    if (!p || !valid(p.watchSyncedAt) || now - p.watchSyncedAt <= WATCH_STALE_MS) return "";
+    return "The watch has not synced for a while, so these numbers may be behind. Open Garmin Connect on your phone (pull down to sync), then press Sync here.";
   }
 
   // ── Progress tiles ──────────────────────────────────────────────────────
@@ -134,5 +147,5 @@
     return { label: info.label, cls: info.cls, score: readiness.score, text: readiness.suggestion };
   }
 
-  return { STALE_MS, ago, freshness, percent, progressTiles, foodTiles, typeLabel, dayName, workoutDays, activityLine, readinessLine };
+  return { STALE_MS, WATCH_STALE_MS, ago, freshness, watchHint, percent, progressTiles, foodTiles, typeLabel, dayName, workoutDays, activityLine, readinessLine };
 });
