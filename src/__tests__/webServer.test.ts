@@ -583,6 +583,133 @@ describe("web plan editor", () => {
       });
     });
 
+    describe("the Today view", () => {
+      const savedTz = process.env.GARMIN_TZ;
+      beforeEach(() => {
+        process.env.GARMIN_TZ = "UTC";
+      });
+      afterEach(() => {
+        if (savedTz === undefined) delete process.env.GARMIN_TZ; else process.env.GARMIN_TZ = savedTz;
+      });
+      const today = () => new Date().toISOString().slice(0, 10);
+      const dayOf = (back: number) => new Date(Date.parse(`${today()}T00:00:00Z`) - back * 86_400_000).toISOString().slice(0, 10);
+      const sinceMonday = () => (new Date(Date.parse(`${today()}T00:00:00Z`)).getUTCDay() + 6) % 7;
+      const workout = (name: string, date: string | string[], extra: Record<string, unknown> = {}) => ({ workoutName: name, workoutType: "strength_training", scheduledDate: date, ...extra });
+      const run = (id: number, day: string, extra: Record<string, unknown> = {}) =>
+        toNewActivity({ activityId: id, activityName: `Activity ${id}`, activityType: { typeKey: "running" }, startTimeGMT: `${day} 12:00:00`, startTimeLocal: `${day} 08:30:00`, distance: 5000, duration: 1500, calories: 300, ...extra })!;
+
+      it("has no profile, nothing today", async () => {
+        expect((await call("GET", "/api/today")).json).toEqual({ profile: null });
+        addProfile("MED");
+        const out = (await call("GET", "/api/today")).json;
+        expect(out).toEqual(expect.objectContaining({ profile: "MED", today: today(), day: null, progress: null, workouts: [], activities: [], hasActivities: false }));
+        expect(out.week).toEqual({ start: dayOf(sinceMonday()), minutes: 0, daysStored: 0, days: sinceMonday() + 1 });
+        expect(out.readiness.band).toBe("unknown");
+        expect(out.food).toEqual(expect.objectContaining({ day: today(), entries: 0, burnedKcal: null, netKcal: null }));
+        expect(out.food.meals).toBeUndefined();
+        expect(w.refreshWellness).not.toHaveBeenCalled(); // a read never calls Garmin
+        expect(a.refreshActivities).not.toHaveBeenCalled();
+      });
+
+      it("gives today's steps and the goals, with when the summary was fetched and the watch last synced", async () => {
+        addProfile("MED");
+        store().wellness.put("MED", today(), "summary", { ...summaryResponse({ steps: 4491 }), dailyStepGoal: 6230, totalDistanceMeters: 3444, bodyBatteryMostRecentValue: 31, lastSyncTimestampGMT: "2026-10-18T18:08:03.727" }, 1_700_000_000_000);
+        const out = (await call("GET", "/api/today")).json;
+        expect(out.day).toEqual(expect.objectContaining({ day: today(), steps: 4491, totalKcal: 2600 }));
+        expect(out.progress).toEqual({ fetchedAt: 1_700_000_000_000, stepGoal: 6230, intensityGoal: 150, distanceMeters: 3444, bodyBatteryNow: 31, watchSyncedAt: Date.parse("2026-10-18T18:08:03.727Z") });
+      });
+
+      it("never reports a missing summary as zero steps, even when the night's sleep is stored", async () => {
+        addProfile("MED");
+        store().wellness.put("MED", today(), "sleep", sleepResponse());
+        const out = (await call("GET", "/api/today")).json;
+        expect(out.day.steps).toBeNull();
+        expect(out.day.sleepSeconds).toBe(27_000);
+        expect(out.progress).toBeNull();
+      });
+
+      it("counts the intensity minutes of the week from Monday, a vigorous minute twice, and not the days before", async () => {
+        addProfile("MED");
+        for (let back = 0; back <= sinceMonday() + 1; back++) store().wellness.put("MED", dayOf(back), "summary", summaryResponse()); // moderate 20 + vigorous 10 a day, and the Sunday before
+        const week = (await call("GET", "/api/today")).json.week;
+        expect(week).toEqual({ start: dayOf(sinceMonday()), minutes: 40 * (sinceMonday() + 1), daysStored: sinceMonday() + 1, days: sinceMonday() + 1 });
+      });
+
+      it("lists the workouts the profile's plans put on today and the next 7 days, once each, and marks today's done by the activity that started from it", async () => {
+        addProfile("MED");
+        seed("workout-plans/a.json", { weekStart: dayOf(1), weekEnd: dayOf(-6), workouts: [
+          workout("Upper A", today(), { workoutId: 111, estimatedDurationSeconds: 3300 }),
+          workout("Easy run", dayOf(-1), { workoutType: "running", workoutId: 222 }),
+          workout("Both days", [dayOf(-2), dayOf(-3)]),
+          workout("Yesterday", dayOf(1), { workoutId: 333 }),
+          workout("Too far", dayOf(-8), { workoutId: 444 }),
+          workout("A week out", dayOf(-7), { workoutType: "running", workoutId: 555 }),
+          workout("Not scheduled", "soon"),
+        ] });
+        seed("data/MED/copy.json", [workout("Upper A", today(), { workoutId: 111 })]); // the same workout in another file
+        store().activities.insertNew("MED", [run(1, today(), { workoutId: 111 }), run(2, dayOf(1), { workoutId: 222 })]);
+        const out = (await call("GET", "/api/today")).json;
+        expect(out.workouts.map((x: any) => [x.date, x.name, x.done])).toEqual([
+          [today(), "Upper A", true],
+          [dayOf(-1), "Easy run", false],
+          [dayOf(-2), "Both days", false],
+          [dayOf(-3), "Both days", false],
+          [dayOf(-7), "A week out", false],
+        ]);
+        expect(out.workouts[0]).toEqual({ date: today(), path: "workout-plans/a.json", index: 0, name: "Upper A", type: "strength_training", seconds: 3300, done: true, workout: expect.objectContaining({ workoutName: "Upper A", workoutId: 111 }) });
+        expect(out.workouts[1]).toEqual(expect.objectContaining({ type: "running", seconds: null }));
+        expect(out.activities.map((x: any) => x.id)).toEqual(["1"]); // yesterday's run is not today's
+        expect(out.hasActivities).toBe(true);
+      });
+
+      it("does not call a workout done because of an activity that was not started from it", async () => {
+        addProfile("MED");
+        seed("workout-plans/a.json", [workout("Upper A", today(), { workoutId: 111 }), workout("No id yet", today())]);
+        store().activities.insertNew("MED", [run(1, today(), { workoutId: 999 }), run(2, today(), { workoutId: undefined })]);
+        const out = (await call("GET", "/api/today")).json;
+        expect(out.workouts.map((x: any) => x.done)).toEqual([false, false]);
+        expect(out.activities).toHaveLength(2);
+      });
+
+      it("sorts today's activities by the time they started, by the watch's clock rather than GMT", async () => {
+        addProfile("MED");
+        store().activities.insertNew("MED", [run(1, today(), { startTimeLocal: `${today()} 18:00:00` }), run(2, today(), { startTimeLocal: `${today()} 07:15:00`, startTimeGMT: `${today()} 11:15:00` })]);
+        expect((await call("GET", "/api/today")).json.activities.map((x: any) => x.time)).toEqual(["07:15", "18:00"]);
+      });
+
+      it("adds up the food logged today next to what the day burned", async () => {
+        addProfile("MED");
+        store().wellness.put("MED", today(), "summary", summaryResponse());
+        await call("POST", "/api/nutrition", { action: "add", meal: "lunch", items: [{ name: "Rice", kcal: 200, proteinG: 4, carbsG: 45, fatG: 0.5 }] });
+        const food = (await call("GET", "/api/today")).json.food;
+        expect(food).toEqual(expect.objectContaining({ day: today(), kcal: 200, entries: 1, burnedKcal: 2600, netKcal: -2400, burnedSoFar: true }));
+      });
+
+      it("shows each profile only its own plans, and its own data", async () => {
+        addProfile("MED", "med-pw");
+        addProfile("SAM", "sam-pw");
+        store().put("workout-plans/med.json", JSON.stringify([workout("Med only", today())]), { source: "test", create: true, owner: "MED" });
+        store().put("workout-plans/sam.json", JSON.stringify([workout("Sam only", today())]), { source: "test", create: true, owner: "SAM" });
+        seed("data/MED/own.json", [workout("Med data file", today())]);
+        store().wellness.put("MED", today(), "summary", summaryResponse({ steps: 1234 }));
+        const as = (user: string, pass: string) => ({ ...H, Authorization: `Basic ${Buffer.from(`${user}:${pass}`).toString("base64")}` });
+        const names = async (user: string, pass: string, query = "") => (await call("GET", `/api/today${query}`, undefined, as(user, pass))).json.workouts.map((x: any) => x.name).sort();
+        expect(await names("MED", "med-pw")).toEqual(["Med data file", "Med only"]);
+        expect(await names("SAM", "sam-pw")).toEqual(["Sam only"]);
+        expect(await names("SAM", "sam-pw", "?profile=MED")).toEqual(["Sam only"]); // asking for MED gets SAM's
+        expect((await call("GET", "/api/today", undefined, as("SAM", "sam-pw"))).json.day).toBeNull();
+        expect((await call("GET", "/api/today", undefined, as("MED", "med-pw"))).json.day.steps).toBe(1234);
+      });
+
+      it("asks Garmin for today's summary again only when the page says fresh", async () => {
+        addProfile("MED");
+        await call("POST", "/api/wellness/sync", {});
+        expect(w.refreshWellness).toHaveBeenLastCalledWith("MED");
+        await call("POST", "/api/wellness/sync", { fresh: true });
+        expect(w.refreshWellness).toHaveBeenLastCalledWith("MED", { fresh: true });
+      });
+    });
+
     describe("the Food view", () => {
       const savedTz = process.env.GARMIN_TZ;
       beforeEach(() => {

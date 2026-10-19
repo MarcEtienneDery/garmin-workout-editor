@@ -54,6 +54,11 @@ export const summaryResponse = (over: { rhr?: number; rhr7?: number; stress?: nu
   totalKilocalories: 2600,
   activeKilocalories: 650,
   bmrKilocalories: 1950,
+  dailyStepGoal: 6000,
+  intensityMinutesGoal: 150,
+  totalDistanceMeters: 5200,
+  bodyBatteryMostRecentValue: 40,
+  lastSyncTimestampGMT: "2026-01-01T08:00:00.000",
 });
 
 /** A weigh-in the way Garmin's day view gives it: weights in grams. */

@@ -33,6 +33,8 @@ const URLS: Record<WellnessKind, (day: string, name: string) => string> = {
 const NOW_KINDS: WellnessKind[] = ["summary", "sleep", "hrv", "weight"];
 /** The last days whose responses are fetched again by a call, as the watch syncs late. */
 const RECENT_DAYS = 3;
+/** A page that shows today's steps asks for the day's summary again when it is older than this, instead of REFRESH_MS. */
+const FRESH_MS = 60_000;
 const MAX_RANGE_DAYS = 120;
 /** How many days the background sync keeps: 60, or WELLNESS_DAYS. */
 const keptDays = (): number => Math.min(MAX_RANGE_DAYS, Math.max(RECENT_DAYS, Math.floor(Number(process.env.WELLNESS_DAYS)) || BACKFILL_DAYS));
@@ -56,16 +58,23 @@ export function wellnessSourceFor(session: Session): WellnessSource {
   };
 }
 
-/** Fetch the last days' readiness kinds now, unless a background sync is on it or Garmin said to wait. Never throws. */
-export async function refreshWellness(profile?: string): Promise<{ fetched: number; busy: boolean; error: string | null }> {
+/**
+ * Fetch the last days' readiness kinds now, unless a background sync is on it or Garmin said to wait. Never throws.
+ * `fresh` also fetches today's summary again unless it was fetched a minute ago, so the steps on screen are not up to half an hour old.
+ */
+export async function refreshWellness(profile?: string, options: { fresh?: boolean } = {}): Promise<{ fetched: number; busy: boolean; error: string | null }> {
   const session = getSession(profile), store = getStore(), name = session.profile.name;
   if (isWellnessBackfilling(store, name)) return { fetched: 0, busy: true, error: null };
   const wait = Math.max(store.wellness.state(name).retryAfter ?? 0, store.activities.state(name).retryAfter ?? 0);
   if (Date.now() < wait) return { fetched: 0, busy: false, error: store.wellness.state(name).error ?? store.activities.state(name).error ?? "Garmin asked to wait." };
   try {
-    const leased = await withWellnessLease(store, name, holder(), (renew) =>
-      syncWellness(store, name, wellnessSourceFor(session), { today: localToday(store, name), days: RECENT_DAYS, kinds: NOW_KINDS, renew, gapMs: detailGapMs() })
-    );
+    const leased = await withWellnessLease(store, name, holder(), async (renew) => {
+      const source = wellnessSourceFor(session), today = localToday(store, name), gapMs = detailGapMs();
+      const found = await syncWellness(store, name, source, { today, days: RECENT_DAYS, kinds: NOW_KINDS, renew, gapMs });
+      if (!options.fresh || found.stopped) return found;
+      const again = await syncWellness(store, name, source, { today, days: 1, kinds: ["summary"], staleMs: FRESH_MS, renew, gapMs });
+      return { fetched: found.fetched + again.fetched, failed: found.failed + again.failed, stopped: again.stopped };
+    });
     if (!leased.ok) return { fetched: 0, busy: true, error: null };
     return { fetched: leased.value.fetched, busy: false, error: leased.value.stopped };
   } catch (error) {

@@ -31,3 +31,26 @@ export function bodyRange(store: SqliteStore, profile: string, from: string, to:
   const days = store.wellness.metrics(profile, from, to).map(({ day, weightKg, bodyFatPercent, muscleKg, bmi, totalKcal, activeKcal, bmrKcal }) => ({ day, weightKg, bodyFatPercent, muscleKg, bmi, totalKcal, activeKcal, bmrKcal }));
   return { body: bodyTrend(days), days };
 }
+
+export interface IntensityWeek {
+  /** The Monday the week began, which is when Garmin starts counting the week's minutes. */
+  start: string;
+  /** Moderate minutes plus twice the vigorous ones, from `start` to the day asked. */
+  minutes: number;
+  /** How many of the `days` so far have a summary stored: fewer means the total is short. */
+  daysStored: number;
+  days: number;
+}
+
+/**
+ * The intensity minutes of the week so far. Garmin's goal (150) is for the week, so one day's minutes say nothing about it.
+ * The week starts on Monday: Garmin's weekly intensity totals (usersummary-service/stats/im/weekly) are keyed by Monday whatever
+ * "first day of the week" the account has, and equal the stored daily minutes added up by Monday weeks (checked on a real account).
+ */
+export function intensityWeek(store: SqliteStore, profile: string, today: string): IntensityWeek {
+  const sinceMonday = (new Date(Date.parse(`${today}T00:00:00Z`)).getUTCDay() + 6) % 7;
+  const start = addDays(today, -sinceMonday);
+  const stored = store.wellness.metrics(profile, start, today).filter((m) => m.moderateMinutes !== null || m.vigorousMinutes !== null);
+  const minutes = stored.reduce((total, m) => total + (m.moderateMinutes ?? 0) + 2 * (m.vigorousMinutes ?? 0), 0);
+  return { start, minutes, daysStored: stored.length, days: sinceMonday + 1 };
+}

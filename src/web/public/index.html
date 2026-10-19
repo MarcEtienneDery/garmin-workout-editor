@@ -12,7 +12,7 @@
   html,body { height:100%; margin:0; }
   body { height:100dvh; background:var(--bg); color:var(--fg); font:13px/1.4 system-ui,sans-serif; display:grid; grid-template-rows:auto auto minmax(0,1fr) auto; grid-template-columns:minmax(0,1fr); -webkit-tap-highlight-color:transparent; }
   /* Every view has the same frame: the header (name, view switcher, account), then that view's own toolbar and content, then on phones the bottom tabs. */
-  header { grid-row:1; } #toolbar { grid-row:2; } main, #wview, #cview, #aview, #rview, #bview, #sview { grid-row:3; } #tabbar { grid-row:4; }
+  header { grid-row:1; } #toolbar { grid-row:2; } main, #wview, #cview, #aview, #rview, #bview, #fview, #sview, #tview { grid-row:3; } #tabbar { grid-row:4; }
   header, #toolbar { position:relative; display:flex; gap:6px; align-items:center; padding:6px 10px; background:var(--panel); border-bottom:1px solid var(--line); }
   #toolbar { flex-wrap:wrap; }
   header h1 { font-size:13px; margin:0 8px 0 0; }
@@ -192,14 +192,14 @@
   details.plan-version { margin-top:10px; } details.plan-version summary { cursor:pointer; color:var(--dim); }
 
   /* ── Recovery view: the readiness for a day, the trends, the stored numbers and Garmin's responses ── */
-  body:not([data-view="recovery"]) #rview, body:not([data-view="weight"]) #bview, body:not([data-view="food"]) #fview, body:not([data-view="settings"]) #sview { display:none; }
-  #rview, #bview, #fview, #sview { display:flex; flex-direction:column; min-height:0; min-width:0; }
-  #rbar, #bbar, #fbar, #sbar { flex-wrap:wrap; }
-  #rNote, #bNote, #fNote, #sNote { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
-  #rNote.err, #bNote.err, #fNote.err, #sNote.err { color:var(--err); }
-  #rscroll, #bscroll, #fscroll, #sscroll { flex:1; min-height:0; overflow:auto; overscroll-behavior:contain; }
-  #rbody, #bbody, #fbody, #sbody { max-width:1040px; margin:0 auto; padding:12px 16px 32px; }
-  #rbody h3, #bbody h3, #fbody h3, #sbody h3 { margin:22px 0 8px; font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--dim); }
+  body:not([data-view="recovery"]) #rview, body:not([data-view="weight"]) #bview, body:not([data-view="food"]) #fview, body:not([data-view="settings"]) #sview, body:not([data-view="today"]) #tview { display:none; }
+  #rview, #bview, #fview, #sview, #tview { display:flex; flex-direction:column; min-height:0; min-width:0; }
+  #rbar, #bbar, #fbar, #sbar, #tbar { flex-wrap:wrap; }
+  #rNote, #bNote, #fNote, #sNote, #tNote { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  #rNote.err, #bNote.err, #fNote.err, #sNote.err, #tNote.err { color:var(--err); }
+  #rscroll, #bscroll, #fscroll, #sscroll, #tscroll { flex:1; min-height:0; overflow:auto; overscroll-behavior:contain; }
+  #rbody, #bbody, #fbody, #sbody, #tbody { max-width:1040px; margin:0 auto; padding:12px 16px 32px; }
+  #rbody h3, #bbody h3, #fbody h3, #sbody h3, #tbody h3 { margin:22px 0 8px; font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--dim); }
   .rready { display:grid; grid-template-columns:auto minmax(0,1fr); gap:4px 20px; align-items:center; padding:14px 16px; background:var(--panel); border:1px solid var(--line); border-left:4px solid var(--c); border-radius:4px; }
   .rready.go { --c:var(--ok); } .rready.plan { --c:var(--accent); } .rready.back { --c:var(--warn); } .rready.unknown { --c:var(--dim); }
   .rband { font-size:22px; font-weight:600; color:var(--c); line-height:1.2; }
@@ -234,6 +234,22 @@
   .scard { background:var(--panel); border:1px solid var(--line); border-radius:4px; padding:12px 14px; margin-bottom:14px; }
   .scard h2 { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:0 0 2px; font-size:15px; }
   .scard .sub { margin:0 0 10px; color:var(--dim); font-size:12px; line-height:1.5; }
+  /* ── Today view: the day so far (tiles with a bar), the workouts planned, what was done ── */
+  #tTitle { flex:0 0 auto; font-size:14px; } #tAsOf { flex:1 1 12em; min-width:0; color:var(--dim); } #tAsOf.stale { color:var(--warn); }
+  .tfig { cursor:pointer; } .tfig:hover { border-color:#5a5a5a; }
+  .tbar { height:6px; margin-top:8px; background:#3a3a3a; border-radius:3px; overflow:hidden; } .tbar i { display:block; height:100%; width:var(--w); background:var(--accent); } .tbar.done i { background:var(--ok); }
+  .tcard { margin-bottom:12px; padding:12px 14px; background:var(--panel); border:1px solid var(--line); border-radius:4px; }
+  .tch { display:flex; gap:6px 10px; align-items:center; flex-wrap:wrap; } .tch b { font-size:15px; } .tch .chip { cursor:pointer; } .tch .tspace { flex:1 1 0; }
+  .tsug { margin:6px 0 2px; color:var(--dim); line-height:1.45; }
+  .twk { display:grid; grid-template-columns:18px minmax(0,1fr) auto; gap:0 10px; align-items:center; padding:8px 4px; border-top:1px solid var(--line); cursor:pointer; } .twk:hover { background:#2d2d2e; }
+  .twk .tk { text-align:center; color:var(--dim); } .twk.done .tk { color:var(--ok); }
+  .twk .tn { min-width:0; font-weight:600; overflow-wrap:anywhere; } .twk .tm { grid-column:2; color:var(--dim); font-size:12px; } .twk .chip { grid-row:1 / span 2; grid-column:3; }
+  .tcard .tch + .twk, .tcard .tch + .tnone, .tcard .tch + .tsug { margin-top:8px; }
+  .tnone { margin:0; color:var(--dim); }
+  .tdone { margin-top:10px; padding-top:8px; border-top:1px solid var(--line); } .tdone h4 { margin:0 0 4px; font-size:11px; font-weight:400; text-transform:uppercase; letter-spacing:.06em; color:var(--dim); }
+  .tdone .ta { display:flex; gap:4px 10px; flex-wrap:wrap; padding:3px 0; } .tdone .ta b { font-weight:600; } .tdone .ta span { color:var(--dim); }
+  .tday { margin:10px 0 0; font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--dim); }
+  .tgo { margin-top:8px; }
   /* ── Food view: a block per meal with its foods and a form to add one ── */
   .fmeal { margin-top:12px; padding:8px 12px 10px; background:var(--panel); border:1px solid var(--line); border-radius:4px; }
   .fmh { display:flex; gap:4px 10px; align-items:baseline; flex-wrap:wrap; } .fmh b { font-size:14px; } .fmh span { color:var(--dim); font-size:12px; }
@@ -528,9 +544,10 @@
     .empty { padding:16px 12px; font-size:14px; }
     #toast { max-width:92vw; font-size:14px; }
 
-    #views button { flex:1 1 auto; min-width:0; padding:6px 3px; font-size:12px; } /* the seven views share the room the account leaves */
-    @media (max-width:420px) { #views button { font-size:10.5px; padding:6px 1px; } #accountName { display:none; } #accountBtn { padding:6px 8px; } }
-    @media (max-width:370px) { #views button { font-size:10.5px; padding:6px 1px; } }
+    /* the views share the room the account leaves and are never squeezed: when they do not fit, the strip scrolls (setView brings the open one into sight) */
+    #views { overflow-x:auto; scrollbar-width:none; } #views::-webkit-scrollbar { display:none; }
+    #views button { flex:1 0 auto; padding:6px 10px; font-size:13px; white-space:nowrap; }
+    @media (max-width:420px) { #accountName { display:none; } #accountBtn { padding:6px 8px; } }
     #wview { display:block; position:relative; overflow:hidden; }
     #wlist, #wdetail { width:100%; height:100%; border:0; }
     body:not([data-wpane="detail"]) #wdetail, body[data-wpane="detail"] #wlist { display:none; }
@@ -589,7 +606,7 @@
   }
 </style>
 </head>
-<body data-view="plans">
+<body data-view="today">
 <div id="login" hidden>
   <form id="loginForm" method="post" action="/api/login">
     <h2>Plan Editor</h2>
@@ -603,7 +620,8 @@
 <header>
   <h1>Plan Editor</h1>
   <nav id="views" aria-label="View">
-    <button id="vPlans" aria-pressed="true">Plans</button>
+    <button id="vToday" aria-pressed="true">Today</button>
+    <button id="vPlans" aria-pressed="false">Plans</button>
     <button id="vWorkouts" aria-pressed="false">Workouts</button>
     <button id="vCalendar" aria-pressed="false">Calendar</button>
     <button id="vActivities" aria-pressed="false">Activities</button>
@@ -817,6 +835,16 @@
   <div id="fNote" class="empty" hidden></div>
   <div id="fscroll"><div id="fbody"><div class="empty">Loading…</div></div></div>
 </section>
+<section id="tview">
+  <div class="wbar" id="tbar">
+    <select id="tProfile" title="Garmin profile" hidden></select>
+    <b id="tTitle"></b>
+    <span id="tAsOf"></span>
+    <button id="tSync" title="Ask Garmin for today's numbers and activities now" hidden>↻ Sync</button>
+  </div>
+  <div id="tNote" class="empty" hidden></div>
+  <div id="tscroll"><div id="tbody"><div class="empty">Loading…</div></div></div>
+</section>
 <section id="sview">
   <div class="wbar" id="sbar">
     <button id="sBack" title="Back to the view you came from">◀ Back</button>
@@ -880,6 +908,7 @@
 <script src="/recoveryModel.js"></script>
 <script src="/weightModel.js"></script>
 <script src="/nutritionModel.js"></script>
+<script src="/todayModel.js"></script>
 <script src="/barcodeScanner.js"></script>
 <script src="/settingsModel.js"></script>
 <script src="/trendCharts.js"></script>
@@ -1605,9 +1634,10 @@ const prettyName = (key) => String(key).toLowerCase().split("_").map((x) => x.ch
 const planName = (path) => path.split("/").pop().replace(/\.json$/, "");
 const upcoming = (w) => [].concat((w && w.scheduledDate) || []).filter((d) => d >= new Date().toISOString().slice(0, 10));
 
-let prevView = "plans";
+let prevView = "today";
 function setView(view) {
   document.body.dataset.view = view;
+  $("vToday").setAttribute("aria-pressed", String(view === "today"));
   $("vPlans").setAttribute("aria-pressed", String(view === "plans"));
   $("vWorkouts").setAttribute("aria-pressed", String(view === "workouts"));
   $("vCalendar").setAttribute("aria-pressed", String(view === "calendar"));
@@ -1615,10 +1645,13 @@ function setView(view) {
   $("vRecovery").setAttribute("aria-pressed", String(view === "recovery"));
   $("vWeight").setAttribute("aria-pressed", String(view === "weight"));
   $("vFood").setAttribute("aria-pressed", String(view === "food"));
+  const open = document.querySelector('#views [aria-pressed="true"]');
+  if (open) open.scrollIntoView({ inline: "nearest", block: "nearest" }); // on a phone the strip of views scrolls
   if (view === "settings" && prevView !== "settings") S.from = prevView;
   prevView = view;
   if (!navRestoring) document.body.dataset.wpane = "list"; // a pane belongs to its view: switching views starts on the list
-  if (view === "workouts") guard(loadWorkouts)();
+  if (view === "today") guard(loadToday)();
+  else if (view === "workouts") guard(loadWorkouts)();
   else if (view === "calendar") guard(loadCalendar)(); // plans change in the editor, so look again on every visit
   else if (view === "activities") guard(loadActivities)();
   else if (view === "recovery") guard(loadRecovery)();
@@ -1810,7 +1843,7 @@ function pacerFor(profile) {
       .then((r) => RUNS.set(key, WM.pacerFrom(r.runs)), () => RUNS.set(key, null))
       .finally(() => {
         runsLoading.delete(key);
-        if (RUNS.get(key)) { if (document.body.dataset.view === "plans") renderOutline(); else if (W.detail) renderDetail(); }
+        if (RUNS.get(key)) { if (document.body.dataset.view === "plans") renderOutline(); else if (document.body.dataset.view === "today") renderToday(); else if (W.detail) renderDetail(); }
       });
   }
   return null;
@@ -2921,18 +2954,20 @@ async function loadWellness(V) {
 }
 const loadRecovery = () => loadWellness(R), loadWeight = () => loadWellness(B);
 
-/** Ask Garmin for the last days now and start the background fill of the rest. */
+/** Ask Garmin for the last days now and start the background fill of the rest. Resolves with the server's answer, null when nothing was asked. */
 async function syncWellness(V, quiet = false) {
-  if (V.busy) return;
+  if (V.busy) return null;
   V.busy = true; $(V.p + "Sync").disabled = true;
   if (!quiet) { V.note = "Asking Garmin…"; renderWellnessNote(V); }
+  let r = null;
   try {
-    const r = await api("POST", "/api/wellness/sync", { profile: V.profile, rereadWeight: V === B && !quiet });
-    V.note = r.error ? `Garmin: ${r.error}` : r.busy && !quiet ? "A sync is already running; this view follows it." : quiet ? "" : r.fetched ? `${r.fetched} responses fetched.` : "Nothing new on Garmin.";
+    r = await api("POST", "/api/wellness/sync", { profile: V.profile, rereadWeight: V === B && !quiet, fresh: !!V.fresh && !quiet });
+    V.note = r.error ? `Garmin: ${r.error}` : r.busy && !quiet ? "A sync is already running; this view follows it." : quiet ? "" : r.fetched ? `${r.fetched} response${r.fetched === 1 ? "" : "s"} fetched.` : "Nothing new on Garmin.";
     await reloadWellness(V);
   } catch (e) { if (!quiet) V.error = e.message; }
   finally { V.busy = false; $(V.p + "Sync").disabled = false; V.render(); }
   if (V.data && V.data.sync && V.data.sync.syncing) pollWellness(V);
+  return r;
 }
 
 async function reloadWellness(V) {
@@ -2954,6 +2989,7 @@ async function pollWellness(V) {
 }
 
 function renderWellnessNote(V) {
+  if (V.renderNote) return V.renderNote(V);
   const note = $(V.p + "Note"), d = V.data, s = d && d.sync;
   const parts = [];
   if (V.note) parts.push(V.note);
@@ -3462,6 +3498,161 @@ function bindFoodView() {
   $("fProfile").onchange = (e) => { Object.assign(F, { profile: e.target.value, date: null, data: null, loaded: false, error: "", editing: null, pick: null }); F.drafts.clear(); F.finds.clear(); guard(loadFood)(); };
   $("scanCancel").onclick = () => $("scandlg").close();
   addEventListener("pagehide", () => { if ($("scandlg").open) $("scandlg").close(); }); // the camera light must not stay on
+}
+
+// ── Today ────────────────────────────────────────────────────────────────
+// The page that opens first (/api/today): how far the day is (steps, the week's intensity minutes, Body Battery, sleep, food),
+// the workouts the plans put on today and the days after it, and the activities done today. It reads the database. Garmin is
+// asked when the page is opened (the cheap look the other health views take, which the server answers only for what is half an
+// hour old) and when someone presses Sync (today's summary again whatever its age, and the new activities). The logic is todayModel.js.
+const TM = TodayModel;
+const ACTIVITY_LOOK_MS = 10 * 60_000, TODAY_RELOAD_MS = 5 * 60_000;
+const T = wellnessView("today", "t", "/api/today", 0, () => renderToday(), { fresh: true, renderNote: (V) => renderTodayNote(V), activitiesAt: 0, activitiesBusy: false, shownAt: 0 });
+
+async function loadToday() {
+  T.refreshed = false; // every visit takes the cheap look again
+  await loadWellness(T);
+  T.shownAt = Date.now();
+  lookForActivities();
+}
+
+/** The new activities, so that "done today" is current: one Garmin call, at most every ten minutes, and only once some are stored (the first fill is the person's call, as in the Activities view). */
+async function lookForActivities(force = false) {
+  const d = T.data;
+  if (!garmin.enabled || !d || !d.profile || T.activitiesBusy) return;
+  if (!force && (!d.hasActivities || Date.now() - T.activitiesAt < ACTIVITY_LOOK_MS)) return;
+  T.activitiesBusy = true; T.activitiesAt = Date.now();
+  try {
+    const r = await api("POST", "/api/activities/sync", { profile: T.profile, history: false });
+    if (r.added) await reloadWellness(T);
+  } catch { /* what is shown stays */ }
+  finally { T.activitiesBusy = false; }
+  if (document.body.dataset.view === "today") renderToday();
+}
+
+/** Wait, looking every two seconds, until the update that holds the Garmin sync is over (two minutes at most). */
+async function untilIdle(V) {
+  for (const stop = Date.now() + 120_000; Date.now() < stop && V.data && V.data.sync && V.data.sync.syncing;) {
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+    await reloadWellness(V);
+  }
+}
+
+const syncToday = guard(async () => {
+  const first = await syncWellness(T, false);
+  // Every sync, the one made on opening the page included, is followed by an update in the background that holds the Garmin sync for a
+  // few seconds, and a sync asked for meanwhile is turned away: so wait for it and ask again, or the steps would stay as they were.
+  if (first && first.busy) {
+    T.note = "Waiting for the update already running…"; renderTodayNote(T);
+    await untilIdle(T);
+    await syncWellness(T, false);
+  }
+  $("tSync").disabled = true;
+  try { await lookForActivities(true); } finally { $("tSync").disabled = false; }
+});
+
+function renderTodayNote(V) {
+  const note = $("tNote"), s = V.data && V.data.sync, parts = [];
+  if (V.note) parts.push(V.note);
+  if (s && s.syncing) parts.push("updating from Garmin in the background");
+  const error = V.error || (s && s.error ? `Garmin: ${s.error}` : "");
+  note.className = error ? "empty err" : "empty";
+  note.textContent = error || parts.join(" · ");
+  note.hidden = !(error || parts.length);
+}
+
+function renderToday() {
+  const box = $("tbody"), d = T.data, ready = d && d.profile;
+  $("tTitle").textContent = ready ? RM.dayLabel(d.today) : "Today";
+  const fresh = ready ? TM.freshness(d, Date.now()) : null;
+  $("tAsOf").textContent = fresh ? fresh.text : ""; $("tAsOf").classList.toggle("stale", !!(fresh && fresh.stale));
+  renderTodayNote(T);
+  const keep = $("tscroll").scrollTop;
+  box.replaceChildren();
+  if (!T.loaded) { box.append(mk("div", "empty", "Loading…")); return; }
+  if (T.error && !d) { box.append(mk("div", "msg err", T.error)); return; }
+  if (!ready) { box.append(mk("div", "empty", "No Garmin profile is configured.")); return; }
+
+  box.append(todayWorkouts(d));
+  box.append(todayTiles(TM.progressTiles(d)));
+  box.append(mk("h3", "", "Food"));
+  box.append(todayTiles(TM.foodTiles(d)));
+  const ahead = TM.workoutDays(d, measureWorkout).filter((day) => !day.today && day.items.length);
+  if (ahead.length) {
+    const card = mk("section", "tcard"), head = mk("div", "tch");
+    head.append(mk("b", "", "Coming up"));
+    card.append(head);
+    for (const day of ahead) { card.append(mk("div", "tday", day.label)); for (const w of day.items) card.append(todayWorkout(w)); }
+    box.append(mk("h3", "", "Next days"), card);
+  }
+  box.append(mk("div", "rfoot", "Steps, Body Battery and sleep are Garmin's, as of the watch's last sync with the phone: the age above says how old. The intensity minutes are the week from Monday (a vigorous minute counts twice) against Garmin's weekly goal. The workouts are the ones the plan files schedule (their scheduledDate), not Garmin's own calendar; one counts as done when an activity today was started from it. The food is what was logged."));
+  $("tscroll").scrollTop = keep;
+}
+
+/** Tiles in the Recovery view's style, with a bar for a goal, and a click that opens the view they come from. */
+function todayTiles(tiles) {
+  const grid = mk("div", "rfigs");
+  for (const t of tiles) {
+    const tile = mk("div", "rfig tfig");
+    tile.append(mk("small", "", t.label), mk("b", "", t.value), mk("span", "", t.note));
+    if (t.pct !== null && t.pct !== undefined) {
+      const bar = mk("div", "tbar" + (t.done ? " done" : "")), fill = document.createElement("i");
+      fill.style.setProperty("--w", Math.min(100, Math.max(0, t.pct)) + "%");
+      bar.append(fill); tile.append(bar);
+    }
+    if (t.go) {
+      tile.tabIndex = 0; tile.setAttribute("role", "link");
+      tile.onclick = () => setView(t.go);
+      tile.onkeydown = (e) => { if (e.key === "Enter") setView(t.go); };
+    }
+    grid.append(tile);
+  }
+  return grid;
+}
+
+function todayWorkout(w) {
+  const row = mk("div", "twk" + (w.done ? " done" : ""));
+  row.title = "Open the plan";
+  row.append(mk("span", "tk", w.done ? "✓" : "○"), mk("span", "tn", w.name));
+  if (w.done) row.append(mk("span", "chip ok", "Done"));
+  if (w.meta) row.append(mk("span", "tm", w.meta));
+  row.onclick = () => openPlan(w.path);
+  return row;
+}
+
+/** A workout totalled from its steps, timed at the profile's usual pace once its runs are known (the workout picture's own numbers). */
+const measureWorkout = (workout) => { const a = WM.analyze(workout, { pacer: pacerFor(T.profile) }); return { seconds: a.seconds, meters: a.meters, assumed: a.assumed }; };
+
+/** The day's workouts, how ready the person is for them, and what was already done. */
+function todayWorkouts(d) {
+  const card = mk("section", "tcard"), head = mk("div", "tch"), r = TM.readinessLine(d.readiness), day = TM.workoutDays(d, measureWorkout)[0];
+  head.append(mk("b", "", "Today's workout"), mk("span", "tspace"));
+  const chip = mk("button", "chip" + (r.cls === "go" ? " ok" : r.cls === "back" ? " warn" : ""), r.score !== null ? `${r.label} · ${r.score}` : r.label);
+  chip.title = "How recovered you are today. Opens the Recovery view."; chip.onclick = () => setView("recovery");
+  head.append(chip);
+  card.append(head);
+  if (!day.items.length) card.append(mk("div", "tnone", "Nothing is planned for today."));
+  for (const w of day.items) card.append(todayWorkout(w));
+  if (day.items.some((w) => !w.done) && r.text) card.append(mk("div", "tsug", r.text));
+  if (d.activities.length) {
+    const done = mk("div", "tdone");
+    done.append(mk("h4", "", "Done so far"));
+    for (const a of d.activities) {
+      const line = TM.activityLine(a), row = mk("div", "ta");
+      row.append(mk("b", "", line.name), mk("span", "", line.meta));
+      done.append(row);
+    }
+    card.append(done);
+  }
+  return card;
+}
+
+function bindTodayView() {
+  $("vToday").onclick = () => setView("today");
+  $("tSync").onclick = syncToday;
+  $("tProfile").onchange = (e) => { Object.assign(T, { profile: e.target.value, data: null, loaded: false, error: "", activitiesAt: 0 }); guard(loadToday)(); };
+  // A page left open is looked at again later: the numbers have moved on, perhaps the date too.
+  document.addEventListener("visibilitychange", () => { if (!document.hidden && document.body.dataset.view === "today" && Date.now() - T.shownAt > TODAY_RELOAD_MS) guard(loadToday)(); });
 }
 
 // ── Settings ─────────────────────────────────────────────────────────────
@@ -4089,8 +4280,10 @@ bindCalendarView();
 bindRecoveryView();
 bindWeightView();
 bindFoodView();
+bindTodayView();
 bindSettingsView();
 bootSession();
+setView("today"); // the landing view: the body starts on it, and this loads it once the session is there
 </script>
 </body>
 </html>

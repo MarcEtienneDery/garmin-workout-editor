@@ -39,6 +39,10 @@
  * starts the background fill of the rest. The Weight view (GET /api/weight: the weight, body composition and calories
  * burned of the last days, with the weight trend) reads the same table and syncs through that POST.
  *
+ * The Today view (GET /api/today) is the landing page: the day's steps, intensity minutes of the week, Body Battery, sleep and food
+ * next to the workouts the plans put on the coming days and the activities done today. It reads the database and the plan files
+ * only; the page's Sync button asks Garmin (POST /api/wellness/sync with fresh: true, then POST /api/activities/sync).
+ *
  * The workout picture times steps that name no pace from the profile's recent runs (GET /api/runs),
  * read from the activities table that the Garmin sync fills.
  *
@@ -68,7 +72,7 @@ import type { ActivitySummary, StoredActivity } from "../shared/store";
 import { fetchChartNow, fetchDetailsNow, refreshActivities, startBackgroundSync } from "../mcp/tools/activities";
 import { diffPlanWorkout, extractWorkouts, validatePlanData } from "../mcp/tools/plans";
 import { refreshWellness, rereadWeighIns, startBackgroundWellness, wellnessSyncStatus } from "../mcp/tools/wellness";
-import { bodyRange, readinessAt, wellnessRange } from "../shared/wellnessReport";
+import { bodyRange, intensityWeek, readinessAt, wellnessRange } from "../shared/wellnessReport";
 import { SettingsError, moveGarminLoginFromFile, removeGarminLogin, removeRenpho, saveGarminLogin, saveRenpho, settingsView } from "../shared/accounts";
 import { recentFit, testRenphoLogin } from "../shared/renphoSync";
 import { runRenpho, startRenphoTimer } from "../mcp/tools/renpho";
@@ -903,6 +907,57 @@ function nutritionView(profile: string, asked: unknown, daysAsked: unknown) {
   };
 }
 
+// ── Today view: the day so far and the days to come, from what the database and the plan files hold ──
+
+/** How many days after today the Today view looks ahead for planned workouts (a week: the same weekday next week is in). */
+const AHEAD_DAYS = 7;
+
+/**
+ * The workouts the plans put on today and the next 7 days, in date order. One workout in several plan files, or listed twice on
+ * a date, shows once. `done` is only said of today: an activity of today that was started from the workout (same Garmin workout id).
+ */
+function plannedAhead(profile: string, today: string, doneIds: Set<string>) {
+  const last = addDays(today, AHEAD_DAYS), byKey = new Map<string, { date: string; path: string; index: number; name: string; type: string | null; seconds: number | null; done: boolean; workout: unknown }>();
+  // the plan files first, so that a copy kept in the profile's data folder is the duplicate and the click opens the plan
+  const entries = planEntriesFor(profile).sort((x, y) => Number(y.path.startsWith("workout-plans/")) - Number(x.path.startsWith("workout-plans/")));
+  for (const { path: file, index, workout } of entries) {
+    const seconds = Number(workout.estimatedDurationSeconds) > 0 ? Math.round(Number(workout.estimatedDurationSeconds)) : null;
+    const type = typeof workout.workoutType === "string" && workout.workoutType ? workout.workoutType : null;
+    for (const date of scheduledDates(workout)) {
+      if (date < today || date > last) continue;
+      const key = `${date}|${hasId(workout.workoutId) ? workout.workoutId : String(workout.workoutName).toLowerCase()}`;
+      const done = date === today && hasId(workout.workoutId) && doneIds.has(String(workout.workoutId));
+      const kept = byKey.get(key);
+      if (!kept) byKey.set(key, { date, path: file, index, name: workout.workoutName, type, seconds, done, workout }); // the whole workout, for the page to total its steps
+      else { kept.type ??= type; kept.seconds ??= seconds; } // the copy may know what the plan does not
+    }
+  }
+  return [...byKey.values()].sort((a, b) => a.date.localeCompare(b.date) || a.path.localeCompare(b.path) || a.index - b.index);
+}
+
+/** What the Today view shows. Steps and the rest are null when the day's summary is not stored yet: that is "not synced", never zero. */
+function todayView(profile: string) {
+  const today = localToday(store(), profile);
+  // today's activities by the watch's own clock (a day's start is local, the table's range is GMT), earliest first
+  const activities = store().activities.summaries(profile, 40).map(activityRow).filter((a) => a.date === today).sort((a, b) => a.time.localeCompare(b.time));
+  const doneIds = new Set(activities.flatMap((a) => (hasId(a.workoutId) ? [String(a.workoutId)] : [])));
+  const { readiness } = readinessAt(store(), profile, today);
+  const { meals, ...food } = nutritionDays(store(), profile, today, today, today)[0];
+  return {
+    profile,
+    today,
+    day: store().wellness.metrics(profile, today, today)[0] ?? null,
+    progress: store().wellness.progress(profile, today),
+    week: intensityWeek(store(), profile, today),
+    readiness: { band: readiness.band, score: readiness.score, confidence: readiness.confidence, suggestion: readiness.suggestion },
+    workouts: plannedAhead(profile, today, doneIds),
+    activities,
+    hasActivities: store().activities.counts(profile).total > 0,
+    food,
+    sync: wellnessSyncStatus(profile),
+  };
+}
+
 async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, url: URL, who: Principal): Promise<void> {
   const route = `${req.method} ${url.pathname}`;
   const queryPath = url.searchParams.get("path");
@@ -1016,6 +1071,12 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
         stored: store().wellness.rowsOfDay(profile, date),
         sync: wellnessSyncStatus(profile),
       });
+    }
+
+    case "GET /api/today": {
+      const profile = profileOrNull(who, url.searchParams.get("profile"));
+      if (!profile) return send(res, 200, { profile: null });
+      return send(res, 200, todayView(profile));
     }
 
     case "GET /api/weight": {
@@ -1139,7 +1200,8 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
       const profile = profileFor(who, "", body.profile);
       // the Weight view's button asks for the weigh-ins again: one may have been added on Garmin since the empty answer was stored
       if (body.rereadWeight === true) rereadWeighIns(profile);
-      const refreshed = await refreshWellness(profile);
+      // fresh: the Today view's button wants today's steps as they are now, not as they were up to half an hour ago
+      const refreshed = body.fresh === true ? await refreshWellness(profile, { fresh: true }) : await refreshWellness(profile);
       const background = startBackgroundWellness(profile);
       return send(res, 200, { ...refreshed, background, sync: wellnessSyncStatus(profile) });
     }

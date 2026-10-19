@@ -57,6 +57,14 @@ describe("what is wanted", () => {
     store.wellness.put("MED", "2026-10-13", "sleep", { partial: true }, at("2026-10-13", 23)); // fetched before the day was over and settled
     expect(wanted(store, "MED", TODAY, 7, ["sleep"], at(TODAY, 12)).some((w) => w.day === "2026-10-13")).toBe(true);
   });
+
+  it("fetches a response that may still change again after the stale time it is given, not only after the usual half hour", () => {
+    store.wellness.put("MED", TODAY, "summary", {}, at(TODAY, 9));
+    const now = at(TODAY, 9) + 5 * 60_000;
+    expect(wanted(store, "MED", TODAY, 1, ["summary"], now)).toEqual([]);
+    expect(wanted(store, "MED", TODAY, 1, ["summary"], now, 60_000)).toEqual([{ day: TODAY, kind: "summary" }]);
+    expect(wanted(store, "MED", TODAY, 1, ["summary"], at(TODAY, 9) + 30_000, 60_000)).toEqual([]); // fetched a moment ago
+  });
 });
 
 describe("syncing", () => {

@@ -107,6 +107,19 @@ export interface DayMetrics {
   bmi: NumOrNull;
 }
 
+/** What a day's summary holds for a page that shows the day's progress (see `WellnessTable.progress`). Times are epoch milliseconds. */
+export interface DayProgress {
+  /** When we fetched the summary from Garmin. */
+  fetchedAt: number;
+  stepGoal: NumOrNull;
+  /** The goal is for the week. */
+  intensityGoal: NumOrNull;
+  distanceMeters: NumOrNull;
+  bodyBatteryNow: NumOrNull;
+  /** When the watch last synced with Garmin: the steps are as of then, not as of the fetch. */
+  watchSyncedAt: NumOrNull;
+}
+
 type Field = keyof Omit<DayMetrics, "day">;
 
 /** Where each field lives in the stored responses: its kind and its JSON path. A field with several places takes the first one that has it. */
@@ -219,6 +232,31 @@ export class WellnessTable {
   counts(profile: string): WellnessCounts {
     const r = this.db.prepare("SELECT COUNT(*) AS rows, COUNT(DISTINCT day) AS days, MIN(day) AS oldest, MAX(day) AS newest FROM wellness WHERE profile = ?").get(profile) as { rows: number; days: number; oldest: string | null; newest: string | null };
     return { rows: r.rows, days: r.days, oldest: r.oldest ?? null, newest: r.newest ?? null };
+  }
+
+  /**
+   * What a day's summary says that a progress page needs and `metrics` does not carry: Garmin's goals, the distance, the Body
+   * Battery now, when the watch last synced, and when this response was fetched. null when no summary is stored for the day.
+   */
+  progress(profile: string, day: string): DayProgress | null {
+    const r = this.db
+      .prepare(
+        `SELECT fetched_at, json_extract(data, '$.dailyStepGoal') AS step_goal, json_extract(data, '$.intensityMinutesGoal') AS intensity_goal,
+                json_extract(data, '$.totalDistanceMeters') AS distance, json_extract(data, '$.bodyBatteryMostRecentValue') AS battery_now,
+                json_extract(data, '$.lastSyncTimestampGMT') AS watch_sync
+         FROM wellness WHERE profile = ? AND day = ? AND kind = 'summary'`
+      )
+      .get(profile, day);
+    if (!r) return null;
+    const gmt = typeof r.watch_sync === "string" ? Date.parse(`${r.watch_sync}Z`) : NaN; // Garmin gives GMT without a zone mark
+    return {
+      fetchedAt: r.fetched_at as number,
+      stepGoal: num(r.step_goal),
+      intensityGoal: num(r.intensity_goal),
+      distanceMeters: num(r.distance),
+      bodyBatteryNow: num(r.battery_now),
+      watchSyncedAt: Number.isFinite(gmt) ? gmt : null,
+    };
   }
 
   /** The fields of every stored day from `from` to `to` inclusive, oldest first; a field no response has is null. Read in SQL: the responses are never parsed here. */

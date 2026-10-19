@@ -4,7 +4,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { getSession } from "../mcp/context";
-import { type GetReadinessArgs, type GetWellnessArgs, getReadiness, getWellness } from "../mcp/tools/wellness";
+import { type GetReadinessArgs, type GetWellnessArgs, getReadiness, getWellness, refreshWellness } from "../mcp/tools/wellness";
 import { closeStore, getStore } from "../shared/store";
 import { addDays, isWellnessBackfilling } from "../shared/wellnessSync";
 import { hrvResponse, sleepResponse, summaryResponse } from "./fixtures/wellness";
@@ -151,5 +151,24 @@ describe("get_wellness", () => {
     await expect(getWellness({ days: 14, from: "2025-01-01", to: "2026-02-01" })).rejects.toThrow("at most");
     await expect(getWellness({ days: 14, rawKinds: ["sleep"] })).rejects.toThrow("one day");
     await settled();
+  });
+});
+
+describe("refreshWellness for a page that shows today's steps", () => {
+  it("leaves a summary under half an hour old alone, unless asked for it fresh, and then fetches only that one, and not again within a minute", async () => {
+    const { calls } = fakeGarmin();
+    await refreshWellness(PROFILE);
+    getStore().wellness.put(PROFILE, TODAY, "summary", summaryResponse(), Date.now() - 5 * 60_000); // as if fetched five minutes ago
+    const before = calls.length;
+
+    await refreshWellness(PROFILE);
+    expect(calls.length).toBe(before);
+
+    const out = await refreshWellness(PROFILE, { fresh: true });
+    expect(out).toEqual({ fetched: 1, busy: false, error: null });
+    expect(calls.slice(before)).toEqual([`/usersummary-service/usersummary/daily/abc-123?calendarDate=${TODAY}`]);
+
+    await refreshWellness(PROFILE, { fresh: true });
+    expect(calls.length).toBe(before + 1);
   });
 });

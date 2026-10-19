@@ -54,13 +54,13 @@ export interface Wanted {
 }
 
 /** The responses to fetch: the ones missing, and the ones that may still have changed. Kinds in order, then the newest day first. */
-export function wanted(store: SqliteStore, profile: string, today: string, days = BACKFILL_DAYS, kinds: readonly WellnessKind[] = WELLNESS_KINDS, now = Date.now()): Wanted[] {
+export function wanted(store: SqliteStore, profile: string, today: string, days = BACKFILL_DAYS, kinds: readonly WellnessKind[] = WELLNESS_KINDS, now = Date.now(), staleMs = REFRESH_MS): Wanted[] {
   const have = store.wellness.fetchedAt(profile, addDays(today, -(days - 1)), today);
   const out: Wanted[] = [];
   for (const kind of kinds) {
     for (let i = 0; i < days; i++) {
       const day = addDays(today, -i), at = have.get(`${day}|${kind}`);
-      const stale = at !== undefined && at - Date.parse(`${day}T00:00:00Z`) < FINAL_AFTER_MS && now - at > REFRESH_MS;
+      const stale = at !== undefined && at - Date.parse(`${day}T00:00:00Z`) < FINAL_AFTER_MS && now - at > staleMs;
       if (at === undefined || stale) out.push({ day, kind });
     }
   }
@@ -78,12 +78,14 @@ export interface WellnessSyncOptions {
   gapMs?: number;
   sleep?: (ms: number) => Promise<void>;
   now?: number;
+  /** Fetch a response that may still change again after this long (REFRESH_MS by default). */
+  staleMs?: number;
 }
 
 /** Fetch the responses that are missing or may have changed. Stops, and records why, on a rate limit or a login failure. */
 export async function syncWellness(store: SqliteStore, profile: string, source: WellnessSource, options: WellnessSyncOptions): Promise<{ fetched: number; failed: number; stopped: string | null }> {
   const table = store.wellness, now = options.now ?? Date.now(), sleep = options.sleep ?? sleepFor;
-  const todo = wanted(store, profile, options.today, options.days, options.kinds, now).slice(0, options.limit ?? Infinity);
+  const todo = wanted(store, profile, options.today, options.days, options.kinds, now, options.staleMs).slice(0, options.limit ?? Infinity);
   let fetched = 0, failed = 0;
   for (let i = 0; i < todo.length; i++) {
     if (options.renew && !options.renew()) throw new LeaseLost();
