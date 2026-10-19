@@ -40,6 +40,7 @@ describe("a food from an Open Food Facts product", () => {
       per100: { kcal: 52.9, proteinG: 9.5, carbsG: 4, fatG: 0 },
       nutrients: {},
       complete: true,
+      canada: false,
       unit: "g",
       servingG: 170,
       servingText: "1 serving (170 g)",
@@ -221,7 +222,7 @@ describe("searching by name", () => {
     const { fetcher, calls } = fake(() => ({ body: { hits: [hit("3017620422003", "Greek yogurt"), { code: "4006381333931", product_name: "No numbers" }, hit("3017620422003", "Greek yogurt again"), hit("5000112637922", "Skyr", 63)] } }));
     const foods = await searchFoods("  greek   yogurt ", fetcher);
     expect(foods.map((f) => [f.code, f.name])).toEqual([["3017620422003", "Greek yogurt"], ["5000112637922", "Skyr"]]);
-    expect(calls[0].url).toMatch(/^https:\/\/search\.openfoodfacts\.org\/search\?q=greek%20yogurt&page_size=30&fields=/);
+    expect(calls[0].url).toMatch(/^https:\/\/search\.openfoodfacts\.org\/search\?q=greek%20yogurt%20countries_tags%3A%22en%3Acanada%22&page_size=30&fields=/);
   });
 
   it("returns at most 20", async () => {
@@ -230,10 +231,12 @@ describe("searching by name", () => {
   });
 
   it("answers the same words again from memory for ten minutes", async () => {
-    const { fetcher, calls } = fake(() => ({ body: { hits: [hit("3017620422003", "Rice")] } }));
+    const many = Array.from({ length: 12 }, (_, i) => hit(String(200 + i), `Rice ${i}`));
+    const { fetcher, calls } = fake(() => ({ body: { hits: many } })); // enough Canadian ones: one question each time
     const t0 = Date.now();
     await searchFoods("Rice", fetcher, t0);
     await searchFoods("rice ", fetcher, t0 + 9 * 60_000);
+    await searchFoods("RICE!", fetcher, t0 + 9 * 60_000); // the same words once cleaned
     expect(calls).toHaveLength(1);
     await searchFoods("rice", fetcher, t0 + 11 * 60_000);
     expect(calls).toHaveLength(2);
@@ -247,6 +250,72 @@ describe("searching by name", () => {
   it.each(["", " ", "a", "x".repeat(81), undefined, 5])("refuses the search %p", async (q) => {
     const { fetcher, calls } = fake(() => ({ body: { hits: [] } }));
     await expect(searchFoods(q, fetcher)).rejects.toThrow(FoodInputError);
+    expect(calls).toHaveLength(0);
+  });
+});
+
+describe("searching Canadian products first", () => {
+  const hit = (code: string, name: string, countries: string[]) => ({ code, product_name: name, countries_tags: countries, nutriments: { "energy-kcal_100g": 100, proteins_100g: 5, carbohydrates_100g: 10, fat_100g: 2 } });
+  const CA = ["en:canada"], WORLD = ["en:france"];
+  const batch = (prefix: string, n: number, countries: string[]) => Array.from({ length: n }, (_, i) => hit(`${prefix}${String(i).padStart(6, "0")}`, `${prefix} ${i}`, countries));
+  /** A fetcher that answers the Canada search with `canadian` and any other with `world`. */
+  const index = (canadian: unknown[], world: unknown[]) => fake((url) => ({ body: { hits: decodeURIComponent(url).includes('countries_tags:"en:canada"') ? canadian : world } }));
+
+  it("asks for the products sold in Canada, and only those when there are enough", async () => {
+    const { fetcher, calls } = index(batch("33", 12, CA), batch("77", 30, WORLD));
+    const foods = await searchFoods("oikos", fetcher);
+    expect(calls).toHaveLength(1);
+    expect(decodeURIComponent(calls[0].url)).toContain('q=oikos countries_tags:"en:canada"');
+    expect(foods).toHaveLength(12);
+    expect(foods.every((f) => f.canada)).toBe(true);
+  });
+
+  it("follows the Canadian foods with foods from anywhere, up to 20, when there are fewer than ten", async () => {
+    const { fetcher, calls } = index(batch("33", 4, CA), batch("77", 30, WORLD));
+    const foods = await searchFoods("iogo", fetcher);
+    expect(calls).toHaveLength(2);
+    expect(decodeURIComponent(calls[1].url)).toContain("q=iogo&");
+    expect(decodeURIComponent(calls[1].url)).not.toContain("en:canada");
+    expect(foods).toHaveLength(20);
+    expect(foods.slice(0, 4).map((f) => f.canada)).toEqual([true, true, true, true]);
+    expect(foods.slice(4).every((f) => f.canada === false)).toBe(true);
+  });
+
+  it("lists a product once when both searches find it, in its Canadian place", async () => {
+    const shared = hit("5550001", "Shared", CA);
+    const { fetcher } = index([hit("5550000", "First", CA), shared], [hit("9990000", "Abroad", WORLD), { ...shared, countries_tags: [...CA, ...WORLD] }, hit("9990001", "Abroad 2", WORLD)]);
+    expect((await searchFoods("shared", fetcher)).map((f) => f.code)).toEqual(["5550000", "5550001", "9990000", "9990001"]);
+  });
+
+  it("falls back to the whole world when no Canadian product matches", async () => {
+    const foods = await searchFoods("haggis", index([], batch("77", 5, WORLD)).fetcher);
+    expect(foods).toHaveLength(5);
+    expect(foods.some((f) => f.canada)).toBe(false);
+  });
+
+  it("flags a product as Canadian by its countries, and not when it does not say", () => {
+    expect(toFood(hit("1", "A", [...WORLD, ...CA]))?.canada).toBe(true);
+    expect(toFood(hit("2", "B", WORLD))?.canada).toBe(false);
+    expect(toFood({ ...hit("3", "C", WORLD), countries_tags: undefined })?.canada).toBe(false);
+  });
+
+  it("reads the words as plain words, so no query syntax of the index can drop the Canada filter", async () => {
+    const asked = async (words: string) => {
+      const { fetcher, calls } = index(batch("33", 12, CA), []);
+      await searchFoods(words, fetcher);
+      return decodeURIComponent(calls[0].url).match(/q=(.*?) countries_tags:/)?.[1];
+    };
+    expect(await asked("(milk")).toBe("milk");
+    expect(await asked('dempster"s bread')).toBe("dempster s bread");
+    expect(await asked("Dempster's")).toBe("dempster's");
+    expect(await asked("mac AND cheese")).toBe("mac and cheese"); // the operator becomes a word
+    expect(await asked("lait 2% crème-fraîche")).toBe("lait 2% crème-fraîche");
+    expect(await asked("a:b  c^2")).toBe("a b c 2");
+  });
+
+  it("refuses words with nothing to search for", async () => {
+    const { fetcher, calls } = fake(() => ({ body: { hits: [] } }));
+    await expect(searchFoods('!!"', fetcher)).rejects.toThrow(FoodInputError);
     expect(calls).toHaveLength(0);
   });
 });
@@ -268,7 +337,7 @@ describe("when Open Food Facts cannot answer", () => {
     try {
       const hang: Fetcher = (_url, init) => new Promise((_, reject) => init.signal.addEventListener("abort", () => reject(Object.assign(new Error("aborted"), { name: "AbortError" }))));
       const pending = expect(searchFoods("slow", hang)).rejects.toThrow(/did not answer in time/);
-      await jest.advanceTimersByTimeAsync(8100);
+      await jest.advanceTimersByTimeAsync(8100); // the Canada search is the first and last question
       await pending;
     } finally {
       jest.useRealTimers();
@@ -277,6 +346,6 @@ describe("when Open Food Facts cannot answer", () => {
 
   it("does not keep a failed search", async () => {
     await expect(searchFoods("flaky", fake(() => ({ status: 503 })).fetcher)).rejects.toThrow();
-    expect(await searchFoods("flaky", fake(() => ({ body: { hits: [{ code: "1", product_name: "Ok", nutriments: { "energy-kcal_100g": 10, proteins_100g: 1 } }] } })).fetcher)).toHaveLength(1);
+    expect(await searchFoods("flaky", fake(() => ({ body: { hits: [{ code: "1234567", product_name: "Ok", nutriments: { "energy-kcal_100g": 10, proteins_100g: 1 } }] } })).fetcher)).toHaveLength(1);
   });
 });

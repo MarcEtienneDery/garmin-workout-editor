@@ -273,6 +273,7 @@
   .fpq { display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
   .fpq input { width:6.5em; box-sizing:border-box; background:#333; color:var(--fg); border:1px solid var(--line); border-radius:3px; padding:4px 6px; font:inherit; }
   .fpv { margin:8px 0; font-weight:600; }
+  .fgroup { margin-top:6px; font-size:11px; text-transform:uppercase; letter-spacing:.05em; }
   .fnut { grid-template-columns:repeat(3,minmax(0,1fr)); } .fnut .rfig b { font-size:17px; } .fnut .rfig.part span { color:var(--warn); }
   .fmore { flex:1 1 100%; } .fmore > summary { cursor:pointer; color:var(--dim); font-size:12px; }
   .fnl-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:6px 8px; margin-top:6px; }
@@ -3317,7 +3318,11 @@ function paintFind(meal, out) {
   const st = findState(meal);
   out.replaceChildren();
   if (st.note) out.append(mk("div", "fnote" + (st.error ? " err" : ""), st.note));
+  // the products sold in Canada come first; when others follow them (too few Canadian ones matched), a heading says where they end
+  const mixed = st.foods.some((f) => f.canada) && st.foods.some((f) => !f.canada);
+  let group = null;
   for (const food of st.foods) {
+    if (mixed && !!food.canada !== group) { group = !!food.canada; out.append(mk("div", "fnote fgroup", group ? "Sold in Canada" : "Other countries")); }
     const b = mk("button", "fr"), title = mk("div", "frt");
     b.type = "button";
     title.append(mk("b", "", food.name));
