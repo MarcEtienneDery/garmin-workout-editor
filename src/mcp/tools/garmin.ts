@@ -336,7 +336,7 @@ export function registerGarminTools(server: McpServer): void {
     {
       title: "Get Garmin activities",
       description:
-        "Activities for a period in the slim planning format (duration, HR, training effect, RPE/feel, running intervals, strength sets with weights in lbs), newest first, read from the database. Garmin is asked only for what is new since the last call and for the details of the activities returned that lack them; the full history and every activity's details fill in the background, so a first call on a profile returns what is stored so far (see `sync`). `limit` caps how many are returned (`total` and `truncated` say if more matched).",
+        "Activities for a period in the slim planning format (duration, HR, training effect, RPE/feel, running laps, strength sets with weights in lbs), newest first, read from the database. Garmin is asked only for what is new since the last call and for the details of the activities returned that lack them; the full history and every activity's details fill in the background, so a first call on a profile returns what is stored so far (see `sync`). `limit` caps how many are returned (`total` and `truncated` say if more matched). A run\'s `exerciseSets` are its laps as the watch recorded them, in order (`distance` km, `duration` s, `pace` min/km, `avgHR`, `maxHR`), each with its `splitType` (WARMUP, ACTIVE, RECOVERY, COOLDOWN, or INTERVAL for an unstructured run) and, for a structured workout, its `step`: laps that share a step are one rep, so the reps and the heart rate inside each can be compared.",
       inputSchema: {
         profile: profileArg,
         limit: z.number().int().min(1).max(200).default(30),

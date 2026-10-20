@@ -3,6 +3,7 @@
  * and the answer to get_activities, read from the database. The sync itself is shared/activitySync.ts.
  */
 import { getLastNWeeksStart } from "../../activityExporter";
+import { lapIntervals } from "../../shared/activityChart";
 import { type ActivitySource, COOL_OFF_MS, LeaseLost, SETTLE_MS, isBackfilling, startBackfill, syncCharts, syncDetails, syncList, syncStatus, withLease, type SyncStatus } from "../../shared/activitySync";
 import { getStore } from "../../shared/store";
 import { type Session, getSession, requireAuth, runCaptured } from "../context";
@@ -16,6 +17,8 @@ let operations = 0;
 export const holder = () => `${PROCESS}:${++operations}`;
 /** Activities whose details a get_activities call fetches itself; the rest fill in the background. */
 const INLINE_DETAILS = 30;
+/** Runs whose laps a get_activities call fetches itself (three Garmin calls each) when they are not stored yet. */
+const INLINE_CHARTS = 3;
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 /** Pause between two detail calls (GARMIN_DETAIL_GAP_MS; the default of the sync, 500 ms, is gentle on Garmin's rate limit). */
@@ -205,7 +208,18 @@ export async function getActivities(args: GetActivitiesArgs) {
   const raw = rows.map((r) => ({ ...r.raw, ...(r.detail ?? {}) }));
   const data = session.exporter.buildExtractedActivities(raw, options);
   const total = data.activities.length;
-  const activities = data.activities.slice(0, args.limit);
+  const shown = data.activities.slice(0, args.limit);
+  const runs = shown.filter((a: any) => a.activityType === "running").map((a: any) => String(a.id));
+  if (args.includeDetails && runs.length) {
+    // a run's laps, newest first: the background job takes any that are left
+    for (const { id } of store.activities.needingChart(name, { ids: runs, limit: INLINE_CHARTS })) await fetchChartNow(args.profile, id);
+  }
+  // A run's laps tell the reps apart; Garmin's own summary of it merges the laps of a kind into one block. Without laps stored, the summary stays.
+  const activities = shown.map((a: any) => {
+    if (a.activityType !== "running") return a;
+    const laps = lapIntervals(store.activities.getChart(name, String(a.id)));
+    return laps.length ? { ...a, exerciseSets: laps } : a;
+  });
   const background = startBackgroundSync(args.profile);
 
   const sync = activitySyncStatus(args.profile);

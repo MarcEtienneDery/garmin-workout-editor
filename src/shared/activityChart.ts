@@ -11,6 +11,8 @@
  * metric leaves its series empty rather than failing, and a change to how it is read never needs Garmin again.
  */
 
+import type { ExerciseSet } from "./types";
+
 /** Rows kept of a series or a route, however many Garmin sends. */
 export const MAX_SAMPLES = 300;
 const MAX_LAPS = 500;
@@ -65,6 +67,34 @@ export function pruneChart(responses: ChartResponses): StoredChart {
 }
 
 // ── Reading the charts ───────────────────────────────────────────────────
+
+const roundTo = (n: number, places: number): number => Math.round(n * 10 ** places) / 10 ** places;
+
+/**
+ * The laps the watch recorded, as the interval rows get_activities gives for a run: one per lap, in order, with its kind
+ * (warmup, active, recovery, cooldown) and the step of the structured workout it belongs to. Garmin's own summary of a run
+ * groups the laps by kind, so two 3 km reps come back as one 6 km block with no way to tell the second from the first; the
+ * laps keep what happened inside each rep. Distances in Garmin's laps are always meters (a lap of 16 m at the end is not 16 km).
+ * Empty when the activity has no laps stored.
+ */
+export function lapIntervals(stored: StoredChart | null | undefined): ExerciseSet[] {
+  const laps: any[] = Array.isArray(stored?.splits?.lapDTOs) ? stored!.splits!.lapDTOs : [];
+  return laps.map((l, i) => {
+    const meters = num(l.distance), seconds = num(l.duration), step = num(l.wktStepIndex);
+    return {
+      exerciseName: `Lap ${num(l.lapIndex) ?? i + 1}`,
+      category: "INTERVAL",
+      sets: 1,
+      duration: seconds === null ? undefined : Math.round(seconds),
+      distance: meters === null ? undefined : roundTo(meters / 1000, 3),
+      pace: meters !== null && seconds !== null && meters > 50 && seconds > 0 ? roundTo(seconds / 60 / (meters / 1000), 2) : undefined,
+      avgHR: num(l.averageHR) ?? undefined,
+      maxHR: num(l.maxHR) ?? undefined,
+      splitType: typeof l.intensityType === "string" ? l.intensityType : undefined,
+      step: step === null ? undefined : step + 1,
+    };
+  });
+}
 
 export interface Lap {
   index: number;

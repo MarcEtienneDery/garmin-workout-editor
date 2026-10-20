@@ -194,6 +194,51 @@ describe("get_activities", () => {
     expect(table.needingChart(PROFILE)).toEqual([]);
   });
 
+  describe("the laps of a run", () => {
+    const lapsOf = (id: string) => ({ lapDTOs: [
+      { lapIndex: 1, intensityType: "ACTIVE", wktStepIndex: 1, distance: 3000, duration: 900, averageHR: 160, maxHR: 170 },
+      { lapIndex: 2, intensityType: "ACTIVE", wktStepIndex: 3, distance: 3000, duration: 890, averageHR: 171, maxHR: 180 },
+      { lapIndex: 3, intensityType: "COOLDOWN", wktStepIndex: 4, distance: 12, duration: 5, averageHR: id.length },
+    ] });
+    const runs = (n: number) => Array.from({ length: n }, (_, i) => item(n - i, i + 1, "running")); // newest first
+
+    it("replace a run's summary: each lap on its own, with its step, so the reps can be told apart", async () => {
+      fakeGarmin([item(2, 1, "strength_training"), item(1, 2, "running")], async (id) => lapsOf(id));
+      const out = await ask();
+      const [strength, run] = out.activities;
+      expect(strength.activityType).toBe("strength_training");
+      expect(strength.exerciseSets).toEqual([]); // a strength workout has its sets, not laps
+      expect(run.exerciseSets.map((s: any) => [s.exerciseName, s.splitType, s.step, s.distance, s.avgHR])).toEqual([
+        ["Lap 1", "ACTIVE", 2, 3, 160], ["Lap 2", "ACTIVE", 4, 3, 171], ["Lap 3", "COOLDOWN", 5, 0.012, 4],
+      ]);
+    });
+
+    it("are fetched by the call itself for the newest runs, three at most, and the background job takes the rest", async () => {
+      const garmin = fakeGarmin(runs(5), async (id) => lapsOf(id));
+      const first = await ask();
+      expect(first.activities.map((a: any) => a.exerciseSets?.length)).toEqual([3, 3, 3, undefined, undefined]); // 5005, 5004, 5003 have theirs
+      await settled();
+      expect(garmin.calls.chart.sort()).toEqual(["5001", "5002", "5003", "5004", "5005"]); // none twice
+      expect((await ask()).activities.map((a: any) => a.exerciseSets.length)).toEqual([3, 3, 3, 3, 3]);
+    });
+
+    it("are not fetched by a call that asked for no details, which answers with what is stored", async () => {
+      const garmin = fakeGarmin(runs(1), async (id) => lapsOf(id));
+      const first = await ask({ includeDetails: false });
+      expect(first.activities[0].exerciseSets).toBeUndefined();
+      await settled();
+      expect(garmin.calls.chart).toEqual(["5001"]); // the background job did
+      expect((await ask({ includeDetails: false })).activities[0].exerciseSets).toHaveLength(3);
+    });
+
+    it("leave a run Garmin has no laps for as it was", async () => {
+      fakeGarmin(runs(1), async () => { throw new Error("ERROR: (404), Not Found"); });
+      const out = await ask();
+      expect(out.activities[0].activityType).toBe("running");
+      expect(out.activities[0].exerciseSets).toBeUndefined();
+    });
+  });
+
   it("keeps mock mode out of the database", async () => {
     const exporter = new ActivityExporter({ isMockMode: () => true } as any);
     jest.spyOn(exporter, "fetchActivities").mockResolvedValue([{ activityId: 1, activityName: "Mock", activityType: { typeKey: "running" }, startTimeGMT: when(1), startTimeLocal: when(1) }]);

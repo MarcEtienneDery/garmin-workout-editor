@@ -60,6 +60,8 @@ export interface ExerciseSet {
   avgHR?: number;
   maxHR?: number;
   splitType?: string;
+  /** The step of the structured workout a running lap belongs to (1-based): the laps of one rep share it. */
+  step?: number;
 }
 
 export interface ExtractedActivities {

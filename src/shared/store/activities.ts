@@ -311,11 +311,12 @@ export class ActivityTable {
       .prepare(
         `SELECT a.id, a.start_gmt, a.type FROM activities a
          LEFT JOIN activity_charts c ON c.profile = a.profile AND c.id = a.id
-         WHERE a.profile = ? AND c.data IS NULL AND COALESCE(c.failed, 0) < ? ORDER BY a.start_gmt DESC LIMIT ?`
+         WHERE a.profile = ? AND c.data IS NULL AND COALESCE(c.failed, 0) < ? ORDER BY a.start_gmt DESC`
       )
-      .all(profile, MAX_DETAIL_FAILURES, options.limit ?? 1_000_000);
+      .all(profile, MAX_DETAIL_FAILURES);
     const wanted = options.ids ? new Set(options.ids) : null;
-    return rows.filter((r) => !wanted || wanted.has(r.id)).map((r) => ({ id: r.id, startGmt: r.start_gmt, type: r.type }));
+    // the ids narrow the list first, then the limit: the newest activity lacking a chart is not always the one asked for
+    return rows.filter((r) => !wanted || wanted.has(r.id)).slice(0, options.limit ?? rows.length).map((r) => ({ id: r.id, startGmt: r.start_gmt, type: r.type }));
   }
 
   // ── For the lifetime stats ──

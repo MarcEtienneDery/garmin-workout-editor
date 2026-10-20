@@ -1,4 +1,4 @@
-import { MAX_SAMPLES, PACE_FASTEST, PACE_SLOWEST, activityStats, buildChart, decimate, kmSplits, pruneChart } from "../shared/activityChart";
+import { MAX_SAMPLES, PACE_FASTEST, PACE_SLOWEST, activityStats, buildChart, decimate, kmSplits, lapIntervals, pruneChart } from "../shared/activityChart";
 
 // Garmin-shaped answers with made-up values and made-up coordinates (nowhere near anyone's home).
 const KEYS = ["directTimestamp", "sumDistance", "directHeartRate", "directSpeed", "directElevation", "directDoubleCadence", "sumDuration", "directGradeAdjustedSpeed", "directAirTemperature"];
@@ -218,5 +218,56 @@ describe("the numbers beside the charts", () => {
     const s = activityStats(undefined, undefined);
     for (const [key, value] of Object.entries(s)) expect(value === null || (Array.isArray(value) && value.length === 0)).toBe(true);
     expect(activityStats({ hrTimeInZone_1: 0, hrTimeInZone_2: 0 }, null).hrZones).toBeNull();
+  });
+});
+
+describe("the laps of a run, as intervals", () => {
+  const lap = (lapIndex: number, intensityType: string, wktStepIndex: number, over: Record<string, unknown> = {}) => ({ lapIndex, intensityType, wktStepIndex, distance: 1000, duration: 297.189, averageHR: 164, maxHR: 175, ...over });
+  // 2 x 3 km at a pace: a warmup, rep 1 (step 1), a recovery, rep 2 (step 3), a cooldown with a few meters left over
+  const session = () =>
+    pruneChart({
+      splits: {
+        lapDTOs: [
+          lap(1, "WARMUP", 0, { duration: 327, averageHR: 127 }),
+          ...[2, 3, 4].map((i) => lap(i, "ACTIVE", 1, { averageHR: 160 + 3 * i })),
+          lap(5, "RECOVERY", 2, { duration: 363 }),
+          ...[6, 7, 8].map((i) => lap(i, "ACTIVE", 3, { averageHR: 160 + 3 * i })),
+          lap(9, "COOLDOWN", 4, { duration: 326 }),
+          lap(10, "COOLDOWN", 4, { distance: 16, duration: 7 }),
+        ],
+      },
+    });
+
+  it("keeps every lap apart, with its kind and the step of the workout, so two reps are not one block", () => {
+    const sets = lapIntervals(session());
+    expect(sets).toHaveLength(10);
+    expect(sets.map((s) => [s.exerciseName, s.splitType, s.step])).toEqual([
+      ["Lap 1", "WARMUP", 1], ["Lap 2", "ACTIVE", 2], ["Lap 3", "ACTIVE", 2], ["Lap 4", "ACTIVE", 2], ["Lap 5", "RECOVERY", 3],
+      ["Lap 6", "ACTIVE", 4], ["Lap 7", "ACTIVE", 4], ["Lap 8", "ACTIVE", 4], ["Lap 9", "COOLDOWN", 5], ["Lap 10", "COOLDOWN", 5],
+    ]);
+    const reps = (step: number) => sets.filter((s) => s.step === step).map((s) => s.avgHR);
+    expect(reps(2)).toEqual([166, 169, 172]); // the heart rate inside the first rep ...
+    expect(reps(4)).toEqual([178, 181, 184]); // ... and inside the second
+  });
+
+  it("gives the distance in km, the pace in min/km and the time in seconds", () => {
+    expect(lapIntervals(session())[1]).toEqual({ exerciseName: "Lap 2", category: "INTERVAL", sets: 1, duration: 297, distance: 1, pace: 4.95, avgHR: 166, maxHR: 175, splitType: "ACTIVE", step: 2 });
+  });
+
+  it("reads a few meters at the end as meters, and gives no pace for them", () => {
+    const [last] = lapIntervals(session()).slice(-1);
+    expect(last).toMatchObject({ distance: 0.016, duration: 7 });
+    expect(last.pace).toBeUndefined();
+  });
+
+  it("leaves out what Garmin did not say, for a run without a structured workout", () => {
+    const [free] = lapIntervals(pruneChart({ splits: { lapDTOs: [{ distance: 1000, duration: 330 }] } }));
+    expect(free).toEqual({ exerciseName: "Lap 1", category: "INTERVAL", sets: 1, duration: 330, distance: 1, pace: 5.5 });
+  });
+
+  it("is empty when there are no laps", () => {
+    expect(lapIntervals(null)).toEqual([]);
+    expect(lapIntervals(pruneChart({}))).toEqual([]);
+    expect(lapIntervals(pruneChart({ splits: { lapDTOs: [] } }))).toEqual([]);
   });
 });

@@ -405,6 +405,8 @@ describe("chart data", () => {
     const garmin = fakeGarmin(3);
     store.activities.insertNew(PROFILE, [1, 2, 3].map((n) => toNewActivity(listItem(n, { activityType: { typeKey: n === 3 ? "other" : n % 2 ? "running" : "strength_training" } }))!));
     expect(store.activities.needingChart(PROFILE).map((a) => a.id)).toEqual(["1003", "1002", "1001"]);
+    expect(store.activities.needingChart(PROFILE, { limit: 2 }).map((a) => a.id)).toEqual(["1003", "1002"]);
+    expect(store.activities.needingChart(PROFILE, { ids: ["1001"], limit: 1 }).map((a) => a.id)).toEqual(["1001"]); // not the newest, but the one asked for
 
     const result = await syncCharts(store, PROFILE, garmin.source, { sleep: noSleep });
     expect(result).toEqual({ fetched: 3, failed: 0, stopped: null });
