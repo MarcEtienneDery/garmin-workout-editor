@@ -606,11 +606,30 @@ describe("HTTP transport", () => {
     expect(res.status).toBe(200);
   });
 
+  it("serves the icon at the root of the host without the token, and nothing else that way", async () => {
+    const favicon = await fetch(`${base}/favicon.ico`);
+    expect(favicon.status).toBe(200);
+    expect(favicon.headers.get("content-type")).toBe("image/png");
+    expect(Buffer.from(await favicon.arrayBuffer())).toEqual(fs.readFileSync(path.join(__dirname, "../web/public/apple-touch-icon.png")));
+    const svg = await fetch(`${base}/icon.svg`);
+    expect(svg.headers.get("content-type")).toBe("image/svg+xml");
+    expect((await fetch(`${base}/icon.svg`, { method: "HEAD" })).status).toBe(200);
+    expect((await fetch(`${base}/icon.svg`, { method: "POST" })).status).toBe(404);
+    expect((await fetch(`${base}/apple-touch-icon.png`)).status).toBe(404);
+  });
+
   it("answers initialize and tools/list with the token in the path", async () => {
     const res = await post(`${base}/mcp/${token}`, init);
     expect(res.status).toBe(200);
     const body: any = await res.json();
     expect(body.result.serverInfo.name).toBe("garmin-workout-editor");
+    const [png, svg] = body.result.serverInfo.icons; // the website's icon, inline: the endpoint is behind the token
+    expect(png).toMatchObject({ mimeType: "image/png", sizes: ["180x180"] });
+    expect(svg).toMatchObject({ mimeType: "image/svg+xml", sizes: ["any"] });
+    const decode = (src: string) => Buffer.from(src.slice(src.indexOf(",") + 1), "base64");
+    const site = (file: string) => fs.readFileSync(path.join(__dirname, "../web/public", file));
+    expect(decode(png.src)).toEqual(site("apple-touch-icon.png"));
+    expect(decode(svg.src)).toEqual(site("icon.svg"));
 
     const list = await post(`${base}/mcp/${token}`, { jsonrpc: "2.0", id: 2, method: "tools/list" });
     const tools: any = await list.json();

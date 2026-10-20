@@ -1,7 +1,7 @@
 import * as http from "http";
 import { createHash, timingSafeEqual } from "crypto";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { createServer } from "./createServer";
+import { createServer, readIcon } from "./createServer";
 
 export const MIN_TOKEN_LENGTH = 32;
 
@@ -67,6 +67,16 @@ export function startHttpServer(options: HttpServerOptions): Promise<http.Server
     if (pathname === "/healthz" && (req.method === "GET" || req.method === "HEAD")) {
       res.writeHead(200, { "Content-Type": "text/plain" });
       return void res.end("ok");
+    }
+
+    // The icon is the one thing besides /healthz that needs no token: a client or a browser looks for it at the root of the host.
+    const icon = pathname === "/favicon.ico" ? "apple-touch-icon.png" : pathname === "/icon.svg" ? "icon.svg" : undefined;
+    if (icon && (req.method === "GET" || req.method === "HEAD")) {
+      const bytes = readIcon(icon);
+      if (bytes) {
+        res.writeHead(200, { "Content-Type": icon.endsWith(".svg") ? "image/svg+xml" : "image/png", "Cache-Control": "no-cache" });
+        return void res.end(req.method === "HEAD" ? undefined : bytes);
+      }
     }
 
     // Unauthorized and unknown paths look identical, and the token is never logged.

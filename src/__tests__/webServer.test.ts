@@ -353,6 +353,19 @@ describe("web plan editor", () => {
     });
   });
 
+  describe("site icon", () => {
+    it("is linked from the page and served without a login, as SVG with a PNG for iOS home screens", async () => {
+      const page = await (await fetch(`${base}/`)).text();
+      expect(page).toContain('<link rel="icon" href="/icon.svg" type="image/svg+xml">');
+      expect(page).toContain('<link rel="apple-touch-icon" href="/apple-touch-icon.png">');
+      for (const [file, type] of [["icon.svg", /image\/svg\+xml/], ["apple-touch-icon.png", /image\/png/]] as const) {
+        const res = await fetch(`${base}/${file}`);
+        expect(res.status).toBe(200);
+        expect(res.headers.get("content-type")).toMatch(type);
+      }
+    });
+  });
+
   describe("map library", () => {
     it("serves Leaflet from node_modules, with its stylesheet and images, without a login", async () => {
       for (const [file, type] of [["leaflet.js", /javascript/], ["leaflet.css", /css/], ["images/marker-icon.png", /image\/png/]] as const) {

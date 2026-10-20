@@ -31,6 +31,32 @@ function readVersion(): string {
   }
 }
 
+/** The website's icon files, which this server shares: an SVG, and a PNG for the clients that do not take SVG. */
+export type IconFile = "icon.svg" | "apple-touch-icon.png";
+export function readIcon(name: IconFile): Buffer | undefined {
+  try {
+    return fs.readFileSync(path.join(__dirname, "..", "web", "public", name));
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The icons clients may show beside the server, as data URIs because the endpoint is behind the token and a client could not
+ * fetch a URL from it. The PNG comes first: the spec has clients support PNG and JPEG, while SVG is optional. Read once, since a
+ * server is built for every HTTP request; a missing file is left out.
+ */
+let icons: { src: string; mimeType: string; sizes: string[] }[] | undefined;
+function serverIcons(): NonNullable<typeof icons> {
+  icons ??= (
+    [["apple-touch-icon.png", "image/png", "180x180"], ["icon.svg", "image/svg+xml", "any"]] as const
+  ).flatMap(([file, mimeType, size]) => {
+    const bytes = readIcon(file);
+    return bytes ? [{ src: `data:${mimeType};base64,${bytes.toString("base64")}`, mimeType, sizes: [size] }] : [];
+  });
+  return icons;
+}
+
 export function buildWeeklyUpdatePrompt(planFile?: string, profile?: string): string {
   const plan = planFile ?? "the current workout plan (list_plans shows what exists)";
   const profileNote = profile ? ` Use profile "${profile}".` : "";
@@ -63,7 +89,7 @@ export function buildDailyAdjustPrompt(date?: string, profile?: string): string 
 /** Build a fully-registered MCP server. Cheap to call; HTTP mode creates one per request. */
 export function createServer(): McpServer {
   const server = new McpServer(
-    { name: "garmin-workout-editor", version: readVersion() },
+    { name: "garmin-workout-editor", title: "Garmin Workout Editor", version: readVersion(), icons: serverIcons() },
     { instructions: INSTRUCTIONS }
   );
 
