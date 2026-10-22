@@ -5,7 +5,7 @@
  * Garmin computes no readiness for every watch (the vívoactive 5 has none), so this reads the signals that exist:
  * last night's HRV against Garmin's own baseline band, the resting heart rate against the person's own recent normal,
  * the night's length and score against the sleep Garmin says is needed, the Body Battery on waking, yesterday's stress,
- * and the load of the last days (session RPE × minutes, else heart rate). Each signal scores -2 to +2 for the day with
+ * and the load of the last days (session RPE × minutes, else heart rate, and Garmin's intensity minutes for the effort no session holds). Each signal scores -2 to +2 for the day with
  * the reason; the weighted mean is the score and the band. A signal Garmin has no data for is left out, and it lowers the
  * confidence: it never counts as fine. The thresholds are constants below, meant to be tuned; this is a heuristic for
  * adjusting training, not a medical measure.
@@ -53,6 +53,15 @@ export interface LoadSummary {
   ratio: number | null;
   sessions: number;
   hoursSinceHard: number | null;
+  /** The day's intensity minutes Garmin counts all day, recorded or not (a walk the watch noticed itself), the same way; null when too few days are stored. */
+  intensity: IntensitySummary | null;
+}
+
+export interface IntensitySummary {
+  /** Moderate minutes plus twice the vigorous ones over the 3 days before, and the usual for 3 days over the 28 before that. */
+  acute: number;
+  usual: number | null;
+  ratio: number | null;
 }
 
 export interface Readiness {
@@ -150,33 +159,70 @@ function stressSignal(prev: DayMetrics | undefined): Scored {
   return { value: fix(s), baseline: null, score: s >= 60 ? -2 : s >= 45 ? -1 : s <= 25 ? 1 : 0, reason: "yesterday's average stress (0-100)" };
 }
 
-/** The load of the sessions before a day began; null when there are none in the 31 days before. */
-export function loadSummary(rows: LoadRow[], date: string): (LoadSummary & { score: number }) | null {
+/** The intensity minutes of a stored day as Garmin counts them toward its goal: moderate plus twice the vigorous. Null when the day has none stored. */
+export const dayIntensityMinutes = (m: Pick<DayMetrics, "moderateMinutes" | "vigorousMinutes">): number | null =>
+  m.moderateMinutes === null && m.vigorousMinutes === null ? null : (m.moderateMinutes ?? 0) + 2 * (m.vigorousMinutes ?? 0);
+
+/**
+ * Garmin's intensity minutes of the 3 days before a day against the usual for 3 days over the 28 before them. They count all
+ * day, whatever recorded the effort, so they carry what no session holds. A day with nothing stored is unknown, not zero: the
+ * 3 days are scaled up from the days stored (at least 2 of them) and the usual is the average of the stored days (at least 14).
+ */
+function intensitySummary(metrics: DayMetrics[], date: string): IntensitySummary | null {
+  const minutes = (from: string, to: string) => metrics.filter((m) => m.day >= from && m.day < to).map(dayIntensityMinutes).filter(present);
+  const recent = minutes(addDays(date, -3), date), earlier = minutes(addDays(date, -31), addDays(date, -3));
+  const per3Days = (xs: number[]) => (xs.reduce((a, x) => a + x, 0) / xs.length) * 3;
+  if (recent.length < 2) return null;
+  const acute = per3Days(recent), usual = earlier.length >= MIN_BASELINE_DAYS ? per3Days(earlier) : null;
+  return { acute: Math.round(acute), usual: usual === null ? null : Math.round(usual), ratio: usual !== null && usual > 0 ? Math.round((acute / usual) * 100) / 100 : null };
+}
+
+/**
+ * The load before a day began: the sessions of the 31 days before (the effort times the minutes) and Garmin's intensity minutes
+ * of the same days. The score is read from the higher of the two ratios against the usual, so a heavy few days show whichever
+ * way they were heavy. Null when there are no sessions in the 31 days and no intensity minutes to go by.
+ */
+export function loadSummary(rows: LoadRow[], date: string, metrics: DayMetrics[] = []): (LoadSummary & { score: number }) | null {
   const start = dayStart(date), acuteFrom = start - 3 * DAY_MS, from = start - 31 * DAY_MS;
   const sessions = rows.filter((r) => r.seconds !== null && r.seconds > 0 && naive(r.startLocal) >= from && naive(r.startLocal) < start);
-  if (!sessions.length) return null;
+  const intensity = intensitySummary(metrics, date);
+  if (!sessions.length && !intensity) return null;
   const refMax = Math.max(0, ...sessions.map((r) => r.maxHr ?? 0)) || 190;
   /** RPE-like intensity, 1-10: the rated effort, else the average heart rate against the highest seen, else a plain 4. */
-  const intensity = (r: LoadRow) => (r.rpe !== null ? clamp(r.rpe / 10, 1, 10) : r.avgHr !== null ? clamp(((r.avgHr / refMax - 0.5) / 0.5) * 10, 1, 10) : 4);
-  const units = (r: LoadRow) => ((r.seconds ?? 0) / 60) * intensity(r);
+  const effort = (r: LoadRow) => (r.rpe !== null ? clamp(r.rpe / 10, 1, 10) : r.avgHr !== null ? clamp(((r.avgHr / refMax - 0.5) / 0.5) * 10, 1, 10) : 4);
+  const units = (r: LoadRow) => ((r.seconds ?? 0) / 60) * effort(r);
   const recent = sessions.filter((r) => naive(r.startLocal) >= acuteFrom);
   const acute = recent.reduce((a, r) => a + units(r), 0);
   const before = sessions.filter((r) => naive(r.startLocal) < acuteFrom);
   const usual = before.length ? (before.reduce((a, r) => a + units(r), 0) / 28) * 3 : null;
   const ratio = usual !== null && usual > 0 ? acute / usual : null;
-  const hard = sessions.filter((r) => (r.rpe !== null ? r.rpe >= HARD_RPE : intensity(r) >= 7.5) && naive(r.startLocal) >= start - 3 * DAY_MS);
+  const hard = sessions.filter((r) => (r.rpe !== null ? r.rpe >= HARD_RPE : effort(r) >= 7.5) && naive(r.startLocal) >= start - 3 * DAY_MS);
   const lastHard = hard.length ? Math.max(...hard.map((r) => naive(r.startLocal))) : null;
   const hoursSinceHard = lastHard === null ? null : (start - lastHard) / HOUR_MS;
-  const byRatio = ratio === null ? 0 : ratio >= 1.6 ? -2 : ratio >= 1.3 ? -1 : ratio <= 0.7 ? 1 : 0;
+  const ratios = [ratio, intensity?.ratio ?? null].filter(present);
+  const worst = ratios.length ? Math.max(...ratios) : null;
+  const byRatio = worst === null ? 0 : worst >= 1.6 ? -2 : worst >= 1.3 ? -1 : worst <= 0.7 ? 1 : 0;
   const score = clamp(byRatio + (hoursSinceHard !== null && hoursSinceHard < 24 ? -1 : 0), -2, 1);
-  return { acute: Math.round(acute), usual: usual === null ? null : Math.round(usual), ratio: ratio === null ? null : Math.round(ratio * 100) / 100, sessions: recent.length, hoursSinceHard: hoursSinceHard === null ? null : Math.round(hoursSinceHard), score };
+  return { acute: Math.round(acute), usual: usual === null ? null : Math.round(usual), ratio: ratio === null ? null : Math.round(ratio * 100) / 100, sessions: recent.length, hoursSinceHard: hoursSinceHard === null ? null : Math.round(hoursSinceHard), intensity, score };
 }
 
 function loadSignal(load: ReturnType<typeof loadSummary>): Scored {
-  if (!load) return { missing: "no sessions in the last 31 days" };
+  if (!load) return { missing: "no sessions in the last 31 days and no intensity minutes stored" };
   const hard = load.hoursSinceHard !== null && load.hoursSinceHard < 24;
-  const parts = [load.ratio !== null ? `${fix(load.ratio * 100)}% of your usual 3 days` : "no usual to compare with yet", hard ? `a hard session ${fix(load.hoursSinceHard!)} h before the day` : null].filter(Boolean);
-  return { value: `${load.sessions} session${load.sessions === 1 ? "" : "s"} in the 3 days before`, baseline: load.usual === null ? null : `usual about ${load.usual} units`, score: load.score, reason: parts.join("; ") };
+  const pct = (r: number | null) => (r === null ? null : `${fix(r * 100)}%`);
+  const parts = [
+    load.ratio !== null ? `sessions at ${pct(load.ratio)} of your usual 3 days` : null,
+    load.intensity?.ratio != null ? `intensity minutes at ${pct(load.intensity.ratio)} of your usual` : null,
+    hard ? `a hard session ${fix(load.hoursSinceHard!)} h before the day` : null,
+  ].filter(Boolean);
+  const intensity = load.intensity ? `, ${load.intensity.acute} intensity min` : "";
+  const usual = [load.usual === null ? null : `${load.usual} units`, load.intensity?.usual != null ? `${load.intensity.usual} intensity min` : null].filter(Boolean);
+  return {
+    value: `${load.sessions} session${load.sessions === 1 ? "" : "s"}${intensity} in the 3 days before`,
+    baseline: usual.length ? `usual about ${usual.join(", ")}` : null,
+    score: load.score,
+    reason: parts.length ? parts.join("; ") : "no usual to compare with yet",
+  };
 }
 
 /**
@@ -188,7 +234,7 @@ export function computeReadiness(metrics: DayMetrics[], load: LoadRow[], date: s
   const from = addDays(date, -BASELINE_DAYS);
   const history = metrics.filter((m) => m.day >= from && m.day < date);
   const today = byDay.get(date);
-  const summary = loadSummary(load, date);
+  const summary = loadSummary(load, date, metrics);
 
   const scored: [Signal["name"], Scored][] = [
     ["hrv", today ? hrvSignal(today) : { missing: "no data stored for the day" }],
@@ -223,7 +269,7 @@ export function computeReadiness(metrics: DayMetrics[], load: LoadRow[], date: s
     confidence,
     signals,
     missing,
-    load: summary && { acute: summary.acute, usual: summary.usual, ratio: summary.ratio, sessions: summary.sessions, hoursSinceHard: summary.hoursSinceHard },
+    load: summary && { acute: summary.acute, usual: summary.usual, ratio: summary.ratio, sessions: summary.sessions, hoursSinceHard: summary.hoursSinceHard, intensity: summary.intensity },
     suggestion: SUGGESTIONS[band],
   };
 }

@@ -1,4 +1,4 @@
-import { BACK_OFF_AT, GO_HARDER_AT, MIN_BASELINE_DAYS, baselines, computeReadiness, loadSummary } from "../shared/readiness";
+import { BACK_OFF_AT, GO_HARDER_AT, MIN_BASELINE_DAYS, baselines, computeReadiness, dayIntensityMinutes, loadSummary } from "../shared/readiness";
 import type { DayMetrics, LoadRow } from "../shared/store";
 import { metricsFor } from "./fixtures/wellness";
 
@@ -144,6 +144,61 @@ describe("the load of the last days", () => {
     expect(loadSummary([session(0, 9)], DATE)).toBeNull();
     expect(loadSummary([session(40, 9)], DATE)).toBeNull();
     expect(loadSummary([], DATE)).toBeNull();
+  });
+});
+
+describe("the intensity minutes in the load", () => {
+  /** A month of days with `usual` moderate minutes a day, the 3 days before the date with `recent`. */
+  const minutesMonth = (usual: number | null, recent: (number | null)[]) =>
+    Array.from({ length: 32 }, (_, i) => {
+      const back = 31 - i; // 31 days before the date ... the date
+      const m = back >= 1 && back <= 3 ? recent[back - 1] : back === 0 ? null : usual;
+      return normal(day(back), { moderateMinutes: m, vigorousMinutes: m === null ? null : 0 });
+    });
+
+  it("counts the moderate minutes and twice the vigorous ones, as Garmin does, and nothing for a day with none stored", () => {
+    expect(dayIntensityMinutes({ moderateMinutes: 20, vigorousMinutes: 10 })).toBe(40);
+    expect(dayIntensityMinutes({ moderateMinutes: null, vigorousMinutes: 5 })).toBe(10);
+    expect(dayIntensityMinutes({ moderateMinutes: 0, vigorousMinutes: null })).toBe(0); // a stored zero is a zero
+    expect(dayIntensityMinutes({ moderateMinutes: null, vigorousMinutes: null })).toBeNull();
+  });
+
+  it("show the effort no session holds: a ride to work that nobody recorded", () => {
+    // no session in the 3 days, but 60 intensity minutes a day against a usual 20
+    const l = loadSummary(usualTraining().filter((r) => !/^[2-4]-/.test(r.id)), DATE, minutesMonth(20, [60, 60, 60]))!;
+    expect(l.ratio!).toBeLessThanOrEqual(0.7); // the sessions alone call it a rest period ...
+    expect(l.intensity).toEqual({ acute: 180, usual: 60, ratio: 3 }); // ... the minutes do not
+    expect(l.score).toBe(-2);
+  });
+
+  it("go by the higher ratio, so they never make a heavy session look lighter", () => {
+    const heavy = [...usualTraining().filter((r) => !r.id.startsWith("2-")), session(1, 18, { rpe: 85, seconds: 5400 }), session(2, 18, { rpe: 80, seconds: 5400 })];
+    const alone = loadSummary(heavy, DATE)!;
+    const withQuietMinutes = loadSummary(heavy, DATE, minutesMonth(20, [5, 5, 5]))!;
+    expect(withQuietMinutes.intensity!.ratio!).toBeLessThan(0.7);
+    expect(withQuietMinutes.score).toBe(alone.score);
+  });
+
+  it("scale a 3 days with a day missing, and need 2 of them, and 14 usual days", () => {
+    expect(loadSummary([], DATE, minutesMonth(20, [60, null, 60]))!.intensity).toEqual({ acute: 180, usual: 60, ratio: 3 }); // two days, scaled to three
+    expect(loadSummary([], DATE, minutesMonth(20, [60, null, null]))).toBeNull(); // one day says too little, and there is no session
+    expect(loadSummary([], DATE, minutesMonth(null, [60, 60, 60]))!.intensity).toEqual({ acute: 180, usual: null, ratio: null }); // no usual to compare with
+    expect(loadSummary([], DATE, minutesMonth(0, [60, 60, 60]))!.intensity!.ratio).toBeNull(); // nothing to divide by
+  });
+
+  it("make a readiness with no session at all, and say what they were", () => {
+    const r = computeReadiness(minutesMonth(20, [60, 60, 60]), [], DATE);
+    const load = r.signals.find((s) => s.name === "load")!;
+    expect(load.value).toBe("0 sessions, 180 intensity min in the 3 days before");
+    expect(load.baseline).toBe("usual about 60 intensity min");
+    expect(load.reason).toBe("intensity minutes at 300% of your usual");
+    expect(r.load).toMatchObject({ sessions: 0, intensity: { acute: 180, usual: 60, ratio: 3 } });
+  });
+
+  it("leave a readiness as it was when no intensity minutes are stored", () => {
+    const r = computeReadiness(month(), usualTraining(), DATE);
+    expect(r.load!.intensity).toBeNull();
+    expect(r.signals.find((s) => s.name === "load")!.value).toMatch(/^\d+ sessions? in the 3 days before$/);
   });
 });
 

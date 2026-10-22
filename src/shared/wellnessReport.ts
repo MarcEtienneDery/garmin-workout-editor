@@ -3,7 +3,7 @@
  * days of a range with the person's own normal. The MCP tools and the web view both answer from these, so they cannot disagree.
  */
 import { type BodyTrend, bodyTrend } from "./bodyTrend";
-import { BASELINE_DAYS, baselines, computeReadiness, type Readiness } from "./readiness";
+import { BASELINE_DAYS, baselines, computeReadiness, dayIntensityMinutes, type Readiness } from "./readiness";
 import type { DayMetrics, SqliteStore } from "./store";
 import { addDays } from "./wellnessSync";
 
@@ -12,9 +12,9 @@ const LOAD_DAYS = 31;
 
 /** How ready the person is on `date`, and how many days of data it was worked out from. */
 export function readinessAt(store: SqliteStore, profile: string, date: string): { readiness: Readiness; daysStored: number } {
-  const metrics = store.wellness.metrics(profile, addDays(date, -BASELINE_DAYS), date);
+  const metrics = store.wellness.metrics(profile, addDays(date, -LOAD_DAYS), date); // the load looks 31 days back, the baselines 28
   const load = store.activities.loadRows(profile, `${addDays(date, -LOAD_DAYS)} 00:00:00`);
-  return { readiness: computeReadiness(metrics, load, date), daysStored: metrics.length };
+  return { readiness: computeReadiness(metrics, load, date), daysStored: metrics.filter((m) => m.day >= addDays(date, -BASELINE_DAYS)).length };
 }
 
 /** The stored days from `from` to `to`, oldest first, with the person's own normal over the 28 days before `to`. */
@@ -50,7 +50,6 @@ export interface IntensityWeek {
 export function intensityWeek(store: SqliteStore, profile: string, today: string): IntensityWeek {
   const sinceMonday = (new Date(Date.parse(`${today}T00:00:00Z`)).getUTCDay() + 6) % 7;
   const start = addDays(today, -sinceMonday);
-  const stored = store.wellness.metrics(profile, start, today).filter((m) => m.moderateMinutes !== null || m.vigorousMinutes !== null);
-  const minutes = stored.reduce((total, m) => total + (m.moderateMinutes ?? 0) + 2 * (m.vigorousMinutes ?? 0), 0);
-  return { start, minutes, daysStored: stored.length, days: sinceMonday + 1 };
+  const stored = store.wellness.metrics(profile, start, today).map(dayIntensityMinutes).filter((n): n is number => n !== null);
+  return { start, minutes: stored.reduce((total, n) => total + n, 0), daysStored: stored.length, days: sinceMonday + 1 };
 }

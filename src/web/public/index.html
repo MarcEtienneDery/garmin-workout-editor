@@ -3063,7 +3063,7 @@ function renderReadiness(box, d) {
   }
   if (r.load) {
     const l = r.load;
-    card.append(mk("div", "rmiss", `Load, 3 days before: ${l.sessions} session${l.sessions === 1 ? "" : "s"}, ${RM.num(l.acute)} units${l.usual !== null ? ` against ${RM.num(l.usual)} usual` : ""}${l.hoursSinceHard !== null ? `; last hard session ${l.hoursSinceHard} h before the day` : ""}.`));
+    card.append(mk("div", "rmiss", `Load, 3 days before: ${l.sessions} session${l.sessions === 1 ? "" : "s"}, ${RM.num(l.acute)} units${l.usual !== null ? ` against ${RM.num(l.usual)} usual` : ""}${l.intensity ? `, and ${RM.num(l.intensity.acute)} intensity minutes${l.intensity.usual !== null ? ` against ${RM.num(l.intensity.usual)} usual` : ""} (all day, recorded or not)` : ""}${l.hoursSinceHard !== null ? `; last hard session ${l.hoursSinceHard} h before the day` : ""}.`));
   }
   if (r.missing.length) card.append(mk("div", "rmiss", "Not counted: " + r.missing.map((m) => m.replace(/^(\w+): /, (_, k) => `${SIGNAL_NAMES[k] || k}: `)).join("; ") + "."));
   box.append(card);
