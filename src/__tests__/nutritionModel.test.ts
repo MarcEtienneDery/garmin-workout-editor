@@ -157,6 +157,42 @@ describe("the form", () => {
   });
 });
 
+describe("the foods used lately", () => {
+  // newest first, as the server gives them
+  const recent = [
+    { name: "Maple syrup · 10 ml", meal: "snack", kcal: 37, proteinG: 0, carbsG: 9.2, fatG: 0, nutrients: {} },
+    { name: "OIKOS · 150 g", meal: "breakfast", kcal: 78, proteinG: 14.4, carbsG: 5.3, fatG: 0, nutrients: { calciumMg: 163 } },
+    { name: "Crème brûlée", meal: "dinner", kcal: 300, proteinG: 4, carbsG: 30, fatG: 18, nutrients: {} },
+    { name: "Blueberries · 50 g", meal: "breakfast", kcal: 29, proteinG: 0.4, carbsG: 7.2, fatG: 0, nutrients: { fiberG: 2.3 } },
+  ];
+  const names = (list: any[]) => list.map((r) => r.name);
+
+  it("offers first the ones last logged in the meal, then the others, newest first in each", () => {
+    expect(names(NM.recentFor(recent, "breakfast", ""))).toEqual(["OIKOS · 150 g", "Blueberries · 50 g", "Maple syrup · 10 ml", "Crème brûlée"]);
+    expect(names(NM.recentFor(recent, "lunch", "  "))).toEqual(names(recent)); // none in this meal: plain newest first
+    expect(NM.recentFor(undefined, "lunch", "")).toEqual([]);
+  });
+
+  it("keeps, with a query, the ones whose name holds every word of it, in any case and without accents", () => {
+    expect(names(NM.recentFor(recent, "dinner", "oik"))).toEqual(["OIKOS · 150 g"]);
+    expect(names(NM.recentFor(recent, "dinner", "creme BRULEE"))).toEqual(["Crème brûlée"]);
+    expect(names(NM.recentFor(recent, "breakfast", "50 g"))).toEqual(["OIKOS · 150 g", "Blueberries · 50 g"]); // "150" holds "50"
+    expect(names(NM.recentFor(recent, "breakfast", "50 blue"))).toEqual(["Blueberries · 50 g"]);
+    expect(NM.recentFor(recent, "breakfast", "pizza")).toEqual([]);
+  });
+
+  it("gives a food to log again as it was logged, its nutrients a copy", () => {
+    const item = NM.again(recent[1]);
+    expect(item).toEqual({ name: "OIKOS · 150 g", kcal: 78, proteinG: 14.4, carbsG: 5.3, fatG: 0, nutrients: { calciumMg: 163 }, product: null });
+    expect(item.nutrients).not.toBe(recent[1].nutrients);
+    expect(NM.again({ name: "Old", kcal: 1, proteinG: 0, carbsG: 0, fatG: 0 }).nutrients).toEqual({}); // a food from before the nutrients
+  });
+
+  it("counts foods in words", () => {
+    expect([NM.foods(1), NM.foods(3)]).toEqual(["1 food", "3 foods"]);
+  });
+});
+
 describe("barcodes", () => {
   it("checks the digit a barcode ends with", () => {
     for (const ok of ["3017620422003", "894700010137", "0894700010137", "96385074", "40170725"]) expect(NM.gtinOk(ok)).toBe(true);
@@ -197,10 +233,41 @@ describe("a food by quantity", () => {
   });
 
   it("says what the quantity comes to, and the name to log it under", () => {
-    expect(NM.portion(yogurt, "1", "portion")).toEqual({ amount: 1, grams: 170, nutrition: { kcal: 90, proteinG: 16.2, carbsG: 6.8, fatG: 0 }, nutrients: {}, name: "Greek Yogurt (chobani) · 1 × 170 g" });
+    expect(NM.portion(yogurt, "1", "portion")).toEqual({
+      amount: 1, grams: 170, nutrition: { kcal: 90, proteinG: 16.2, carbsG: 6.8, fatG: 0 }, nutrients: {}, name: "Greek Yogurt (chobani) · 1 × 170 g",
+      // what is kept with the food, so it can be changed by quantity later
+      product: { code: null, name: "Greek Yogurt", brand: "chobani", unit: "g", per100: yogurt.per100, nutrients: {}, servingG: 170, servingText: null, amount: 1, per: "portion" },
+    });
     expect(NM.portion(yogurt, "1,5", "portion")).toMatchObject({ grams: 255, name: "Greek Yogurt (chobani) · 1.5 × 170 g" });
     expect(NM.portion(yogurt, "250", "g")).toMatchObject({ grams: 250, name: "Greek Yogurt (chobani) · 250 g" });
     expect(NM.portion(juice, "330", "g")).toMatchObject({ nutrition: { kcal: 149 }, name: "Orange juice · 330 ml" });
+  });
+
+  it("gives a food logged from a product back to the picker, to change its quantity", () => {
+    const logged = NM.portion({ ...yogurt, code: "0056800202458", nutrients: { calciumMg: 110 } }, "1.5", "portion");
+    const entry = { name: logged.name, ...logged.nutrition, nutrients: logged.nutrients, product: logged.product };
+    const back = NM.pickOf(NM.productOf(entry));
+    expect(back).toMatchObject({ amount: "1.5", unit: "portion", food: { code: "0056800202458", name: "Greek Yogurt", servingG: 170 } });
+    expect(NM.portion(back.food, back.amount, back.unit)).toEqual(logged); // as it was
+    expect(NM.portion(back.food, "200", "g")).toMatchObject({ name: "Greek Yogurt (chobani) · 200 g", nutrition: { kcal: 106, proteinG: 19 }, nutrients: { calciumMg: 220 }, product: { amount: 200, per: "g" } });
+  });
+
+  it("works the product out for a food logged before products were kept, from its numbers and the quantity its name ends with", () => {
+    const chia = { name: "Black Chia Seeds (Yupik) · 1 × 15 g", kcal: 70, proteinG: 2, carbsG: 6, fatG: 4.5, nutrients: { fiberG: 5.1 }, product: null };
+    const p = NM.productOf(chia);
+    expect(p).toEqual({ code: null, name: "Black Chia Seeds (Yupik)", brand: null, unit: "g", per100: { kcal: 466.67, proteinG: 13.33, carbsG: 40, fatG: 30 }, nutrients: { fiberG: 34 }, servingG: 15, servingText: null, amount: 1, per: "portion" });
+    const back = NM.pickOf(p);
+    expect(NM.portion(back.food, back.amount, back.unit)).toMatchObject({ name: chia.name, nutrition: { kcal: 70, proteinG: 2, carbsG: 6, fatG: 4.5 }, nutrients: { fiberG: 5.1 } }); // exact at the quantity logged
+    expect(NM.portion(back.food, "30", "g")).toMatchObject({ name: "Black Chia Seeds (Yupik) · 30 g", nutrition: { kcal: 140, fatG: 9 } });
+    expect(NM.productOf({ name: "Milk · 75 ml", kcal: 48, proteinG: 5.4, carbsG: 2.7, fatG: 1.5 })).toMatchObject({ name: "Milk", unit: "ml", amount: 75, per: "g", per100: { kcal: 64 }, nutrients: {} });
+    // a food typed in or estimated has no quantity to change
+    for (const name of ["Banana", "Rice 150 g", " · 50 g", "Rice · 0 g"]) expect(NM.productOf({ name, kcal: 100, proteinG: 1, carbsG: 2, fatG: 3 })).toBeNull();
+  });
+
+  it("sends every nutrient when a food is changed, null for the ones it does not state", () => {
+    const all = NM.allNutrients({ fiberG: 3, ironMg: 0 });
+    expect(Object.keys(all)).toEqual(NM.NUTRIENTS.map((n: { key: string }) => n.key));
+    expect(all).toMatchObject({ fiberG: 3, ironMg: 0, sodiumMg: null });
   });
 
   it("refuses a quantity that is not a number, is not above 0 or is more than a person eats", () => {

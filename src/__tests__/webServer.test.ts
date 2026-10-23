@@ -772,6 +772,56 @@ describe("web plan editor", () => {
         expect((await call("POST", "/api/nutrition", { action: "explode" })).status).toBe(400);
       });
 
+      it("copies foods of a past day to today and stays on the past day, and an undo deletes the copies", async () => {
+        addProfile("MED");
+        const before = (await call("POST", "/api/nutrition", { action: "add", day: dayOf(3), meal: "dinner", items: [{ ...rice, nutrients: { fiberG: 1 } }, { name: "Beans", kcal: 120 }] })).json;
+        expect(before.added).toHaveLength(2);
+        const ids = before.day.meals[2].entries.map((e: any) => e.id);
+        expect(before.added).toEqual(ids);
+
+        const copied = await call("POST", "/api/nutrition", { action: "copy", ids, date: dayOf(3) });
+        expect(copied.status).toBe(200);
+        expect(copied.json.date).toBe(dayOf(3)); // the page stays on the day it copied from
+        expect(copied.json.added).toHaveLength(2);
+        const todays = (await call("GET", "/api/nutrition")).json.day;
+        expect(todays.meals[2].entries.map((e: any) => [e.id, e.name, e.kcal, e.nutrients, e.source])).toEqual([
+          [copied.json.added[0], "Rice", 200, { fiberG: 1 }, "web"],
+          [copied.json.added[1], "Beans", 120, {}, "web"],
+        ]);
+
+        const undone = await call("POST", "/api/nutrition", { action: "delete", ids: copied.json.added, date: dayOf(3) });
+        expect(undone.json.date).toBe(dayOf(3));
+        expect(undone.json.day.entries).toBe(2); // the past day keeps its own
+        expect((await call("GET", "/api/nutrition")).json.day.entries).toBe(0);
+
+        expect((await call("POST", "/api/nutrition", { action: "copy", ids: [999] })).status).toBe(400);
+        expect((await call("POST", "/api/nutrition", { action: "copy", ids: [] })).status).toBe(400);
+        expect((await call("POST", "/api/nutrition", { action: "delete", ids: [] })).status).toBe(400);
+        expect((await call("POST", "/api/nutrition", { action: "copy", ids, date: "yesterday" })).status).toBe(400);
+        expect((await call("GET", "/api/nutrition")).json.day.entries).toBe(0); // nothing was copied by the refused ones
+      });
+
+      it("keeps the product a food was scaled from, and changes the food by quantity with it", async () => {
+        addProfile("MED");
+        const product = { code: "0056800202458", name: "OIKOS", brand: "Oikos", unit: "g", per100: { kcal: 52, proteinG: 9.6, carbsG: 3.5, fatG: 0 }, nutrients: { calciumMg: 117.33 }, servingG: 115, servingText: "115 g", amount: 150, per: "g" };
+        const added = (await call("POST", "/api/nutrition", { action: "add", day: today(), meal: "breakfast", items: [{ name: "OIKOS · 150 g", kcal: 78, proteinG: 14.4, carbsG: 5.3, fatG: 0, nutrients: { calciumMg: 176 }, product }] })).json;
+        const id = added.added[0];
+        expect(added.day.meals[0].entries[0].product).toEqual(product);
+        expect(added.recent[0].product).toEqual(product); // a recent food added again keeps it too
+        // what the picker sends on Save: the new numbers, every nutrient (null for an unstated one) and the product at the new quantity
+        const nutrients = { fiberG: null, sugarsG: null, satFatG: null, transFatG: null, cholesterolMg: null, sodiumMg: null, potassiumMg: null, calciumMg: 234.7, ironMg: null };
+        const changed = await call("POST", "/api/nutrition", { action: "update", id, name: "OIKOS · 200 g", kcal: 104, proteinG: 19.2, carbsG: 7, fatG: 0, nutrients, product: { ...product, amount: 200 } });
+        expect(changed.status).toBe(200);
+        expect(changed.json.day.meals[0].entries[0]).toMatchObject({ id, name: "OIKOS · 200 g", kcal: 104, nutrients: { calciumMg: 234.7 }, product: { amount: 200, per: "g" } });
+        // changed by hand, it no longer is that quantity of the product
+        expect((await call("POST", "/api/nutrition", { action: "update", id, name: "OIKOS · 200 g", kcal: 110, proteinG: 19.2, carbsG: 7, fatG: 0, nutrients })).json.day.meals[0].entries[0].product).toBeNull();
+        // a product the page could not have made is refused, and nothing is logged
+        const bad = await call("POST", "/api/nutrition", { action: "add", day: today(), meal: "lunch", items: [{ name: "OIKOS · 0 g", kcal: 0, product: { ...product, amount: 0 } }] });
+        expect(bad.status).toBe(400);
+        expect(bad.json.error).toMatch(/quantity is 0/);
+        expect((await call("GET", "/api/nutrition")).json.day.entries).toBe(1);
+      });
+
       it("keeps the nutrients of a food, sums them with how many foods state each, and offers them again", async () => {
         addProfile("MED");
         const lentils = { name: "Lentils", kcal: 230, proteinG: 18, carbsG: 40, fatG: 1, nutrients: { fiberG: 15.6, sodiumMg: 4 } };

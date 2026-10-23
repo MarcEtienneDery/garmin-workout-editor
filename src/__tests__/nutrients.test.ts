@@ -27,10 +27,21 @@ describe("a database made before the nutrients existed", () => {
     const store = SqliteStore.open(file);
     try {
       const [kept] = store.nutrition.range("MED", TODAY, TODAY);
-      expect(kept).toMatchObject({ name: "Old rice", kcal: 205, proteinG: 4, carbsG: 45, fatG: 0.4, nutrients: {} });
+      expect(kept).toMatchObject({ name: "Old rice", kcal: 205, proteinG: 4, carbsG: 45, fatG: 0.4, nutrients: {}, product: null });
       const [added] = addFoods(store, "MED", { meal: "dinner", items: [{ name: "Oats", kcal: 150, nutrients: { fiberG: 4 } }] }, TODAY, "test");
       expect(store.nutrition.get("MED", added.id)?.nutrients).toEqual({ fiberG: 4 });
       expect(store.nutrition.get("MED", kept.id)?.nutrients).toEqual({});
+    } finally {
+      store.close();
+    }
+  });
+
+  it("gets the product column too, and keeps a product in it", () => {
+    const store = SqliteStore.open(file);
+    try {
+      const product = { code: null, name: "Rice", brand: null, unit: "g", per100: { kcal: 130, proteinG: 2.7, carbsG: 28, fatG: 0.3 }, nutrients: {}, servingG: null, servingText: null, amount: 200, per: "g" };
+      const [added] = addFoods(store, "MED", { meal: "dinner", items: [{ name: "Rice · 200 g", kcal: 260, product }] }, TODAY, "test");
+      expect(store.nutrition.get("MED", added.id)?.product).toEqual(product);
     } finally {
       store.close();
     }

@@ -257,14 +257,38 @@
   /* ── Food view: a block per meal with its foods and a form to add one ── */
   .fmeal { margin-top:12px; padding:8px 12px 10px; background:var(--panel); border:1px solid var(--line); border-radius:4px; }
   .fmh { display:flex; gap:4px 10px; align-items:baseline; flex-wrap:wrap; } .fmh b { font-size:14px; } .fmh span { color:var(--dim); font-size:12px; }
-  .fe { display:flex; gap:8px; align-items:center; padding:6px 0; border-top:1px solid var(--line); } .fe:first-of-type { margin-top:6px; }
+  .fmh .fcopy { margin-left:auto; }
+  .fcopy { padding:2px 10px; color:var(--accent); } .fcopy:disabled { color:var(--ok); opacity:1; }
+  .fday { display:flex; gap:6px 10px; align-items:center; flex-wrap:wrap; margin-top:12px; padding:8px 12px; background:var(--panel); border:1px solid var(--line); border-left:3px solid var(--accent); border-radius:4px; }
+  .fday span { flex:1 1 auto; color:var(--dim); }
+  /* a food is one tappable line (name, macros, calories); a tap shows its nutrients and buttons */
+  .fe { border-top:1px solid var(--line); } .fe:first-of-type { margin-top:6px; }
   .fe.editing { background:rgba(255,255,255,.05); }
+  .fe .fhead { display:flex; gap:8px; align-items:center; width:100%; padding:6px 0; background:none; border:0; border-radius:0; color:inherit; font:inherit; text-align:left; cursor:pointer; }
   .fe .ft { flex:1 1 0; min-width:0; } .fe .fn { overflow-wrap:anywhere; } .fe .fm { color:var(--dim); font-size:12px; } .fe .fk { white-space:nowrap; }
-  .fe button { padding:0 8px; min-height:26px; }
+  .fe .fk::after { content:"▸"; display:inline-block; margin-left:6px; color:var(--dim); font-size:11px; transition:transform .15s; } .fe.open .fk::after { transform:rotate(90deg); }
+  .fe:not(.open) .fmore-e { display:none; } .fmore-e { padding:0 0 8px; }
+  .fea { display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; } .fea button { padding:2px 10px; }
+  .fr.frec { display:grid; grid-template-columns:minmax(0,1fr) auto; column-gap:10px; } .frec .frt, .frec .frm { grid-column:1; min-width:0; overflow-wrap:anywhere; }
+  .frec .fplus { grid-column:2; grid-row:1 / span 2; align-self:center; font-size:20px; line-height:1; color:var(--accent); }
+  .fall { justify-self:start; padding:2px 10px; color:var(--accent); }
+  .ffrow button[aria-pressed="true"] { background:var(--accent); border-color:var(--accent); color:#fff; }
+  .fth { display:flex; gap:10px; align-items:center; } .fth .frange { margin-left:auto; }
+  #toast button { margin-left:12px; padding:2px 10px; color:var(--accent); }
   .fform { display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin-top:8px; }
   .fform input { min-width:0; box-sizing:border-box; background:#333; color:var(--fg); border:1px solid var(--line); border-radius:3px; padding:4px 6px; font:inherit; }
   .fform .fname { flex:3 1 12em; } .fform .fnum { flex:1 1 4.2em; width:4.2em; }
-  @media (max-width:700px) { .fform .fname { flex-basis:100%; } .fe button { min-width:34px; min-height:34px; } .fform input, .fpq input, .fpq select { min-height:40px; font-size:16px; } #scandlg { width:94vw; } }
+  @media (max-width:700px) {
+    .fform .fname { flex-basis:100%; } .fform input, .fpq input, .fpq select { min-height:40px; font-size:16px; } #scandlg { width:94vw; }
+    .fe .fhead { min-height:48px; } .fea button { flex:1 1 auto; min-height:40px; padding:6px 10px; white-space:nowrap; } .frec { min-height:48px; }
+    .fmeal { padding:8px 10px 10px; } .fmh .fcopy, .fday .fcopy { min-height:36px; white-space:nowrap; }
+    /* the totals go under the meal's name, so its button fits beside them */
+    .fmh { display:grid; grid-template-columns:minmax(0,1fr) auto; column-gap:8px; align-items:center; } .fmh b, .fmh span { grid-column:1; } .fmh .fcopy { grid-column:2; grid-row:1 / span 2; }
+    .ffrow .fq { flex-basis:0; } .ffrow button { padding:6px 10px; white-space:nowrap; }
+    .fpa button { flex:1 1 0; min-height:40px; } .fpl .flink { min-height:36px; } .frepl button { min-height:36px; }
+    /* the day's four figures in less room, so the meals start on the first screen */
+    .ffigs { gap:8px; } .ffigs .rfig { padding:6px 10px; } .ffigs .rfig b { font-size:17px; } .ffigs .rfig:last-child b { font-size:14px; line-height:1.4; } .ffigs .rfig span { font-size:11px; }
+  }
   .ffrow { display:flex; gap:6px; align-items:center; margin-top:8px; } .ffrow .fq { flex:1 1 auto; min-width:0; box-sizing:border-box; }
   .fresults { display:grid; gap:4px; margin-top:6px; } .fresults:empty { display:none; }
   .fnote { color:var(--dim); font-size:13px; line-height:1.4; } .fnote.err { color:var(--err); }
@@ -276,6 +300,8 @@
   .fpq { display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
   .fpq input { width:6.5em; box-sizing:border-box; background:#333; color:var(--fg); border:1px solid var(--line); border-radius:3px; padding:4px 6px; font:inherit; }
   .fpv { margin:8px 0; font-weight:600; }
+  .fpa { display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin-bottom:6px; } .fpl { display:flex; gap:4px 16px; flex-wrap:wrap; margin:4px 0; } .flink { padding:2px 0; background:none; border:0; color:var(--accent); font-size:12px; }
+  .frepl { display:flex; gap:8px; align-items:center; margin-top:8px; padding:6px 10px; border-left:3px solid var(--accent); background:rgba(255,255,255,.05); border-radius:4px; } .frepl span { flex:1 1 auto; min-width:0; overflow-wrap:anywhere; }
   .fgroup { margin-top:6px; font-size:11px; text-transform:uppercase; letter-spacing:.05em; }
   .fnut { grid-template-columns:repeat(3,minmax(0,1fr)); } .fnut .rfig b { font-size:17px; } .fnut .rfig.part span { color:var(--warn); }
   .fmore { flex:1 1 100%; } .fmore > summary { cursor:pointer; color:var(--dim); font-size:12px; }
@@ -838,9 +864,6 @@
     <input type="date" id="fDate" aria-label="Day">
     <button id="fNext" title="Next day" aria-label="Next day">▶</button>
     <button id="fToday">Today</button>
-    <select id="fRange" title="How many days the charts and the table show">
-      <option value="14">14 days</option><option value="30" selected>30 days</option><option value="60">60 days</option><option value="90">90 days</option>
-    </select>
   </div>
   <div id="fNote" class="empty" hidden></div>
   <div id="fscroll"><div id="fbody"><div class="empty">Loading…</div></div></div>
@@ -3198,8 +3221,11 @@ function bindWeightView() {
 // says the day burned, and the days of a range. The log is in the database only, Garmin has nowhere to keep food, so the view
 // works without a Garmin login. The logic (totals, shares, the form's checks) is nutritionModel.js.
 const NM = NutritionModel;
-// finds: per meal, what its search box holds and found; pick: the food chosen to say a quantity of (one at a time); hand: the meals whose by-hand form is open
-const F = { profile: null, date: null, range: 30, data: null, error: "", run: 0, loaded: false, busy: false, drafts: new Map(), editing: null, finds: new Map(), pick: null, hand: new Set() };
+// finds: per meal, what its search box holds and found; pick: the food chosen to say a quantity of (one at a time); hand: the meals whose by-hand form is open;
+// open: the foods whose details and buttons are shown; copied: the ids of the foods of past days this page copied to today;
+// editing: the food changed by hand (the by-hand form), pick.editing: by quantity (the picker), replacing: by another food (the search)
+const F = { profile: null, date: null, range: 30, data: null, error: "", run: 0, loaded: false, busy: false, drafts: new Map(), editing: null, finds: new Map(), pick: null, hand: new Set(), open: new Set(), copied: new Set(), replacing: null };
+const RECENT_SHOWN = 8;
 const foodQuery = () => `${F.profile ? `profile=${encodeURIComponent(F.profile)}&` : ""}${F.date ? `date=${F.date}&` : ""}days=${F.range}`;
 
 async function loadFood() {
@@ -3217,34 +3243,100 @@ async function loadFood() {
   renderFood();
 }
 
-/** Add, change or delete through the server, which answers with the day as it is now. False when it was refused (the reason is toasted). */
+/**
+ * Add, copy, change or delete through the server, which answers with the day shown as it is now and the ids of the foods it wrote
+ * (`added`). That answer, or null when it was refused (the reason is toasted).
+ */
 async function foodAction(body) {
-  if (F.busy) return false;
+  if (F.busy) return null;
   F.busy = true;
   try {
-    F.data = await api("POST", "/api/nutrition", { profile: F.profile, days: F.range, ...body });
-    F.error = "";
-    return true;
-  } catch (e) { toast(e.message, 6000); return false; }
+    const r = await api("POST", "/api/nutrition", { profile: F.profile, days: F.range, ...body });
+    F.data = r; F.error = "";
+    return r;
+  } catch (e) { toast(e.message, 6000); return null; }
   finally { F.busy = false; }
+}
+
+/** A toast with a button, Undo: it runs once, and the toast goes. */
+function toastUndo(text, undo) {
+  toast(text, 8000);
+  const t = $("toast"), b = mk("button", "", "Undo");
+  b.type = "button";
+  b.onclick = () => { t.style.display = "none"; guard(undo)(); };
+  t.append(b);
+}
+
+/** Take back foods just written (a tap on a recent food, a copy to today); `then` runs once they are gone. */
+const undoAdded = (ids, then) => async () => {
+  if (!(await foodAction({ action: "delete", ids, date: F.data.date }))) return;
+  if (then) then();
+  renderFood();
+  toast(`Removed ${NM.foods(ids.length)}.`);
+};
+
+/** Log a food used lately again, as it was, in a meal of the day shown. */
+async function addRecent(meal, r) {
+  const done = await foodAction({ action: "add", day: F.data.date, meal, items: [NM.again(r)] });
+  if (!done) return;
+  const st = findState(meal);
+  if (st.q) { st.q = ""; st.foods = []; st.note = ""; st.run++; } // a search that found it has done its job; the list of recent foods stays open
+  renderFood();
+  toastUndo(`Added ${r.name} to ${NM.mealLabel(meal)}.`, undoAdded(done.added));
+}
+
+/** Log foods of a past day again today, each in its meal; they are marked copied, so no other button copies them twice by mistake. */
+async function copyToToday(ids, what) {
+  const done = await foodAction({ action: "copy", ids, date: F.data.date });
+  if (!done) return;
+  for (const id of ids) F.copied.add(id);
+  renderFood();
+  toastUndo(`Copied ${what} to today.`, undoAdded(done.added, () => ids.forEach((id) => F.copied.delete(id))));
+}
+
+/** A button that copies to today the foods of `ids` not copied yet (`what(n)` names them), or says they all are. */
+function copyButton(ids, what, label = "Copy to today") {
+  const left = ids.filter((id) => !F.copied.has(id));
+  const b = mk("button", "fcopy", left.length ? label : "Copied ✓");
+  b.type = "button"; b.disabled = !left.length;
+  b.onclick = guard(() => copyToToday(left, what(left.length)));
+  return b;
+}
+
+/** How many days the charts and the table show: it sits with them, under the day. */
+let foodRange;
+function foodRangeSelect() {
+  if (!foodRange) {
+    foodRange = mk("select", "frange");
+    foodRange.title = "How many days the charts and the table show"; foodRange.setAttribute("aria-label", foodRange.title);
+    for (const n of [14, 30, 60, 90]) foodRange.add(new Option(`${n} days`, String(n)));
+    foodRange.onchange = () => { F.range = Number(foodRange.value); guard(loadFood)(); };
+  }
+  foodRange.value = String(F.range);
+  return foodRange;
 }
 
 function renderFood() {
   const box = $("fbody"), d = F.data, note = $("fNote");
   $("fDate").value = d && d.date ? d.date : "";
   $("fNext").disabled = !(d && d.date && d.date < d.today);
-  $("fRange").value = String(F.range);
-  const text = F.error || (d && d.average ? NM.averageNote(d.average) : "");
-  note.className = F.error ? "empty err" : "empty"; note.textContent = text; note.hidden = !text;
+  note.className = "empty err"; note.textContent = F.error; note.hidden = !F.error;
   const keep = $("fscroll").scrollTop;
   box.replaceChildren();
   if (!F.loaded) { box.append(mk("div", "empty", "Loading…")); return; }
   if (F.error && !d) { box.append(mk("div", "msg err", F.error)); return; }
   if (!d || !d.profile) { box.append(mk("div", "empty", "No Garmin profile is configured.")); return; }
 
-  const figs = mk("div", "rfigs");
+  const figs = mk("div", "rfigs ffigs");
   for (const f of NM.figures(d)) { const tile = mk("div", "rfig"); tile.append(mk("small", "", f.label), mk("b", "", f.value), mk("span", "", f.note)); figs.append(tile); }
   box.append(figs);
+
+  // a past day can be logged again today, all of it, a meal or a food at a time
+  if (d.date < d.today && d.day.entries) {
+    const bar = mk("div", "fday"), ids = d.day.meals.flatMap((m) => m.entries.map((e) => e.id));
+    bar.append(mk("span", "", `${RM.dayLabel(d.date)}: ${NM.foods(d.day.entries)}`), copyButton(ids, NM.foods, "Copy the day to today"));
+    box.append(bar);
+  }
 
   const recent = document.createElement("datalist");
   recent.id = "fRecent";
@@ -3259,7 +3351,10 @@ function renderFood() {
     box.append(mk("h3", "", "Nutrients"), grid);
   }
 
-  box.append(mk("h3", "", `Trends, ${d.days.length} days`));
+  const trends = mk("div", "fth");
+  trends.append(mk("h3", "", "Trends"), foodRangeSelect());
+  box.append(trends);
+  if (d.average) box.append(mk("div", "fnote", NM.averageNote(d.average)));
   box.append(TrendCharts.trends(NM.chartDays(d.days), NM.charts(), { selected: d.date, onPick: pickFoodDay }));
   box.append(mk("h3", "", "Every day"));
   box.append(metricsTable(d.days, NM.GROUPS, NM.cell, d.date, pickFoodDay));
@@ -3272,6 +3367,9 @@ function foodMeal(block) {
   sec.dataset.meal = block.meal;
   head.append(mk("b", "", NM.mealLabel(block.meal)));
   if (block.entries.length) head.append(mk("span", "", `${NM.kcal(block.totals.kcal)} · ${NM.macros(block.totals)}`));
+  if (block.entries.length && F.data.date < F.data.today) {
+    head.append(copyButton(block.entries.map((e) => e.id), (n) => `${NM.mealLabel(block.meal)} (${NM.foods(n)})`));
+  }
   sec.append(head);
   for (const e of block.entries) sec.append(foodEntry(e, block.meal));
   sec.append(F.pick && F.pick.meal === block.meal ? foodPicker(F.pick) : foodFinder(block.meal));
@@ -3283,21 +3381,70 @@ function foodMeal(block) {
   return sec;
 }
 
+/** The food being changed, by hand, by quantity or by another food; its row is marked. */
+const changingId = () => (F.editing && F.editing.id) || (F.pick && F.pick.editing && F.pick.editing.id) || (F.replacing && F.replacing.id) || null;
+
+/** Leave the change of a food under way, whichever way it was being changed; a food being added is left alone. */
+function stopChanging() {
+  if (F.editing) F.drafts.set(F.editing.meal, NM.EMPTY_DRAFT());
+  F.editing = F.replacing = null;
+  if (F.pick && F.pick.editing) F.pick = null;
+}
+
+/** Change a food: one scaled from a product by its quantity (the picker opens on it), any other by its numbers (the by-hand form). */
+function changeFood(e, meal) {
+  stopChanging();
+  const product = NM.productOf(e);
+  if (product) {
+    F.pick = { meal, ...NM.pickOf(product), loading: false, editing: { id: e.id, meal, name: e.name, entry: e } };
+    renderFood(); focusAmount(meal);
+  } else changeByHand(e, meal);
+}
+
+function changeByHand(e, meal) {
+  F.editing = { id: e.id, meal }; F.drafts.set(meal, NM.draftOf(e));
+  renderFood(); focusFoodName(meal);
+}
+
+/** A food of the meal: its name, macros and calories; a tap shows its nutrients and what can be done with it (change, copy or add again, delete). */
 function foodEntry(e, meal) {
-  const row = mk("div", "fe" + (F.editing && F.editing.id === e.id ? " editing" : ""));
-  const edit = mk("button", "", "✎"), del = mk("button", "danger", "✕");
-  edit.title = "Change"; edit.setAttribute("aria-label", `Change ${e.name}`);
-  del.title = "Delete"; del.setAttribute("aria-label", `Delete ${e.name}`);
-  edit.onclick = () => { F.editing = { id: e.id, meal }; F.drafts.set(meal, NM.draftOf(e)); renderFood(); focusFoodName(meal); };
+  const row = mk("div", "fe" + (changingId() === e.id ? " editing" : "") + (F.open.has(e.id) ? " open" : ""));
+  const head = mk("button", "fhead"), label = mk("div", "ft");
+  head.type = "button"; head.setAttribute("aria-expanded", String(F.open.has(e.id)));
+  label.append(mk("div", "fn", e.name), mk("div", "fm", NM.macros(e)));
+  head.append(label, mk("span", "fk", NM.kcal(e.kcal)));
+  head.onclick = () => {
+    const open = !F.open.has(e.id);
+    if (open) F.open.add(e.id); else F.open.delete(e.id);
+    row.classList.toggle("open", open); head.setAttribute("aria-expanded", String(open));
+  };
+  const more = mk("div", "fmore-e"), acts = mk("div", "fea");
+  const line = NM.nutrientLine(e.nutrients);
+  more.append(mk("div", "fm", line || "States no fiber or other nutrients."));
+  const edit = mk("button", "", "Change"), del = mk("button", "danger", "Delete");
+  edit.type = del.type = "button";
+  edit.setAttribute("aria-label", `Change ${e.name}`); del.setAttribute("aria-label", `Delete ${e.name}`);
+  edit.onclick = () => changeFood(e, meal);
   del.onclick = guard(async () => {
     if (!(await confirmDialog({ title: "Delete this food?", text: `${e.name} · ${NM.kcal(e.kcal)}`, ok: "Delete", danger: true }))) return;
-    if (await foodAction({ action: "delete", id: e.id })) { if (F.editing && F.editing.id === e.id) F.editing = null; renderFood(); }
+    if (await foodAction({ action: "delete", id: e.id })) { if (changingId() === e.id) stopChanging(); F.open.delete(e.id); renderFood(); }
   });
-  const label = mk("div", "ft");
-  label.append(mk("div", "fn", e.name), mk("div", "fm", NM.macros(e)));
-  const more = NM.nutrientLine(e.nutrients);
-  if (more) label.append(mk("div", "fm", more));
-  row.append(label, mk("span", "fk", NM.kcal(e.kcal)), edit, del);
+  // on a past day the food is copied to today; on today it is added again (a second coffee), which can be done any number of times
+  if (F.data.date < F.data.today) acts.append(copyButton([e.id], () => `${e.name} (${NM.mealLabel(meal)})`));
+  else {
+    const twice = mk("button", "fcopy", "+ Add again");
+    twice.type = "button";
+    twice.onclick = guard(async () => {
+      const done = await foodAction({ action: "copy", ids: [e.id], date: F.data.date });
+      if (!done) return;
+      renderFood();
+      toastUndo(`Added ${e.name} again.`, undoAdded(done.added));
+    });
+    acts.append(twice);
+  }
+  acts.append(edit, del);
+  more.append(acts);
+  row.append(head, more);
   return row;
 }
 
@@ -3306,9 +3453,21 @@ function focusFoodName(meal) {
   if (input) input.focus();
 }
 
+function focusAmount(meal) {
+  const amount = document.querySelector(`#fbody [data-meal="${meal}"] .fpq input`);
+  if (amount) { amount.focus(); amount.select(); }
+}
+
+function focusSearch(meal) {
+  const q = document.querySelector(`#fbody [data-meal="${meal}"] .fq`);
+  if (q) q.focus();
+}
+
 // Finding a food: by name (Open Food Facts, through the server) or by scanning its barcode with the camera. A food found has its
 // nutrition per 100 g; the person says how much of it, and the log gets the calories and macros worked out for that quantity.
-const findState = (meal) => { let st = F.finds.get(meal); if (!st) F.finds.set(meal, st = { q: "", foods: [], note: "", error: false, run: 0, timer: 0 }); return st; };
+// recent: the meal's list of foods used lately is open; all: all of it is shown, not the first RECENT_SHOWN; mine/mineFor: the list as it was
+// when the query last changed, kept so that the food just added does not jump to the top under the finger
+const findState = (meal) => { let st = F.finds.get(meal); if (!st) F.finds.set(meal, st = { q: "", foods: [], note: "", error: false, run: 0, timer: 0, recent: false, all: false, mine: null, mineFor: null }); return st; };
 const offLink = (food) => { const a = mk("a", "", "Open Food Facts"); a.href = food && food.code ? `https://world.openfoodfacts.org/product/${food.code}` : "https://world.openfoodfacts.org/"; a.target = "_blank"; a.rel = "noopener"; return a; };
 const credit = (food) => { const c = mk("div", "fcredit", "Data: "); c.append(offLink(food), " (ODbL)"); return c; };
 
@@ -3317,23 +3476,68 @@ function foodFinder(meal) {
   out.dataset.results = meal;
   const q = mk("input", "fq");
   q.type = "search"; q.placeholder = "Search a food"; q.value = st.q; q.autocomplete = "off"; q.enterKeyHint = "search"; q.setAttribute("aria-label", "Search a food");
-  q.oninput = () => { st.q = q.value; clearTimeout(st.timer); st.timer = setTimeout(guard(() => runFind(meal)), 450); };
+  // what was logged before matches at once, while Open Food Facts is asked after a pause in typing
+  q.oninput = () => { st.q = q.value; paintFind(meal); clearTimeout(st.timer); st.timer = setTimeout(guard(() => runFind(meal)), 450); };
   q.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); clearTimeout(st.timer); guard(() => runFind(meal))(); } };
+  // a tap in the box opens the foods used lately; on a phone the box goes to the top, so the list is above the keyboard
+  q.onfocus = () => {
+    if (!st.recent) { st.recent = true; st.mineFor = null; paintFind(meal); recentBtn.setAttribute("aria-pressed", "true"); }
+    if (mobileQuery.matches) setTimeout(() => box.scrollIntoView({ block: "start", behavior: "smooth" }), 300);
+  };
+  const recentBtn = mk("button", "", "Recent");
+  recentBtn.type = "button"; recentBtn.title = "The foods you logged lately, to add again in one tap"; recentBtn.setAttribute("aria-pressed", String(st.recent));
+  recentBtn.onclick = () => { st.recent = !st.recent; st.all = false; st.mineFor = null; recentBtn.setAttribute("aria-pressed", String(st.recent)); paintFind(meal); };
   const scan = mk("button", "", "📷 Scan");
   scan.type = "button"; scan.title = "Scan a barcode with the camera";
   scan.onclick = () => scanBarcode(meal);
-  row.append(q, scan);
+  row.append(q, recentBtn, scan);
+  // putting another food in place of one logged: what is chosen opens in the picker, saved over it
+  if (F.replacing && F.replacing.meal === meal) {
+    const banner = mk("div", "frepl"), cancel = mk("button", "", "Cancel");
+    cancel.type = "button";
+    cancel.onclick = () => { stopChanging(); renderFood(); };
+    banner.append(mk("span", "", `Choose the food to put in place of ${F.replacing.name}.`), cancel);
+    box.append(banner);
+  }
   box.append(row, out);
   paintFind(meal, out);
   return box;
 }
 
-/** Draw the results of a meal's search in place, so the search box keeps its focus while they arrive. */
+/**
+ * A food used lately, as a button that logs it again in the meal as it was: its name, calories and macros. While a food is being
+ * replaced, it opens in the picker instead, at the quantity it was logged at.
+ */
+function recentRow(meal, r) {
+  const b = mk("button", "fr frec"), title = mk("div", "frt"), choose = F.replacing && F.replacing.meal === meal;
+  b.type = "button"; b.setAttribute("aria-label", choose ? `Choose ${r.name}` : `Add ${r.name} to ${NM.mealLabel(meal)}`);
+  title.append(mk("b", "", r.name));
+  b.append(title, mk("div", "frm", `${NM.kcal(r.kcal)} · ${NM.macros(r)}`), mk("span", "fplus", choose ? "›" : "+"));
+  b.onclick = choose ? () => { const k = NM.pickOf(NM.productOf(r)); pickFood(meal, k.food, k); } : guard(() => addRecent(meal, r));
+  return b;
+}
+
+/** Draw a meal's foods used lately (all of them or those matching the search) and the results of the search, in place, so the search box keeps its focus. */
 function paintFind(meal, out) {
   out = out || document.querySelector(`#fbody [data-results="${meal}"]`);
   if (!out) return;
-  const st = findState(meal);
+  const st = findState(meal), text = st.q.trim();
   out.replaceChildren();
+  if (text || st.recent) {
+    if (st.mineFor !== text) { st.mine = NM.recentFor(F.data.recent, meal, text); st.mineFor = text; }
+    // in place of a food, only a food with a quantity can go (one typed in is changed by its numbers)
+    const choose = F.replacing && F.replacing.meal === meal, mine = choose ? st.mine.filter((r) => NM.productOf(r)) : st.mine;
+    const shown = st.all ? mine : mine.slice(0, RECENT_SHOWN);
+    if (shown.length) out.append(mk("div", "fnote fgroup", text ? "Logged before" : choose ? "Recent: tap to choose" : "Recent: tap to add"));
+    for (const r of shown) out.append(recentRow(meal, r));
+    if (shown.length < mine.length) {
+      const all = mk("button", "fall", `Show ${mine.length - shown.length} more`);
+      all.type = "button"; all.onclick = () => { st.all = true; paintFind(meal); };
+      out.append(all);
+    }
+    if (!text && !mine.length) out.append(mk("div", "fnote", choose ? "Search the food, or scan it." : "Nothing logged yet. What you add shows up here, to add again in one tap."));
+    if (text && st.foods.length) out.append(mk("div", "fnote fgroup", "Open Food Facts"));
+  }
   if (st.note) out.append(mk("div", "fnote" + (st.error ? " err" : ""), st.note));
   // the products sold in Canada come first; when others follow them (too few Canadian ones matched), a heading says where they end
   const mixed = st.foods.some((f) => f.canada) && st.foods.some((f) => !f.canada);
@@ -3389,13 +3593,15 @@ async function lookupCode(meal, code) {
   }
 }
 
-function pickFood(meal, food) {
+/** Open the picker on a food found, at a portion or 100 g (or at `start`, { amount, unit }); while a food is replaced, it is saved over that one. */
+function pickFood(meal, food, start) {
   F.finds.delete(meal);
+  const editing = F.replacing && F.replacing.meal === meal ? F.replacing : null, at = start || { amount: food.servingG ? "1" : "100", unit: food.servingG ? "portion" : "g" };
+  F.replacing = null;
   // a search hit has some of the nutrients only (the search index holds a few) and rarely the portion: the product's own page is fetched for both, and Add waits for it
-  F.pick = { meal, food, amount: food.servingG ? "1" : "100", unit: food.servingG ? "portion" : "g", loading: !!(food.code && !food.complete) };
+  F.pick = { meal, food, amount: at.amount, unit: at.unit, loading: !!(food.code && !food.complete), editing };
   renderFood();
-  const amount = document.querySelector(`#fbody [data-meal="${meal}"] .fpq input`);
-  if (amount) { amount.focus(); amount.select(); }
+  focusAmount(meal);
   const p = F.pick;
   if (food.code && (!food.complete || !food.servingG)) {
     api("GET", `/api/foods/barcode?code=${food.code}`)
@@ -3405,16 +3611,22 @@ function pickFood(meal, food) {
   }
 }
 
-/** The food chosen: its nutrition per 100 g, a quantity (grams, or portions when the product says how big one is) and what that comes to. */
+/**
+ * The food chosen: its nutrition per 100 g, a quantity (grams, or portions when the product says how big one is) and what that comes
+ * to. With `p.editing` it changes a food logged (Save), and offers to put another food in its place or to change its numbers by hand.
+ */
 function foodPicker(p) {
-  const food = p.food, card = mk("div", "fpick"), head = mk("div", "fpt"), name = mk("div", "fpn");
+  const food = p.food, editing = p.editing, card = mk("div", "fpick"), head = mk("div", "fpt"), name = mk("div", "fpn");
   name.append(mk("b", "", food.name));
   if (NM.brandOf(food)) name.append(mk("span", "", NM.brandOf(food)));
-  const back = mk("button", "", "✕");
-  back.type = "button"; back.title = "Choose another food"; back.setAttribute("aria-label", "Choose another food");
-  back.onclick = () => { F.pick = null; renderFood(); const q = document.querySelector(`#fbody [data-meal="${p.meal}"] .fq`); if (q) q.focus(); };
-  head.append(name, back);
-  const row = mk("div", "fpq"), amount = mk("input"), unit = mk("select"), preview = mk("div", "fpv"), add = mk("button", "primary", "Add");
+  head.append(name);
+  if (!editing) {
+    const back = mk("button", "", "✕");
+    back.type = "button"; back.title = "Choose another food"; back.setAttribute("aria-label", "Choose another food");
+    back.onclick = () => { F.pick = null; renderFood(); focusSearch(p.meal); };
+    head.append(back);
+  }
+  const row = mk("div", "fpq"), amount = mk("input"), unit = mk("select"), preview = mk("div", "fpv"), add = mk("button", "primary", editing ? "Save" : "Add");
   amount.type = "number"; amount.min = "0"; amount.step = "any"; amount.inputMode = "decimal"; amount.value = p.amount; amount.setAttribute("aria-label", "Quantity");
   unit.setAttribute("aria-label", "Unit");
   unit.add(new Option(food.unit === "ml" ? "ml" : "g", "g"));
@@ -3444,14 +3656,33 @@ function foodPicker(p) {
   add.onclick = guard(async () => {
     const r = NM.portion(food, p.amount, p.unit);
     if (!r) return toast(`Give a quantity (up to ${NM.MAX_AMOUNT} g).`, 4000);
-    if (!(await foodAction({ action: "add", day: F.data.date, meal: p.meal, items: [{ name: r.name, ...r.nutrition, nutrients: r.nutrients }] }))) return;
+    const item = { name: r.name, ...r.nutrition, nutrients: r.nutrients, product: r.product };
+    // a change sends every nutrient, null for one the food at this quantity does not state, so none is left from before
+    const done = editing
+      ? await foodAction({ action: "update", id: editing.id, ...item, nutrients: NM.allNutrients(r.nutrients) })
+      : await foodAction({ action: "add", day: F.data.date, meal: p.meal, items: [item] });
+    if (!done) return;
     F.pick = null;
     renderFood();
-    const q = document.querySelector(`#fbody [data-meal="${p.meal}"] .fq`);
-    if (q) q.focus();
+    if (!editing) focusSearch(p.meal);
   });
   row.append(amount, unit);
-  card.append(head, mk("div", "fph", NM.per100Line(food)), row, preview, add, credit(food));
+  const acts = mk("div", "fpa"), links = mk("div", "fpl");
+  acts.append(add);
+  if (editing) {
+    const cancel = mk("button", "", "Cancel"), other = mk("button", "flink", "Other food"), byHand = mk("button", "flink", "Edit the numbers");
+    cancel.type = other.type = byHand.type = "button";
+    cancel.onclick = () => { F.pick = null; renderFood(); };
+    other.title = "Put another food in its place";
+    other.onclick = () => { F.pick = null; F.replacing = editing; renderFood(); focusSearch(p.meal); };
+    byHand.title = "Change the calories and macros by hand (it then no longer changes by quantity)";
+    byHand.onclick = () => { F.pick = null; changeByHand(editing.entry, editing.meal); };
+    acts.append(cancel);
+    links.append(other, byHand);
+  }
+  card.append(head, mk("div", "fph", NM.per100Line(food)), row, preview, acts);
+  if (links.childNodes.length) card.append(links);
+  card.append(credit(food));
   paint();
   return card;
 }
@@ -3536,7 +3767,7 @@ function foodForm(meal) {
         ? await foodAction({ action: "update", id: editing.id, ...parsed.item })
         : await foodAction({ action: "add", day: F.data.date, meal, items: [parsed.item] });
       if (!ok) return;
-      F.editing = null; F.drafts.set(meal, NM.EMPTY_DRAFT());
+      F.editing = null; F.drafts.set(meal, NM.EMPTY_DRAFT()); findState(meal).mineFor = null; // the list of recent foods has it now
       renderFood(); focusFoodName(meal);
     })();
   };
@@ -3545,18 +3776,18 @@ function foodForm(meal) {
 
 function pickFoodDay(day) {
   F.date = day === (F.data && F.data.today) ? null : day;
+  stopChanging();
   guard(loadFood)();
 }
 
 function bindFoodView() {
   $("vFood").onclick = () => setView("food");
-  const go = (date) => { F.date = date && F.data && date >= F.data.today ? null : date; F.editing = null; F.pick = null; return guard(loadFood)(); };
+  const go = (date) => { F.date = date && F.data && date >= F.data.today ? null : date; stopChanging(); F.pick = null; return guard(loadFood)(); };
   $("fPrev").onclick = () => F.data && go(RM.addDays(F.data.date, -1));
   $("fNext").onclick = () => F.data && go(RM.addDays(F.data.date, 1));
   $("fToday").onclick = () => go(null);
   $("fDate").onchange = (e) => e.target.value && go(e.target.value);
-  $("fRange").onchange = (e) => { F.range = Number(e.target.value); guard(loadFood)(); };
-  $("fProfile").onchange = (e) => { Object.assign(F, { profile: e.target.value, date: null, data: null, loaded: false, error: "", editing: null, pick: null }); F.drafts.clear(); F.finds.clear(); guard(loadFood)(); };
+  $("fProfile").onchange = (e) => { Object.assign(F, { profile: e.target.value, date: null, data: null, loaded: false, error: "", editing: null, pick: null, replacing: null }); F.drafts.clear(); F.finds.clear(); F.open.clear(); F.copied.clear(); guard(loadFood)(); };
   $("scanCancel").onclick = () => $("scandlg").close();
   addEventListener("pagehide", () => { if ($("scandlg").open) $("scandlg").close(); }); // the camera light must not stay on
 }

@@ -1,5 +1,5 @@
 import { SqliteStore } from "../shared/store";
-import { NutritionError, addFoods, averageOf, changeFood, deleteFoods, kcalOfMacros, nutritionDays, parseDay, parseFood, parseMeal, recentFoods, totalsOf } from "../shared/nutrition";
+import { NutritionError, addFoods, averageOf, changeFood, copyFoods, deleteFoods, kcalOfMacros, nutritionDays, parseDay, parseFood, parseMeal, parseProduct, recentFoods, totalsOf } from "../shared/nutrition";
 import { summaryResponse } from "./fixtures/wellness";
 
 let store: SqliteStore;
@@ -15,7 +15,7 @@ describe("checking a food", () => {
   const where = { day: TODAY, meal: "lunch" as const };
 
   it("works the calories out from the macros when they are left out", () => {
-    expect(parseFood({ name: "Chicken", proteinG: 30, carbsG: 0, fatG: 5 }, where)).toEqual({ ...where, name: "Chicken", kcal: 165, proteinG: 30, carbsG: 0, fatG: 5, nutrients: {} });
+    expect(parseFood({ name: "Chicken", proteinG: 30, carbsG: 0, fatG: 5 }, where)).toEqual({ ...where, name: "Chicken", kcal: 165, proteinG: 30, carbsG: 0, fatG: 5, nutrients: {}, product: null });
     expect(kcalOfMacros(10, 20, 3)).toBe(147);
     expect(parseFood({ name: "Oil", fatG: 14 }, where)).toMatchObject({ kcal: 126, proteinG: 0, carbsG: 0, fatG: 14 });
   });
@@ -98,6 +98,103 @@ describe("logging, changing and deleting foods", () => {
     expect(deleteFoods(store, "MED", [a.id, 999])).toEqual({ deleted: [a.id], missing: [999] });
     expect(store.nutrition.range("MED", TODAY, TODAY).map((e) => e.id)).toEqual([b.id]);
     expect(deleteFoods(store, "MED", [a.id])).toEqual({ deleted: [], missing: [a.id] });
+  });
+});
+
+describe("copying foods to today", () => {
+  const OLD = "2026-10-15";
+  const old = (meal: string, items: object[]) => addFoods(store, "MED", { day: OLD, meal, items }, TODAY, "mcp");
+
+  it("logs them again today, each in its meal, with its numbers and the nutrients it states", () => {
+    const [chili, cheese] = old("dinner", [{ name: "Chili", kcal: 390, proteinG: 27, carbsG: 34, fatG: 16, nutrients: { fiberG: 9, sodiumMg: 850 } }, { name: "Cheese", kcal: 85, proteinG: 6, carbsG: 1, fatG: 6.5 }]);
+    const [oats] = old("breakfast", [{ name: "Oats", kcal: 150 }]);
+    const copies = copyFoods(store, "MED", [chili.id, oats.id, cheese.id], TODAY, "web");
+    expect(copies.map((c) => [c.day, c.meal, c.name, c.kcal, c.proteinG, c.source])).toEqual([[TODAY, "dinner", "Chili", 390, 27, "web"], [TODAY, "breakfast", "Oats", 150, 0, "web"], [TODAY, "dinner", "Cheese", 85, 6, "web"]]);
+    expect(store.nutrition.get("MED", copies[0].id)!.nutrients).toEqual({ fiberG: 9, sodiumMg: 850 });
+    expect(store.nutrition.get("MED", copies[2].id)!.nutrients).toEqual({}); // stated none: still unknown, not zero
+    expect(store.nutrition.range("MED", OLD, OLD)).toHaveLength(3); // the old day keeps its foods
+    expect(copies.every((c) => ![chili.id, cheese.id, oats.id].includes(c.id))).toBe(true);
+  });
+
+  it("copies a food given twice once", () => {
+    const [a] = old("snack", [{ name: "Apple", kcal: 80 }]);
+    expect(copyFoods(store, "MED", [a.id, a.id, String(a.id)], TODAY, "web")).toHaveLength(1);
+  });
+
+  it("copies none when one is not found, or is another profile's", () => {
+    const [a] = old("lunch", [{ name: "Rice", kcal: 200 }]);
+    const [sams] = addFoods(store, "SAM", { day: OLD, meal: "lunch", items: [{ name: "Sam's", kcal: 1 }] }, TODAY, "test");
+    expect(() => copyFoods(store, "MED", [a.id, 999], TODAY, "web")).toThrow(/no food entry 999/);
+    expect(() => copyFoods(store, "MED", [a.id, sams.id], TODAY, "web")).toThrow(/no food entry/);
+    expect(store.nutrition.range("MED", TODAY, TODAY)).toEqual([]);
+  });
+
+  it("refuses an empty or oversized list", () => {
+    expect(() => copyFoods(store, "MED", [], TODAY, "web")).toThrow(/at least one food/);
+    expect(() => copyFoods(store, "MED", "1", TODAY, "web")).toThrow(/at least one food/);
+    expect(() => copyFoods(store, "MED", Array.from({ length: 51 }, (_, i) => i + 1), TODAY, "web")).toThrow(/at most 50/);
+  });
+});
+
+describe("a food scaled from a product", () => {
+  // 150 g of a yogurt that holds 52 kcal, 9.6 g of protein... in 100 g, as the page sends it
+  const OIKOS = { code: "0056800202458", name: "OIKOS", brand: "Oikos", unit: "g", per100: { kcal: 52, proteinG: 9.6, carbsG: 3.5, fatG: 0 }, nutrients: { sugarsG: 3.5, calciumMg: 117.33 }, servingG: 115, servingText: "115 g", amount: 150, per: "g" };
+  const scanned = () => log({ meal: "breakfast", items: [{ name: "OIKOS · 150 g", kcal: 78, proteinG: 14.4, carbsG: 5.3, fatG: 0, nutrients: { sugarsG: 5.3, calciumMg: 176 }, product: OIKOS }] })[0];
+
+  it("keeps the product with it, as it was then", () => {
+    const food = scanned();
+    expect(store.nutrition.get("MED", food.id)!.product).toEqual(OIKOS);
+    expect(log({ meal: "lunch", items: [{ name: "Soup", kcal: 200 }] })[0].product).toBeNull();
+    expect(store.nutrition.range("MED", TODAY, TODAY).map((e) => e.product && e.product.code)).toEqual([OIKOS.code, null]);
+  });
+
+  it("is changed by quantity: the numbers and the product's amount together", () => {
+    const food = scanned();
+    const changed = changeFood(store, "MED", food.id, { name: "OIKOS · 1 × 115 g", kcal: 60, proteinG: 11, carbsG: 4, fatG: 0, nutrients: { sugarsG: 4, calciumMg: 134.9 }, product: { ...OIKOS, amount: 1, per: "portion" } });
+    expect(changed).toMatchObject({ name: "OIKOS · 1 × 115 g", kcal: 60, meal: "breakfast", day: TODAY, product: { amount: 1, per: "portion", servingG: 115 } });
+  });
+
+  it("keeps its product while only its meal or day moves, and loses it when its numbers are changed without one", () => {
+    const food = scanned();
+    expect(changeFood(store, "MED", food.id, { meal: "snack", day: "2026-10-17" }).product).toEqual(OIKOS);
+    expect(changeFood(store, "MED", food.id, { name: "OIKOS · 150 g", kcal: 78 }).product).toEqual(OIKOS); // the same numbers again
+    // corrected by hand or by an assistant, it no longer is 150 g of the product: a later change of quantity would undo the correction
+    expect(changeFood(store, "MED", food.id, { kcal: 90 }).product).toBeNull();
+    const other = scanned();
+    expect(changeFood(store, "MED", other.id, { nutrients: { ironMg: 0.1 } }).product).toBeNull();
+    const third = scanned();
+    expect(changeFood(store, "MED", third.id, { product: null }).product).toBeNull();
+  });
+
+  it("goes with it when it is copied or offered again", () => {
+    const food = scanned();
+    expect(copyFoods(store, "MED", [food.id], TODAY, "web")[0].product).toEqual(OIKOS);
+    expect(recentFoods(store, "MED")[0]).toMatchObject({ name: "OIKOS · 150 g", product: OIKOS });
+  });
+
+  it("is checked: a product the page could not have made is refused", () => {
+    expect(parseProduct(undefined)).toBeNull();
+    expect(parseProduct({ ...OIKOS, name: "  OIKOS ", brand: "", code: null, servingG: null, servingText: undefined, per100: { kcal: "52", proteinG: 9.6, carbsG: 3.5, fatG: 0 } })).toEqual({ ...OIKOS, brand: null, code: null, servingG: null, servingText: null });
+    // per 100 g, a nutrient can be more than a food may hold of it (salt holds 38 758 mg of sodium in 100 g), and keeps two decimals
+    expect(parseProduct({ ...OIKOS, nutrients: { sodiumMg: 38758.4, ironMg: 0.05, satFatG: null } })!.nutrients).toEqual({ sodiumMg: 38758.4, ironMg: 0.05 });
+    for (const [bad, message] of [
+      ["yogurt", /not an object/],
+      [{ ...OIKOS, name: " " }, /no name/],
+      [{ ...OIKOS, code: "12ab" }, /barcode/],
+      [{ ...OIKOS, unit: "oz" }, /unit/],
+      [{ ...OIKOS, per: "cup" }, /quantity must be/],
+      [{ ...OIKOS, per100: null }, /per 100 g/],
+      [{ ...OIKOS, per100: { ...OIKOS.per100, kcal: 951 } }, /Calories per 100 g/],
+      [{ ...OIKOS, per100: { ...OIKOS.per100, fatG: undefined } }, /no fat per 100 g/],
+      [{ ...OIKOS, amount: 0 }, /quantity is 0/],
+      [{ ...OIKOS, amount: 2001 }, /Quantity/],
+      [{ ...OIKOS, per: "portion", servingG: null }, /no portion size/],
+      [{ ...OIKOS, per: "portion", amount: 20 }, /more than 2000 g/],
+      [{ ...OIKOS, nutrients: { fiberG: 101 } }, /Fiber per 100 g/],
+      [{ ...OIKOS, nutrients: [1] }, /nutrients are not an object/],
+    ] as [unknown, RegExp][]) expect(() => parseProduct(bad)).toThrow(message);
+    expect(() => log({ meal: "lunch", items: [{ name: "Yogurt", kcal: 78, product: { ...OIKOS, amount: -1 } }] })).toThrow(NutritionError);
+    expect(store.nutrition.range("MED", TODAY, TODAY)).toEqual([]);
   });
 });
 

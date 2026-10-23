@@ -156,7 +156,7 @@ export function registerNutritionTools(server: McpServer): void {
     },
     ({ profile, id, date, ...patch }) =>
       run(() => {
-        const name = dataProfile(profile), entry = changeFood(getStore(), name, id, { ...patch, day: date });
+        const name = dataProfile(profile), { product: _product, ...entry } = changeFood(getStore(), name, id, { ...patch, day: date }); // the product (per-100 g numbers) is the page's, for changing the quantity
         return { profile: name, entry };
       })
   );

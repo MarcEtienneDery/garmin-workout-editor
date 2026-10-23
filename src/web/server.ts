@@ -19,7 +19,7 @@
  * (POST, PUT, DELETE /api/garmin/workout). Each write that touches Garmin needs confirm: true.
  *
  * The Food view logs what was eaten per meal (GET /api/nutrition: a day's meals with their totals, the totals of a range next to
- * the calories Garmin says were burned, and the foods used lately; POST /api/nutrition adds, changes or deletes entries). The log
+ * the calories Garmin says were burned, and the foods used lately; POST /api/nutrition adds, copies to today, changes or deletes entries). The log
  * is in the database only, Garmin has nowhere to keep food, so it needs no Garmin login and works with Garmin disabled.
  *
  * Food search and the barcode scan look foods up on Open Food Facts from the server (GET /api/foods/search?q=, GET
@@ -79,7 +79,7 @@ import { runRenpho, startRenphoTimer } from "../mcp/tools/renpho";
 import { testGarminLogin } from "../mcp/tools/settings";
 import { addDays, localToday } from "../shared/wellnessSync";
 import { FoodInputError, FoodSourceError, lookupBarcode, searchFoods } from "../shared/foodSearch";
-import { MEALS, NutritionError, addFoods, averageOf, changeFood, deleteFoods, nutritionDays, parseDay, recentFoods } from "../shared/nutrition";
+import { MAX_ITEMS, MEALS, NutritionError, addFoods, averageOf, changeFood, copyFoods, deleteFoods, nutritionDays, parseDay, recentFoods } from "../shared/nutrition";
 import {
   LIBRARY_LIMIT,
   type LibraryWorkout,
@@ -1107,25 +1107,32 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
     }
 
     case "POST /api/nutrition": {
-      // The food log: add the foods of a meal, change one entry, delete one. It touches the database only, never Garmin.
+      // The food log: add the foods of a meal, copy logged foods to today, change one entry, delete some. It touches the database
+      // only, never Garmin. The answer is the day shown (`date` when given) and the ids of the foods just written (`added`), to undo.
       const body = await readBody(req);
       const profile = profileFor(who, "", body.profile);
       const today = localToday(store(), profile);
-      let date: string;
+      let date: string, added: number[] = [];
       try {
-        if (body.action === "add") date = addFoods(store(), profile, body, today, "web")[0].day;
-        else if (body.action === "update") date = changeFood(store(), profile, Number(body.id), body).day;
+        if (body.action === "add") {
+          const rows = addFoods(store(), profile, body, today, "web");
+          date = rows[0].day; added = rows.map((r) => r.id);
+        } else if (body.action === "copy") {
+          date = parseDay(body.date, today); // checked first: a refused request writes nothing
+          added = copyFoods(store(), profile, body.ids, today, "web").map((r) => r.id);
+        } else if (body.action === "update") date = changeFood(store(), profile, Number(body.id), body).day;
         else if (body.action === "delete") {
-          const ids = [Number(body.id)];
-          const found = store().nutrition.get(profile, ids[0]);
+          const ids = (Array.isArray(body.ids) ? body.ids : [body.id]).map(Number);
+          if (!ids.length || ids.length > MAX_ITEMS) throw new NutritionError(`Delete from 1 to ${MAX_ITEMS} foods at a time.`);
+          const asked = body.date ? parseDay(body.date, today) : null, found = store().nutrition.get(profile, ids[0]);
           deleteFoods(store(), profile, ids);
-          date = found?.day ?? parseDay(body.date, today);
+          date = asked ?? found?.day ?? today;
         } else throw new HttpError(400, `Unknown action "${body.action}".`);
       } catch (error) {
         if (error instanceof NutritionError) throw new HttpError(400, error.message);
         throw error;
       }
-      return send(res, 200, nutritionView(profile, date, body.days));
+      return send(res, 200, { ...nutritionView(profile, date, body.days), added });
     }
 
     case "GET /api/settings": {

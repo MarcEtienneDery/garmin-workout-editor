@@ -81,7 +81,7 @@
     const s = shares(d);
     const net = d.netKcal;
     return [
-      { label: "Eaten", value: logged ? kcal(d.kcal) : "–", note: logged ? `${d.entries} food${d.entries === 1 ? "" : "s"}` : "nothing logged" },
+      { label: "Eaten", value: logged ? kcal(d.kcal) : "–", note: logged ? foods(d.entries) : "nothing logged" },
       { label: "Burned", value: kcal(d.burnedKcal), note: d.burnedKcal === null ? "no day summary from Garmin" : today ? "so far today, by Garmin" : "by Garmin" },
       { label: "Eaten − burned", value: signed(net), note: net === null ? (logged ? "needs the day's burn" : "needs a logged day") : `${net > 0 ? "above" : net < 0 ? "below" : "at"} what the day burned${today ? " so far" : ""}` },
       { label: "Macros", value: logged ? macros(d) : "–", note: s ? `${s.protein} % protein · ${s.carbs} % carbs · ${s.fat} % fat` : "grams a day" },
@@ -196,6 +196,25 @@
     return key ? (recent || []).find((r) => r.name.toLowerCase() === key) || null : null;
   }
 
+  /** Text compared without case or accents, so "creme" finds "Crème". */
+  const fold = (s) => String(s == null ? "" : s).normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+
+  /**
+   * The foods used lately to offer again in a meal, each as it was logged (one tap adds it as is): the ones last logged in this meal
+   * first, then the others, newest first in each. With a query, only the ones whose name holds every word of it.
+   */
+  function recentFor(recent, meal, query) {
+    const words = fold(query).split(/\s+/).filter(Boolean);
+    const found = (recent || []).filter((r) => words.every((w) => fold(r.name).includes(w)));
+    return [...found.filter((r) => r.meal === meal), ...found.filter((r) => r.meal !== meal)];
+  }
+
+  /** The fields of a logged food to log it again: its name, numbers, the nutrients it states and the product it was scaled from. */
+  const again = (f) => ({ name: f.name, kcal: f.kcal, proteinG: f.proteinG, carbsG: f.carbsG, fatG: f.fatG, nutrients: { ...(f.nutrients || {}) }, product: f.product || null });
+
+  /** "3 foods", "1 food". */
+  const foods = (n) => `${n} food${n === 1 ? "" : "s"}`;
+
   // ── Barcodes ────────────────────────────────────────────────────────────
 
   /** A digit string of 8, 12, 13 or 14 digits whose last digit is the GTIN check digit (alternate weights 3 and 1 from the right). */
@@ -257,19 +276,52 @@
     return base.length + tail.length <= 120 ? base + tail : `${base.slice(0, 120 - tail.length - 1).trimEnd()}…${tail}`;
   }
 
-  /** What eating `amountText` (grams, or portions) of a food comes to: the grams, the calories and macros, the nutrients it states, and the name to log it under; null when the quantity is no number or more than MAX_AMOUNT g. */
+  /**
+   * What eating `amountText` (grams, or portions) of a food comes to: the grams, the calories and macros, the nutrients it states, the
+   * name to log it under and the product to keep with it (so it can be changed by quantity later); null when the quantity is no number
+   * or more than MAX_AMOUNT g.
+   */
   function portion(food, amountText, unit) {
     const amount = parseAmount(amountText);
     if (amount === null) return null;
     const grams = amountGrams(food, amount, unit);
     if (grams > MAX_AMOUNT) return null;
-    return { amount, grams, nutrition: scale(food.per100, grams), nutrients: scaleNutrients(food.nutrients, grams), name: entryName(food, amount, unit) };
+    const per = unit === "portion" && food.servingG ? "portion" : "g";
+    const product = { code: food.code || null, name: food.name, brand: food.brand || null, unit: unitOf(food), per100: food.per100, nutrients: food.nutrients || {}, servingG: food.servingG || null, servingText: food.servingText || null, amount, per };
+    return { amount, grams, nutrition: scale(food.per100, grams), nutrients: scaleNutrients(food.nutrients, grams), name: entryName(food, amount, unit), product };
   }
+
+  /** The tail entryName gives a food: " · 170 g", " · 2 × 30 g". */
+  const QUANTITY_TAIL = / · (?:(\d+(?:\.\d+)?) × (\d+(?:\.\d+)?)|(\d+(?:\.\d+)?)) (g|ml)$/;
+
+  /**
+   * The product a logged food was scaled from, to change its quantity: the one kept with it, or when none is kept (it was logged before
+   * products were, or its numbers were corrected since), one worked out from its numbers and the quantity its name ends with
+   * (" · 150 g"): exact at that quantity, within the rounding of the numbers at another, and a correction scales with it. Null for a
+   * food typed in or estimated.
+   */
+  function productOf(entry) {
+    if (entry.product) return entry.product;
+    const m = QUANTITY_TAIL.exec(entry.name || "");
+    if (!m) return null;
+    const servingG = m[1] ? Number(m[2]) : null, amount = Number(m[1] || m[3]), grams = servingG ? amount * servingG : amount;
+    if (!(grams > 0) || !(m.index > 0)) return null;
+    const per100 = (v) => Math.round(((v * 100) / grams) * 100) / 100;
+    const nutrients = {};
+    for (const key of NUTRIENT_KEYS) if (valid((entry.nutrients || {})[key])) nutrients[key] = per100(entry.nutrients[key]);
+    return { code: null, name: entry.name.slice(0, m.index), brand: null, unit: m[4], per100: { kcal: per100(entry.kcal), proteinG: per100(entry.proteinG), carbsG: per100(entry.carbsG), fatG: per100(entry.fatG) }, nutrients, servingG, servingText: null, amount, per: servingG ? "portion" : "g" };
+  }
+
+  /** What the quantity picker starts from to change a logged food scaled from `product`: the food, the quantity as text and its unit. */
+  const pickOf = (product) => ({ food: { ...product, complete: true }, amount: plain(product.amount), unit: product.per });
+
+  /** Every nutrient of a food, null for one it does not state: a change sends them all, so one the new quantity or food does not state is removed. */
+  const allNutrients = (nutrients) => Object.fromEntries(NUTRIENT_KEYS.map((key) => [key, valid((nutrients || {})[key]) ? nutrients[key] : null]));
 
   /** "52 kcal · P 9.5 · C 4 · F 0" per 100 g (or ml). */
   const per100Line = (food) => `${num(food.per100.kcal)} kcal · ${macros(food.per100)} per 100 ${unitOf(food)}`;
   /** A food as the results list shows it: the name and the brand. */
   const foodTitle = (food) => (brandOf(food) ? `${food.name} · ${brandOf(food)}` : food.name);
 
-  return { gtinOk, expandUpcE, normalizeBarcode, MAX_AMOUNT, parseAmount, amountGrams, scale, brandOf, entryName, portion, per100Line, foodTitle, MEAL_LABELS, mealLabel, kcal, grams, signed, macros, shares, figures, averageNote, GROUPS, cell, chartDays, charts, kcalOf, parseDraft, draftOf, EMPTY_DRAFT, hasNumbers, hasNutrients, recentMatch, NUTRIENTS, nutrientLine, nutrientTiles, scaleNutrients };
+  return { gtinOk, expandUpcE, normalizeBarcode, MAX_AMOUNT, parseAmount, amountGrams, scale, brandOf, entryName, portion, productOf, pickOf, allNutrients, per100Line, foodTitle, MEAL_LABELS, mealLabel, kcal, grams, signed, macros, shares, figures, averageNote, GROUPS, cell, chartDays, charts, kcalOf, parseDraft, draftOf, EMPTY_DRAFT, hasNumbers, hasNutrients, recentMatch, recentFor, again, foods, NUTRIENTS, nutrientLine, nutrientTiles, scaleNutrients };
 });
