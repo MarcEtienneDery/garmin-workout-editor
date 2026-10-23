@@ -32,7 +32,7 @@
     card.append(head);
 
     const n = days.length, step = (W - LEFT - RIGHT) / Math.max(1, n), xAt = (i) => LEFT + step * (i + 0.5);
-    const per = (fn) => days.map((d) => { const v = fn(d); return RM.valid(v) ? v : null; });
+    const per = (fn) => days.map((d, i) => { const v = fn(d, i, days); return RM.valid(v) ? v : null; }); // a value may look at the days around it
     let values = [], include = [];
     let totals = null, lows = null, highs = null, bandLo = null, bandHi = null, refs = null, vals = null;
     if (spec.kind === "stack") {
@@ -115,7 +115,7 @@
     if (spec.kind === "range") key("sw-range", "low to high of the day, dot on waking");
     if (legend.childNodes.length) card.append(legend);
 
-    const say = (i) => { readout.textContent = i === null || !days[i] ? "" : `${RM.dayLabel(days[i].day)}: ${spec.read(days[i])}`; };
+    const say = (i) => { readout.textContent = i === null || !days[i] ? "" : `${RM.dayLabel(days[i].day)}: ${spec.read(days[i], i, days)}`; };
     const picked = sel >= 0 ? sel : null;
     say(picked);
     return {

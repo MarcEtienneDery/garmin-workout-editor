@@ -955,13 +955,18 @@ let navKeyNow = null, navRestoring = false;
 const navState = () => ({ view: document.body.dataset.view, tab: document.body.dataset.tab, wpane: document.body.dataset.wpane || "list" });
 // The desktop layout shows every pane at once, so only the view is worth a history entry there.
 const navKey = (s) => s.view + (mobileQuery.matches && s.view !== "calendar" ? "/" + (s.view === "plans" ? s.tab : s.wpane) : "");
+// The open view is in the address (#recovery; Today, the landing view, has none), so a refresh or a bookmark comes back to it.
+const VIEWS = ["today", "plans", "workouts", "calendar", "activities", "recovery", "weight", "food", "settings"];
+const viewInUrl = () => { try { const v = decodeURIComponent(location.hash.slice(1)); return VIEWS.includes(v) ? v : null; } catch { return null; } };
+const startView = viewInUrl(); // read at once: the first navSync() rewrites the address
+const urlOfView = (view) => (view === "today" ? location.pathname + location.search : "#" + view);
 function navSync() {
   if (navRestoring) return;
   const s = navState(), key = navKey(s);
   if (key === navKeyNow) return;
   // A dialog entry whose dialog has closed is reused rather than left behind.
   const reuse = navKeyNow === null || (history.state && history.state.ov && !document.querySelector("dialog[open]"));
-  history[reuse ? "replaceState" : "pushState"]({ ...s, prev: navKeyNow }, "");
+  history[reuse ? "replaceState" : "pushState"]({ ...s, prev: navKeyNow }, "", urlOfView(s.view));
   navKeyNow = key;
 }
 /** Call right after showModal(): Back closes the dialog, and closing it any other way drops its history entry. */
@@ -984,7 +989,16 @@ function showWorkoutList() {
 window.addEventListener("popstate", (e) => {
   const s = e.state;
   for (const d of document.querySelectorAll("dialog[open]")) if (!s || s.ov !== d.id) d.close();
-  if (!s) return;
+  if (!s) { // an entry the page did not make: an address with #view typed or followed
+    const view = viewInUrl();
+    if (view && view !== document.body.dataset.view) {
+      navRestoring = true;
+      try { setView(view); } finally { navRestoring = false; }
+      navKeyNow = navKey(navState());
+      history.replaceState({ ...navState(), prev: null }, "");
+    }
+    return;
+  }
   navRestoring = true;
   try {
     if (s.view !== document.body.dataset.view) setView(s.view);
@@ -4332,7 +4346,7 @@ bindFoodView();
 bindTodayView();
 bindSettingsView();
 bootSession();
-setView("today"); // the landing view: the body starts on it, and this loads it once the session is there
+setView(startView || "today"); // the view in the address, else the landing view: this loads it once the session is there
 </script>
 </body>
 </html>

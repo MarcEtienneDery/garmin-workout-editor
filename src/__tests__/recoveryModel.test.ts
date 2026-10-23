@@ -114,6 +114,34 @@ describe("the charts", () => {
     for (const c of RM.CHARTS) expect(c.read(metricsFor("2026-01-02"))).toBe("–");
   });
 
+  describe("the 3-day average of the intensity minutes", () => {
+    const days = (minutes: ([number, number] | null)[]) => minutes.map((m, i) => metricsFor(`2026-01-${String(i + 1).padStart(2, "0")}`, m ? { moderateMinutes: m[0], vigorousMinutes: m[1] } : {}));
+    const ref = (ds: any[], i: number) => by("intensity").ref.value(ds[i], i, ds);
+
+    it("counts the moderate minutes and twice the vigorous ones", () => {
+      expect([[30, 14], [0, 5], [10, 0]].map(([m, v]) => RM.intensityMinutes({ moderateMinutes: m, vigorousMinutes: v }))).toEqual([58, 10, 10]);
+      expect(RM.intensityMinutes({ moderateMinutes: null, vigorousMinutes: null })).toBeNull();
+    });
+
+    it("is the mean of the day and the two before it, and of fewer at the start of the range", () => {
+      const ds = days([[30, 0], [60, 0], [0, 45], [0, 0]]); // 30, 60, 90, 0
+      expect([0, 1, 2, 3].map((i) => ref(ds, i))).toEqual([30, 45, 60, 50]);
+    });
+
+    it("leaves out a day with nothing stored instead of counting it as zero, and has no value on such a day", () => {
+      const ds = days([[30, 0], null, [60, 0], [0, 0]]);
+      expect(ref(ds, 1)).toBeNull();
+      expect(ref(ds, 2)).toBe(45); // 30 and 60, not 30, 0 and 60
+      expect(ref(ds, 3)).toBe(30); // 60 and 0 (the day before it is unknown)
+    });
+
+    it("is said with the day under the cursor, when the days are known", () => {
+      const ds = days([[30, 0], [60, 0], [0, 45]]);
+      expect(by("intensity").read(ds[2], 2, ds)).toBe("90 min · 3-day average 60 · 0 moderate, 45 vigorous");
+      expect(by("intensity").read(ds[2])).toBe("90 min · 0 moderate, 45 vigorous");
+    });
+  });
+
   it("piles the vigorous minutes at twice their weight on the moderate ones, so a bar is the day's total", () => {
     const [moderate, vigorous] = by("intensity").parts;
     expect([moderate.weight ?? 1, vigorous.weight]).toEqual([1, 2]);

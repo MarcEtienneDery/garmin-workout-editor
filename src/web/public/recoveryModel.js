@@ -130,6 +130,19 @@
    * What the view draws, one entry per chart: kind line (with an optional band and reference line), stack (parts piled in
    * a bar), range (a low-high stroke with a dot) or bars. read(day) gives what the hover says.
    */
+  /** The intensity minutes of a day as Garmin counts them toward its goal (a vigorous minute twice); null when the day has none stored. */
+  const intensityMinutes = (d) => (valid(d.moderateMinutes) || valid(d.vigorousMinutes) ? (valid(d.moderateMinutes) ? d.moderateMinutes : 0) + 2 * (valid(d.vigorousMinutes) ? d.vigorousMinutes : 0) : null);
+
+  /**
+   * The mean of a day's value and the `size - 1` days before it, over the days that have one (a day with nothing stored is
+   * unknown, not zero, so it does not pull the mean down); null on a day that has none itself.
+   */
+  function rollingMean(days, i, size, value) {
+    if (!days[i] || !valid(value(days[i]))) return null;
+    const seen = days.slice(Math.max(0, i - size + 1), i + 1).map(value).filter(valid);
+    return seen.reduce((a, b) => a + b, 0) / seen.length;
+  }
+
   const CHARTS = [
     {
       id: "hrv", title: "HRV overnight", unit: "ms", kind: "line", value: (d) => d.hrvLastNight, band: (d) => [d.hrvBalancedLow, d.hrvBalancedHigh], ref: { label: "7-day average", value: (d) => d.hrvWeeklyAvg },
@@ -157,15 +170,19 @@
     { id: "steps", title: "Steps", unit: "", kind: "bars", min: 0, value: (d) => d.steps, read: (d) => (valid(d.steps) ? `${num(d.steps)} steps` : "–") },
     {
       // as Garmin counts them toward its goal: a vigorous minute twice, so the bar is the day's total
-      id: "intensity", title: "Intensity minutes", unit: "min", kind: "stack", min: 0, scaleBy: 1,
+      id: "intensity", title: "Intensity minutes", unit: "", kind: "stack", min: 0, scaleBy: 1,
       parts: [{ key: "moderateMinutes", label: "Moderate", cls: "moderate" }, { key: "vigorousMinutes", label: "Vigorous (counts twice)", cls: "vigorous", weight: 2 }],
-      read: (d) => {
-        if (!valid(d.moderateMinutes) && !valid(d.vigorousMinutes)) return "–";
+      ref: { label: "3-day average", value: (d, i, days) => (days ? rollingMean(days, i, 3, intensityMinutes) : null) },
+      read: (d, i, days) => {
+        const total = intensityMinutes(d);
+        if (total === null) return "–";
         const moderate = valid(d.moderateMinutes) ? d.moderateMinutes : 0, vigorous = valid(d.vigorousMinutes) ? d.vigorousMinutes : 0;
-        return `${num(moderate + 2 * vigorous)} min · ${num(moderate)} moderate, ${num(vigorous)} vigorous`;
+        const avg = days ? rollingMean(days, i, 3, intensityMinutes) : null;
+        // the average before the split: a narrow card cuts the end of the line
+        return `${num(total)} min${avg === null ? "" : ` · 3-day average ${num(avg)}`} · ${num(moderate)} moderate, ${num(vigorous)} vigorous`;
       },
     },
   ];
 
-  return { addDays, dayLabel, shortDay, bandInfo, BANDS, pip, num, hm, hours, size, KINDS, compactJson, GROUPS, cell, niceStep, scale, stressClass, CHARTS, valid };
+  return { intensityMinutes, rollingMean, addDays, dayLabel, shortDay, bandInfo, BANDS, pip, num, hm, hours, size, KINDS, compactJson, GROUPS, cell, niceStep, scale, stressClass, CHARTS, valid };
 });
