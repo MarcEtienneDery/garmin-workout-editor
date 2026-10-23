@@ -155,6 +155,16 @@
     },
     { id: "stress", title: "Stress", unit: "", kind: "bars", min: 0, max: 100, value: (d) => d.avgStress, color: (d) => stressClass(d.avgStress), read: (d) => (valid(d.avgStress) ? `average ${num(d.avgStress)}${valid(d.maxStress) ? ` · max ${num(d.maxStress)}` : ""}` : "–") },
     { id: "steps", title: "Steps", unit: "", kind: "bars", min: 0, value: (d) => d.steps, read: (d) => (valid(d.steps) ? `${num(d.steps)} steps` : "–") },
+    {
+      // as Garmin counts them toward its goal: a vigorous minute twice, so the bar is the day's total
+      id: "intensity", title: "Intensity minutes", unit: "min", kind: "stack", min: 0, scaleBy: 1,
+      parts: [{ key: "moderateMinutes", label: "Moderate", cls: "moderate" }, { key: "vigorousMinutes", label: "Vigorous (counts twice)", cls: "vigorous", weight: 2 }],
+      read: (d) => {
+        if (!valid(d.moderateMinutes) && !valid(d.vigorousMinutes)) return "–";
+        const moderate = valid(d.moderateMinutes) ? d.moderateMinutes : 0, vigorous = valid(d.vigorousMinutes) ? d.vigorousMinutes : 0;
+        return `${num(moderate + 2 * vigorous)} min · ${num(moderate)} moderate, ${num(vigorous)} vigorous`;
+      },
+    },
   ];
 
   return { addDays, dayLabel, shortDay, bandInfo, BANDS, pip, num, hm, hours, size, KINDS, compactJson, GROUPS, cell, niceStep, scale, stressClass, CHARTS, valid };

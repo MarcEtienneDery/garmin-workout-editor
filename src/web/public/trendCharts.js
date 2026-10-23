@@ -1,6 +1,6 @@
 /*
  * trendCharts.js — the pictures of the Recovery and Weight views: one small chart per measure over the days (a line with
- * Garmin's balanced range, stacked parts, a range, bars), all sharing one hover cursor, and a click that picks the day.
+ * Garmin's balanced range, stacked parts (a part with a `weight` counts that many times in the bar), a range, bars), all sharing one hover cursor, and a click that picks the day.
  * Plain DOM and SVG, no library. What to draw comes from RecoveryModel / WeightModel, the scales from RecoveryModel; they have the tests.
  */
 (function (root) {
@@ -36,7 +36,7 @@
     let values = [], include = [];
     let totals = null, lows = null, highs = null, bandLo = null, bandHi = null, refs = null, vals = null;
     if (spec.kind === "stack") {
-      totals = days.map((d) => { const parts = spec.parts.map((p) => d[p.key]).filter(RM.valid); return parts.length ? parts.reduce((a, b) => a + b, 0) / spec.scaleBy : null; });
+      totals = days.map((d) => { const parts = spec.parts.filter((p) => RM.valid(d[p.key])); return parts.length ? parts.reduce((a, p) => a + d[p.key] * (p.weight || 1), 0) / spec.scaleBy : null; });
       values = totals;
     } else {
       vals = per(spec.value);
@@ -82,7 +82,7 @@
       if (spec.kind === "stack") {
         let acc = 0;
         for (const p of spec.parts) {
-          const v = RM.valid(d[p.key]) ? d[p.key] / spec.scaleBy : 0;
+          const v = RM.valid(d[p.key]) ? (d[p.key] * (p.weight || 1)) / spec.scaleBy : 0;
           if (v > 0) svg.append(make("rect", { x: xAt(i) - bw / 2, y: yAt(acc + v), width: bw, height: Math.max(0, yAt(acc) - yAt(acc + v)), class: `rc-part ${p.cls}` }));
           acc += v;
         }

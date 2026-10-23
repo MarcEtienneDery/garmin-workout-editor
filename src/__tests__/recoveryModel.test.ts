@@ -108,7 +108,16 @@ describe("the charts", () => {
     expect(by("bb").read(day)).toBe("75 on waking · 20–90 over the day");
     expect(by("stress").read(day)).toBe("average 28 · max 80");
     expect(by("steps").read(day)).toBe(`${(8000).toLocaleString()} steps`);
+    expect(by("intensity").read({ ...day, moderateMinutes: 30, vigorousMinutes: 14 })).toBe("58 min · 30 moderate, 14 vigorous"); // a vigorous minute counts twice
+    expect(by("intensity").read({ ...day, moderateMinutes: null, vigorousMinutes: 5 })).toBe("10 min · 0 moderate, 5 vigorous");
+    expect(by("intensity").read({ ...day, moderateMinutes: 0, vigorousMinutes: 0 })).toBe("0 min · 0 moderate, 0 vigorous"); // a stored zero is a day without any
     for (const c of RM.CHARTS) expect(c.read(metricsFor("2026-01-02"))).toBe("–");
+  });
+
+  it("piles the vigorous minutes at twice their weight on the moderate ones, so a bar is the day's total", () => {
+    const [moderate, vigorous] = by("intensity").parts;
+    expect([moderate.weight ?? 1, vigorous.weight]).toEqual([1, 2]);
+    expect(by("intensity").scaleBy).toBe(1);
   });
 
   it("reads only fields the server sends", () => {
