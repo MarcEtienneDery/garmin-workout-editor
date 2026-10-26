@@ -10,8 +10,8 @@ import { WELLNESS_SCHEMA, WellnessTable } from "./wellness";
 import { profileOfPath, summarizeText } from "./paths";
 import { StoreError, type DocMeta, type PutOptions, type RevisionMeta, type StoredDoc } from "./types";
 
-// node:sqlite ships with Node (22.13+), so the image needs no native module. @types/node 20 has no
-// typings for it, hence the small interfaces below and the typed require in open().
+// node:sqlite ships with Node (22.13+), so the image needs no native module. The small interfaces
+// below and the typed require in open() keep the store to the few calls it uses.
 export interface Row {
   [column: string]: any;
 }

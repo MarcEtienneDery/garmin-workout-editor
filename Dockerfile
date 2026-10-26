@@ -2,7 +2,7 @@
 # One image, two entrypoints: dist/mcp/server.js (default CMD) and dist/web/server.js.
 # Secrets and data are NOT baked in: mount them at /config and /data (garmin.db lives in /data).
 
-FROM node:22-slim AS build
+FROM node:24-slim AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
@@ -10,7 +10,7 @@ COPY tsconfig.json ./
 COPY src ./src
 RUN npm run build && npm prune --omit=dev && chmod -R a+rX dist
 
-FROM node:22-slim
+FROM node:24-slim
 WORKDIR /app
 ENV NODE_ENV=production \
     MCP_HOST=0.0.0.0 \
