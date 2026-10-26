@@ -56,13 +56,38 @@ export const plannedWorkoutSchema = z.looseObject({
   steps: z.array(workoutStepSchema).optional(),
 });
 
-export const WORKOUT_FORMAT = `Workout format:
-- workoutName (required); workoutType: "running" | "strength_training" | "cycling" | "cardio" | "swimming" | "other"; description; workoutId (assigned by Garmin on upload — keep it so a re-upload replaces the old workout); scheduledDate ("YYYY-MM-DD" or an array of them); sendToDevice (bool); distanceMeters (running workouts with no steps).
-- steps is a flat list. Each step needs stepType, targetType and endCondition (except stepType "rest"), and endConditionValue > 0. Use endCondition "lap.button" with endConditionValue 0 for open-ended steps the athlete ends on the watch.
+const WORKOUT_TYPES = ["running", "strength_training", "cycling", "cardio", "swimming", "other"] as const;
+
+/**
+ * The workout create_workout takes: one that is in no plan, so it has no workoutId (it is always a new workout), no
+ * scheduledDate (schedule_workout does that) and none of the plan-only fields. It is strict, so a plan field is refused
+ * instead of being quietly ignored (a scheduledDate that did nothing would read as a workout that was scheduled). The type is
+ * required because Garmin files a workout with none under running, which would be wrong for a strength workout.
+ */
+export const newWorkoutSchema = z.strictObject({
+  workoutName: z.string().min(1),
+  workoutType: z.enum(WORKOUT_TYPES),
+  description: z.string().optional(),
+  steps: z.array(workoutStepSchema).min(1),
+});
+
+export type NewWorkout = z.infer<typeof newWorkoutSchema>;
+
+const STEP_FORMAT = `- steps is a flat list. Each step needs stepType, targetType and endCondition (except stepType "rest"), and endConditionValue > 0. Use endCondition "lap.button" with endConditionValue 0 for open-ended steps the athlete ends on the watch.
 - Mirror endConditionValue in the matching field, and keep them equal: reps -> reps, time -> durationSeconds (seconds), distance -> distanceMeters (meters).
 - Repeats: give consecutive steps the same repeatGroupIndex and numberOfRepeats. restTimeSeconds on a step adds a rest after it.
 - Strength steps: exerciseName must be a Garmin exercise (look it up with list_exercise_names); weight is in lbs; weightPercentage (percent of 1RM) also needs benchmarkKey.
 - Targets: heart.rate.zone -> targetValueOne/Two are bpm (min/max); pace.zone -> m/s (slower limit first); no.target needs no values.`;
+
+export const WORKOUT_FORMAT = `Workout format:
+- workoutName (required); workoutType: "running" | "strength_training" | "cycling" | "cardio" | "swimming" | "other"; description; workoutId (assigned by Garmin on upload — keep it so a re-upload replaces the old workout); scheduledDate ("YYYY-MM-DD" or an array of them); sendToDevice (bool); distanceMeters (running workouts with no steps).
+${STEP_FORMAT}`;
+
+/** WORKOUT_FORMAT for a workout that is in no plan (see newWorkoutSchema). */
+export const NEW_WORKOUT_FORMAT = `Workout format:
+- workoutName and workoutType ("running" | "strength_training" | "cycling" | "cardio" | "swimming" | "other") are required; description is optional. No workoutId, scheduledDate or sendToDevice: it is always a new workout, and schedule_workout puts it on a day.
+${STEP_FORMAT}
+- At least one step is needed (a distance-only run is one step with endCondition "distance").`;
 
 // ─── Plan data helpers ──────────────────────────────────────────────────────
 

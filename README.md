@@ -103,10 +103,13 @@ An MCP server exposes this repo's functionality to Claude, so the model can revi
 | Food log | `log_meal`, `get_nutrition`, `update_meal_entry`, `delete_meal_entry` |
 | Plans | `list_plans`, `read_plan`, `write_plan`, `upsert_plan_workout`, `validate_plan`, `list_exercise_names` |
 | Garmin writes | `upload_workouts`, `upload_single_workout`, `schedule_plan`, `upload_and_schedule_plan`, `send_to_device` |
+| Garmin writes, no plan file | `create_workout`, `schedule_workout` |
 
 There is also an `update_weekly_workouts` prompt that walks through the weekly review. Plans are addressed as `workout-plans/<name>.json` or `data/<profile>/<name>.json`; only `.json` documents under those two roots exist (the token cache and `.env` files are never reachable). Every `write_plan` / `upsert_plan_workout` keeps the previous version in the [history](#storage).
 
 Garmin write tools are marked destructive so the client asks before running them, and the server instructions tell Claude to get your explicit confirmation first. Uploads delete and recreate any workout that already has a `workoutId` and write the new IDs back into the plan file.
+
+**One workout, no plan file.** `create_workout` takes the workout itself (`workoutName`, `workoutType`, `description`, `steps`; the same step format as a plan) and creates it in your Garmin workout library. It always makes a new workout and never replaces one, so it takes no `workoutId`, and it schedules nothing; it returns the new `workoutId`. `dryRun: true` only validates it (no Garmin login needed, and it works in mock mode). `schedule_workout` takes a `workoutId` and a `date` (`YYYY-MM-DD`) and puts any workout of the library on that day of the Garmin calendar: one `create_workout` made, one a plan uploaded, or one made in the Garmin app. A `workoutId` Garmin does not have is an error (a workout that was uploaded again has a new id; `list_workouts` shows the current ones), and a date that does not exist (`2026-02-30`) is refused. It does not look at what is on the calendar already, so asking twice for the same workout and day may add it twice. To create a workout and put it on a day, call the two in turn with the `workoutId` the first returned.
 
 ### Readiness and daily health data
 

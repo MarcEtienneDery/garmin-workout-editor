@@ -1704,6 +1704,34 @@ export class WorkoutEditor {
   }
 
   /**
+   * Put one workout of the Garmin library on one day of the calendar. Unlike scheduleWorkoutPlan, which carries on past a
+   * workout Garmin does not have or refuses, this throws: the caller asked for this workout and no other. `day` is YYYY-MM-DD
+   * and is sent as midnight UTC, as the dates of a plan are, so what Garmin receives does not depend on the server's time zone.
+   */
+  async scheduleWorkout(workoutId: number | string, day: string): Promise<{ workoutName: string }> {
+    const authenticated = await this.garminClient.ensureAuthenticated();
+    if (!authenticated) {
+      throw new Error("Failed to authenticate with Garmin");
+    }
+
+    // fetchWorkoutDetails answers null for any failure, so the log says which one it was
+    const detail = await this.fetchWorkoutDetails(workoutId);
+    if (!detail) {
+      throw new Error(
+        `Garmin did not return workout ${workoutId}: it may not exist (a workout that was uploaded again has a new id; list_workouts shows the current ones). See the log.`
+      );
+    }
+
+    const client = this.garminClient.getClientAny();
+    if (!client.scheduleWorkout) {
+      throw new Error("scheduleWorkout is not available on this Garmin client");
+    }
+    await client.scheduleWorkout({ workoutId }, new Date(day));
+    console.log(`✅ Scheduled workout: ${detail.workoutName} on ${day}`);
+    return { workoutName: detail.workoutName };
+  }
+
+  /**
    * Upload the workouts of a plan given as JSON text: `raw` is the JSON text, `save` receives the JSON text with the
    * new workoutIds written in, and `source` names where the workouts came from in the log.
    */
