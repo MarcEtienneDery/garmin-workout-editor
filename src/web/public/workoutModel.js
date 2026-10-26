@@ -301,15 +301,19 @@
       if (s.paceFrom && total.paceFrom !== "runs") total.paceFrom = s.paceFrom;
       if (s.open && s.kind !== "rest") total.open++;
     }
-    const exercises = new Set(), sets = (function count(list, mult) {
+    const exercises = new Set(), perExercise = new Map(), sets = (function count(list, mult) {
       return list.reduce((n, node) => {
-        if (node.kind === "sets") { exercises.add(node.name); return n + node.lines.reduce((t, l) => t + l.times * mult, 0); }
+        if (node.kind === "sets") {
+          const times = node.lines.reduce((t, l) => t + l.times * mult, 0);
+          exercises.add(node.name); perExercise.set(node.name, (perExercise.get(node.name) || 0) + times);
+          return n + times;
+        }
         return n + (node.kind === "group" ? count(node.children, mult * node.times) : 0);
       }, 0);
     })(tree, 1);
     const estimated = !total.seconds && num(w && w.estimatedDurationSeconds);
     return {
-      tree, segments, steps: steps.length, sets, exercises: exercises.size,
+      tree, segments, steps: steps.length, sets, exercises: exercises.size, setCounts: [...perExercise].map(([name, count]) => ({ name, sets: count })),
       seconds: total.seconds || estimated || 0, meters: total.meters || num(w && w.distanceMeters),
       assumed: total.assumed, open: total.open, pace: { from: total.paceFrom, runs: pacer ? pacer.runs : 0, easy: pacer ? pacer.easy : ASSUMED_PACE }, hasSteps: steps.length > 0,
     };

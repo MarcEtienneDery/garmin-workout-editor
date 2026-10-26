@@ -151,6 +151,14 @@
   .wv-notes { flex-basis:100%; color:var(--dim); white-space:pre-wrap; overflow-wrap:anywhere; }
   .wv-chart { grid-area:chart; display:flex; align-items:flex-end; gap:1px; height:88px; border-bottom:1px solid var(--line); }
   .wv-chart.mini { height:18px; margin:2px 0; border-bottom:0; }
+  /* a strength workout, as the muscles it trains: a front and a back figure shaded by sets, and the numbers */
+  .mm { grid-area:chart; display:flex; flex-wrap:wrap; gap:8px 16px; align-items:flex-start; min-width:0; }
+  .mm-figs { display:flex; gap:4px; flex:1 1 220px; max-width:360px; min-width:0; } .mm-fig { flex:1 1 0; min-width:0; height:auto; }
+  .mm-side { flex:1 1 150px; min-width:0; }
+  .mm-list { margin:0; padding:0; list-style:none; display:grid; grid-template-columns:repeat(auto-fill,minmax(130px,1fr)); gap:3px 14px; }
+  .mm-list li { display:flex; gap:6px; align-items:center; } .mm-list i { flex:none; width:10px; height:10px; border-radius:2px; } .mm-list span { flex:1; min-width:0; overflow-wrap:anywhere; } .mm-list b { font-weight:600; }
+  .mm-key { display:flex; gap:6px; align-items:center; margin:8px 0 4px; color:var(--dim); font-size:11px; } .mm-key i { flex:0 1 90px; height:8px; border-radius:4px; }
+  .mm-note { color:var(--dim); font-size:11px; line-height:1.4; margin-top:2px; }
   .wv-seg, .wv-card { cursor:pointer; }
   .wv-seg { flex:1 1 0; min-width:3px; height:calc(var(--h) * 100%); background:var(--c); border-radius:2px 2px 0 0; transition:opacity .1s; }
   .wv-seg.k-rest { opacity:.55; }
@@ -935,6 +943,8 @@
 </dialog>
 
 <script src="/workoutModel.js"></script>
+<script src="/exerciseMuscles.js"></script>
+<script src="/muscleMap.js"></script>
 <script src="/activityModel.js"></script>
 <script src="/activityCharts.js"></script>
 <script src="/activityMap.js"></script>
@@ -1653,7 +1663,8 @@ function renderOutline() {
       actions.append(edit); host.append(actions);
       row.append(host);
     } else if (Array.isArray(w?.steps) && w.steps.length) {
-      row.insertBefore(profileEl(WM.analyze(w, { pacer: pacerFor(planProfile()) }), { mini: true }), row.lastChild);
+      const mini = profileEl(WM.analyze(w, { pacer: pacerFor(planProfile()) }), { mini: true });
+      if (mini) row.insertBefore(mini, row.lastChild);
     }
     el.append(row);
   });
@@ -1903,7 +1914,38 @@ function mk(tag, cls, text) {
   return e;
 }
 
+/**
+ * The muscles a list of exercises ([{ name, sets }]) trains, drawn on a front and a back figure and listed with their sets. One colour, darker
+ * the more sets: a set counts for a muscle the exercise works first, and half a set for one it helps. null when no exercise has known muscles.
+ */
+function muscleEl(exercises) {
+  const t = MuscleMap.tally(exercises);
+  if (!t.muscles.length) return null;
+  const by = new Map(t.muscles.map((m) => [m.id, m]));
+  const paint = (id) => { const m = by.get(id); return m ? { fill: MuscleMap.fillOf(m.score, t.max), title: `${m.label}: ${MuscleMap.setsOf(m.score)} sets (${m.direct} direct${m.indirect ? `, ${m.indirect} indirect` : ""})` } : null; };
+  const box = mk("div", "mm"), figs = mk("div", "mm-figs"), side = mk("div", "mm-side"), list = mk("ul", "mm-list");
+  figs.innerHTML = MuscleMap.figure("front", paint) + MuscleMap.figure("back", paint); // the text is this page's own: muscle names and numbers
+  for (const m of t.muscles) {
+    const li = mk("li"), dot = mk("i");
+    dot.style.background = MuscleMap.fillOf(m.score, t.max);
+    li.append(dot, mk("span", "", m.label), mk("b", "", MuscleMap.setsOf(m.score)));
+    list.append(li);
+  }
+  const key = mk("div", "mm-key"), bar = mk("i");
+  bar.style.background = `linear-gradient(90deg, ${MuscleMap.fillOf(0.01, 1)}, ${MuscleMap.fillOf(1, 1)})`;
+  key.append("fewer sets", bar, "more");
+  const unknown = t.unknown.reduce((n, x) => n + x.sets, 0);
+  side.append(list, key, mk("div", "mm-note", `Sets per muscle: one for a muscle the exercise works first, half for one it helps.${unknown ? ` ${unknown} set${unknown === 1 ? "" : "s"} of ${[...new Set(t.unknown.map((x) => WM.prettyName(String(x.name).replace(/ /g, "_"))))].join(", ")} not counted: no muscles known.` : ""}`));
+  box.append(figs, side);
+  return box;
+}
+
+/** A workout of sets and nothing timed by distance is drawn as its muscles; the profile bar, which is about time, says little about lifting. */
+const trainsMuscles = (a) => (!a.meters && a.setCounts.length ? muscleEl(a.setCounts) : null);
+
 function profileEl(a, { mini = false, changed = new Set() } = {}) {
+  if (mini) { if (!a.meters && a.setCounts.length && MuscleMap.tally(a.setCounts).muscles.length) return null; } // too small to draw a body in
+  else { const body = trainsMuscles(a); if (body) return body; }
   const chart = mk("div", "wv-chart" + (mini ? " mini" : ""));
   const total = a.segments.reduce((t, s) => t + s.weight, 0) || 1;
   chart.setAttribute("role", "img");
@@ -2928,6 +2970,8 @@ function renderActivityDetail() {
   const sets = Array.isArray(s.exerciseSets) ? s.exerciseSets : [];
   const lifts = sets.filter((x) => x.category !== "INTERVAL"), intervals = sets.filter((x) => x.category === "INTERVAL");
   if (lifts.length) {
+    const body = muscleEl(lifts.map((x) => ({ name: x.exerciseName, sets: AM.setRuns(x).reduce((n, r) => n + r.count, 0) })));
+    if (body) box.append(mk("h3", "", "Muscles worked"), body);
     box.append(mk("h3", "", "Exercises"));
     // one block per exercise: its name and set count, then a chip for each run of identical sets
     const list = mk("div", "aexs");
