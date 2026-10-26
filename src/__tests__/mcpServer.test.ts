@@ -21,6 +21,7 @@ import { GarminClient } from "../shared/garminClient";
 import { getAvailableProfiles, getMockProfile } from "../shared/profileLoader";
 
 const EXPECTED_TOOLS = [
+  "create_workout",
   "delete_meal_entry",
   "export_workouts",
   "get_activities",
@@ -36,6 +37,7 @@ const EXPECTED_TOOLS = [
   "log_meal",
   "read_plan",
   "schedule_plan",
+  "schedule_workout",
   "send_to_device",
   "update_meal_entry",
   "upload_and_schedule_plan",
@@ -148,7 +150,7 @@ describe("MCP server (mock mode, in-memory transport)", () => {
   it("marks Garmin writes destructive and reads read-only", async () => {
     const { tools } = await client.listTools();
     const byName = Object.fromEntries(tools.map((t) => [t.name, t]));
-    for (const name of ["upload_workouts", "upload_and_schedule_plan", "schedule_plan", "send_to_device", "write_plan"]) {
+    for (const name of ["upload_workouts", "upload_and_schedule_plan", "schedule_plan", "create_workout", "schedule_workout", "send_to_device", "write_plan"]) {
       expect(byName[name].annotations?.destructiveHint).toBe(true);
     }
     for (const name of ["list_workouts", "get_activities", "validate_plan", "read_plan", "get_nutrition"]) {
@@ -540,6 +542,64 @@ describe("MCP server (mock mode, in-memory transport)", () => {
     });
   });
 
+  describe("create_workout and schedule_workout (one workout, no plan file)", () => {
+    /** The message when the arguments are refused: an error result or a rejected call, depending on the SDK. */
+    async function refusal(name: string, args: Record<string, unknown>): Promise<string | undefined> {
+      const result: any = await client.callTool({ name, arguments: args }).catch((e) => ({ isError: true, content: [{ text: String(e.message) }] }));
+      return result.isError ? result.content[0].text : undefined;
+    }
+    const withStep = (step: object) => ({ ...STRENGTH_WORKOUT, steps: [{ ...STRENGTH_WORKOUT.steps[0], ...step }] });
+
+    it("validates a workout with dryRun, sends nothing and writes no plan", async () => {
+      const plans = getStore().list("workout-plans/").length;
+      const out = await callTool(client, "create_workout", { workout: STRENGTH_WORKOUT, dryRun: true });
+      expect(out.isError).toBe(false);
+      expect(out.value).toMatchObject({ dryRun: true, valid: true, workoutName: "Bench Day", workoutType: "strength_training", stepCount: 1 });
+      expect(out.value.workoutId).toBeUndefined();
+      expect(getStore().list("workout-plans/")).toHaveLength(plans);
+    });
+
+    it("says what is wrong with a workout, whether or not it is a dryRun", async () => {
+      for (const dryRun of [true, false]) {
+        const out = await callTool(client, "create_workout", { workout: withStep({ exerciseName: "NOT_A_REAL_EXERCISE" }), dryRun });
+        expect(out.isError).toBe(true);
+        expect(out.text).toMatch(/Workout not created: .*Unknown exerciseName/);
+      }
+    });
+
+    it.each([
+      ["workoutId", { workoutId: 5 }],
+      ["scheduledDate", { scheduledDate: "2026-11-02" }],
+      ["sendToDevice", { sendToDevice: true }],
+      ["distanceMeters", { distanceMeters: 5000 }],
+    ])("refuses %s, which only a plan has, rather than ignoring it", async (key, extra) => {
+      expect(await refusal("create_workout", { workout: { ...STRENGTH_WORKOUT, ...extra }, dryRun: true })).toContain(key);
+    });
+
+    it("needs a workout type from the list and at least one step", async () => {
+      const untyped = { workoutName: STRENGTH_WORKOUT.workoutName, steps: STRENGTH_WORKOUT.steps };
+      expect(await refusal("create_workout", { workout: untyped, dryRun: true })).toContain("workoutType");
+      expect(await refusal("create_workout", { workout: { ...STRENGTH_WORKOUT, workoutType: "strength" }, dryRun: true })).toContain("workoutType");
+      expect(await refusal("create_workout", { workout: { ...STRENGTH_WORKOUT, steps: [] }, dryRun: true })).toContain("steps");
+    });
+
+    it("takes a distance-only run as one step", async () => {
+      const run = { workoutName: "Easy 5k", workoutType: "running", steps: [{ stepType: "interval", targetType: "no.target", endCondition: "distance", endConditionValue: 5000, distanceMeters: 5000 }] };
+      const out = await callTool(client, "create_workout", { workout: run, dryRun: true });
+      expect(out.value).toMatchObject({ valid: true, workoutType: "running", stepCount: 1 });
+    });
+
+    it("refuses a day that does not exist and an id that is not one, before anything else", async () => {
+      for (const date of ["2026-02-30", "2026-13-01", "2026-11-31"]) {
+        expect(await refusal("schedule_workout", { workoutId: 12345, date })).toContain("is not a day");
+      }
+      expect(await refusal("schedule_workout", { workoutId: 12345, date: "next tuesday" })).toContain("YYYY-MM-DD");
+      for (const workoutId of ["abc", "12ab", 0, -3, 1.5]) {
+        expect(await refusal("schedule_workout", { workoutId, date: "2026-11-02" })).toContain("workoutId must be the number of a workout");
+      }
+    });
+  });
+
   describe("mock mode never writes to Garmin", () => {
     const plan = "workout-plans/valid.json";
 
@@ -548,6 +608,8 @@ describe("MCP server (mock mode, in-memory transport)", () => {
       ["upload_single_workout", { path: plan, workoutName: "Bench Day" }],
       ["schedule_plan", { path: plan }],
       ["upload_and_schedule_plan", { path: plan }],
+      ["create_workout", { workout: STRENGTH_WORKOUT }],
+      ["schedule_workout", { workoutId: 12345, date: "2026-11-02" }],
       ["send_to_device", { path: plan }],
     ])("%s is refused", async (name, args) => {
       const out = await callTool(client, name, args as Record<string, unknown>);

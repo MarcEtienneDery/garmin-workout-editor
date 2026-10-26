@@ -6,6 +6,7 @@ import {
   assertLive,
   getSession,
   getSettings,
+  getValidatorEditor,
   logicalPath as checkedPath,
   readJsonDoc,
   requireAuth,
@@ -15,7 +16,7 @@ import {
 import type { DetailedWorkout } from "../../shared/types";
 import type { SyncStatus } from "../../shared/workoutSync";
 import { getActivities } from "./activities";
-import { diffPlanWorkout, extractWorkouts } from "./plans";
+import { NEW_WORKOUT_FORMAT, type NewWorkout, diffPlanWorkout, extractWorkouts, newWorkoutSchema } from "./plans";
 
 export const profileArg = z
   .string()
@@ -312,6 +313,69 @@ export async function deleteLibraryWorkout(profile: string | undefined, workoutI
   }
 }
 
+// ── One workout and no plan: make it, then put it on a day ──────────────────
+
+/**
+ * Create ONE new workout in the Garmin library from the workout itself: no plan file is read or written. It always makes a new
+ * workout and never replaces one (saveWorkout replaces, for the web editor), and it schedules nothing (scheduleWorkout does).
+ * `dryRun` only checks the workout, so it needs no Garmin login and works in mock mode.
+ */
+export async function createWorkout(
+  profile: string | undefined,
+  workout: NewWorkout,
+  dryRun = false
+): Promise<{ workoutName: string; workoutType: string; stepCount: number; note: string; workoutId?: number; dryRun?: true; valid?: true }> {
+  // Only these four fields go on, so a workoutId can never get through to make the upload delete a workout.
+  const fresh = { workoutName: workout.workoutName, workoutType: workout.workoutType, description: workout.description, steps: workout.steps };
+  try {
+    getValidatorEditor().validateWorkout(fresh as any);
+  } catch (error) {
+    throw new Error(`Workout not created: ${error instanceof Error ? error.message : String(error)}`);
+  }
+
+  const summary = { workoutName: fresh.workoutName, workoutType: fresh.workoutType, stepCount: fresh.steps.length };
+  if (dryRun) return { ...summary, dryRun: true, valid: true, note: "Validation only; nothing was sent to Garmin." };
+
+  const session = getSession(profile);
+  assertLive(session, "create_workout");
+  const workoutId = await session.editor.uploadWorkout(fresh as any);
+  if (workoutId === null) throw new Error("Garmin did not accept the workout (see log).");
+  forgetListing(session.profile.name);
+  return { ...summary, workoutId, note: "Created in the Garmin library and not scheduled: schedule_workout puts it on a day." };
+}
+
+/** A day as YYYY-MM-DD that exists: new Date("2026-02-30") quietly becomes March 2, so the date it makes must read back the same. */
+function calendarDay(value: string): string {
+  const ms = /^\d{4}-\d{2}-\d{2}$/.test(value) ? Date.parse(`${value}T00:00:00Z`) : NaN;
+  if (Number.isNaN(ms) || new Date(ms).toISOString().slice(0, 10) !== value) throw new Error(`"${value}" is not a day (use YYYY-MM-DD).`);
+  return value;
+}
+
+/** The id of a workout in the Garmin library as whole digits: the Garmin client turns it into a number for the URL, so anything else would ask Garmin for workout NaN. */
+function libraryWorkoutId(value: number | string): string {
+  const text = String(value).trim();
+  const id = Number(text);
+  if (!/^\d+$/.test(text) || !Number.isSafeInteger(id) || id === 0) {
+    throw new Error(`workoutId must be the number of a workout in the Garmin library (list_workouts shows them), not ${JSON.stringify(value)}.`);
+  }
+  return String(id);
+}
+
+/**
+ * Put a workout of the Garmin library on one day of the calendar, no plan file involved. Any workout will do: one create_workout
+ * made, one a plan uploaded, one made in the Garmin app. A workout Garmin does not have is an error, where schedulePlan skips it
+ * and goes on. It does not look at what is on the calendar already.
+ */
+export async function scheduleWorkout(profile: string | undefined, workoutId: number | string, date: string) {
+  const id = libraryWorkoutId(workoutId);
+  const day = calendarDay(date);
+
+  const session = getSession(profile);
+  assertLive(session, "schedule_workout");
+  const { workoutName } = await session.editor.scheduleWorkout(id, day);
+  return { workoutId: Number(id), workoutName, date: day };
+}
+
 export function registerGarminTools(server: McpServer): void {
   // ── Reads ─────────────────────────────────────────────────────────────────
 
@@ -568,6 +632,49 @@ export function registerGarminTools(server: McpServer): void {
     ({ profile, path: logicalPath, deviceId }) =>
       runTool(
         () => sendPlanToDevice(profile, logicalPath, deviceId),
+        { serialize: true }
+      )
+  );
+
+  // ── Writes with no plan file: one workout made, one workout put on a day ──
+
+  server.registerTool(
+    "create_workout",
+    {
+      title: "Create a workout on Garmin",
+      description:
+        "Create one NEW workout in the Garmin Connect library from the workout given here: no plan file is read or written and nothing is scheduled (schedule_workout puts it on a day). It never replaces a workout: every call makes a new one and returns its workoutId. Use dryRun=true to validate only (nothing is sent), and show the user that result. Confirm with the user first.\n\n" +
+        NEW_WORKOUT_FORMAT,
+      inputSchema: {
+        profile: profileArg,
+        workout: newWorkoutSchema,
+        dryRun: z.boolean().default(false),
+      },
+      annotations: WRITE_GARMIN,
+    },
+    ({ profile, workout, dryRun }) =>
+      runTool(
+        () => createWorkout(profile, workout, dryRun),
+        { serialize: true }
+      )
+  );
+
+  server.registerTool(
+    "schedule_workout",
+    {
+      title: "Schedule a Garmin workout on a day",
+      description:
+        "Put one workout of the Garmin library on one day of the Garmin calendar, with no plan file: use the workoutId create_workout returned, or one from list_workouts. The workout itself is not changed. It does not look at what is on the calendar already, so scheduling the same workout on the same day twice may add it twice. A workoutId Garmin does not have is an error. Confirm with the user first.",
+      inputSchema: {
+        profile: profileArg,
+        workoutId: z.union([z.number(), z.string()]).describe("Id of a workout in the Garmin library."),
+        date: isoDate.describe("The day to put it on, YYYY-MM-DD."),
+      },
+      annotations: WRITE_GARMIN,
+    },
+    ({ profile, workoutId, date }) =>
+      runTool(
+        () => scheduleWorkout(profile, workoutId, date),
         { serialize: true }
       )
   );

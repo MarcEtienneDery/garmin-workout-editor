@@ -43,8 +43,9 @@ Data flow for activities: Garmin to the `activities` table (sync), table to the 
 ## MCP server
 
 - Plan tools: `list_plans`, `read_plan`, `write_plan`, `upsert_plan_workout`, `validate_plan`, `list_exercise_names`. They take a logical `path` (`workout-plans/<name>.json` or `data/<profile>/<name>.json`); prefer `upsert_plan_workout` over `write_plan` for single changes.
-- Tools that change the Garmin account (`upload_workouts`, `upload_single_workout`, `schedule_plan`, `upload_and_schedule_plan`, `send_to_device`) need the user's explicit confirmation, after `validate_plan` has been shown.
+- Tools that change the Garmin account (`upload_workouts`, `upload_single_workout`, `schedule_plan`, `upload_and_schedule_plan`, `create_workout`, `schedule_workout`, `send_to_device`) need the user's explicit confirmation, after `validate_plan` has been shown (for `create_workout`, its `dryRun`).
 - Uploads delete and recreate workouts that have a `workoutId` and write the new ids back into the plan.
+- `create_workout` and `schedule_workout` work on one workout with no plan file (`createWorkout` and `scheduleWorkout` in `src/mcp/tools/garmin.ts`; the workout schema is `newWorkoutSchema` in `plans.ts`, strict, so a plan-only field such as `scheduledDate` is refused rather than ignored). `create_workout` never replaces: it passes on only the name, type, description and steps, so no `workoutId` can reach the upload that would delete it. `schedule_workout` (`WorkoutEditor.scheduleWorkout`) throws for a workout Garmin does not have, where `schedule_plan` skips it, and checks the date against the calendar (`new Date("2026-02-30")` is March 2, so the plan flow's `isNaN` check does not catch it).
 - When adding or renaming a tool, update `src/__tests__/mcpServer.test.ts`, the server instructions in `src/mcp/createServer.ts` and the README table.
 
 ## Testing
