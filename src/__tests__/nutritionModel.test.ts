@@ -1,6 +1,8 @@
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const NM = require("../web/public/nutritionModel.js");
+import { MAX_PHOTOS, MAX_TEXT, MIN_TEXT } from "../shared/foodAi";
 import { NUTRIENTS } from "../shared/nutrients";
+import { MEALS, parseProduct } from "../shared/nutrition";
 
 const TODAY = "2026-10-18";
 const day = (over: Record<string, unknown> = {}) => ({ day: "2026-10-17", kcal: 2000, proteinG: 150, carbsG: 200, fatG: 44, entries: 5, burnedKcal: 2500, burnedSoFar: false, netKcal: -500, ...over });
@@ -357,5 +359,112 @@ describe("the nutrients beyond the macros", () => {
     expect(NM.hasNumbers({ ...NM.EMPTY_DRAFT(), ironMg: "0" })).toBe(true);
     expect(NM.hasNutrients({ ...NM.EMPTY_DRAFT(), kcal: "100" })).toBe(false);
     expect(NM.hasNutrients({ ...NM.EMPTY_DRAFT(), fiberG: "3" })).toBe(true);
+  });
+});
+
+describe("foods estimated by AI", () => {
+  const eggs = { name: "Scrambled eggs", portion: "2 large eggs", meal: "breakfast", amount: 100, unit: "g", kcal: 190, proteinG: 13, carbsG: 1.6, fatG: 14, nutrients: { cholesterolMg: 370, sodiumMg: 170 } };
+  const milk = { name: "Milk 2 %", portion: "1 glass", meal: "snack", amount: 250, unit: "ml", kcal: 125, proteinG: 8.5, carbsG: 12, fatG: 5, nutrients: { calciumMg: 300 } };
+  const salt = { name: "Salt", portion: "1 pinch", meal: "dinner", amount: 1, unit: "g", kcal: 0, proteinG: 0, carbsG: 0, fatG: 0, nutrients: { sodiumMg: 600 } };
+
+  it("limits a question as the server does", () => {
+    expect(NM.AI_LIMITS).toEqual({ minText: MIN_TEXT, maxText: MAX_TEXT, maxPhotos: MAX_PHOTOS });
+  });
+
+  it("guesses the meal from the hour, a snack at night and when the hour is no number", () => {
+    expect([0, 3, 4, 9, 10, 13, 14, 16, 17, 21, 22, 23].map(NM.mealForHour)).toEqual(["snack", "snack", "breakfast", "breakfast", "lunch", "lunch", "snack", "snack", "dinner", "dinner", "snack", "snack"]);
+    expect(NM.mealForHour(undefined)).toBe("snack");
+    expect(NM.mealForHour("x")).toBe("snack");
+    expect(MEALS).toEqual(expect.arrayContaining(NM.aiGroups(["breakfast", "lunch", "dinner", "snack"].map((meal) => ({ meal }))).map((g: any) => g.meal)));
+  });
+
+  it("can estimate from a few words or a photo alone, not from two characters, nothing or too much", () => {
+    expect(NM.canEstimate("two eggs", 0)).toBe(true);
+    expect(NM.canEstimate("  abc  ", 0)).toBe(true);
+    expect(NM.canEstimate("ab", 0)).toBe(false);
+    expect(NM.canEstimate("", 0)).toBe(false);
+    expect(NM.canEstimate(null, 0)).toBe(false);
+    expect(NM.canEstimate("", 1)).toBe(true);
+    expect(NM.canEstimate("   ", 2)).toBe(true);
+    expect(NM.canEstimate("ab", 1)).toBe(false); // the server refuses it
+    expect(NM.canEstimate("x".repeat(MAX_TEXT), 0)).toBe(true);
+    expect(NM.canEstimate("x".repeat(MAX_TEXT + 1), 1)).toBe(false);
+  });
+
+  it("turns the amount eaten into a food per 100 g, so the grams box works like the one for a scanned food", () => {
+    const food = NM.aiFood(eggs);
+    expect(food).toMatchObject({ name: "Scrambled eggs", brand: null, code: null, unit: "g", per100: { kcal: 190, proteinG: 13, carbsG: 1.6, fatG: 14 }, nutrients: { cholesterolMg: 370, sodiumMg: 170 }, servingG: null });
+    const m = NM.aiFood(milk);
+    expect(m.unit).toBe("ml");
+    expect(m.per100.kcal).toBe(50);
+    expect(m.nutrients).toEqual({ calciumMg: 120 });
+  });
+
+  it("keeps a nutrient it was not given unknown, and a stated zero zero", () => {
+    expect(NM.aiFood({ ...eggs, nutrients: {} }).nutrients).toEqual({});
+    expect(NM.aiFood({ ...eggs, nutrients: { fiberG: 0, ironMg: null } }).nutrients).toEqual({ fiberG: 0 });
+  });
+
+  it("logs the food at the amount estimated as the numbers estimated, and rescales it for another amount", () => {
+    const row = NM.aiRows([eggs])[0];
+    expect(row).toMatchObject({ amount: "100", meal: "breakfast" });
+    const v = NM.aiRowValue(row);
+    expect(v).toMatchObject({ grams: 100, nutrition: { kcal: 190, proteinG: 13, carbsG: 1.6, fatG: 14 }, nutrients: { cholesterolMg: 370, sodiumMg: 170 }, name: "Scrambled eggs · 100 g" });
+    expect(v.product).toMatchObject({ name: "Scrambled eggs", unit: "g", amount: 100, per: "g", per100: { kcal: 190 } });
+    const more = NM.aiRowValue({ ...row, amount: "150" });
+    expect(more).toMatchObject({ nutrition: { kcal: 285, proteinG: 19.5, fatG: 21 }, nutrients: { cholesterolMg: 555 }, name: "Scrambled eggs · 150 g" });
+    expect(NM.aiRowValue({ ...NM.aiRows([milk])[0], amount: "200" })).toMatchObject({ nutrition: { kcal: 100 }, name: "Milk 2 % · 200 ml" });
+  });
+
+  it("makes a product the server accepts, and scales back to the estimate within rounding for an awkward amount", () => {
+    const odd = { ...eggs, amount: 37, kcal: 80, proteinG: 5.3, carbsG: 0.6, fatG: 6.1, nutrients: { sodiumMg: 63 } };
+    const v = NM.aiRowValue(NM.aiRows([odd])[0]);
+    expect(() => parseProduct(v.product)).not.toThrow();
+    expect(v.nutrition.kcal).toBe(80);
+    expect(Math.abs(v.nutrition.proteinG - 5.3)).toBeLessThanOrEqual(0.1);
+    for (const item of [eggs, milk]) expect(() => parseProduct(NM.aiRowValue(NM.aiRows([item])[0]).product)).not.toThrow();
+  });
+
+  it("keeps the numbers as estimated, with no product, for a food that cannot be per 100 g", () => {
+    expect(NM.aiFood(salt)).toBeNull(); // 600 mg in 1 g is more sodium than salt holds per 100 g (at most 40 %)
+    expect(NM.aiFood({ ...salt, nutrients: { sodiumMg: 390 } })).not.toBeNull();
+    expect(NM.aiFood({ ...eggs, kcal: 2000 })).toBeNull(); // 2000 kcal in 100 g
+    expect(NM.aiFood({ ...eggs, amount: 0 })).toBeNull();
+    expect(NM.aiFood({ ...eggs, kcal: undefined })).toBeNull();
+    const v = NM.aiRowValue(NM.aiRows([salt])[0]);
+    expect(v).toMatchObject({ grams: 1, nutrition: { kcal: 0 }, nutrients: { sodiumMg: 600 }, name: "Salt · 1 g", product: null });
+  });
+
+  it("has no value for an amount that is no number, zero or too much", () => {
+    const row = NM.aiRows([eggs])[0];
+    for (const amount of ["", "0", "-1", "lots", "2001"]) expect(NM.aiRowValue({ ...row, amount })).toBeNull();
+    expect(NM.aiRowValue({ ...row, amount: "2000" })).not.toBeNull();
+    expect(NM.aiRowValue({ ...row, amount: "1,5" })).not.toBeNull(); // a comma is read as the decimal point
+  });
+
+  it("groups the rows by meal in the day's order, and sums the kept ones", () => {
+    const rows = NM.aiRows([milk, eggs, { ...eggs, name: "Bacon", meal: "breakfast", amount: 30, kcal: 130, proteinG: 9, carbsG: 0.3, fatG: 10, nutrients: {} }]);
+    expect(NM.aiGroups(rows).map((g: any) => [g.meal, g.rows.map((r: any) => r.item.name)])).toEqual([["breakfast", ["Scrambled eggs", "Bacon"]], ["snack", ["Milk 2 %"]]]);
+    rows[1].meal = "lunch";
+    expect(NM.aiGroups(rows).map((g: any) => g.meal)).toEqual(["breakfast", "lunch", "snack"]);
+    expect(NM.aiTotals(rows)).toEqual({ kcal: 445, proteinG: 30.5, carbsG: 13.9, fatG: 29 });
+    expect(NM.aiTotals(rows.slice(0, 1))).toEqual({ kcal: 125, proteinG: 8.5, carbsG: 12, fatG: 5 });
+    expect(NM.aiTotals([{ ...rows[0], amount: "0" }, rows[1]])).toMatchObject({ kcal: 190 }); // a row with no good amount adds nothing
+    expect(NM.aiTotals([])).toEqual({ kcal: 0, proteinG: 0, carbsG: 0, fatG: 0 });
+  });
+
+  it("says the total as an estimate", () => {
+    expect(NM.approx({ kcal: 306, proteinG: 15, carbsG: 16.4, fatG: 21 })).toBe(`≈ ${NM.kcal(306)} · P 15 · C 16.4 · F 21`);
+  });
+
+  it("makes the foods to send, each with its meal, nutrients and product, or says what stops it", () => {
+    const rows = NM.aiRows([eggs, milk, salt]);
+    const sent = NM.aiItems(rows);
+    expect(sent.error).toBeUndefined();
+    expect(sent.items.map((i: any) => [i.name, i.meal, i.kcal])).toEqual([["Scrambled eggs · 100 g", "breakfast", 190], ["Milk 2 % · 250 ml", "snack", 125], ["Salt · 1 g", "dinner", 0]]);
+    expect(sent.items[0]).toMatchObject({ proteinG: 13, nutrients: { cholesterolMg: 370, sodiumMg: 170 }, product: expect.objectContaining({ amount: 100 }) });
+    expect(sent.items[2].product).toBeNull();
+    expect(NM.aiItems([])).toEqual({ error: "There is nothing to log." });
+    expect(NM.aiItems([{ ...rows[0], amount: "0" }, rows[1]]).error).toMatch(/Give Scrambled eggs an amount above 0/);
   });
 });

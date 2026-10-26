@@ -323,5 +323,90 @@
   /** A food as the results list shows it: the name and the brand. */
   const foodTitle = (food) => (brandOf(food) ? `${food.name} · ${brandOf(food)}` : food.name);
 
-  return { gtinOk, expandUpcE, normalizeBarcode, MAX_AMOUNT, parseAmount, amountGrams, scale, brandOf, entryName, portion, productOf, pickOf, allNutrients, per100Line, foodTitle, MEAL_LABELS, mealLabel, kcal, grams, signed, macros, shares, figures, averageNote, GROUPS, cell, chartDays, charts, kcalOf, parseDraft, draftOf, EMPTY_DRAFT, hasNumbers, hasNutrients, recentMatch, recentFor, again, foods, NUTRIENTS, nutrientLine, nutrientTiles, scaleNutrients };
+  // ── Foods estimated by AI from words and photos (the Food view's "Describe or photograph what you ate" box) ──
+
+  /** What the server takes of a question: the same as MIN_TEXT, MAX_TEXT and MAX_PHOTOS of shared/foodAi.ts (a test keeps them equal). */
+  const AI_LIMITS = { minText: 3, maxText: 1000, maxPhotos: 3 };
+
+  /** The meal a food is most likely in at this hour (0 to 23), for when the person's words do not say: breakfast until 10, lunch until 14, a snack until 17, dinner until 22, else a snack. */
+  function mealForHour(hour) {
+    const h = Number(hour);
+    if (!Number.isFinite(h)) return "snack";
+    return h < 4 ? "snack" : h < 10 ? "breakfast" : h < 14 ? "lunch" : h < 17 ? "snack" : h < 22 ? "dinner" : "snack";
+  }
+
+  /** True when there is something to estimate: a few words (not too many), or a photo alone. Same as the server's check. */
+  function canEstimate(text, photoCount) {
+    const n = String(text == null ? "" : text).trim().length;
+    return n === 0 ? photoCount > 0 : n >= AI_LIMITS.minText && n <= AI_LIMITS.maxText;
+  }
+
+  /** What 100 g (or ml) can hold, as the server's parseProduct checks it: a gram of anything is at most 100 g, and fat is at most 9 kcal a gram. */
+  const PER_100_MAX = { kcal: 950, g: 100, mg: 40000 };
+
+  /**
+   * An estimated food ({ name, amount, unit, kcal, proteinG, carbsG, fatG, nutrients } for the amount eaten) as a Food holding its
+   * numbers per 100 g (or ml), so the grams box and the log work as for a food found on Open Food Facts: portion() scales it and gives the
+   * name and the product kept with the entry. Null when the numbers cannot be per 100 g (the server would refuse the product): the row
+   * is then logged as estimated, with no quantity to change.
+   */
+  function aiFood(item) {
+    const amount = Number(item.amount);
+    if (!(amount > 0)) return null;
+    const per = (v) => Math.round(((Number(v) * 100) / amount) * 100) / 100;
+    const per100 = { kcal: per(item.kcal), proteinG: per(item.proteinG), carbsG: per(item.carbsG), fatG: per(item.fatG) };
+    const nutrients = {};
+    for (const n of NUTRIENTS) {
+      const v = (item.nutrients || {})[n.key];
+      if (valid(v)) nutrients[n.key] = per(v);
+    }
+    if (![per100.kcal, per100.proteinG, per100.carbsG, per100.fatG].every(valid)) return null;
+    if (per100.kcal > PER_100_MAX.kcal || [per100.proteinG, per100.carbsG, per100.fatG].some((v) => v > PER_100_MAX.g)) return null;
+    if (NUTRIENTS.some((n) => valid(nutrients[n.key]) && nutrients[n.key] > PER_100_MAX[n.unit])) return null;
+    return { code: null, name: item.name, brand: null, per100, nutrients, complete: true, unit: item.unit === "ml" ? "ml" : "g", servingG: null, servingText: null };
+  }
+
+  /** The rows of an estimate to check before logging: each estimated food with its Food, the amount as the text of the grams box and its meal. */
+  const aiRows = (items) => (items || []).map((item) => ({ item, food: aiFood(item), amount: plain(item.amount), meal: item.meal }));
+
+  /**
+   * What a row comes to at its amount: { grams, nutrition, nutrients, name, product }, as portion() gives it. A row with no Food keeps the
+   * numbers it was estimated with (and logs them with no product). Null when the amount is no number above 0 or more than MAX_AMOUNT.
+   */
+  function aiRowValue(row) {
+    if (row.food) return portion(row.food, row.amount, "g");
+    const i = row.item;
+    return { grams: i.amount, nutrition: { kcal: i.kcal, proteinG: i.proteinG, carbsG: i.carbsG, fatG: i.fatG }, nutrients: i.nutrients || {}, name: entryName({ name: i.name, brand: null, unit: i.unit }, i.amount, "g"), product: null };
+  }
+
+  /** The rows by meal, in the day's order, only the meals that have rows: [{ meal, rows }]. */
+  const aiGroups = (rows) => Object.keys(MEAL_LABELS).map((meal) => ({ meal, rows: rows.filter((r) => r.meal === meal) })).filter((g) => g.rows.length);
+
+  /** The calories and macros of the rows that have a good amount, summed. */
+  function aiTotals(rows) {
+    const t = { kcal: 0, proteinG: 0, carbsG: 0, fatG: 0 };
+    for (const row of rows) {
+      const v = aiRowValue(row);
+      if (!v) continue;
+      for (const key of Object.keys(t)) t[key] += v.nutrition[key];
+    }
+    return { kcal: Math.round(t.kcal), proteinG: round1(t.proteinG), carbsG: round1(t.carbsG), fatG: round1(t.fatG) };
+  }
+
+  /** "≈ 306 kcal · P 15 · C 16 · F 21": an estimate's numbers, marked as estimates. */
+  const approx = (t) => `≈ ${kcal(t.kcal)} · ${macros(t)}`;
+
+  /** The foods to send to POST /api/nutrition ({ items }, each with its own meal), or what is wrong ({ error }): a row whose amount is no good cannot be logged. */
+  function aiItems(rows) {
+    if (!rows.length) return { error: "There is nothing to log." };
+    const items = [];
+    for (const row of rows) {
+      const v = aiRowValue(row);
+      if (!v) return { error: `Give ${row.item.name} an amount above 0 (up to ${MAX_AMOUNT}).` };
+      items.push({ name: v.name, ...v.nutrition, nutrients: v.nutrients, product: v.product, meal: row.meal });
+    }
+    return { items };
+  }
+
+  return { AI_LIMITS, mealForHour, canEstimate, aiFood, aiRows, aiRowValue, aiGroups, aiTotals, approx, aiItems, gtinOk, expandUpcE, normalizeBarcode, MAX_AMOUNT, parseAmount, amountGrams, scale, brandOf, entryName, portion, productOf, pickOf, allNutrients, per100Line, foodTitle, MEAL_LABELS, mealLabel, kcal, grams, signed, macros, shares, figures, averageNote, GROUPS, cell, chartDays, charts, kcalOf, parseDraft, draftOf, EMPTY_DRAFT, hasNumbers, hasNutrients, recentMatch, recentFor, again, foods, NUTRIENTS, nutrientLine, nutrientTiles, scaleNutrients };
 });

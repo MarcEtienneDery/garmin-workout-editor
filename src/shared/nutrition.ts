@@ -59,6 +59,8 @@ export interface FoodInput {
   nutrients?: unknown;
   /** The product the numbers were scaled from (see FoodProduct), so the food can be changed by quantity later; the page sends it, the MCP tools do not. */
   product?: unknown;
+  /** Only in addFoods: the meal of this food when it is not the call's (the page logs an estimate of a whole day's meals in one call). */
+  meal?: unknown;
 }
 
 /** The nutrients of a food as given: known keys with a number from 0; null, empty or left out means unknown. Anything else is refused. */
@@ -138,12 +140,12 @@ export interface AddFoods {
   items: FoodInput[];
 }
 
-/** Log foods for a meal of a day (`today` by default). All are checked before any is kept. */
+/** Log foods for a meal of a day (`today` by default); a food may name a meal of its own. All are checked before any is kept. */
 export function addFoods(store: SqliteStore, profile: string, input: AddFoods, today: string, source: string): FoodEntry[] {
   if (!Array.isArray(input.items) || !input.items.length) throw new NutritionError("Give at least one food.");
   if (input.items.length > MAX_ITEMS) throw new NutritionError(`Give at most ${MAX_ITEMS} foods at a time.`);
-  const where = { day: parseDay(input.day, today), meal: parseMeal(input.meal) };
-  return store.nutrition.add(profile, input.items.map((item) => parseFood(item ?? {}, where)), source);
+  const day = parseDay(input.day, today), meal = parseMeal(input.meal);
+  return store.nutrition.add(profile, input.items.map((item) => parseFood(item ?? {}, { day, meal: item?.meal === undefined || item.meal === null ? meal : parseMeal(item.meal) })), source);
 }
 
 /**

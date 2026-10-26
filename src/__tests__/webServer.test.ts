@@ -12,6 +12,7 @@ import * as wellnessTools from "../mcp/tools/wellness";
 import * as renphoTools from "../mcp/tools/renpho";
 import * as settingsTools from "../mcp/tools/settings";
 import * as foodSearch from "../shared/foodSearch";
+import * as foodAi from "../shared/foodAi";
 import { Decoder, Stream } from "@garmin/fitsdk";
 import { renphoRow } from "./fixtures/renpho";
 import { hrvResponse, noWeighIn, sleepResponse, summaryResponse, weightResponse } from "./fixtures/wellness";
@@ -64,8 +65,15 @@ jest.mock("../shared/foodSearch", () => ({
   searchFoods: jest.fn(async () => []),
   lookupBarcode: jest.fn(async () => null),
 }));
+// Claude: no network either.
+jest.mock("../shared/foodAi", () => ({
+  ...jest.requireActual("../shared/foodAi"),
+  estimateFoods: jest.fn(async () => ({ items: [], note: "", remaining: 29 })),
+  foodAiStatus: jest.fn(() => ({ enabled: true, remaining: 30, limit: 30, backend: "cli" })),
+}));
 const g = garmin as jest.Mocked<typeof garmin>;
 const fs_ = foodSearch as jest.Mocked<typeof foodSearch>;
+const ai_ = foodAi as jest.Mocked<typeof foodAi>;
 const a = activitiesTools as jest.Mocked<typeof activitiesTools>;
 const w = wellnessTools as jest.Mocked<typeof wellnessTools>;
 const rt = renphoTools as jest.Mocked<typeof renphoTools>;
@@ -939,7 +947,7 @@ describe("web plan editor", () => {
       it("stamps the page's own scripts with a version, so a deploy is not hidden by a cache that keeps scripts for hours", async () => {
         const html = await (await fetch(base + "/")).text();
         const stamped = [...html.matchAll(/<script src="(\/[^"]+\.js)\?v=([0-9a-f]{10})"><\/script>/g)];
-        expect(stamped.map((m) => m[1])).toEqual(expect.arrayContaining(["/nutritionModel.js", "/barcodeScanner.js", "/workoutModel.js"]));
+        expect(stamped.map((m) => m[1])).toEqual(expect.arrayContaining(["/nutritionModel.js", "/barcodeScanner.js", "/foodPhoto.js", "/workoutModel.js"]));
         expect(new Set(stamped.map((m) => m[2]))).toEqual(new Set([assetVersion()]));
         expect(html).toContain('<script src="/vendor/monaco/loader.js"></script>'); // a vendored library has its own version
         expect((await fetch(base + "/nutritionModel.js?v=abc")).status).toBe(200); // the stamp is ignored when a script is asked for
@@ -972,12 +980,74 @@ describe("web plan editor", () => {
       });
 
       it("serves the scanner and the barcode reader the page loads", async () => {
-        for (const file of ["/barcodeScanner.js", "/nutritionModel.js", "/vendor/zxing/index.min.js"]) {
+        for (const file of ["/barcodeScanner.js", "/foodPhoto.js", "/nutritionModel.js", "/vendor/zxing/index.min.js"]) {
           const res = await fetch(base + file);
           expect(res.status).toBe(200);
           expect(res.headers.get("content-type")).toMatch(/javascript/);
         }
         expect((await fetch(base + "/vendor/zxing/../../package.json")).status).toBe(404);
+      });
+    });
+
+    describe("estimating food with AI", () => {
+      const eggs = { name: "Scrambled eggs", portion: "2 large eggs", meal: "breakfast", amount: 100, unit: "g", kcal: 190, proteinG: 13, carbsG: 1.6, fatG: 14, nutrients: {} };
+      const photo = { mediaType: "image/jpeg", data: "/9j/4AAQSkZJRgAB" };
+      const day = expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/);
+      const login = (user: string, pass: string) => ({ ...H, Authorization: "Basic " + Buffer.from(`${user}:${pass}`).toString("base64") });
+
+      it("asks Claude about the person's words and photos as the profile, and logs nothing", async () => {
+        addProfile("MED");
+        ai_.estimateFoods.mockResolvedValueOnce({ items: [eggs] as any, note: "Assumed 2 large eggs.", remaining: 29 });
+        const out = await call("POST", "/api/foods/ai", { text: "2 scrambled eggs", defaultMeal: "breakfast", images: [photo] });
+        expect(out).toEqual({ status: 200, json: { items: [eggs], note: "Assumed 2 large eggs.", remaining: 29 } });
+        expect(ai_.estimateFoods).toHaveBeenCalledWith({ profile: "MED", text: "2 scrambled eggs", images: [photo], defaultMeal: "breakfast", today: day });
+        expect((await call("GET", "/api/nutrition")).json.day.entries).toBe(0);
+      });
+
+      it("needs a profile to count the estimates against", async () => {
+        expect((await call("POST", "/api/foods/ai", { text: "2 scrambled eggs" })).status).toBe(400);
+        expect(ai_.estimateFoods).not.toHaveBeenCalled();
+      });
+
+      it("answers a refused or failed estimate with the status and words the page shows", async () => {
+        addProfile("MED");
+        const cases: [foodAi.FoodAiErrorKind, number][] = [["input", 400], ["unconfigured", 503], ["busy", 429], ["limit", 429], ["refused", 422], ["upstream", 502]];
+        for (const [kind, status] of cases) {
+          ai_.estimateFoods.mockRejectedValueOnce(new foodAi.FoodAiError(kind, `because ${kind}`));
+          expect(await call("POST", "/api/foods/ai", { text: "eggs" })).toEqual({ status, json: { error: `because ${kind}` } });
+        }
+        const quiet = jest.spyOn(console, "error").mockImplementation(() => undefined);
+        ai_.estimateFoods.mockRejectedValueOnce(new Error("boom"));
+        expect((await call("POST", "/api/foods/ai", { text: "eggs" })).status).toBe(500);
+        quiet.mockRestore();
+      });
+
+      it("is for signed-in people only, and a profile login asks as itself whichever profile it names", async () => {
+        addProfile("MED", "med-pw");
+        addProfile("SAM", "sam-pw");
+        expect((await call("POST", "/api/foods/ai", { text: "eggs" })).status).toBe(401);
+        expect(ai_.estimateFoods).not.toHaveBeenCalled();
+        await call("POST", "/api/foods/ai", { text: "eggs", profile: "MED" }, login("SAM", "sam-pw"));
+        expect(ai_.estimateFoods).toHaveBeenLastCalledWith(expect.objectContaining({ profile: "SAM" }));
+      });
+
+      it("tells the Food view whether the box works and how many estimates are left", async () => {
+        addProfile("MED");
+        ai_.foodAiStatus.mockReturnValueOnce({ enabled: false, remaining: 0, limit: 30, backend: null });
+        expect((await call("GET", "/api/nutrition")).json.ai).toEqual({ enabled: false, remaining: 0, limit: 30, backend: null });
+        expect(ai_.foodAiStatus).toHaveBeenLastCalledWith("MED", day);
+        expect((await call("POST", "/api/nutrition", { action: "add", meal: "lunch", items: [{ name: "Rice", kcal: 200 }] })).json.ai).toEqual({ enabled: true, remaining: 30, limit: 30, backend: "cli" });
+      });
+
+      it("logs the foods of an estimate that spans meals in one call, each in its own, and none when one meal is wrong", async () => {
+        addProfile("MED");
+        const out = await call("POST", "/api/nutrition", { action: "add", meal: "breakfast", items: [{ name: "Eggs · 100 g", kcal: 190, meal: "breakfast" }, { name: "Milk · 250 ml", kcal: 125, meal: "snack" }, { name: "Rice", kcal: 200 }] });
+        expect(out.status).toBe(200);
+        expect(out.json.day.meals.map((m: any) => m.entries.map((e: any) => e.name))).toEqual([["Eggs · 100 g", "Rice"], [], [], ["Milk · 250 ml"]]);
+        expect(out.json.added).toHaveLength(3);
+        const bad = await call("POST", "/api/nutrition", { action: "add", meal: "lunch", items: [{ name: "A", kcal: 1 }, { name: "B", kcal: 1, meal: "brunch" }] });
+        expect(bad.status).toBe(400);
+        expect((await call("GET", "/api/nutrition")).json.day.entries).toBe(3);
       });
     });
 

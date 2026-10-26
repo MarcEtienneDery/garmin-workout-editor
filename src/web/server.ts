@@ -25,6 +25,9 @@
  * Food search and the barcode scan look foods up on Open Food Facts from the server (GET /api/foods/search?q=, GET
  * /api/foods/barcode?code=): the page scales what they return to the quantity eaten and logs it with POST /api/nutrition.
  *
+ * The Food view's AI box estimates a meal from the person's words and photos with Claude (POST /api/foods/ai; needs ANTHROPIC_API_KEY):
+ * it writes nothing, the page shows the estimate and logs what is kept with POST /api/nutrition.
+ *
  * The Calendar view shows where the plan files put their workouts (GET /api/calendar): each plan's span
  * and the dates of its workouts. It reads the stored plans only, not Garmin's own calendar.
  *
@@ -79,6 +82,7 @@ import { runRenpho, startRenphoTimer } from "../mcp/tools/renpho";
 import { testGarminLogin } from "../mcp/tools/settings";
 import { addDays, localToday } from "../shared/wellnessSync";
 import { FoodInputError, FoodSourceError, lookupBarcode, searchFoods } from "../shared/foodSearch";
+import { FoodAiError, type FoodAiErrorKind, estimateFoods, foodAiStatus } from "../shared/foodAi";
 import { MAX_ITEMS, MEALS, NutritionError, addFoods, averageOf, changeFood, copyFoods, deleteFoods, nutritionDays, parseDay, recentFoods } from "../shared/nutrition";
 import {
   LIBRARY_LIMIT,
@@ -882,7 +886,20 @@ async function foodLookup<T>(ask: () => Promise<T>): Promise<T> {
   }
 }
 
-/** What the Food view shows: one day with its meals, the days of a range for the trend, and the foods the form offers again. */
+/** The status each kind of failed AI estimate is answered with. */
+const FOOD_AI_STATUS: Record<FoodAiErrorKind, number> = { input: 400, unconfigured: 503, busy: 429, limit: 429, refused: 422, upstream: 502 };
+
+/** An AI estimate, its refusals and failures as the status and words the page shows. */
+async function foodAiCall<T>(ask: () => Promise<T>): Promise<T> {
+  try {
+    return await ask();
+  } catch (error) {
+    if (error instanceof FoodAiError) throw new HttpError(FOOD_AI_STATUS[error.kind], error.message);
+    throw error;
+  }
+}
+
+/** What the Food view shows: one day with its meals, the days of a range for the trend, the foods the form offers again, and whether the AI box works. */
 function nutritionView(profile: string, asked: unknown, daysAsked: unknown) {
   const today = localToday(store(), profile);
   let date = today;
@@ -904,6 +921,7 @@ function nutritionView(profile: string, asked: unknown, daysAsked: unknown) {
     days: days.map(({ meals, ...totals }) => totals),
     average: averageOf(days, today),
     recent: recentFoods(store(), profile),
+    ai: foodAiStatus(profile, today),
   };
 }
 
@@ -1098,6 +1116,13 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
     case "GET /api/foods/barcode": {
       // The food of a scanned barcode; null when Open Food Facts has none.
       return send(res, 200, { food: await foodLookup(() => lookupBarcode(store(), url.searchParams.get("code"))) });
+    }
+
+    case "POST /api/foods/ai": {
+      // Foods estimated from words and photos by Claude. Nothing is logged: the page shows the estimate and logs what is kept with POST /api/nutrition.
+      const body = await readBody(req);
+      const profile = profileFor(who, "", body.profile);
+      return send(res, 200, await foodAiCall(() => estimateFoods({ profile, text: body.text, images: body.images, defaultMeal: body.defaultMeal, today: localToday(store(), profile) })));
     }
 
     case "GET /api/nutrition": {

@@ -41,6 +41,12 @@ services:
     environment:
       WEB_AUTH_TOKEN: ${WEB_AUTH_TOKEN:?Set WEB_AUTH_TOKEN in .env (openssl rand -hex 16)}
       GARMIN_PROFILE: ${GARMIN_PROFILE:-}
+      # the Food view's AI box: empty means it is off (the page says how to set it up)
+      FOOD_AI_BACKEND: ${FOOD_AI_BACKEND:-}
+      CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      FOOD_AI_MODEL: ${FOOD_AI_MODEL:-}
+      FOOD_AI_DAILY_LIMIT: ${FOOD_AI_DAILY_LIMIT:-}
     ports:
       # Loopback by default; set WEB_BIND=0.0.0.0 to allow LAN clients.
       - "${WEB_BIND:-127.0.0.1}:${WEB_PORT:-8788}:8788"

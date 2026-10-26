@@ -77,6 +77,16 @@ describe("logging, changing and deleting foods", () => {
     expect(() => log({ meal: "lunch", items: [null as any] })).toThrow(/needs a name|Each food needs a name/);
   });
 
+  it("keeps a food in the meal it names and the others in the call's, all in one call", () => {
+    const added = log({ day: "2026-10-17", meal: "lunch", items: [{ name: "Eggs", kcal: 190, meal: "breakfast" }, { name: "Rice", kcal: 200 }, { name: "Pie", kcal: 300, meal: null }, { name: "Tea", kcal: 2, meal: "snack" }] });
+    expect(added.map((a) => [a.name, a.meal, a.day])).toEqual([["Eggs", "breakfast", "2026-10-17"], ["Rice", "lunch", "2026-10-17"], ["Pie", "lunch", "2026-10-17"], ["Tea", "snack", "2026-10-17"]]);
+  });
+
+  it("keeps none when a food names a meal that does not exist", () => {
+    expect(() => log({ meal: "lunch", items: [{ name: "Fine", kcal: 100 }, { name: "Odd", kcal: 100, meal: "brunch" }] })).toThrow(/meal must be one of/);
+    expect(store.nutrition.range("MED", "2000-01-01", "2100-01-01")).toEqual([]);
+  });
+
   it("changes what the patch names and keeps the rest", () => {
     const [food] = log({ meal: "lunch", items: [{ name: "Pasta", kcal: 400, proteinG: 14, carbsG: 80, fatG: 2 }] });
     const changed = changeFood(store, "MED", food.id, { proteinG: 20, meal: "dinner", day: "2026-10-17" });
