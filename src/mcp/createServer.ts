@@ -20,7 +20,9 @@ To adjust a single day's workout to how recovered the person is: get_readiness (
 
 To log what the person ate: log_meal (a meal of a day, one item per food, with calories and protein, carbs and fat in grams that you estimate from their description and say are estimates). get_nutrition reads the log back with the day totals and the calories Garmin says the day burned; update_meal_entry and delete_meal_entry correct it. The log is kept here, never sent to Garmin, and a day with nothing logged is not a day of zero.
 
-Tools that change the Garmin account — upload_workouts, upload_single_workout, schedule_plan, upload_and_schedule_plan, send_to_device — must NEVER be called without the user's explicit confirmation after you have shown them the validation result. Uploading replaces any existing workout that has a workoutId and writes the new workoutIds back into the plan file, which is what keeps later uploads from creating duplicates.`;
+For one workout that belongs to no plan: create_workout makes a new workout in the Garmin library from the workout you give it and returns its workoutId (dryRun=true validates it and sends nothing: show the user that result first), and schedule_workout puts any workout of the library, by workoutId, on a day. Neither reads or writes a plan file, and create_workout never replaces a workout.
+
+Tools that change the Garmin account — upload_workouts, upload_single_workout, schedule_plan, upload_and_schedule_plan, create_workout, schedule_workout, send_to_device — must NEVER be called without the user's explicit confirmation after you have shown them the validation result. Uploading replaces any existing workout that has a workoutId and writes the new workoutIds back into the plan file, which is what keeps later uploads from creating duplicates.`;
 
 function readVersion(): string {
   try {

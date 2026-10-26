@@ -5,6 +5,7 @@ const mockGarmin = {
   clock: 0,
   scheduled: [] as { workoutId: number; date: string }[],
   failCreate: false,
+  failSchedule: false,
   calls: { getWorkouts: 0, getWorkoutDetail: 0 },
 };
 
@@ -40,6 +41,7 @@ jest.mock("@flow-js/garmin-connect", () => ({
         if (!mockGarmin.library.delete(Number(workoutId))) throw new Error("404 not found");
       }),
       scheduleWorkout: jest.fn(async ({ workoutId }: { workoutId: number }, date: Date) => {
+        if (mockGarmin.failSchedule) throw new Error("ERROR: (500), Internal Server Error, {}");
         mockGarmin.scheduled.push({ workoutId: Number(workoutId), date: date.toISOString().slice(0, 10) });
       }),
     };
@@ -51,8 +53,8 @@ import * as os from "os";
 import * as path from "path";
 import { compareWorkouts } from "../shared/workoutSync";
 import { configureMcp } from "../mcp/context";
-import { diffPlanWorkout } from "../mcp/tools/plans";
-import { checkWorkoutSync, deleteLibraryWorkout, getLibraryWorkout, invalidateLibrary, listLibraryWorkouts, saveWorkout, uploadAndSchedulePlan, uploadPlan } from "../mcp/tools/garmin";
+import { type NewWorkout, diffPlanWorkout } from "../mcp/tools/plans";
+import { checkWorkoutSync, createWorkout, deleteLibraryWorkout, getLibraryWorkout, invalidateLibrary, listLibraryWorkouts, saveWorkout, scheduleWorkout, uploadAndSchedulePlan, uploadPlan } from "../mcp/tools/garmin";
 import { closeStore, getStore } from "../shared/store";
 
 const squat = (): any => ({
@@ -136,6 +138,7 @@ describe("workouts on Garmin", () => {
     mockGarmin.library.clear();
     mockGarmin.scheduled = [];
     mockGarmin.failCreate = false;
+    mockGarmin.failSchedule = false;
     mockGarmin.calls = { getWorkouts: 0, getWorkoutDetail: 0 };
     invalidateLibrary("TEST");
   });
@@ -295,6 +298,129 @@ describe("workouts on Garmin", () => {
     it("says so when the plan is not in the store", async () => {
       await expect(uploadPlan("TEST", "workout-plans/none.json")).rejects.toThrow(/File not found/);
       await expect(uploadAndSchedulePlan("TEST", "workout-plans/none.json")).rejects.toThrow(/File not found/);
+    });
+  });
+
+  describe("one workout and no plan", () => {
+    const run = (): NewWorkout => ({
+      workoutName: "Easy 5k",
+      workoutType: "running",
+      description: "Just run",
+      steps: [{ stepType: "interval", targetType: "no.target", endCondition: "distance", endConditionValue: 5000, distanceMeters: 5000 }],
+    });
+
+    describe("createWorkout", () => {
+      it("makes a workout in the library from the workout alone: no plan is written and nothing is scheduled", async () => {
+        const plans = getStore().list("workout-plans/").map((d) => d.path);
+        const out = await createWorkout("TEST", run());
+        expect(out).toMatchObject({ workoutName: "Easy 5k", workoutType: "running", stepCount: 1, workoutId: expect.any(Number) });
+
+        const stored = mockGarmin.library.get(out.workoutId!);
+        expect(stored).toMatchObject({ workoutName: "Easy 5k", description: "Just run", sportType: { sportTypeKey: "running" } });
+        expect(stored.workoutSegments[0].workoutSteps).toEqual([expect.objectContaining({ endConditionValue: 5000 })]);
+        expect(mockGarmin.scheduled).toEqual([]);
+        expect(getStore().list("workout-plans/").map((d) => d.path)).toEqual(plans);
+      });
+
+      it("always makes a new workout: it never replaces one, even when it is handed an id", async () => {
+        const first = await createWorkout("TEST", run());
+        const second = await createWorkout("TEST", run());
+        expect(second.workoutId).not.toBe(first.workoutId);
+
+        await createWorkout("TEST", { ...run(), workoutId: first.workoutId } as NewWorkout);
+        expect(mockGarmin.library.has(first.workoutId!)).toBe(true);
+        expect(mockGarmin.library.size).toBe(3);
+      });
+
+      it("checks the workout first and makes nothing when it is wrong", async () => {
+        const bad = { ...run(), steps: [{ ...run().steps[0], exerciseName: "NOT_A_REAL_EXERCISE" }] };
+        await expect(createWorkout("TEST", bad)).rejects.toThrow(/Workout not created: .*Unknown exerciseName/);
+        expect(mockGarmin.library.size).toBe(0);
+      });
+
+      it("with dryRun only checks it", async () => {
+        expect(await createWorkout("TEST", run(), true)).toMatchObject({ dryRun: true, valid: true, stepCount: 1 });
+        expect(mockGarmin.library.size).toBe(0);
+        await expect(createWorkout("TEST", { ...run(), steps: [{ stepType: "sprint" }] } as any, true)).rejects.toThrow(/Workout not created/);
+      });
+
+      it("fails loudly when Garmin refuses the workout", async () => {
+        mockGarmin.failCreate = true;
+        await expect(createWorkout("TEST", run())).rejects.toThrow(/did not accept/);
+        expect(mockGarmin.library.size).toBe(0);
+      });
+
+      it("shows in the listing the web editor holds, which would otherwise be a minute old", async () => {
+        expect(await listLibraryWorkouts("TEST")).toEqual([]);
+        const { workoutId } = await createWorkout("TEST", run());
+        expect((await listLibraryWorkouts("TEST")).map((w) => w.workoutId)).toEqual([workoutId]);
+      });
+    });
+
+    describe("scheduleWorkout", () => {
+      it("puts a workout of the library on the day asked for, and says which workout it was", async () => {
+        const { workoutId } = await createWorkout("TEST", run());
+        const out = await scheduleWorkout("TEST", workoutId!, "2026-11-02");
+        expect(out).toEqual({ workoutId, workoutName: "Easy 5k", date: "2026-11-02" });
+        expect(mockGarmin.scheduled).toEqual([{ workoutId, date: "2026-11-02" }]);
+      });
+
+      it("takes any workout of the library, with its id as a number or as text: one made in the Garmin app, say", async () => {
+        mockGarmin.library.set(777, { workoutId: 777, workoutName: "Made in the app", updatedDate: "1" });
+        expect(await scheduleWorkout("TEST", "777", "2026-11-03")).toMatchObject({ workoutId: 777, workoutName: "Made in the app" });
+        await scheduleWorkout("TEST", 777, "2026-11-04");
+        expect(mockGarmin.scheduled).toEqual([{ workoutId: 777, date: "2026-11-03" }, { workoutId: 777, date: "2026-11-04" }]);
+      });
+
+      it("schedules a past day too, since the calendar takes it", async () => {
+        const { workoutId } = await createWorkout("TEST", run());
+        await scheduleWorkout("TEST", workoutId!, "2020-01-31");
+        expect(mockGarmin.scheduled).toEqual([{ workoutId, date: "2020-01-31" }]);
+      });
+
+      it("says so when Garmin has no such workout, and schedules nothing: the old id of a workout that was uploaded again, say", async () => {
+        const first = await saveWorkout("TEST", squat());
+        const second = await saveWorkout("TEST", { ...squat(), workoutId: first.workoutId });
+        expect(second.workoutId).not.toBe(first.workoutId);
+
+        await expect(scheduleWorkout("TEST", first.workoutId, "2026-11-02")).rejects.toThrow(new RegExp(`did not return workout ${first.workoutId}.*list_workouts`));
+        await expect(scheduleWorkout("TEST", 424242, "2026-11-02")).rejects.toThrow(/did not return workout 424242/);
+        expect(mockGarmin.scheduled).toEqual([]);
+      });
+
+      it("does not report a day Garmin refused as scheduled", async () => {
+        const { workoutId } = await createWorkout("TEST", run());
+        mockGarmin.failSchedule = true;
+        await expect(scheduleWorkout("TEST", workoutId!, "2026-11-02")).rejects.toThrow(/500/);
+        expect(mockGarmin.scheduled).toEqual([]);
+      });
+
+      it("refuses a day that does not exist and an id that is not one before it asks Garmin anything", async () => {
+        const { workoutId } = await createWorkout("TEST", run());
+        mockGarmin.calls = { getWorkouts: 0, getWorkoutDetail: 0 };
+        for (const day of ["2026-02-30", "2026-13-01", "2026-11-31", "tomorrow", ""]) {
+          await expect(scheduleWorkout("TEST", workoutId!, day)).rejects.toThrow(/is not a day/);
+        }
+        for (const id of ["abc", "12ab", "", 0, -3, 1.5, Number.NaN, 2 ** 60]) {
+          await expect(scheduleWorkout("TEST", id, "2026-11-02")).rejects.toThrow(/workoutId must be the number of a workout/);
+        }
+        expect(mockGarmin.calls.getWorkoutDetail).toBe(0);
+        expect(mockGarmin.scheduled).toEqual([]);
+      });
+
+      it("accepts the last day of a leap year, which a calendar-blind check would refuse or move", async () => {
+        const { workoutId } = await createWorkout("TEST", run());
+        await scheduleWorkout("TEST", workoutId!, "2028-02-29");
+        await expect(scheduleWorkout("TEST", workoutId!, "2027-02-29")).rejects.toThrow(/is not a day/);
+        expect(mockGarmin.scheduled).toEqual([{ workoutId, date: "2028-02-29" }]);
+      });
+    });
+
+    it("creates a workout and puts it on a day with two calls", async () => {
+      const { workoutId } = await createWorkout("TEST", run());
+      await scheduleWorkout("TEST", workoutId!, "2026-11-05");
+      expect(mockGarmin.scheduled).toEqual([{ workoutId, date: "2026-11-05" }]);
+      expect(mockGarmin.library.size).toBe(1);
     });
   });
 });
