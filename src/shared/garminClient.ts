@@ -20,6 +20,28 @@ export interface GarminRawSet {
   messageIndex: number;
 }
 
+/** How long a fresh login is not tried again after Garmin answered one with HTTP 429. */
+export const LOGIN_COOLDOWN_MS = 60_000;
+
+/** The HTTP status in a Garmin client error ("ERROR: (429), Too Many Requests, ..."), when it has one. */
+const httpStatus = (error: any): number | null => {
+  const status = error?.response?.status ?? /\((\d{3})\)/.exec(String(error?.message ?? ""))?.[1];
+  return status ? Number(status) : null;
+};
+
+const RATE_LIMITED = "Failed to authenticate with Garmin: it is rate limiting logins (HTTP 429, Too Many Requests)";
+
+const NETWORK_CODES = new Set(["ECONNRESET", "ECONNREFUSED", "ECONNABORTED", "ETIMEDOUT", "ENOTFOUND", "EAI_AGAIN"]);
+
+/**
+ * A failure that says nothing about the session or the credentials: Garmin throttling us, Garmin down, or no network.
+ * The cached token is kept for these, and a fresh login (which would hit the same wall) is not tried.
+ */
+const isTransient = (error: any): boolean => {
+  const status = httpStatus(error);
+  return status === 429 || (status !== null && status >= 500) || NETWORK_CODES.has(error?.code);
+};
+
 /**
  * Shared Garmin client initialization and authentication
  */
@@ -29,6 +51,10 @@ export class GarminClient {
   private client: GarminConnect;
   private mockMode: boolean;
   private tokenCache: TokenCache;
+  /** Why the last authenticate() failed, so callers can tell a throttled login from bad credentials. */
+  private lastAuthFailure: string | null = null;
+  /** No fresh login before this time (ms since epoch): Garmin answered the last one with 429. */
+  private loginBlockedUntil = 0;
 
   constructor(email: string, password: string, mockMode: boolean = false, dataDir?: string) {
     this.email = email;
@@ -71,6 +97,7 @@ export class GarminClient {
       return true;
     }
 
+    this.lastAuthFailure = null;
     try {
       // Try to restore from cache first
       const cached = this.tokenCache.loadToken(this.email);
@@ -86,6 +113,11 @@ export class GarminClient {
           );
           return true;
         } catch (error: any) {
+          if (isTransient(error)) {
+            // Throttled or unreachable says nothing about the token: keep it, and do not log in again on top of it.
+            console.log(`ℹ️ Could not check the cached token, keeping it: ${error.message}`);
+            return this.failAuth(error);
+          }
           console.log(
             `ℹ️ Cached token invalid or expired: ${error.message}`
           );
@@ -93,7 +125,14 @@ export class GarminClient {
         }
       }
 
-      // Perform fresh login
+      // Perform fresh login, unless Garmin has just turned one away
+      const wait = this.loginBlockedUntil - Date.now();
+      if (wait > 0) {
+        const seconds = Math.ceil(wait / 1000);
+        console.log(`⏳ Garmin is rate limiting logins: not trying again for ${seconds}s`);
+        this.lastAuthFailure = `${RATE_LIMITED}; try again in ${seconds} seconds.`;
+        return false;
+      }
       console.log("🔐 Authenticating with Garmin Connect (fresh login)...");
       await this.client.login();
 
@@ -112,10 +151,22 @@ export class GarminClient {
       return true;
     } catch (error: any) {
       console.error("❌ Authentication error:", error.message);
-      // Clear cache on authentication failure
-      this.tokenCache.clearToken();
-      return false;
+      if (httpStatus(error) === 429) this.loginBlockedUntil = Date.now() + LOGIN_COOLDOWN_MS;
+      // Clear the cache only when the session itself was refused, not when Garmin is throttling or unreachable
+      if (!isTransient(error)) this.tokenCache.clearToken();
+      return this.failAuth(error);
     }
+  }
+
+  /** Record why authenticate() failed and return false. */
+  private failAuth(error: any): false {
+    this.lastAuthFailure = httpStatus(error) === 429 ? `${RATE_LIMITED}; wait a few minutes and try again.` : null;
+    return false;
+  }
+
+  /** The error to throw when ensureAuthenticated() said no: names a rate limit, so nobody goes hunting for bad credentials. */
+  authError(): Error {
+    return new Error(this.lastAuthFailure ?? "Failed to authenticate with Garmin (check the profile credentials; 2FA accounts need a cached token).");
   }
 
   /**
