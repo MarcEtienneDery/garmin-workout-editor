@@ -622,7 +622,7 @@ export class WorkoutEditor {
 
     const authenticated = await this.garminClient.ensureAuthenticated();
     if (!authenticated) {
-      throw new Error("Failed to authenticate with Garmin");
+      throw this.garminClient.authError();
     }
 
     const details = await this.fetchWorkoutDetails(workoutId);
@@ -714,7 +714,7 @@ export class WorkoutEditor {
 
       const authenticated = await this.garminClient.ensureAuthenticated();
       if (!authenticated) {
-        throw new Error("Failed to authenticate with Garmin");
+        throw this.garminClient.authError();
       }
 
       const client = this.garminClient.getClientAny();
@@ -903,7 +903,7 @@ export class WorkoutEditor {
   async scheduleWorkoutPlan(plan: WeeklyWorkoutPlan): Promise<void> {
     const authenticated = await this.garminClient.ensureAuthenticated();
     if (!authenticated) {
-      throw new Error("Failed to authenticate with Garmin");
+      throw this.garminClient.authError();
     }
 
     this.validateWorkoutPlan(plan);
@@ -1008,7 +1008,7 @@ export class WorkoutEditor {
   async uploadAndScheduleWorkoutPlan(plan: WeeklyWorkoutPlan): Promise<void> {
     const authenticated = await this.garminClient.ensureAuthenticated();
     if (!authenticated) {
-      throw new Error("Failed to authenticate with Garmin");
+      throw this.garminClient.authError();
     }
 
     this.validateWorkoutPlan(plan);
@@ -1650,7 +1650,7 @@ export class WorkoutEditor {
     // Authenticate
     const authenticated = await this.garminClient.ensureAuthenticated();
     if (!authenticated) {
-      throw new Error("Failed to authenticate with Garmin");
+      throw this.garminClient.authError();
     }
 
     const client = this.garminClient.getClientAny();
@@ -1693,7 +1693,7 @@ export class WorkoutEditor {
   async deleteWorkout(workoutId: number | string): Promise<void> {
     const authenticated = await this.garminClient.ensureAuthenticated();
     if (!authenticated) {
-      throw new Error("Failed to authenticate with Garmin");
+      throw this.garminClient.authError();
     }
     const client = this.garminClient.getClientAny();
     if (!client.deleteWorkout) {
@@ -1711,7 +1711,7 @@ export class WorkoutEditor {
   async scheduleWorkout(workoutId: number | string, day: string): Promise<{ workoutName: string }> {
     const authenticated = await this.garminClient.ensureAuthenticated();
     if (!authenticated) {
-      throw new Error("Failed to authenticate with Garmin");
+      throw this.garminClient.authError();
     }
 
     // fetchWorkoutDetails answers null for any failure, so the log says which one it was
@@ -1848,7 +1848,7 @@ export class WorkoutEditor {
   ): Promise<void> {
     const authenticated = await this.garminClient.ensureAuthenticated();
     if (!authenticated) {
-      throw new Error("Failed to authenticate with Garmin");
+      throw this.garminClient.authError();
     }
 
     let targetDeviceId = deviceId;

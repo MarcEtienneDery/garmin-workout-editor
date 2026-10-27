@@ -102,7 +102,7 @@ export function getSession(requested?: string): Session {
 /** Log in to Garmin (a cached token is reused), or say why not. */
 export async function requireAuth(session: Session): Promise<void> {
   if (!(await session.garminClient.ensureAuthenticated())) {
-    throw new Error("Failed to authenticate with Garmin (check the profile credentials; 2FA accounts need a cached token).");
+    throw session.garminClient.authError();
   }
 }
 
