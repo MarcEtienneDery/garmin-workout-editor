@@ -3,6 +3,7 @@ import * as http from "http";
 import * as os from "os";
 import * as path from "path";
 import { AddressInfo } from "net";
+import { createHash } from "crypto";
 import { assetVersion, startWebServer, isLoopback, stampScripts } from "../web/server";
 import * as garmin from "../mcp/tools/garmin";
 import * as activitiesTools from "../mcp/tools/activities";
@@ -1891,6 +1892,103 @@ describe("web plan editor", () => {
         expect((await call("GET", "/api/files", undefined, withCookie(cookie))).status).toBe(401);
         expect((await signIn("MED", "med-pw")).status).toBe(401);
         expect((await signIn("MED", "rotated")).status).toBe(200);
+      });
+
+      describe("lifetime", () => {
+        const DAY = 24 * 60 * 60 * 1000;
+        const sessionCookieOf = (res: Response) => res.headers.getSetCookie().find((c) => c.startsWith("plan_editor_session=")) ?? "";
+        let now: jest.SpyInstance;
+        const t0 = Date.now();
+        beforeEach(() => { now = jest.spyOn(Date, "now").mockReturnValue(t0); });
+        afterEach(() => now.mockRestore());
+        const at = (days: number) => now.mockReturnValue(t0 + days * DAY);
+        const files = (cookie: string) => fetch(base + "/api/files", { headers: withCookie(cookie) });
+
+        it("survives a restart of the server", async () => {
+          const cookie = cookieOf(await signIn("MED", "med-pw"));
+          await new Promise((r) => server.close(r));
+          closeStore();
+          server = await startWebServer({ host: "127.0.0.1", port: 0 });
+          base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+          expect((await files(cookie)).status).toBe(200);
+          expect(await session(cookie)).toEqual({ authRequired: true, user: { admin: false, name: "MED" } });
+        });
+
+        it("keeps only a hash of the cookie, and nothing of the password", async () => {
+          const res = await signIn("MED", "med-pw");
+          const id = cookieOf(res).split("=")[1];
+          expect(store().sessions.get(id)).toBeNull();
+          expect(store().sessions.get(createHash("sha256").update(id).digest("hex"))).toEqual(expect.objectContaining({ admin: false, profile: "MED" }));
+        });
+
+        it("starts a 30-day cookie, and renews it only once a day", async () => {
+          const res = await signIn("MED", "med-pw");
+          expect(sessionCookieOf(res)).toMatch(`Max-Age=${30 * 86400}`);
+          const cookie = cookieOf(res);
+          at(0.5);
+          expect((await files(cookie)).headers.getSetCookie()).toEqual([]);
+          at(10);
+          const renewed = await files(cookie);
+          expect(renewed.status).toBe(200);
+          expect(sessionCookieOf(renewed)).toMatch(`plan_editor_session=${cookie.split("=")[1]};`);
+          expect(sessionCookieOf(renewed)).toMatch(`Max-Age=${30 * 86400}`);
+          at(10.5);
+          expect((await files(cookie)).headers.getSetCookie()).toEqual([]);
+        });
+
+        it("ends after 30 days without use, but not while it is used", async () => {
+          const idle = cookieOf(await signIn("MED", "med-pw"));
+          const used = cookieOf(await signIn("MED", "med-pw"));
+          for (const day of [20, 40, 60]) {
+            at(day);
+            expect((await files(used)).status).toBe(200);
+          }
+          at(31);
+          expect((await files(idle)).status).toBe(401);
+          expect(await session(idle)).toEqual({ authRequired: true, user: null });
+          at(80);
+          expect((await files(used)).status).toBe(200);
+        });
+
+        it("ends 90 days after the sign-in however much it is used, and the cookie never outlasts that", async () => {
+          const cookie = cookieOf(await signIn("MED", "med-pw"));
+          for (const day of [25, 50]) {
+            at(day);
+            expect((await files(cookie)).status).toBe(200);
+          }
+          at(75);
+          const last = await files(cookie);
+          expect(last.status).toBe(200);
+          expect(sessionCookieOf(last)).toMatch(`Max-Age=${15 * 86400}`); // 90 days from the sign-in, not 30 from now
+          at(85);
+          const capped = await files(cookie);
+          expect(capped.status).toBe(200);
+          expect(capped.headers.getSetCookie()).toEqual([]); // nothing left to extend
+          at(91);
+          expect((await files(cookie)).status).toBe(401);
+        });
+
+        it("drops the sessions that have expired when someone signs in", async () => {
+          const old = cookieOf(await signIn("MED", "med-pw")).split("=")[1];
+          const oldHash = createHash("sha256").update(old).digest("hex");
+          at(31);
+          expect(store().sessions.get(oldHash)).not.toBeNull();
+          await signIn("SAM", "sam-pw");
+          expect(store().sessions.get(oldHash)).toBeNull();
+        });
+
+        it("ends a session of the admin token when the token changes", async () => {
+          const first = await startWebServer({ host: "127.0.0.1", port: 0, token: "admin-token" });
+          const login = await fetch(`http://127.0.0.1:${(first.address() as AddressInfo).port}/api/login`, { method: "POST", headers: H, body: JSON.stringify({ user: "boss", password: "admin-token" }) });
+          const cookie = cookieOf(login);
+          await new Promise((r) => first.close(r));
+          const same = await startWebServer({ host: "127.0.0.1", port: 0, token: "admin-token" });
+          expect((await fetch(`http://127.0.0.1:${(same.address() as AddressInfo).port}/api/files`, { headers: { Cookie: cookie } })).status).toBe(200);
+          await new Promise((r) => same.close(r));
+          const rotated = await startWebServer({ host: "127.0.0.1", port: 0, token: "new-token" });
+          expect((await fetch(`http://127.0.0.1:${(rotated.address() as AddressInfo).port}/api/files`, { headers: { Cookie: cookie } })).status).toBe(401);
+          await new Promise((r) => rotated.close(r));
+        });
       });
 
       it("keeps the admin login on the token, with any user name", async () => {

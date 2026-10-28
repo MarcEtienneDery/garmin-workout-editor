@@ -10,6 +10,7 @@
 # The copy is scrubbed so dev cannot act on the real accounts: the Garmin and Renpho logins and the Garmin tokens are
 # removed (dev behaves like a profile without Garmin) and the Renpho auto-fetch/auto-upload switches are turned off.
 # --keep-logins keeps the logins: then an upload from dev changes the REAL Garmin account.
+# The browser sessions in the copy are dropped too, so a sign-in on live does not open dev.
 #
 # Overrides (environment): LIVE_DB, LIVE_WEB_ENV, LIVE_CONFIG, DEV_DIR (default ~/garmin-dev, outside ~/docker so the backup skips it),
 # DEV_WEB_PORT (8798), DEV_MCP_PORT (8797), DEV_WEB_BIND (unset: all interfaces, so the LAN reaches the editor),
@@ -96,6 +97,8 @@ has_table() { [[ $(sqlite3 "$db" "select count(*) from sqlite_master where type=
 if has_table renpho_settings; then
   sqlite3 "$db" "update renpho_settings set fetch_enabled = 0, push_enabled = 0"
 fi
+# Live's browser sessions are in the copy: dev must not honour them.
+if has_table web_sessions; then sqlite3 "$db" "delete from web_sessions"; fi
 if (( keep_logins )); then
   echo "==> keeping the Garmin and Renpho logins: dev can change the real Garmin account"
 else

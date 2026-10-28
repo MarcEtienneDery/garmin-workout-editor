@@ -55,7 +55,8 @@
  * read from the activities table that the Garmin sync fills.
  *
  * Logins: the page shows a sign-in form (POST /api/login, GET /api/session, POST /api/logout)
- * and keeps the login in an HttpOnly session cookie. user = a profile name (any case),
+ * and keeps the login in an HttpOnly session cookie; the session is kept in the database, so it survives a restart, and lasts
+ * SESSION_IDLE_MS from its last use (at most SESSION_MAX_MS from the sign-in). user = a profile name (any case),
  * password = the web sign-in password set for that profile in Settings (kept as a hash) -> sees only data/<profile>/ and
  * the plans in workout-plans/ that are shared or its own, and its Garmin actions run as that
  * profile. WEB_AUTH_TOKEN as the password (any user name) is the admin login with full access.
@@ -120,7 +121,13 @@ const MAX_BODY_BYTES = 10 * 1024 * 1024;
 const SESSION_COOKIE = "plan_editor_session";
 /** Set by sign out: a browser that cached Basic credentials (earlier versions asked for them) keeps sending them, so they are ignored while this is set. */
 const SIGNED_OUT_COOKIE = "plan_editor_signed_out";
-const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+/** A session ends after this long without use ... */
+const SESSION_IDLE_MS = 30 * DAY_MS;
+/** ... and this long after the sign-in however much it is used. */
+const SESSION_MAX_MS = 90 * DAY_MS;
+/** A session in use is renewed (a write, and a new cookie) at most this often. */
+const SESSION_RENEW_AFTER_MS = DAY_MS;
 const SIGNED_OUT_TTL_MS = 365 * 24 * 60 * 60 * 1000;
 const STORE_STATUS: Record<StoreErrorCode, number> = { not_found: 404, exists: 409, conflict: 409, invalid_path: 400 };
 const store = () => getStore();
@@ -1472,10 +1479,14 @@ export function startWebServer(options: WebServerOptions): Promise<http.Server> 
     return who;
   };
 
-  // Logins made through the form. A session ends when it expires, on logout, or when the secret it was made
-  // with changes (a changed or removed web sign-in password), just as Basic credentials stop working then.
-  interface Session { who: Principal; secretHash: Buffer; expires: number }
-  const sessions = new Map<string, Session>();
+  // Logins made through the form, kept in the database so they outlive a restart. A session ends when it has gone unused for
+  // SESSION_IDLE_MS, SESSION_MAX_MS after the sign-in, on logout, or when the secret it was made with changes (a changed or removed
+  // web sign-in password), just as Basic credentials stop working then.
+  const idHashOf = (id: string) => createHash("sha256").update(id).digest("hex");
+  /** What ties a session to the secret it was made with; the id hash salts it, so the table holds no bare hash of the token. */
+  const bindingOf = (idHash: string, secret: string) => createHash("sha256").update(`${idHash}:${secret}`).digest("hex");
+  const sameHex = (a: string, b: string) => a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
+  const expiryFor = (createdAt: number, now: number) => Math.min(now + SESSION_IDLE_MS, createdAt + SESSION_MAX_MS);
   const currentSecret = (who: Principal) => (who.admin ? options.token : (store().profiles.webPasswordHash(who.profile) ?? undefined));
 
   const cookieValue = (req: http.IncomingMessage, name: string): string | undefined => {
@@ -1489,21 +1500,37 @@ export function startWebServer(options: WebServerOptions): Promise<http.Server> 
     const secure = req.headers["x-forwarded-proto"] === "https" || (req.socket as { encrypted?: boolean }).encrypted;
     return `${name}=${value}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${Math.floor(maxAgeMs / 1000)}${secure ? "; Secure" : ""}`;
   };
-  const sessionOf = (req: http.IncomingMessage): Principal | null => {
+  /** Who the session cookie stands for. A session in use is renewed once a day: its expiry moves out and the cookie is sent again. */
+  const sessionOf = (req: http.IncomingMessage, res: http.ServerResponse): Principal | null => {
     const id = cookieValue(req, SESSION_COOKIE);
-    const session = id ? sessions.get(id) : undefined;
-    if (!id || !session) return null;
-    const secret = currentSecret(session.who);
-    if (session.expires < Date.now() || !secret || !timingSafeEqual(sha256(secret), session.secretHash)) {
-      sessions.delete(id);
+    if (!id) return null;
+    const idHash = idHashOf(id);
+    const session = store().sessions.get(idHash);
+    if (!session) return null;
+    const who: Principal | null = session.admin ? ADMIN : session.profile ? { admin: false, profile: session.profile } : null;
+    const secret = who && currentSecret(who);
+    const now = Date.now();
+    if (!who || !secret || session.expiresAt < now || !sameHex(bindingOf(idHash, secret), session.bound)) {
+      store().sessions.delete(idHash);
       return null;
     }
-    return session.who;
+    if (now - session.renewedAt >= SESSION_RENEW_AFTER_MS) {
+      const expiresAt = expiryFor(session.createdAt, now);
+      if (expiresAt > session.expiresAt) {
+        try {
+          store().sessions.renew(idHash, expiresAt, now);
+          res.setHeader("Set-Cookie", setCookie(req, SESSION_COOKIE, id, expiresAt - now));
+        } catch (error) {
+          console.error("[web] session renewal failed (the next request tries again):", error); // the request itself is fine
+        }
+      }
+    }
+    return who;
   };
 
-  const authenticate = async (req: http.IncomingMessage): Promise<Principal | null> => {
+  const authenticate = async (req: http.IncomingMessage, res: http.ServerResponse): Promise<Principal | null> => {
     if (!authRequired()) return ADMIN;
-    const session = sessionOf(req);
+    const session = sessionOf(req, res);
     if (session) return session;
     if (cookieValue(req, SIGNED_OUT_COOKIE)) return null; // signed out of this browser; scripts carry no cookies
     const m = /^Basic\s+(.+)$/i.exec(req.headers.authorization ?? "");
@@ -1521,11 +1548,11 @@ export function startWebServer(options: WebServerOptions): Promise<http.Server> 
     const who = password ? await verify(req, user, password) : null;
     if (!who) throw new HttpError(401, "Wrong user name or password.");
     const now = Date.now();
-    for (const [id, s] of sessions) if (s.expires < now) sessions.delete(id);
     const id = randomBytes(32).toString("hex");
-    sessions.set(id, { who, secretHash: sha256(currentSecret(who) ?? ""), expires: now + SESSION_TTL_MS });
+    const idHash = idHashOf(id);
+    store().sessions.create(idHash, { admin: who.admin, profile: who.profile ?? null }, bindingOf(idHash, currentSecret(who) ?? ""), expiryFor(now, now), now);
     send(res, 200, { authRequired: true, user: userInfo(who) }, {
-      "Set-Cookie": [setCookie(req, SESSION_COOKIE, id, SESSION_TTL_MS), setCookie(req, SIGNED_OUT_COOKIE, "", 0)],
+      "Set-Cookie": [setCookie(req, SESSION_COOKIE, id, SESSION_IDLE_MS), setCookie(req, SIGNED_OUT_COOKIE, "", 0)],
     });
   }
 
@@ -1555,18 +1582,18 @@ export function startWebServer(options: WebServerOptions): Promise<http.Server> 
       if (route === "POST /api/login") return await login(req, res);
       if (route === "POST /api/logout") {
         const id = cookieValue(req, SESSION_COOKIE);
-        if (id) sessions.delete(id);
+        if (id) store().sessions.delete(idHashOf(id));
         return send(res, 200, { ok: true }, {
           "Set-Cookie": [setCookie(req, SESSION_COOKIE, "", 0), setCookie(req, SIGNED_OUT_COOKIE, "1", SIGNED_OUT_TTL_MS)],
         });
       }
       if (route === "GET /api/session") {
         // 200 even when signed out, so the page can tell "show the form" from a failure.
-        const who = await authenticate(req);
+        const who = await authenticate(req, res);
         return send(res, 200, { authRequired: authRequired(), user: who ? userInfo(who) : null });
       }
 
-      const who = await authenticate(req);
+      const who = await authenticate(req, res);
       // No WWW-Authenticate: the browser must not open its own login dialog over the form.
       if (!who) return send(res, 401, { error: "Authentication required" });
       await handleApi(req, res, url, who);

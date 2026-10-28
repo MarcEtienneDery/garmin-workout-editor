@@ -10,6 +10,7 @@ export * from "./activities";
 export { TokenTable, type StoredToken } from "./tokens";
 export * from "./wellness";
 export * from "./credentials";
+export { SessionTable, type StoredSession } from "./sessions";
 export { ProfileTable, decoyCheck, isProfileName } from "./profiles";
 export { SealKeyError, sealing } from "./seal";
 export * from "./renpho";
