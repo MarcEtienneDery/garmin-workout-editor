@@ -1,0 +1,58 @@
+# Dev stack: the same image as live, built from a source directory, on a COPY of the live database.
+# Not started by hand: scripts/dev-deploy.sh makes the copy, writes the env file and runs this.
+#
+# Nothing here is shared with the live stack: other container names, other ports, its own image tag
+# (:dev, never :latest), its own data directory, its own tokens. The service names matter too: they are
+# network aliases on the shared cloudflare-tunnel network, and a name equal to live's (garmin-web) would
+# make the tunnel answer from either container.
+
+name: garmin-dev
+
+services:
+  dev-mcp:
+    build: ${DEV_SRC:-.}
+    image: garmin-workout-editor-mcp:dev
+    container_name: garmin-dev-mcp
+    restart: unless-stopped
+    user: "${PUID:-1000}:${PGID:-1000}"
+    environment:
+      MCP_AUTH_TOKEN: ${MCP_AUTH_TOKEN:?run scripts/dev-deploy.sh}
+      GARMIN_TZ: ${GARMIN_TZ:-America/Toronto}
+      FOOD_AI_BACKEND: ${FOOD_AI_BACKEND:-}
+      CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
+    ports:
+      - "${DEV_MCP_BIND:-127.0.0.1}:${DEV_MCP_PORT:-8797}:8787"
+    volumes:
+      - ${DEV_DIR:-./dev}/data:/data
+    networks: [default, tunnel]
+
+  dev-web:
+    image: garmin-workout-editor-mcp:dev
+    container_name: garmin-dev-web
+    restart: unless-stopped
+    user: "${PUID:-1000}:${PGID:-1000}"
+    command: ["node", "dist/web/server.js"]
+    environment:
+      WEB_AUTH_TOKEN: ${WEB_AUTH_TOKEN:?run scripts/dev-deploy.sh}
+      GARMIN_TZ: ${GARMIN_TZ:-America/Toronto}
+      FOOD_AI_BACKEND: ${FOOD_AI_BACKEND:-}
+      CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
+    ports:
+      # Every interface (IPv4 and IPv6) unless DEV_WEB_BIND names one, like the live editor: reachable from the LAN.
+      - "${DEV_WEB_BIND:+${DEV_WEB_BIND}:}${DEV_WEB_PORT:-8798}:8788"
+    volumes:
+      - ${DEV_DIR:-./dev}/data:/data
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8788/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    depends_on:
+      - dev-mcp   # builds the shared image
+    networks: [default, tunnel]
+
+networks:
+  tunnel:
+    name: cloudflare-tunnel
+    external: true
