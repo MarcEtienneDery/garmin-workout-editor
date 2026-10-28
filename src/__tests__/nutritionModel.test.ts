@@ -2,7 +2,8 @@
 const NM = require("../web/public/nutritionModel.js");
 import { MAX_PHOTOS, MAX_TEXT, MIN_TEXT } from "../shared/foodAi";
 import { NUTRIENTS } from "../shared/nutrients";
-import { MEALS, parseProduct } from "../shared/nutrition";
+import { MEALS, parseProduct, totalsOf } from "../shared/nutrition";
+import { goalProgress } from "../shared/nutritionGoals";
 
 const TODAY = "2026-10-18";
 const day = (over: Record<string, unknown> = {}) => ({ day: "2026-10-17", kcal: 2000, proteinG: 150, carbsG: 200, fatG: 44, entries: 5, burnedKcal: 2500, burnedSoFar: false, netKcal: -500, ...over });
@@ -466,5 +467,171 @@ describe("foods estimated by AI", () => {
     expect(sent.items[2].product).toBeNull();
     expect(NM.aiItems([])).toEqual({ error: "There is nothing to log." });
     expect(NM.aiItems([{ ...rows[0], amount: "0" }, rows[1]]).error).toMatch(/Give Scrambled eggs an amount above 0/);
+  });
+});
+
+// ── The daily goals ──────────────────────────────────────────────────────
+
+/** A view as the server sends it: the day with its meals, the goals and where the day stands against them (the real goalProgress). */
+function goalView(foods: Record<string, any>[], goals: Record<string, number>, extra: Record<string, unknown> = {}) {
+  const entry = (f: Record<string, any>) => ({ meal: "lunch", name: "x", kcal: 0, proteinG: 0, carbsG: 0, fatG: 0, nutrients: {}, ...f });
+  const entries = foods.map(entry);
+  const meals = MEALS.map((meal) => {
+    const mine = entries.filter((e) => e.meal === meal);
+    return { meal, entries: mine, totals: totalsOf(mine as any) };
+  });
+  const totals = totalsOf(entries as any);
+  const dayOfView = { day: TODAY, ...totals, burnedKcal: null, burnedSoFar: false, netKcal: null, meals };
+  return { today: TODAY, date: TODAY, day: dayOfView, goals, progress: goalProgress(goals, totals), ...extra };
+}
+
+describe("saying where a goal stands", () => {
+  const view = goalView([{ kcal: 500, proteinG: 40, carbsG: 50, fatG: 10, nutrients: { sodiumMg: 800, fiberG: 4 } }, { kcal: 300, proteinG: 20 }], { kcal: 2000, proteinG: 100, carbsG: 250, sodiumMg: 700, fiberG: 30 });
+  const by = (key: string) => view.progress.find((p: any) => p.key === key);
+
+  it("words the amount against the goal and what is left", () => {
+    expect(NM.goalValue(by("kcal"))).toBe(`${(800).toLocaleString()} / ${(2000).toLocaleString()} kcal`);
+    expect(NM.goalNote(by("kcal"), 2)).toBe(`${(1200).toLocaleString()} kcal to go`);
+    expect(NM.goalValue(by("proteinG"))).toBe("60 / 100 g");
+    expect(NM.goalNote(by("proteinG"), 2)).toBe("40 g to go");
+    expect(NM.qty(2300, "mg")).toBe(`${(2300).toLocaleString()} mg`);
+    expect(NM.qty(12.5, "g")).toBe("12.5 g");
+  });
+
+  it("says a ceiling that was passed as over, with a mark that is not only colour", () => {
+    expect(by("sodiumMg")).toMatchObject({ state: "over", partial: true });
+    expect(NM.goalNote(by("sodiumMg"), 2)).toBe("▲ over by at least 100 mg"); // from some of the foods: at least
+    expect(NM.goalValue(by("sodiumMg"))).toBe("≥ 800 / 700 mg");
+  });
+
+  it("says a floor from some of the foods as a limit, and a goal reached or on target with a check", () => {
+    expect(NM.goalNote(by("fiberG"), 2)).toBe("up to 26 g to go");
+    const full = goalView([{ kcal: 1000, proteinG: 120, nutrients: { sodiumMg: 500, fiberG: 35 } }], { kcal: 1000, proteinG: 100, sodiumMg: 700, fiberG: 30 });
+    const note = (key: string) => NM.goalNote(full.progress.find((p: any) => p.key === key), 1);
+    expect(note("proteinG")).toBe("✓ reached");
+    expect(note("kcal")).toBe("✓ on target");
+    expect(note("sodiumMg")).toBe("200 mg left");
+    expect(note("fiberG")).toBe("✓ reached");
+  });
+
+  it("says nothing is logged, or that no food states a nutrient, never zero", () => {
+    const empty = goalView([], { kcal: 2000, sodiumMg: 2300 });
+    expect(empty.progress.map((p: any) => NM.goalNote(p, 0))).toEqual(["nothing logged", "nothing logged"]);
+    expect(NM.goalValue(empty.progress[0])).toBe(`– / ${(2000).toLocaleString()} kcal`);
+    const none = goalView([{ kcal: 100 }], { sodiumMg: 2300 });
+    expect(NM.goalNote(none.progress[0], 1)).toBe("no food states it");
+    expect(NM.goalMeter(none.progress[0])).toBeNull();
+  });
+
+  it("sizes a bar to the goal, and puts the goal on it once the amount is past it", () => {
+    expect(NM.goalMeter(by("proteinG"))).toEqual({ fill: 60, tick: null });
+    expect(NM.goalMeter(by("sodiumMg"))).toEqual({ fill: 100, tick: (700 / 800) * 100 });
+  });
+
+  it("names what a goal is", () => {
+    expect([NM.kindLabel("min"), NM.kindLabel("max"), NM.kindLabel("target"), NM.kindLabel("nope")]).toEqual(["at least", "at most", "the aim", ""]);
+  });
+});
+
+describe("the summary of the day", () => {
+  const foods = [{ meal: "breakfast", kcal: 400, proteinG: 20, carbsG: 50, fatG: 13 }, { meal: "dinner", kcal: 600, proteinG: 40, carbsG: 40, fatG: 20 }];
+
+  it("leads with what was eaten and where it stands against the calorie goal", () => {
+    const v = goalView(foods, { kcal: 2000, proteinG: 150 });
+    expect(NM.headline(v)).toEqual({ value: (1000).toLocaleString(), unit: "kcal eaten", note: `${(1000).toLocaleString()} kcal to go · goal ${(2000).toLocaleString()} kcal`, state: "short" });
+    expect(NM.headline(goalView(foods, {}))).toMatchObject({ note: "2 foods", state: "none" });
+    expect(NM.headline(goalView([], { kcal: 2000 }))).toMatchObject({ value: "–", note: `goal ${(2000).toLocaleString()} kcal · nothing logged`, state: "unknown" });
+    expect(NM.headline(goalView([], {}))).toMatchObject({ value: "–", note: "nothing logged" });
+  });
+
+  it("splits the calorie bar into protein, carbs and fat, as long as the day is of the goal", () => {
+    const bar = NM.calorieBar(goalView(foods, { kcal: 2000 }).day, 2000);
+    expect(bar.segments.map((x: any) => x.cls)).toEqual(["protein", "carbs", "fat"]);
+    expect(bar.segments.reduce((t: number, x: any) => t + x.width, 0)).toBeCloseTo(50, 5); // 1000 of 2000 kcal
+    expect(bar.tick).toBeNull();
+    const over = NM.calorieBar(goalView(foods, { kcal: 800 }).day, 800);
+    expect(over.segments.reduce((t: number, x: any) => t + x.width, 0)).toBeCloseTo(100, 5);
+    expect(over.tick).toBeCloseTo(80, 5); // the goal is 800 of the 1000 eaten
+    expect(NM.calorieBar(goalView(foods, {}).day, undefined).segments.reduce((t: number, x: any) => t + x.width, 0)).toBeCloseTo(100, 5);
+    expect(NM.calorieBar(goalView([], { kcal: 2000 }).day, 2000)).toBeNull();
+  });
+
+  it("draws a day that states calories but no macros as one plain segment", () => {
+    const bar = NM.calorieBar(goalView([{ kcal: 500 }], { kcal: 1000 }).day, 1000);
+    expect(bar.segments).toEqual([expect.objectContaining({ cls: "kcal", width: 50 })]);
+  });
+
+  it("gives a bar to each macro that has a goal, and just the grams to one that has not", () => {
+    const rows = NM.macroRows(goalView(foods, { proteinG: 120 }));
+    expect(rows.map((r: any) => r.key)).toEqual(["proteinG", "carbsG", "fatG"]);
+    expect(rows[0]).toMatchObject({ value: "60 / 120 g", note: "60 g to go", cls: "protein", state: "short", meter: { fill: 50, tick: null } });
+    expect(rows[1]).toMatchObject({ value: "90 g", note: "", meter: null, state: "none" });
+    expect(NM.macroRows(goalView([], {}))[0]).toMatchObject({ value: "–", meter: null });
+  });
+
+  it("says the burn and the difference when there is a burn", () => {
+    const v = goalView(foods, { kcal: 2000 });
+    expect(NM.burnLine(v)).toBe("");
+    const burned = { ...v, day: { ...v.day, burnedKcal: 1209, netKcal: -209 } };
+    expect(NM.burnLine(burned)).toBe(`Burned ${(1209).toLocaleString()} kcal so far by Garmin · eaten − burned −209 kcal`);
+    expect(NM.burnLine({ ...burned, date: "2026-10-17", day: { ...burned.day, day: "2026-10-17" } })).toMatch(/^Burned .* by Garmin/);
+    expect(NM.burnLine({ ...burned, burn: false })).toBe("");
+  });
+
+  it("gives the Today view's Eaten tile the goal", () => {
+    const v = goalView(foods, { kcal: 2000 });
+    expect(NM.figures({ today: TODAY, day: v.day, progress: v.progress })[0]).toMatchObject({ label: "Eaten", note: `of ${(2000).toLocaleString()} · ${(1000).toLocaleString()} kcal to go` });
+    expect(NM.figures({ today: TODAY, day: v.day })[0].note).toBe("2 foods");
+  });
+});
+
+describe("the breakdown", () => {
+  const foods = [{ meal: "breakfast", kcal: 400, proteinG: 20, carbsG: 50, fatG: 13, nutrients: { fiberG: 5 } }, { meal: "dinner", kcal: 800, proteinG: 40, carbsG: 40, fatG: 20, nutrients: { fiberG: 3, sodiumMg: 900 } }];
+
+  it("draws a bar per meal as long as its calories against the largest meal, split by macro", () => {
+    const bars = NM.mealBars(goalView(foods, { kcal: 2400 }));
+    expect(bars.map((b: any) => [b.meal, b.logged])).toEqual([["breakfast", true], ["lunch", false], ["dinner", true], ["snack", false]]);
+    expect(bars[2].width).toBe(100);
+    expect(bars[0].width).toBe(50);
+    expect(bars[0].segments.map((x: any) => x.cls)).toEqual(["protein", "carbs", "fat"]);
+    expect(bars[0].segments.reduce((t: number, x: any) => t + x.width, 0)).toBeCloseTo(100, 5);
+    expect(bars[0]).toMatchObject({ value: "400 kcal", share: 17, shareOf: "of the goal", note: "P 20 · C 50 · F 13" });
+    expect(bars[1]).toMatchObject({ value: "–", note: "nothing logged", width: 0, segments: [], share: null });
+  });
+
+  it("measures a meal against the day without a calorie goal", () => {
+    expect(NM.mealBars(goalView(foods, {}))[0]).toMatchObject({ share: 33, shareOf: "of the day" });
+  });
+
+  it("lists the nutrients with a goal first, as bars, then the others as the tiles said them", () => {
+    const rows = NM.nutrientRows(goalView(foods, { sodiumMg: 2300, fiberG: 30 }));
+    expect(rows.map((r: any) => r.key)).toEqual(["fiberG", "sodiumMg", "sugarsG", "satFatG", "transFatG", "cholesterolMg", "potassiumMg", "calciumMg", "ironMg"]);
+    expect(rows[0]).toMatchObject({ goal: true, value: "8 / 30 g", note: "22 g to go", meter: { fill: (8 / 30) * 100, tick: null } });
+    expect(rows[1]).toMatchObject({ goal: true, value: "≥ 900 / 2,300 mg".replace("2,300", (2300).toLocaleString()), partial: true, note: `up to ${(1400).toLocaleString()} mg left` });
+    expect(rows[2]).toMatchObject({ goal: false, meter: null, value: "–", note: "no food states it" });
+  });
+
+  it("lists only the goals for a day nothing was logged on, and nothing without goals", () => {
+    expect(NM.nutrientRows(goalView([], { sodiumMg: 2300 })).map((r: any) => [r.key, r.note])).toEqual([["sodiumMg", "nothing logged"]]);
+    expect(NM.nutrientRows(goalView([], {}))).toEqual([]);
+  });
+});
+
+describe("the charts with goals", () => {
+  it("puts the calorie goal on the calories chart and adds a protein chart when there is a protein goal", () => {
+    const [eaten, macros, protein, ...more] = NM.charts({ burn: true, goals: { kcal: 2200, proteinG: 140 } });
+    expect(eaten.goal).toEqual({ label: `Goal ${(2200).toLocaleString()} kcal`, value: 2200 });
+    expect(macros.goal).toBeUndefined();
+    expect(protein).toMatchObject({ id: "protein", kind: "bars", goal: { label: "Goal 140 g", value: 140 } });
+    expect(protein.value(day())).toBe(150);
+    expect(protein.read(day())).toBe("150 g · 107 % of the goal");
+    expect(protein.read({ proteinG: null })).toBe("not logged");
+    expect(more).toEqual([]);
+  });
+
+  it("draws no goal line and no protein chart without goals", () => {
+    const charts = NM.charts({ burn: true, goals: {} });
+    expect(charts.map((c: any) => c.id)).toEqual(["eaten", "macros"]);
+    expect(charts[0].goal).toBeUndefined();
   });
 });

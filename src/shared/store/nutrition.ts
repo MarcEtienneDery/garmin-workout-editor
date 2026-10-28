@@ -32,6 +32,11 @@ CREATE TABLE IF NOT EXISTS nutrition (
   updated_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS nutrition_by_day ON nutrition (profile, day);
+CREATE TABLE IF NOT EXISTS nutrition_goals (
+  profile    TEXT PRIMARY KEY,
+  goals      TEXT NOT NULL,
+  updated_at INTEGER NOT NULL
+) WITHOUT ROWID;
 `;
 
 /**
@@ -43,6 +48,9 @@ export function migrateNutrition(db: Database): void {
   const columns = new Set(db.prepare("PRAGMA table_info(nutrition)").all().map((column) => column.name));
   for (const name of ["extras", "product"]) if (!columns.has(name)) db.exec(`ALTER TABLE nutrition ADD COLUMN ${name} TEXT`);
 }
+
+/** The daily goals of a profile by key (calories, the three macros and the nutrients: see shared/nutritionGoals.ts); a key that is absent has no goal. */
+export type GoalValues = Record<string, number>;
 
 /** The slots of a day, in the order they are listed. */
 export const MEALS = ["breakfast", "lunch", "dinner", "snack"] as const;
@@ -185,5 +193,32 @@ export class NutritionTable {
       .prepare("SELECT * FROM nutrition WHERE id IN (SELECT MAX(id) FROM nutrition WHERE profile = ? GROUP BY lower(name)) ORDER BY id DESC LIMIT ?")
       .all(profile, limit)
       .map(toEntry);
+  }
+}
+
+/**
+ * A profile's daily goals: one JSON object of key to number, written whole (the rules for a change are shared/nutritionGoals.ts). A profile
+ * that never set any has no row; one that cleared them all has its row deleted.
+ */
+export class GoalTable {
+  constructor(private readonly db: Database) {}
+
+  /** The goals of a profile, `{}` when it has none. A cell that is not an object of numbers is read as no goals. */
+  get(profile: string): GoalValues {
+    const r = this.db.prepare("SELECT goals FROM nutrition_goals WHERE profile = ?").get(profile);
+    try {
+      const raw = r && typeof r.goals === "string" ? JSON.parse(r.goals) : null;
+      const found: GoalValues = {};
+      if (raw && typeof raw === "object") for (const [key, value] of Object.entries(raw)) if (typeof value === "number" && Number.isFinite(value)) found[key] = value;
+      return found;
+    } catch {
+      return {};
+    }
+  }
+
+  /** Keep these goals instead of the profile's own; none at all removes the row. */
+  set(profile: string, goals: GoalValues, now = Date.now()): void {
+    if (!Object.keys(goals).length) this.db.prepare("DELETE FROM nutrition_goals WHERE profile = ?").run(profile);
+    else this.db.prepare("INSERT INTO nutrition_goals (profile, goals, updated_at) VALUES (?, ?, ?) ON CONFLICT (profile) DO UPDATE SET goals = excluded.goals, updated_at = excluded.updated_at").run(profile, JSON.stringify(goals), now);
   }
 }

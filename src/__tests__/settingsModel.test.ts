@@ -79,3 +79,28 @@ describe("the web sign-in password typed twice", () => {
     expect(SM.profileProblem("SAM", "long enough", "nope")).toBe("The two passwords are not the same.");
   });
 });
+
+describe("the goals form", () => {
+  const fields = [{ key: "kcal", label: "Calories" }, { key: "proteinG", label: "Protein" }, { key: "sodiumMg", label: "Sodium" }];
+
+  it("sends the numbers typed, takes a comma for a point, and removes a goal whose field was emptied", () => {
+    expect(SM.goalsPatch({ kcal: "2200", proteinG: " 140,5 ", sodiumMg: "" }, fields, { kcal: 2000, sodiumMg: 2300 })).toEqual({ goals: { kcal: 2200, proteinG: 140.5, sodiumMg: null } });
+  });
+
+  it("leaves out an empty field that has no goal: nothing to remove", () => {
+    expect(SM.goalsPatch({ kcal: "", proteinG: "", sodiumMg: "" }, fields, {})).toEqual({ goals: {} });
+    expect(SM.goalsPatch({}, fields, { kcal: 2000 })).toEqual({ goals: { kcal: null } });
+  });
+
+  it.each([["abc"], ["0"], ["-5"], ["1e999"]])("says what is wrong with %s", (text) => {
+    expect(SM.goalsPatch({ kcal: "2000", proteinG: text }, fields, {})).toEqual({ error: "Protein must be a number above 0, or empty for no goal." });
+  });
+
+  it("compares the macros' calories with the calorie goal once all three macros are typed", () => {
+    expect(SM.macroGoalsNote({ proteinG: "140", carbsG: "250" })).toBe("");
+    expect(SM.macroGoalsNote({ proteinG: "140", carbsG: "250", fatG: "70" })).toBe(`Protein, carbs and fat add up to ${(2190).toLocaleString()} kcal.`);
+    expect(SM.macroGoalsNote({ kcal: "2200", proteinG: "140", carbsG: "250", fatG: "70" })).toBe("Protein, carbs and fat add up to 2,190 kcal, in line with the calorie goal.".replace("2,190", (2190).toLocaleString()));
+    expect(SM.macroGoalsNote({ kcal: "1800", proteinG: "140", carbsG: "250", fatG: "70" })).toBe(`Protein, carbs and fat add up to ${(2190).toLocaleString()} kcal, 22 % above the calorie goal of ${(1800).toLocaleString()}.`);
+    expect(SM.macroGoalsNote({ kcal: "2600", proteinG: "140", carbsG: "250", fatG: "70" })).toMatch(/16 % below the calorie goal/);
+  });
+});

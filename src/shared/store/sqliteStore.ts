@@ -3,7 +3,7 @@ import * as path from "path";
 import { ACTIVITY_SCHEMA, ActivityTable } from "./activities";
 import { CREDENTIAL_SCHEMA, CredentialTable } from "./credentials";
 import { FOOD_CACHE_SCHEMA, FoodCacheTable } from "./foods";
-import { NUTRITION_SCHEMA, NutritionTable, migrateNutrition } from "./nutrition";
+import { GoalTable, NUTRITION_SCHEMA, NutritionTable, migrateNutrition } from "./nutrition";
 import { PROFILE_SCHEMA, ProfileTable, backfillProfiles } from "./profiles";
 import { RENPHO_SCHEMA, RenphoTable } from "./renpho";
 import { SESSION_SCHEMA, SessionTable } from "./sessions";
@@ -100,6 +100,8 @@ export class SqliteStore {
   readonly renpho: RenphoTable;
   /** The food each profile ate: one row per item, with its meal, calories and macros (see nutrition.ts). */
   readonly nutrition: NutritionTable;
+  /** The daily calorie, macro and nutrient goals of each profile (see nutrition.ts). */
+  readonly goals: GoalTable;
   /** Products looked up by barcode on Open Food Facts, kept so a rescan needs no call (see foods.ts). */
   readonly foods: FoodCacheTable;
 
@@ -116,6 +118,7 @@ export class SqliteStore {
     this.credentials = new CredentialTable(db);
     this.renpho = new RenphoTable(db, (fn) => this.tx(fn));
     this.nutrition = new NutritionTable(db, (fn) => this.tx(fn));
+    this.goals = new GoalTable(db);
     this.foods = new FoodCacheTable(db);
   }
 

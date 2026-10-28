@@ -3,6 +3,7 @@
  * settings (both optional, kept in the database), and the password of the profile's own sign-in to the web editor (which is
  * not optional). What it tells a browser never includes a password, only that one is set.
  */
+import { GOALS, getGoals } from "./nutritionGoals";
 import { garminLogin } from "./profileLoader";
 import { INTERVAL_HOURS, MAX_PROFILE_NAME, type Measurement, type RenphoSettings, SealKeyError, type SqliteStore, isProfileName, sealing } from "./store";
 import { isRealDay, localToday } from "./wellnessSync";
@@ -217,6 +218,8 @@ export function settingsView(store: SqliteStore, profile: string, now = Date.now
     profile,
     garmin: garminAccount(profile),
     web: { hasPassword: store.profiles.webPasswordHash(profile) !== null },
+    // the daily food goals by key, and what each can be set for (label, unit, whether it is a floor, a ceiling or an aim)
+    goals: { values: getGoals(store, profile), fields: GOALS.map(({ max: _max, ...field }) => field) },
     renpho: renphoView(store, profile, now),
     // whether the saved passwords are encrypted (CREDENTIALS_KEY), and how many are not
     encryption: { enabled: sealing(), plain: store.credentials.plainCount() },

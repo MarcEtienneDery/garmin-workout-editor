@@ -112,7 +112,7 @@
   }
 
   /** The food tiles: eaten, burned so far, the difference and the macros, worded as the Food view words them. */
-  const foodTiles = (view) => NM.figures({ today: view.today, day: view.food }).map((tile) => ({ ...tile, go: "food" }));
+  const foodTiles = (view) => NM.figures({ today: view.today, day: view.food, progress: view.foodProgress }).map((tile) => ({ ...tile, go: "food" }));
 
   // ── Workouts and what was done ──────────────────────────────────────────
 

@@ -40,6 +40,7 @@ const EXPECTED_TOOLS = [
   "schedule_plan",
   "schedule_workout",
   "send_to_device",
+  "set_nutrition_goals",
   "update_meal_entry",
   "upload_and_schedule_plan",
   "upload_single_workout",
@@ -158,7 +159,7 @@ describe("MCP server (mock mode, in-memory transport)", () => {
       expect(byName[name].annotations?.readOnlyHint).toBe(true);
     }
     // the food log is the database only: nothing there reaches Garmin, and only a delete is destructive
-    for (const name of ["log_meal", "update_meal_entry", "delete_meal_entry", "get_nutrition"]) expect(byName[name].annotations?.openWorldHint).toBe(false);
+    for (const name of ["log_meal", "update_meal_entry", "delete_meal_entry", "get_nutrition", "set_nutrition_goals"]) expect(byName[name].annotations?.openWorldHint).toBe(false);
     expect(byName.delete_meal_entry.annotations?.destructiveHint).toBe(true);
     expect(byName.log_meal.annotations?.destructiveHint).toBe(false);
   });
@@ -542,6 +543,63 @@ describe("MCP server (mock mode, in-memory transport)", () => {
       } finally {
         configureMcp({ mock: true, defaultProfile: undefined });
       }
+    });
+
+    describe("the daily goals", () => {
+      beforeEach(() => getStore().goals.set("mock", {}));
+      afterAll(() => getStore().goals.set("mock", {}));
+
+      it("sets them, keeps the ones not mentioned, removes one given as null, and reports where today stands", async () => {
+        const first = await callTool(client, "set_nutrition_goals", { goals: { kcal: 2200, proteinG: 140, sodiumMg: 2300 } });
+        expect(first.isError).toBe(false);
+        expect(first.value.goals).toEqual([
+          { key: "kcal", label: "Calories", unit: "kcal", kind: "target", goal: 2200 },
+          { key: "proteinG", label: "Protein", unit: "g", kind: "min", goal: 140 },
+          { key: "sodiumMg", label: "Sodium", unit: "mg", kind: "max", goal: 2300 },
+        ]);
+        expect(first.value.goalProgress.every((p: any) => p.state === "unknown")).toBe(true); // nothing logged today yet: not zero
+        const second = await callTool(client, "set_nutrition_goals", { goals: { proteinG: null, fiberG: 30 } });
+        expect(second.value.goals.map((g: any) => g.key)).toEqual(["kcal", "fiberG", "sodiumMg"]);
+        expect(getStore().goals.get("mock")).toEqual({ kcal: 2200, fiberG: 30, sodiumMg: 2300 });
+      });
+
+      it("reports the day against the goals when food is logged and when the log is read", async () => {
+        await callTool(client, "set_nutrition_goals", { goals: { kcal: 2000, proteinG: 100 } });
+        const out = await callTool(client, "log_meal", { date: "2026-10-17", meal: "lunch", items: [{ name: "Chicken", kcal: 500, proteinG: 60 }] });
+        expect(out.value.goalProgress).toEqual([
+          expect.objectContaining({ key: "kcal", amount: 500, left: 1500, state: "short" }),
+          expect.objectContaining({ key: "proteinG", amount: 60, left: 40, pct: 60 }),
+        ]);
+        const read = (await callTool(client, "get_nutrition", { from: "2026-10-17", to: "2026-10-17" })).value;
+        expect(read.goals.map((g: any) => g.key)).toEqual(["kcal", "proteinG"]);
+        expect(read.goalProgress[1]).toMatchObject({ key: "proteinG", amount: 60 });
+      });
+
+      it("has no goals to report until some are set", async () => {
+        const read = (await callTool(client, "get_nutrition", { days: 1 })).value;
+        expect(read.goals).toEqual([]);
+        expect(read.goalProgress).toEqual([]);
+      });
+
+      it("refuses a goal that is not one, a zero and a number too big, and changes nothing", async () => {
+        await callTool(client, "set_nutrition_goals", { goals: { kcal: 2000 } });
+        for (const goals of [{ fibreG: 30 }, { kcal: 0 }, { kcal: 10001 }, { proteinG: 150, sodiumMg: -1 }, { proteinG: "lots" }]) expect((await callTool(client, "set_nutrition_goals", { goals })).isError).toBe(true);
+        expect(getStore().goals.get("mock")).toEqual({ kcal: 2000 });
+      });
+
+      it("needs no Garmin login, and refuses a profile that does not exist rather than keeping goals under a made-up name", async () => {
+        expect((await callTool(client, "set_nutrition_goals", { goals: { kcal: 2000 } })).log).toBe("");
+        seedProfile("TESTER");
+        configureMcp({ mock: false, defaultProfile: undefined });
+        try {
+          expect((await callTool(client, "set_nutrition_goals", { profile: "NOPE", goals: { kcal: 2000 } })).isError).toBe(true);
+          expect(getStore().goals.get("NOPE")).toEqual({});
+          expect((await callTool(client, "set_nutrition_goals", { profile: "tester", goals: { kcal: 1800 } })).value.profile).toBe("TESTER"); // any case
+        } finally {
+          getStore().goals.set("TESTER", {});
+          configureMcp({ mock: true, defaultProfile: undefined });
+        }
+      });
     });
 
     it("needs no Garmin login: it works from the database in mock mode", async () => {

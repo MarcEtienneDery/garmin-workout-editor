@@ -882,6 +882,47 @@ describe("web plan editor", () => {
         expect((await call("GET", "/api/nutrition")).json.day.entries).toBe(0);
       });
 
+      it("sets the daily goals in Settings and shows where the day stands against them, in the Food and Today views", async () => {
+        addProfile("MED");
+        expect((await call("GET", "/api/nutrition")).json).toMatchObject({ goals: {}, progress: [] });
+        expect((await call("GET", "/api/settings")).json.goals.values).toEqual({});
+        const saved = (await call("POST", "/api/settings/goals", { action: "save", goals: { kcal: 2000, proteinG: 100, sodiumMg: 2300 } })).json;
+        expect(saved.goals.values).toEqual({ kcal: 2000, proteinG: 100, sodiumMg: 2300 });
+        expect(saved.goals.fields.map((f: any) => f.key)).toContain("fiberG");
+        expect(saved.goals.fields.find((f: any) => f.key === "sodiumMg")).toEqual({ key: "sodiumMg", label: "Sodium", unit: "mg", kind: "max" });
+        expect((await call("GET", "/api/nutrition")).json.progress.every((p: any) => p.state === "unknown")).toBe(true); // nothing logged: not zero
+        await call("POST", "/api/nutrition", { action: "add", meal: "lunch", items: [{ ...rice, kcal: 500, proteinG: 40, nutrients: { sodiumMg: 800 } }] });
+        const view = (await call("GET", "/api/nutrition")).json;
+        expect(view.goals).toEqual({ kcal: 2000, proteinG: 100, sodiumMg: 2300 });
+        expect(view.progress).toEqual([
+          expect.objectContaining({ key: "kcal", amount: 500, pct: 25, left: 1500, state: "short" }),
+          expect.objectContaining({ key: "proteinG", amount: 40, pct: 40, state: "short" }),
+          expect.objectContaining({ key: "sodiumMg", amount: 800, pct: 35, state: "ok" }),
+        ]);
+        expect((await call("POST", "/api/nutrition", { action: "add", meal: "dinner", items: [rice] })).json.progress[0]).toMatchObject({ amount: 700 });
+        const todayView = (await call("GET", "/api/today")).json;
+        expect(todayView.goals).toEqual(view.goals);
+        expect(todayView.foodProgress[0]).toMatchObject({ key: "kcal", amount: 700 });
+        // a patch: null removes one, the others stay; a bad one changes nothing
+        expect((await call("POST", "/api/settings/goals", { action: "save", goals: { proteinG: null, fiberG: 30 } })).json.goals.values).toEqual({ kcal: 2000, sodiumMg: 2300, fiberG: 30 });
+        expect((await call("POST", "/api/settings/goals", { action: "save", goals: { kcal: 0 } })).status).toBe(400);
+        expect((await call("POST", "/api/settings/goals", { action: "save", goals: { fibreG: 3 } })).json.error).toMatch(/not a goal/);
+        expect((await call("POST", "/api/settings/goals", { action: "save" })).status).toBe(400);
+        expect((await call("GET", "/api/settings")).json.goals.values).toEqual({ kcal: 2000, sodiumMg: 2300, fiberG: 30 });
+        expect((await call("POST", "/api/settings/goals", { action: "clear" })).json.goals.values).toEqual({});
+        expect((await call("POST", "/api/settings/goals", { action: "explode" })).status).toBe(400);
+      });
+
+      it("keeps each profile's goals to itself", async () => {
+        addProfile("MED", "med-pw");
+        addProfile("SAM", "sam-pw");
+        const as = (user: string, pass: string) => ({ ...H, Authorization: `Basic ${Buffer.from(`${user}:${pass}`).toString("base64")}` });
+        const med = as("MED", "med-pw"), sam = as("SAM", "sam-pw");
+        await call("POST", "/api/settings/goals", { action: "save", goals: { kcal: 2400 } }, med);
+        expect((await call("POST", "/api/settings/goals", { action: "save", profile: "MED", goals: { kcal: 1500 } }, sam)).json.goals.values).toEqual({ kcal: 1500 }); // SAM's own, whichever profile it names
+        expect((await call("GET", "/api/nutrition", undefined, med)).json.goals).toEqual({ kcal: 2400 });
+      });
+
       it("shows another day, the range asked for, the burn Garmin stored and the average of the days that are over", async () => {
         addProfile("MED");
         await call("POST", "/api/nutrition", { action: "add", day: dayOf(1), meal: "lunch", items: [rice] });

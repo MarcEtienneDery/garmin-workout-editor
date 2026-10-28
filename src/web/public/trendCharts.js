@@ -1,6 +1,6 @@
 /*
  * trendCharts.js — the pictures of the Recovery and Weight views: one small chart per measure over the days (a line with
- * Garmin's balanced range, stacked parts (a part with a `weight` counts that many times in the bar), a range, bars), all sharing one hover cursor, and a click that picks the day.
+ * Garmin's balanced range, a goal level, stacked parts (a part with a `weight` counts that many times in the bar), a range, bars), all sharing one hover cursor, and a click that picks the day.
  * Plain DOM and SVG, no library. What to draw comes from RecoveryModel / WeightModel, the scales from RecoveryModel; they have the tests.
  */
 (function (root) {
@@ -35,6 +35,7 @@
     const per = (fn) => days.map((d, i) => { const v = fn(d, i, days); return RM.valid(v) ? v : null; }); // a value may look at the days around it
     let values = [], include = [];
     let totals = null, lows = null, highs = null, bandLo = null, bandHi = null, refs = null, vals = null;
+    const goal = spec.goal && RM.valid(spec.goal.value) ? spec.goal.value : null; // one level for every day (a daily goal)
     if (spec.kind === "stack") {
       totals = days.map((d) => { const parts = spec.parts.filter((p) => RM.valid(d[p.key])); return parts.length ? parts.reduce((a, p) => a + d[p.key] * (p.weight || 1), 0) / spec.scaleBy : null; });
       values = totals;
@@ -45,6 +46,7 @@
     }
     if (spec.band) { bandLo = per((d) => spec.band(d)[0]); bandHi = per((d) => spec.band(d)[1]); include = include.concat(bandLo, bandHi); }
     if (spec.ref) { refs = per(spec.ref.value); include = include.concat(refs); }
+    if (goal !== null) include = include.concat([goal]);
 
     const sc = RM.scale(values, { min: spec.min, max: spec.max, include });
     if (!sc || !values.some((v) => v !== null)) {
@@ -95,6 +97,7 @@
     if (spec.kind === "line") svg.append(make("path", { class: "rc-line", d: pathOf(vals.map((v, i) => (v === null ? null : [xAt(i), yAt(v)])), spec.connect) }));
     if (spec.kind === "line" || spec.kind === "range") vals.forEach((v, i) => { if (v !== null) svg.append(make("circle", { cx: xAt(i), cy: yAt(v), r: 2.4, class: "rc-dot" })); });
 
+    if (goal !== null) svg.append(make("line", { x1: LEFT, x2: W - RIGHT, y1: yAt(goal), y2: yAt(goal), class: "rc-goal" })); // over the bars, under the cursor
     const cursor = make("line", { y1: TOP, y2: H - BOTTOM, class: "rc-cursor", visibility: "hidden" });
     const over = make("rect", { x: LEFT, y: 0, width: W - LEFT - RIGHT, height: H, class: "rc-over" });
     const indexAt = (e) => {
@@ -111,6 +114,7 @@
     const key = (cls, text) => { const s = html("span", "rck"), i = html("i", cls); s.append(i, text); legend.append(s); };
     if (spec.band) key("sw-band", "Garmin's balanced range");
     if (spec.ref) key("sw-ref", spec.ref.label);
+    if (goal !== null) key("sw-goal", spec.goal.label);
     if (spec.kind === "stack") for (const p of spec.parts) key(`sw-part ${p.cls}`, p.label);
     if (spec.kind === "range") key("sw-range", "low to high of the day, dot on waking");
     if (legend.childNodes.length) card.append(legend);

@@ -3,7 +3,8 @@
  * in, how a weigh-in and a log line read.
  *
  * Pure functions on what GET /api/settings returns ({ garmin, web, renpho: { account, settings, state, counts, recent, log }, encryption }),
- * and the checks of the web sign-in password typed twice (the server makes the same ones, in the same words).
+ * the checks of the web sign-in password typed twice (the server makes the same ones, in the same words), and the daily food goals form
+ * (what it sends, and a note on how the macros' calories compare with the calorie goal).
  * Loaded by the page as a plain script; the tests require() it.
  */
 (function (root, factory) {
@@ -66,5 +67,36 @@
     return passwordProblem(password, confirm);
   }
 
-  return { ago, until, renphoStatus, uploadState, FIELDS, cell, stamp, MIN_PASSWORD, passwordProblem, profileProblem };
+  /**
+   * The patch to send for the goals form: `texts` holds what is typed in each field (by key), `fields` is what GET /api/settings lists, `current`
+   * the goals now set. A field with a number sets that goal, an empty one removes the goal if there is one (null), else it is left out. Or
+   * what is wrong ({ error }). The server checks the same and the upper limits.
+   */
+  function goalsPatch(texts, fields, current) {
+    const goals = {};
+    for (const f of fields) {
+      const text = String(texts[f.key] == null ? "" : texts[f.key]).trim().replace(",", ".");
+      if (!text) {
+        if (current[f.key] !== undefined) goals[f.key] = null;
+        continue;
+      }
+      const n = Number(text);
+      if (!Number.isFinite(n) || n <= 0) return { error: `${f.label} must be a number above 0, or empty for no goal.` };
+      goals[f.key] = n;
+    }
+    return { goals };
+  }
+
+  /** What the typed protein, carbs and fat goals add up to in calories (4, 4 and 9 a gram), against the calorie goal; "" until all three are typed. */
+  function macroGoalsNote(texts) {
+    const n = (key) => { const v = Number(String(texts[key] == null ? "" : texts[key]).trim().replace(",", ".")); return Number.isFinite(v) && v > 0 ? v : null; };
+    const [p, c, f, k] = [n("proteinG"), n("carbsG"), n("fatG"), n("kcal")];
+    if (p === null || c === null || f === null) return "";
+    const sum = Math.round(4 * p + 4 * c + 9 * f), base = `Protein, carbs and fat add up to ${sum.toLocaleString()} kcal`;
+    if (k === null) return `${base}.`;
+    const off = Math.round((Math.abs(sum - k) / k) * 100);
+    return off <= 5 ? `${base}, in line with the calorie goal.` : `${base}, ${off} % ${sum > k ? "above" : "below"} the calorie goal of ${k.toLocaleString()}.`;
+  }
+
+  return { goalsPatch, macroGoalsNote, ago, until, renphoStatus, uploadState, FIELDS, cell, stamp, MIN_PASSWORD, passwordProblem, profileProblem };
 });

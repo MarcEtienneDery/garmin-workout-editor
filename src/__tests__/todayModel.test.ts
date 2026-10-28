@@ -122,6 +122,11 @@ describe("the food tiles", () => {
     expect(tiles[1].note).toBe("so far today, by Garmin");
   });
 
+  it("say where the day stands against the calorie goal when there is one", () => {
+    const tiles = TM.foodTiles(view({ goals: { kcal: 2000 }, foodProgress: [{ key: "kcal", label: "Calories", unit: "kcal", kind: "target", goal: 2000, amount: 1500, partial: false, pct: 75, state: "short", left: 500 }] }));
+    expect(tiles[0].note).toBe(`of ${n(2000)} · ${n(500)} kcal to go`);
+  });
+
   it("say nothing is logged rather than zero", () => {
     const tiles = TM.foodTiles(view({ food: { day: TODAY, kcal: 0, proteinG: 0, carbsG: 0, fatG: 0, entries: 0, burnedKcal: 1209, burnedSoFar: true, netKcal: null } }));
     expect(tiles[0]).toMatchObject({ value: "–", note: "nothing logged" });

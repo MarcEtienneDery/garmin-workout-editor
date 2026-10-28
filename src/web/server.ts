@@ -29,6 +29,9 @@
  * Food search and the barcode scan look foods up on Open Food Facts from the server (GET /api/foods/search?q=, GET
  * /api/foods/barcode?code=): the page scales what they return to the quantity eaten and logs it with POST /api/nutrition.
  *
+ * The daily food goals (calories, protein, carbs, fat and the nutrients) are set in Settings (POST /api/settings/goals; GET /api/settings has them) and
+ * come back with the Food view (`goals` and `progress`, where the day shown stands against each) and the Today view (`goals`, `foodProgress`).
+ *
  * The Food view's AI box estimates a meal from the person's words and photos with Claude (POST /api/foods/ai; needs ANTHROPIC_API_KEY):
  * it writes nothing, the page shows the estimate and logs what is kept with POST /api/nutrition.
  *
@@ -91,6 +94,7 @@ import { addDays, localToday } from "../shared/wellnessSync";
 import { FoodInputError, FoodSourceError, lookupBarcode, searchFoods } from "../shared/foodSearch";
 import { FoodAiError, type FoodAiErrorKind, estimateFoods, foodAiStatus } from "../shared/foodAi";
 import { MAX_ITEMS, MEALS, NutritionError, addFoods, averageOf, changeFood, copyFoods, deleteFoods, nutritionDays, parseDay, recentFoods } from "../shared/nutrition";
+import { getGoals, goalProgress, setGoals } from "../shared/nutritionGoals";
 import {
   LIBRARY_LIMIT,
   type LibraryWorkout,
@@ -962,6 +966,7 @@ function nutritionView(profile: string, asked: unknown, daysAsked: unknown) {
   const n = Math.min(90, Math.max(7, Math.floor(Number(daysAsked)) || 30));
   const days = nutritionDays(store(), profile, addDays(today, -(n - 1)), today, today);
   const day = days.find((d) => d.day === date) ?? nutritionDays(store(), profile, date, date, today)[0];
+  const goals = getGoals(store(), profile);
   return {
     profile,
     today,
@@ -970,6 +975,9 @@ function nutritionView(profile: string, asked: unknown, daysAsked: unknown) {
     day,
     // the trend carries totals only; the entries are in `day`
     days: days.map(({ meals, ...totals }) => totals),
+    // the daily goals by key, and where the day shown stands against each (the meals' own totals are in `day`)
+    goals,
+    progress: goalProgress(goals, day),
     average: averageOf(days, today),
     recent: recentFoods(store(), profile),
     ai: foodAiStatus(profile, today),
@@ -1014,6 +1022,7 @@ function todayView(profile: string) {
   const doneIds = new Set(activities.flatMap((a) => (hasId(a.workoutId) ? [String(a.workoutId)] : [])));
   const { readiness } = readinessAt(store(), profile, today);
   const { meals, ...food } = nutritionDays(store(), profile, today, today, today)[0];
+  const goals = getGoals(store(), profile);
   return {
     profile,
     today,
@@ -1027,6 +1036,8 @@ function todayView(profile: string) {
     // false: no Garmin and nothing stored from it, so the page leaves out the steps, sleep and readiness
     health: hasHealth(profile),
     food,
+    goals,
+    foodProgress: goalProgress(goals, food),
     sync: wellnessSyncStatus(profile),
   };
 }
@@ -1240,6 +1251,21 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
         throw error;
       }
       return send(res, 200, { ...result, ...settingsView(store(), profile) });
+    }
+
+    case "POST /api/settings/goals": {
+      // The daily food goals of a profile: a patch of calories, macros and nutrients (a number sets, null removes, a key left out stays), or all cleared.
+      const body = await readBody(req);
+      const profile = profileFor(who, "", body.profile);
+      try {
+        if (body.action === "save") setGoals(store(), profile, body.goals);
+        else if (body.action === "clear") store().goals.set(profile, {});
+        else throw new HttpError(400, `Unknown action "${body.action}".`);
+      } catch (error) {
+        if (error instanceof NutritionError) throw new HttpError(400, error.message);
+        throw error;
+      }
+      return send(res, 200, settingsView(store(), profile));
     }
 
     case "POST /api/settings/web": {

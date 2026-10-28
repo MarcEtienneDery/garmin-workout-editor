@@ -7,6 +7,7 @@ import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { MAX_ITEMS, MAX_RANGE_DAYS, MEALS, addFoods, averageOf, changeFood, deleteFoods, nutritionDays, totalsOf } from "../../shared/nutrition";
 import { NUTRIENTS, type Nutrients, maxOf } from "../../shared/nutrients";
+import { GOALS, getGoals, goalList, goalProgress, setGoals } from "../../shared/nutritionGoals";
 import { getStore } from "../../shared/store";
 import { addDays, localToday } from "../../shared/wellnessSync";
 import { dataProfile, runTool } from "../context";
@@ -70,6 +71,8 @@ export function logMeal(args: LogMealArgs) {
     burnedKcal: shown.burnedKcal,
     burnedSoFar: shown.burnedSoFar,
     netKcal: shown.netKcal,
+    // where the day stands now against each daily goal the person set (none set: an empty list)
+    goalProgress: goalProgress(getGoals(store, profile), shown),
   };
 }
 
@@ -85,11 +88,15 @@ export function getNutrition(args: GetNutritionArgs) {
   const to = args.to ?? today, from = args.from ?? addDays(to, -(args.days - 1));
   const all = nutritionDays(store, profile, from, to, today);
   const logged = all.filter((d) => d.entries);
+  const goals = getGoals(store, profile);
   return {
     profile,
     from,
     to,
     today,
+    // the daily goals the person set (`kind`: min is a floor, max a ceiling, target an aim) and where the last day of the range stands against them
+    goals: goalList(goals),
+    goalProgress: goalProgress(goals, all[all.length - 1]),
     loggedDays: logged.length,
     unloggedDays: all.length - logged.length,
     average: averageOf(all, today),
@@ -100,13 +107,31 @@ export function getNutrition(args: GetNutritionArgs) {
   };
 }
 
+export interface SetGoalsArgs {
+  profile?: string;
+  goals: Record<string, number | null | undefined>;
+}
+
+export function setNutritionGoals(args: SetGoalsArgs) {
+  const store = getStore(), profile = dataProfile(args.profile), today = localToday(store, profile);
+  const goals = setGoals(store, profile, args.goals);
+  const [shown] = nutritionDays(store, profile, today, today, today);
+  return { profile, goals: goalList(goals), today, goalProgress: goalProgress(goals, shown) };
+}
+
+/** One optional number per goal; a null removes the goal. */
+const goalsArg = z
+  .object(Object.fromEntries(GOALS.map((g) => [g.key, z.number().gt(0).max(g.max).nullable().optional().describe(`${g.label} a day, in ${g.unit === "kcal" ? "kcal" : g.unit === "g" ? "grams" : "milligrams"} (${g.kind === "min" ? "at least" : g.kind === "max" ? "at most" : "the aim"}).`)])))
+  .strict()
+  .describe("The goals to set, by key. A key left out stays as it was; null removes that goal.");
+
 export function registerNutritionTools(server: McpServer): void {
   server.registerTool(
     "log_meal",
     {
       title: "Log food eaten",
       description:
-        "Add food the person ate to their food log, for one meal (breakfast, lunch, dinner or snack) of a day (today by default). Give one item per food, each with calories and protein, carbs and fat in grams; calories left out are worked out from the macros. Add `nutrients` (fiber, sugars, saturated and trans fat, cholesterol, sodium, potassium, calcium, iron) when you know them or can estimate them from the food and portion, and leave a nutrient out when you do not: it is unknown, not zero. The person describes the food in words, so estimate the numbers from the description and the portion, say that they are estimates and ask for the portion when it matters (a bowl of rice is not a cup of rice). Prefer a few items with real names to one item per meal, so an entry can be corrected later. Returns the new entry ids, the meal and day totals so far (each nutrient total with `foods`, how many of the foods state it), and the calories Garmin says the day burned. Calling it twice adds the foods twice: if unsure whether a call went through, read get_nutrition first. Writes to the database only, never to Garmin.",
+        "Add food the person ate to their food log, for one meal (breakfast, lunch, dinner or snack) of a day (today by default). Give one item per food, each with calories and protein, carbs and fat in grams; calories left out are worked out from the macros. Add `nutrients` (fiber, sugars, saturated and trans fat, cholesterol, sodium, potassium, calcium, iron) when you know them or can estimate them from the food and portion, and leave a nutrient out when you do not: it is unknown, not zero. The person describes the food in words, so estimate the numbers from the description and the portion, say that they are estimates and ask for the portion when it matters (a bowl of rice is not a cup of rice). Prefer a few items with real names to one item per meal, so an entry can be corrected later. Returns the new entry ids, the meal and day totals so far (each nutrient total with `foods`, how many of the foods state it), the calories Garmin says the day burned, and `goalProgress` against the daily goals the person set. Calling it twice adds the foods twice: if unsure whether a call went through, read get_nutrition first. Writes to the database only, never to Garmin.",
       inputSchema: {
         profile: profileArg,
         date: isoDate.optional().describe("The day eaten, YYYY-MM-DD (the user's local day). Default: today."),
@@ -123,7 +148,7 @@ export function registerNutritionTools(server: McpServer): void {
     {
       title: "Get the food log",
       description:
-        "The food the person logged, per day (newest first, days with nothing logged left out and counted in `unloggedDays`): the entries of each meal with their ids, the meal and day totals (calories, protein, carbs, fat, and each nutrient beyond them that a food states, as `{ amount, foods }`: when `foods` is smaller than `entries` the amount only counts the foods that state it, so it is a lower bound, not the day's intake), the calories Garmin says the day burned and the net (eaten minus burned; today's burn is only what has burned so far, flagged by `burnedSoFar`). Also the mean of the logged days that are over (`average`) and the `total` of the range. Default: the last 7 days; at most 120. A day that was not logged is not a day of zero: do not read it as fasting. Calories and macros are estimates the person or an assistant typed in.",
+        "The food the person logged, per day (newest first, days with nothing logged left out and counted in `unloggedDays`): the entries of each meal with their ids, the meal and day totals (calories, protein, carbs, fat, and each nutrient beyond them that a food states, as `{ amount, foods }`: when `foods` is smaller than `entries` the amount only counts the foods that state it, so it is a lower bound, not the day's intake), the calories Garmin says the day burned and the net (eaten minus burned; today's burn is only what has burned so far, flagged by `burnedSoFar`). Also the mean of the logged days that are over (`average`) and the `total` of the range, the daily `goals` the person set (min: a floor, max: a ceiling, target: an aim) and `goalProgress`, where the last day of the range stands against each (`left` is what remains, negative when over; an `amount` of null is unknown, not zero). Default: the last 7 days; at most 120. A day that was not logged is not a day of zero: do not read it as fasting. Calories and macros are estimates the person or an assistant typed in.",
       inputSchema: {
         profile: profileArg,
         from: isoDate.optional().describe("First day, YYYY-MM-DD. Default: `days` before `to`."),
@@ -133,6 +158,21 @@ export function registerNutritionTools(server: McpServer): void {
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
     (args) => run(() => getNutrition(args))
+  );
+
+  server.registerTool(
+    "set_nutrition_goals",
+    {
+      title: "Set the daily food goals",
+      description:
+        "Set the person's daily food goals, which the Food view of the web editor shows as progress through the day and get_nutrition and log_meal report against. One optional number a day each: `kcal` (the aim), `proteinG` (at least), `carbsG` and `fatG` (the aim), and the nutrients `fiberG`, `potassiumMg`, `calciumMg`, `ironMg` (at least) and `sugarsG`, `satFatG`, `transFatG`, `cholesterolMg`, `sodiumMg` (at most). A key left out keeps its goal; null removes it. Only the goals the person asked for: do not invent the others, and do not set a goal from a guess about their body (ask, or suggest a number and wait for a yes). Returns all the goals now set and where today stands against them. Writes to the database only, never to Garmin.",
+      inputSchema: {
+        profile: profileArg,
+        goals: goalsArg,
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    },
+    (args) => run(() => setNutritionGoals(args as SetGoalsArgs))
   );
 
   server.registerTool(

@@ -86,7 +86,8 @@
     const d = view.day, logged = d.entries > 0, today = d.day === view.today;
     const s = shares(d);
     const net = d.netKcal;
-    const eaten = { label: "Eaten", value: logged ? kcal(d.kcal) : "–", note: logged ? foods(d.entries) : "nothing logged" };
+    const kp = (view.progress || []).find((p) => p.key === "kcal");
+    const eaten = { label: "Eaten", value: logged ? kcal(d.kcal) : "–", note: logged ? (kp ? `of ${num(kp.goal)} · ${goalNote(kp, d.entries)}` : foods(d.entries)) : "nothing logged" };
     const burn = [
       { label: "Burned", value: kcal(d.burnedKcal), note: d.burnedKcal === null ? "no day summary from Garmin" : today ? "so far today, by Garmin" : "by Garmin" },
       { label: "Eaten − burned", value: signed(net), note: net === null ? (logged ? "needs the day's burn" : "needs a logged day") : `${net > 0 ? "above" : net < 0 ? "below" : "at"} what the day burned${today ? " so far" : ""}` },
@@ -128,12 +129,16 @@
   /** The days for the charts: a day nothing was logged on has no eaten numbers (it is not a day of zero). */
   const chartDays = (days) => days.map((d) => (d.entries ? d : { ...d, kcal: null, proteinG: null, carbsG: null, fatG: null }));
 
-  /** What the view draws: the calories eaten against the burn (when there is one), and the macros piled up. */
+  /**
+   * What the view draws: the calories eaten against the burn (when there is one) and the calorie goal (when one is set), the macros piled
+   * up, and the protein against its goal (when one is set).
+   */
   function charts(view) {
-    const burn = hasBurn(view);
+    const burn = hasBurn(view), goals = (view && view.goals) || {};
+    const against = (key, unit) => (valid(goals[key]) ? { goal: { label: `Goal ${num(goals[key])} ${unit}`, value: goals[key] } } : {});
     return [
       {
-        id: "eaten", title: "Calories eaten", unit: "kcal", kind: "bars", min: 0, value: (d) => d.kcal, ...(burn ? { ref: { label: "Burned by Garmin", value: (d) => d.burnedKcal } } : {}),
+        id: "eaten", title: "Calories eaten", unit: "kcal", kind: "bars", min: 0, value: (d) => d.kcal, ...(burn ? { ref: { label: "Burned by Garmin", value: (d) => d.burnedKcal } } : {}), ...against("kcal", "kcal"),
         read: (d) => (valid(d.kcal) ? `${num(d.kcal)} kcal${burn && valid(d.burnedKcal) ? ` · burned ${num(d.burnedKcal)}` : ""}` : "not logged"),
       },
       {
@@ -141,8 +146,123 @@
         parts: [{ key: "proteinG", label: "Protein", cls: "protein" }, { key: "carbsG", label: "Carbs", cls: "carbs" }, { key: "fatG", label: "Fat", cls: "fat" }],
         read: (d) => (valid(d.kcal) ? macros(d) : "not logged"),
       },
+      ...(valid(goals.proteinG) ? [{ id: "protein", title: "Protein", unit: "g", kind: "bars", min: 0, value: (d) => d.proteinG, color: () => "protein", ...against("proteinG", "g"), read: (d) => (valid(d.proteinG) ? `${grams(d.proteinG)} · ${num((d.proteinG / goals.proteinG) * 100)} % of the goal` : "not logged") }] : []),
     ];
   }
+
+  // ── The daily goals: how the day stands against them, said and drawn ─────
+  // `progress` is what the server works out (shared/nutritionGoals.ts goalProgress): per goal the amount (null: unknown, never zero), the
+  // state (short, ok, over, unknown) and what is left. This only words it and sizes the bars; the meaning of short, ok and over is the server's.
+
+  /** An amount without its unit: calories whole, grams with a decimal only when there is one, milligrams from 10 up whole. */
+  const bare = (v, unit) => num(v, unit === "kcal" || Number.isInteger(v) || (unit === "mg" && v >= 10) ? 0 : 1);
+  /** An amount of a goal's unit: "2,000 kcal", "140 g", "2,300 mg". */
+  const qty = (v, unit) => `${bare(v, unit)} ${unit}`;
+
+  /** "1,240 / 2,000 kcal", "≥ 4 / 30 g" (a floor, from some of the foods), "– / 2,300 mg" (unknown). */
+  const goalValue = (p) => `${p.amount === null ? "–" : `${p.partial ? "≥ " : ""}${bare(p.amount, p.unit)}`} / ${qty(p.goal, p.unit)}`;
+
+  /** What is left or over, in words: "760 kcal to go", "✓ reached", "1,500 mg left", "▲ over by 100 mg". A floor from some of the foods is said as a limit ("up to 26 g to go"). */
+  function goalNote(p, entries) {
+    if (p.state === "unknown" || p.left === null) return entries ? "no food states it" : "nothing logged";
+    const rest = qty(Math.abs(p.left), p.unit), some = p.partial ? "up to " : "";
+    if (p.state === "over") return `▲ over by ${p.partial ? "at least " : ""}${rest}`;
+    if (p.kind === "max") return `${some}${rest} left`;
+    if (p.state === "ok") return p.kind === "min" ? "✓ reached" : "✓ on target";
+    return `${some}${rest} to go`;
+  }
+
+  /** The bar of a goal: the fill as a percentage of the track, and where the goal is on it when the amount went past it (else the track's end is the goal). Null when the amount is unknown. */
+  function goalMeter(p) {
+    if (p.amount === null) return null;
+    const top = Math.max(p.goal, p.amount);
+    return { fill: (p.amount / top) * 100, tick: p.amount > p.goal ? (p.goal / top) * 100 : null };
+  }
+
+  /** The grams of each macro are worth this many calories, as the server's kcalOfMacros has it. */
+  const MACRO_KCAL = { protein: 4, carbs: 4, fat: 9 };
+  const MACRO_KEYS = [["protein", "proteinG", "Protein"], ["carbs", "carbsG", "Carbs"], ["fat", "fatG", "Fat"]];
+
+  /**
+   * The day's calorie bar: its segments are the calories of the protein, carbs and fat (scaled to the calories eaten, which labels and fibre
+   * make differ from 4/4/9), as fractions of the track. The track is the goal, or the day when it went past the goal or there is none. Null for
+   * a day nothing was logged on.
+   */
+  function calorieBar(day, goal) {
+    if (!day.entries) return null;
+    const parts = MACRO_KEYS.map(([cls, key, label]) => ({ cls, label, kcal: (day[key] || 0) * MACRO_KCAL[cls], grams: day[key] || 0 })), sum = parts.reduce((t, x) => t + x.kcal, 0);
+    const top = Math.max(valid(goal) ? goal : 0, day.kcal) || 1, scale = day.kcal / top;
+    const segments = sum > 0 ? parts.filter((x) => x.kcal > 0).map((x) => ({ ...x, width: (x.kcal / sum) * scale * 100 })) : [{ cls: "kcal", label: "Calories", kcal: day.kcal, grams: 0, width: scale * 100 }];
+    return { segments, tick: valid(goal) && day.kcal > goal ? (goal / top) * 100 : null };
+  }
+
+  /** The figure the summary leads with: what was eaten, and where it stands against the calorie goal. */
+  function headline(view) {
+    const d = view.day, kp = (view.progress || []).find((p) => p.key === "kcal");
+    if (!d.entries) return { value: "–", unit: "kcal", note: kp ? `goal ${qty(kp.goal, "kcal")} · nothing logged` : "nothing logged", state: "unknown" };
+    return { value: num(d.kcal), unit: "kcal eaten", note: kp ? `${goalNote(kp, d.entries)} · goal ${qty(kp.goal, "kcal")}` : foods(d.entries), state: kp ? kp.state : "none" };
+  }
+
+  /** The line under the calorie bar: the calories Garmin says were burned and the difference, when there is a burn. */
+  function burnLine(view) {
+    const d = view.day;
+    if (!hasBurn(view) || d.burnedKcal === null || d.burnedKcal === undefined) return "";
+    return `Burned ${kcal(d.burnedKcal)}${d.day === view.today ? " so far" : ""} by Garmin${d.netKcal === null ? "" : ` · eaten − burned ${signed(d.netKcal)}`}`;
+  }
+
+  /** The protein, carbs and fat rows: with a goal a bar and what is left; without one just the grams. */
+  function macroRows(view) {
+    const d = view.day, byKey = Object.fromEntries((view.progress || []).map((p) => [p.key, p]));
+    return MACRO_KEYS.map(([cls, key, label]) => {
+      const p = byKey[key];
+      if (p) return { cls, key, label, value: goalValue(p), note: goalNote(p, d.entries), meter: goalMeter(p), state: p.state, kind: p.kind };
+      return { cls, key, label, value: d.entries ? grams(d[key]) : "–", note: "", meter: null, state: "none", kind: null };
+    });
+  }
+
+  /** "30 % protein · 45 % carbs · 25 % fat" of the macros' calories; "" for a day with none. */
+  function sharesLine(day) {
+    const s = shares(day);
+    return s ? `${s.protein} % protein · ${s.carbs} % carbs · ${s.fat} % fat of the macros' calories` : "";
+  }
+
+  /**
+   * The bars of the meals: one per meal of the day, as long as its calories against the day's largest meal, split into the calories of its protein,
+   * carbs and fat. `share` is the meal's part of the calorie goal (or of the day without one). A meal with nothing logged has no bar.
+   */
+  function mealBars(view) {
+    const d = view.day, goal = (view.goals || {}).kcal, blocks = d.meals || [], top = Math.max(0, ...blocks.map((b) => b.totals.kcal));
+    return blocks.map((b) => {
+      const t = b.totals, logged = t.entries > 0, parts = MACRO_KEYS.map(([cls, key, label]) => ({ cls, label, kcal: t[key] * MACRO_KCAL[cls] })), sum = parts.reduce((x, y) => x + y.kcal, 0);
+      const base = valid(goal) ? goal : d.kcal;
+      return {
+        meal: b.meal, label: mealLabel(b.meal), logged,
+        value: logged ? kcal(t.kcal) : "–",
+        note: logged ? `${macros(t)}` : "nothing logged",
+        share: logged && base > 0 ? Math.round((t.kcal / base) * 100) : null,
+        shareOf: valid(goal) ? "of the goal" : "of the day",
+        width: logged && top > 0 ? (t.kcal / top) * 100 : 0,
+        segments: sum > 0 ? parts.filter((x) => x.kcal > 0).map((x) => ({ ...x, width: (x.kcal / sum) * 100 })) : logged ? [{ cls: "kcal", label: "Calories", kcal: t.kcal, width: 100 }] : [],
+      };
+    });
+  }
+
+  /**
+   * The rows of the day's nutrients: the ones with a goal first (a bar, the amount against the goal, what is left), then the rest as the tiles
+   * said them (the amount, and how many foods state it). A day nothing was logged on has only its goals, as "nothing logged".
+   */
+  function nutrientRows(view) {
+    const d = view.day, keys = new Set(NUTRIENT_KEYS), withGoal = (view.progress || []).filter((p) => keys.has(p.key));
+    const goalRows = withGoal.map((p) => ({ key: p.key, label: p.label, value: goalValue(p), note: goalNote(p, d.entries), meter: goalMeter(p), state: p.state, kind: p.kind, partial: p.partial, goal: true }));
+    const have = new Set(withGoal.map((p) => p.key));
+    const rest = nutrientTiles(d).filter((t) => !have.has(t.key)).map((t) => ({ key: t.key, label: t.label, value: t.value, note: t.note, meter: null, state: "none", kind: null, partial: t.partial, goal: false }));
+    return [...goalRows, ...rest];
+  }
+
+  /** What a goal is, in words: protein is "at least", sodium "at most", calories "the aim". */
+  const KIND_LABELS = { min: "at least", max: "at most", target: "the aim" };
+  const kindLabel = (kind) => KIND_LABELS[kind] || "";
+
 
   // ── The food form ───────────────────────────────────────────────────────
 
@@ -419,5 +539,5 @@
     return { items };
   }
 
-  return { AI_LIMITS, mealForHour, canEstimate, aiFood, aiRows, aiRowValue, aiGroups, aiTotals, approx, aiItems, gtinOk, expandUpcE, normalizeBarcode, MAX_AMOUNT, parseAmount, amountGrams, scale, brandOf, entryName, portion, productOf, pickOf, allNutrients, per100Line, foodTitle, MEAL_LABELS, mealLabel, kcal, grams, signed, macros, shares, hasBurn, figures, averageNote, GROUPS, groupsFor, cell, chartDays, charts, kcalOf, parseDraft, draftOf, EMPTY_DRAFT, hasNumbers, hasNutrients, recentMatch, recentFor, again, foods, NUTRIENTS, nutrientLine, nutrientTiles, scaleNutrients };
+  return { AI_LIMITS, mealForHour, canEstimate, aiFood, aiRows, aiRowValue, aiGroups, aiTotals, approx, aiItems, gtinOk, expandUpcE, normalizeBarcode, MAX_AMOUNT, parseAmount, amountGrams, scale, brandOf, entryName, portion, productOf, pickOf, allNutrients, per100Line, foodTitle, MEAL_LABELS, mealLabel, kcal, grams, signed, macros, shares, hasBurn, figures, averageNote, bare, qty, goalValue, goalNote, goalMeter, calorieBar, headline, burnLine, macroRows, sharesLine, mealBars, nutrientRows, kindLabel, GROUPS, groupsFor, cell, chartDays, charts, kcalOf, parseDraft, draftOf, EMPTY_DRAFT, hasNumbers, hasNutrients, recentMatch, recentFor, again, foods, NUTRIENTS, nutrientLine, nutrientTiles, scaleNutrients };
 });
