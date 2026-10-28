@@ -864,7 +864,7 @@
     <select id="rRange" title="How many days the charts and the table show">
       <option value="14">14 days</option><option value="30" selected>30 days</option><option value="60">60 days</option><option value="90">90 days</option>
     </select>
-    <button id="rSync" title="Ask Garmin for the last days' sleep, HRV and summary, and fill in the rest in the background" hidden>↻ Sync</button>
+    <button id="rSync" title="Ask Garmin again for everything this page shows: every kind of health data for today, yesterday and the day before, the new activities (for the training load), and the days of the charts that are not stored yet. Today's is asked again a minute after the last time Garmin was asked, the two days before half an hour after." hidden>↻ Sync</button>
   </div>
   <div id="rNote" class="empty" hidden></div>
   <div id="rscroll"><div id="rbody"><div class="empty">Loading…</div></div></div>
@@ -878,7 +878,7 @@
     <div class="seg" id="bUnits" role="group" aria-label="Unit of weight">
       <button data-unit="lb" aria-pressed="true">lb</button><button data-unit="kg" aria-pressed="false">kg</button>
     </div>
-    <button id="bSync" title="Ask Garmin again for the weigh-ins and the last days' summaries (a weigh-in added or imported on Garmin since shows up), and fill in the rest in the background" hidden>↻ Sync</button>
+    <button id="bSync" title="Ask Garmin again for the weigh-ins and the last days' summaries (a weigh-in added or imported on Garmin since shows up) and everything else this page shows: every kind of health data for today, yesterday and the day before, and the days of the charts that are not stored yet. Today's is asked again a minute after the last time Garmin was asked, the two days before half an hour after." hidden>↻ Sync</button>
   </div>
   <div id="bNote" class="empty" hidden></div>
   <div id="bscroll"><div id="bbody"><div class="empty">Loading…</div></div></div>
@@ -899,7 +899,7 @@
     <select id="tProfile" title="Garmin profile" hidden></select>
     <b id="tTitle"></b>
     <span id="tAsOf"></span>
-    <button id="tSync" title="Ask Garmin for today's numbers and activities now" hidden>↻ Sync</button>
+    <button id="tSync" title="Ask Garmin again for everything this page shows: every kind of health data for today, yesterday and the day before, the days of the week not stored yet, and the new activities. Today's is asked again a minute after the last time Garmin was asked, the two days before half an hour after." hidden>↻ Sync</button>
   </div>
   <div id="tNote" class="empty" hidden></div>
   <div id="tscroll"><div id="tbody"><div class="empty">Loading…</div></div></div>
@@ -3094,12 +3094,37 @@ function renderActivityDetail() {
 // table; Garmin is asked only when someone presses Sync (POST /api/wellness/sync), or once per visit for the last days when
 // something is stored already. The logic is recoveryModel.js and weightModel.js, the charts trendCharts.js.
 const RM = RecoveryModel, WtM = WeightModel;
-const wellnessView = (name, prefix, path, range, render, extra = {}) => ({ name, p: prefix, path, render, profile: null, date: null, range, data: null, error: "", run: 0, refreshed: false, polling: false, busy: false, note: "", raw: new Map(), open: new Set(), loaded: false, ...extra });
-const R = wellnessView("recovery", "r", "/api/wellness", 30, () => renderRecovery());
+/**
+ * What the Sync buttons do: Garmin is asked again for everything the page shows: every kind of health data for today and the two days before,
+ * the days of the page's range that are not stored yet, and (Recovery, Today) the new activities. The server keeps what was fetched lately
+ * (refreshMs in src/shared/wellnessSync.ts): today's for a minute when a button asks and five when a view opens, the two days before for
+ * half an hour. The button waits out its minute (cooldownMs); nothing syncs by itself but the quicker look when a view opens.
+ */
+const syncRule = (activities) => "Sync asks Garmin again for everything this page shows: every kind of health data for today, a minute after the last time Garmin was asked (the button shows the seconds left), and for yesterday and the day before when it is over half an hour old" + (activities ? ", the new activities" : "") + ", and the days shown that are not stored yet. Opening this view takes a quicker look, at the summary, sleep, HRV and weight, and today's only after five minutes.";
+const wellnessView = (name, prefix, path, range, render, extra = {}) => ({ name, p: prefix, path, render, profile: null, date: null, range, data: null, error: "", run: 0, refreshed: false, polling: false, busy: false, lookingUp: false, coolUntil: 0, coolTimer: 0, syncTitle: "", note: "", raw: new Map(), open: new Set(), loaded: false, ...extra });
+/** How many days back from today a view shows (its day and range), so that its Sync fills in all of them. */
+const backFromToday = (d) => (d && d.today && d.date ? Math.max(0, Math.round((Date.parse(d.today) - Date.parse(d.date)) / 86_400_000)) : 0);
+const R = wellnessView("recovery", "r", "/api/wellness", 30, () => renderRecovery(), { span: (V) => backFromToday(V.data) + V.range, activitiesAt: 0, activitiesBusy: false });
 const storedUnit = () => { try { return localStorage.getItem("weightUnit") === "kg" ? "kg" : "lb"; } catch { return "lb"; } };
-const B = wellnessView("weight", "b", "/api/weight", 60, () => renderWeight(), { unit: storedUnit() });
+const B = wellnessView("weight", "b", "/api/weight", 60, () => renderWeight(), { unit: storedUnit(), span: (V) => V.range });
 const wellnessQuery = (V) => `${V.profile ? `profile=${encodeURIComponent(V.profile)}&` : ""}${V.date ? `date=${V.date}&` : ""}days=${V.range}`;
 const SIGNAL_NAMES = { hrv: "HRV", restingHr: "Resting heart rate", sleep: "Sleep", bodyBattery: "Body Battery", stress: "Stress yesterday", load: "Training load" };
+
+/** The Sync button: off while a sync runs, and until the minute after the last time Garmin was asked is over (V.coolUntil, from the server's cooldownMs). */
+function syncButton(V) {
+  const b = $(V.p + "Sync"), left = Math.ceil((V.coolUntil - Date.now()) / 1000);
+  clearTimeout(V.coolTimer);
+  if (left > 0) V.coolTimer = setTimeout(() => syncButton(V), 1000);
+  V.syncTitle = V.syncTitle || b.title;
+  b.disabled = V.busy || V.lookingUp || left > 0;
+  b.textContent = left > 0 && !V.busy && !V.lookingUp ? `↻ Sync in ${left} s` : "↻ Sync";
+  b.title = left > 0 ? `Garmin was asked less than a minute ago: Sync is available again in ${left} s.` : V.syncTitle;
+}
+/** The server says how long is left of the minute; the page counts it down on its own clock. */
+function setCooldown(V, sync) {
+  V.coolUntil = sync && sync.cooldownMs > 0 ? Date.now() + sync.cooldownMs : 0;
+  syncButton(V);
+}
 
 async function loadWellness(V) {
   await garminReady;
@@ -3114,6 +3139,7 @@ async function loadWellness(V) {
   catch (e) { if (run === V.run) { V.error = e.message; V.loaded = true; V.render(); } return; }
   if (run !== V.run) return;
   V.data = d; V.error = ""; V.loaded = true;
+  setCooldown(V, d.sync);
   V.render();
   if (d.sync && d.sync.syncing) pollWellness(V);
   // The cheap look at the last days, once per visit, and only when something is stored already: the first fill is the person's call.
@@ -3124,21 +3150,22 @@ const loadRecovery = () => loadWellness(R), loadWeight = () => loadWellness(B);
 /** Ask Garmin for the last days now and start the background fill of the rest. Resolves with the server's answer, null when nothing was asked. */
 async function syncWellness(V, quiet = false) {
   if (V.busy) return null;
-  V.busy = true; $(V.p + "Sync").disabled = true;
+  V.busy = true; syncButton(V);
   if (!quiet) { V.note = "Asking Garmin…"; renderWellnessNote(V); }
   let r = null;
   try {
-    r = await api("POST", "/api/wellness/sync", { profile: V.profile, rereadWeight: V === B && !quiet, fresh: !!V.fresh && !quiet });
-    V.note = r.error ? `Garmin: ${r.error}` : r.busy && !quiet ? "A sync is already running; this view follows it." : quiet ? "" : r.fetched ? `${r.fetched} response${r.fetched === 1 ? "" : "s"} fetched.` : "Nothing new on Garmin.";
+    r = await api("POST", "/api/wellness/sync", { profile: V.profile, rereadWeight: V === B && !quiet, manual: !quiet, days: V.span ? V.span(V) : 0 });
+    setCooldown(V, r.sync);
+    V.note = r.error ? `Garmin: ${r.error}` : r.busy && !quiet ? "A sync is already running; this view follows it." : quiet ? "" : r.fetched ? `${r.fetched} response${r.fetched === 1 ? "" : "s"} fetched from Garmin.` : "Nothing to fetch: today's data was fetched less than a minute ago, the two days before less than half an hour ago.";
     await reloadWellness(V);
   } catch (e) { if (!quiet) V.error = e.message; }
-  finally { V.busy = false; $(V.p + "Sync").disabled = false; V.render(); }
+  finally { V.busy = false; syncButton(V); V.render(); }
   if (V.data && V.data.sync && V.data.sync.syncing) pollWellness(V);
   return r;
 }
 
 async function reloadWellness(V) {
-  try { V.data = await api("GET", `${V.path}?${wellnessQuery(V)}`); } catch { /* what is shown stays */ }
+  try { V.data = await api("GET", `${V.path}?${wellnessQuery(V)}`); setCooldown(V, V.data.sync); } catch { /* what is shown stays */ }
 }
 
 /** While the background fill runs, look again every few seconds so the days appear as they are stored. */
@@ -3194,7 +3221,7 @@ function renderRecovery() {
   box.append(metricsTable(d.days, RM.GROUPS, RM.cell, d.date, pickRecoveryDay));
   box.append(mk("h3", "", `Garmin's responses for ${RM.dayLabel(d.date)}`));
   box.append(renderRawResponses(R, d, RM.KINDS));
-  box.append(mk("div", "rfoot", "The band is a heuristic from watch data for adjusting training, not medical advice. A day's sleep and HRV are the night that ended that morning. Its thresholds are named constants in src/shared/readiness.ts."));
+  box.append(mk("div", "rfoot", "The band is a heuristic from watch data for adjusting training, not medical advice. A day's sleep and HRV are the night that ended that morning. Its thresholds are named constants in src/shared/readiness.ts. " + syncRule(true)));
   $("rscroll").scrollTop = keep;
 }
 
@@ -3287,7 +3314,12 @@ function bindRecoveryView() {
   $("rToday").onclick = () => go(null);
   $("rDate").onchange = (e) => e.target.value && go(e.target.value);
   $("rRange").onchange = (e) => { R.range = Number(e.target.value); guard(loadRecovery)(); };
-  $("rSync").onclick = guard(() => syncWellness(R, false));
+  $("rSync").onclick = guard(async () => {
+    await syncWellness(R, false);
+    // the training load the readiness shows comes from the activities, so a Sync looks for new ones too
+    R.lookingUp = true; syncButton(R);
+    try { await lookForActivities(R, true); } finally { R.lookingUp = false; syncButton(R); }
+  });
   $("rProfile").onchange = (e) => { R.profile = e.target.value; R.date = null; R.data = null; R.loaded = false; R.refreshed = false; R.raw.clear(); R.open.clear(); R.error = ""; guard(loadRecovery)(); };
 }
 
@@ -3321,7 +3353,7 @@ function renderWeight() {
     box.append(mk("h3", "", `Garmin's responses for ${RM.dayLabel(d.date)}`));
     box.append(renderRawResponses(B, d, WtM.KINDS));
   }
-  box.append(mk("div", "rfoot", "The trend is a straight line through the weigh-ins of the days shown, as one weigh-in moves a kilo or more with water and meals." + (garminRows ? " The calories are Garmin's estimate from the watch: what the day burned, not what was eaten." : " They are the scale's own numbers, as Renpho sent them.")));
+  box.append(mk("div", "rfoot", "The trend is a straight line through the weigh-ins of the days shown, as one weigh-in moves a kilo or more with water and meals." + (garminRows ? " The calories are Garmin's estimate from the watch: what the day burned, not what was eaten." : " They are the scale's own numbers, as Renpho sent them.") + " " + syncRule(false)));
   $("bscroll").scrollTop = keep;
 }
 
@@ -4156,27 +4188,27 @@ function bindFoodView() {
 // hour old) and when someone presses Sync (today's summary again whatever its age, and the new activities). The logic is todayModel.js.
 const TM = TodayModel;
 const ACTIVITY_LOOK_MS = 10 * 60_000, TODAY_RELOAD_MS = 5 * 60_000;
-const T = wellnessView("today", "t", "/api/today", 0, () => renderToday(), { fresh: true, renderNote: (V) => renderTodayNote(V), activitiesAt: 0, activitiesBusy: false, shownAt: 0 });
+const T = wellnessView("today", "t", "/api/today", 0, () => renderToday(), { renderNote: (V) => renderTodayNote(V), activitiesAt: 0, activitiesBusy: false, shownAt: 0 });
 
 async function loadToday() {
   T.refreshed = false; // every visit takes the cheap look again
   await loadWellness(T);
   T.shownAt = Date.now();
-  lookForActivities();
+  lookForActivities(T);
 }
 
-/** The new activities, so that "done today" is current: one Garmin call, at most every ten minutes, and only once some are stored (the first fill is the person's call, as in the Activities view). */
-async function lookForActivities(force = false) {
-  const d = T.data;
-  if (!garminOn(d && d.profile) || !d || !d.profile || T.activitiesBusy) return;
-  if (!force && (!d.hasActivities || Date.now() - T.activitiesAt < ACTIVITY_LOOK_MS)) return;
-  T.activitiesBusy = true; T.activitiesAt = Date.now();
+/** The new activities of a view (Today's "done today", Recovery's training load): one Garmin call, at most every ten minutes on its own, and only once some are stored (the first fill is the person's call, as in the Activities view); a Sync button forces it. */
+async function lookForActivities(V, force = false) {
+  const d = V.data;
+  if (!garminOn(d && d.profile) || !d || !d.profile || V.activitiesBusy) return;
+  if (!force && (!d.hasActivities || Date.now() - V.activitiesAt < ACTIVITY_LOOK_MS)) return;
+  V.activitiesBusy = true; V.activitiesAt = Date.now();
   try {
-    const r = await api("POST", "/api/activities/sync", { profile: T.profile, history: false });
-    if (r.added) await reloadWellness(T);
+    const r = await api("POST", "/api/activities/sync", { profile: V.profile, history: false });
+    if (r.added) await reloadWellness(V);
   } catch { /* what is shown stays */ }
-  finally { T.activitiesBusy = false; }
-  if (document.body.dataset.view === "today") renderToday();
+  finally { V.activitiesBusy = false; }
+  if (document.body.dataset.view === V.name) V.render();
 }
 
 /** Wait, looking every two seconds, until the update that holds the Garmin sync is over (two minutes at most). */
@@ -4196,8 +4228,8 @@ const syncToday = guard(async () => {
     await untilIdle(T);
     await syncWellness(T, false);
   }
-  $("tSync").disabled = true;
-  try { await lookForActivities(true); } finally { $("tSync").disabled = false; }
+  T.lookingUp = true; syncButton(T);
+  try { await lookForActivities(T, true); } finally { T.lookingUp = false; syncButton(T); }
 });
 
 function renderTodayNote(V) {
@@ -4253,7 +4285,7 @@ function renderToday() {
     for (const day of ahead) { card.append(mk("div", "tday", day.label)); for (const w of day.items) card.append(todayWorkout(w)); }
     box.append(mk("h3", "", "Next days"), card);
   }
-  box.append(mk("div", "rfoot", (d.health ? "Steps, Body Battery and sleep are Garmin's, as of the watch's last sync with the phone: the age above says how old. The intensity minutes are the week from Monday (a vigorous minute counts twice) against Garmin's weekly goal. " : "") + "The workouts are the ones the plan files schedule (their scheduledDate)" + (d.health ? ", not Garmin's own calendar" : "") + "; one counts as done when an activity today was started from it. The food is what was logged."));
+  box.append(mk("div", "rfoot", (d.health ? "Steps, Body Battery and sleep are Garmin's, as of the watch's last sync with the phone: the age above says how old. The intensity minutes are the week from Monday (a vigorous minute counts twice) against Garmin's weekly goal. " : "") + "The workouts are the ones the plan files schedule (their scheduledDate)" + (d.health ? ", not Garmin's own calendar" : "") + "; one counts as done when an activity today was started from it. The food is what was logged." + (d.health ? " " + syncRule(true) : "")));
   $("tscroll").scrollTop = keep;
 }
 

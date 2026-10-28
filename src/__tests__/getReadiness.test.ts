@@ -4,8 +4,8 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { configureMcp, getSession, getSettings } from "../mcp/context";
-import { type GetReadinessArgs, type GetWellnessArgs, getReadiness, getWellness, refreshWellness } from "../mcp/tools/wellness";
-import { closeStore, getStore } from "../shared/store";
+import { type GetReadinessArgs, type GetWellnessArgs, getReadiness, getWellness, refreshWellness, startBackgroundWellness } from "../mcp/tools/wellness";
+import { WELLNESS_KINDS, closeStore, getStore } from "../shared/store";
 import { addDays, isWellnessBackfilling } from "../shared/wellnessSync";
 import { hrvResponse, sleepResponse, summaryResponse } from "./fixtures/wellness";
 import { seedProfile } from "./fixtures/profiles";
@@ -161,21 +161,72 @@ describe("get_wellness", () => {
   });
 });
 
-describe("refreshWellness for a page that shows today's steps", () => {
-  it("leaves a summary under half an hour old alone, unless asked for it fresh, and then fetches only that one, and not again within a minute", async () => {
+describe("refreshWellness for a page's Sync button", () => {
+  const nine = (day: string) => [
+    `/usersummary-service/usersummary/daily/abc-123?calendarDate=${day}`,
+    `/sleep-service/sleep/dailySleepData?date=${day}&nonSleepBufferMinutes=60`,
+    `/hrv-service/hrv/${day}`,
+    `/wellness-service/wellness/dailyHeartRate/abc-123?date=${day}`,
+    `/wellness-service/wellness/dailyStress/${day}`,
+    `/wellness-service/wellness/bodyBattery/reports/daily?startDate=${day}&endDate=${day}`,
+    `/wellness-service/wellness/daily/respiration/${day}`,
+    `/wellness-service/wellness/daily/spo2/${day}`,
+    `/weight-service/weight/dayview/${day}`,
+  ];
+  const agoToday = (ms: number) => {
+    for (const kind of WELLNESS_KINDS) getStore().wellness.put(PROFILE, TODAY, kind, kind === "summary" ? summaryResponse() : null, Date.now() - ms);
+  };
+
+  it("fetches every kind for the last days, where a view opening or a tool call fetches the four a readiness is made of", async () => {
     const { calls } = fakeGarmin();
     await refreshWellness(PROFILE);
-    getStore().wellness.put(PROFILE, TODAY, "summary", summaryResponse(), Date.now() - 5 * 60_000); // as if fetched five minutes ago
+    expect(calls).toHaveLength(3 * 4);
+    expect(calls.some((c) => c.includes("dailyStress"))).toBe(false);
+
+    const before = calls.length;
+    const out = await refreshWellness(PROFILE, { manual: true });
+    expect(out).toEqual({ fetched: 3 * 5, busy: false, error: null }); // the five kinds not fetched yet, for each of the three days
+    const day = (d: string) => calls.slice(before).filter((c) => c.includes(d));
+    expect(day(TODAY).sort()).toEqual(nine(TODAY).filter((c) => !/usersummary|dailySleepData|hrv-service|weight-service/.test(c)).sort());
+  });
+
+  it("asks again for today's data after a minute when a Sync button asks, and after five when the view only opened", async () => {
+    const { calls } = fakeGarmin();
+    await refreshWellness(PROFILE, { manual: true });
     const before = calls.length;
 
-    await refreshWellness(PROFILE);
+    await refreshWellness(PROFILE, { manual: true }); // a moment later: all of it is kept
     expect(calls.length).toBe(before);
 
-    const out = await refreshWellness(PROFILE, { fresh: true });
-    expect(out).toEqual({ fetched: 1, busy: false, error: null });
-    expect(calls.slice(before)).toEqual([`/usersummary-service/usersummary/daily/abc-123?calendarDate=${TODAY}`]);
+    agoToday(2 * 60_000); // two minutes ago: old for a Sync button, not for a view opening
+    await refreshWellness(PROFILE);
+    expect(calls.length).toBe(before);
+    const out = await refreshWellness(PROFILE, { manual: true });
+    expect(out).toEqual({ fetched: 9, busy: false, error: null });
+    expect(calls.slice(before).sort()).toEqual(nine(TODAY).sort()); // today's nine, and nothing of the days before (fetched a moment ago)
 
-    await refreshWellness(PROFILE, { fresh: true });
-    expect(calls.length).toBe(before + 1);
+    agoToday(6 * 60_000); // six minutes ago: a view opening asks again, for the kinds it fetches
+    const opened = await refreshWellness(PROFILE);
+    expect(opened.fetched).toBe(4);
+  });
+
+  it("keeps the days before for half an hour, a Sync button or not", async () => {
+    const { calls } = fakeGarmin();
+    await refreshWellness(PROFILE, { manual: true });
+    const yesterday = addDays(TODAY, -1);
+    const before = calls.length;
+    for (const kind of WELLNESS_KINDS) getStore().wellness.put(PROFILE, yesterday, kind, null, Date.now() - 20 * 60_000);
+    await refreshWellness(PROFILE, { manual: true });
+    expect(calls.slice(before).some((c) => c.includes(yesterday))).toBe(false);
+    for (const kind of WELLNESS_KINDS) getStore().wellness.put(PROFILE, yesterday, kind, null, Date.now() - 31 * 60_000);
+    await refreshWellness(PROFILE, { manual: true });
+    expect(calls.slice(before).filter((c) => c.includes(yesterday)).sort()).toEqual(nine(yesterday).sort());
+  });
+
+  it("fills in more days in the background when the page shows more than are kept", async () => {
+    fakeGarmin();
+    startBackgroundWellness(PROFILE, KEPT + 15);
+    await settled();
+    expect(getStore().wellness.counts(PROFILE).days).toBe(KEPT + 15);
   });
 });

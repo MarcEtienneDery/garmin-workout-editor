@@ -39,7 +39,7 @@
 
   /**
    * How current the day's numbers are. Steps are as of the last time the watch synced with Garmin, which can be hours before we
-   * fetched them, so both are said. `stale`: nothing is stored, or it was fetched long enough ago that Sync would fetch it again.
+   * fetched them, so both are said. `stale`: nothing is stored, or it was fetched long ago (STALE_MS) and is shown in the warning colour; Sync fetches it again once it is a minute old, stale or not.
    */
   function freshness(view, now) {
     const p = view.progress;

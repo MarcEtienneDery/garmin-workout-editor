@@ -42,13 +42,14 @@
  *
  * The Recovery view shows the daily health data the database keeps (GET /api/wellness: the readiness for a day, the days
  * of a range with the person's own normal, and what is stored for the day; GET /api/wellness/raw: Garmin's complete stored
- * response of one kind for a day); it never calls Garmin on a read. POST /api/wellness/sync fetches the last days now and
- * starts the background fill of the rest. The Weight view (GET /api/weight: the weight, body composition and calories
- * burned of the last days, with the weight trend) reads the same table and syncs through that POST.
+ * response of one kind for a day); it never calls Garmin on a read. POST /api/wellness/sync fetches the last days now
+ * (a Sync button, with manual: true, every kind; what was fetched lately is kept: see refreshMs) and starts the background fill of the
+ * rest, as far back as the page shows. The Weight view (GET /api/weight: the weight, body composition and calories burned of the last
+ * days, with the weight trend) reads the same table and syncs through that POST.
  *
  * The Today view (GET /api/today) is the landing page: the day's steps, intensity minutes of the week, Body Battery, sleep and food
  * next to the workouts the plans put on the coming days and the activities done today. It reads the database and the plan files
- * only; the page's Sync button asks Garmin (POST /api/wellness/sync with fresh: true, then POST /api/activities/sync).
+ * only; the page's Sync button asks Garmin (POST /api/wellness/sync, then POST /api/activities/sync).
  *
  * The workout picture times steps that name no pace from the profile's recent runs (GET /api/runs),
  * read from the activities table that the Garmin sync fills.
@@ -1136,7 +1137,7 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
         ...readinessAt(store(), profile, date),
         ...wellnessRange(store(), profile, addDays(date, -(days - 1)), date),
         stored: store().wellness.rowsOfDay(profile, date),
-        sync: wellnessSyncStatus(profile),
+        sync: wellnessSyncStatus(profile, Math.max(0, Math.round((Date.parse(today) - Date.parse(date)) / 86_400_000)) + days), // all the days the page shows
       });
     }
 
@@ -1154,7 +1155,7 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
       const range = bodyRange(store(), profile, addDays(today, -(days - 1)), today);
       // the day whose stored responses are listed: the one asked for, else the last weigh-in, else today
       const date = asked && /^\d{4}-\d{2}-\d{2}$/.test(asked) ? asked : range.body.latest?.day ?? today;
-      return send(res, 200, { profile, today, date, ...range, stored: store().wellness.rowsOfDay(profile, date), sync: wellnessSyncStatus(profile) });
+      return send(res, 200, { profile, today, date, ...range, stored: store().wellness.rowsOfDay(profile, date), sync: wellnessSyncStatus(profile, days) });
     }
 
     case "GET /api/foods/search": {
@@ -1314,10 +1315,12 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
       requireConnected(profile);
       // the Weight view's button asks for the weigh-ins again: one may have been added on Garmin since the empty answer was stored
       if (body.rereadWeight === true) rereadWeighIns(profile);
-      // fresh: the Today view's button wants today's steps as they are now, not as they were up to half an hour ago
-      const refreshed = body.fresh === true ? await refreshWellness(profile, { fresh: true }) : await refreshWellness(profile);
-      const background = startBackgroundWellness(profile);
-      return send(res, 200, { ...refreshed, background, sync: wellnessSyncStatus(profile) });
+      // manual: a Sync button, which fetches every kind and keeps today's responses a minute; the look a view takes on opening is not (five
+      // minutes, the kinds a readiness is made of). days: how far back the page shows, so a button fills in all of it, not only the days kept
+      const manual = body.manual === true, span = manual ? Math.floor(Number(body.days)) || 0 : 0;
+      const refreshed = await refreshWellness(profile, { manual });
+      const background = startBackgroundWellness(profile, span);
+      return send(res, 200, { ...refreshed, background, sync: wellnessSyncStatus(profile, span) });
     }
 
     case "GET /api/activity": {

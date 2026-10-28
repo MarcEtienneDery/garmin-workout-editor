@@ -8,7 +8,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { LeaseLost } from "../../shared/activitySync";
 import { WELLNESS_KINDS, type WellnessKind, getStore } from "../../shared/store";
 import { bodyRange, readinessAt, wellnessRange, withScaleWeighIns } from "../../shared/wellnessReport";
-import { BACKFILL_DAYS, type WellnessSource, addDays, isWellnessBackfilling, localToday, startWellnessBackfill, syncWellness, wellnessStatus, withWellnessLease } from "../../shared/wellnessSync";
+import { BACKFILL_DAYS, RECENT_DAYS, type WellnessSource, addDays, isWellnessBackfilling, localToday, startWellnessBackfill, syncWellness, wellnessStatus, withWellnessLease } from "../../shared/wellnessSync";
 import { garminConnected } from "../../shared/profileLoader";
 import { type Session, dataProfile, getSession, getSettings, requireAuth, runTool } from "../context";
 import { detailGapMs, holder, locked } from "./activities";
@@ -29,15 +29,13 @@ const URLS: Record<WellnessKind, (day: string, name: string) => string> = {
   weight: (d) => `/weight-service/weight/dayview/${d}`,
 };
 
-/** What a readiness is made of, and the weigh-in (one call, and a person who has just weighed in wants to see it): fetched at once for the last days, the rest of the kinds fill in the background. */
+/** What a readiness is made of, and the weigh-in (one call, and a person who has just weighed in wants to see it): fetched at once for the last days by a view opening or a tool call, the rest of the kinds fill in the background. A Sync button fetches every kind at once. */
 const NOW_KINDS: WellnessKind[] = ["summary", "sleep", "hrv", "weight"];
-/** The last days whose responses are fetched again by a call, as the watch syncs late. */
-const RECENT_DAYS = 3;
-/** A page that shows today's steps asks for the day's summary again when it is older than this, instead of REFRESH_MS. */
-const FRESH_MS = 60_000;
 const MAX_RANGE_DAYS = 120;
 /** How many days the background sync keeps: 60, or WELLNESS_DAYS. */
 const keptDays = (): number => Math.min(MAX_RANGE_DAYS, Math.max(RECENT_DAYS, Math.floor(Number(process.env.WELLNESS_DAYS)) || BACKFILL_DAYS));
+/** The days a sync fills in: the ones kept, or more when a page shows more (`span`: days back from today). */
+const filledDays = (span = 0): number => Math.min(MAX_RANGE_DAYS, Math.max(keptDays(), Math.floor(span) || 0));
 
 const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
@@ -60,9 +58,11 @@ export function wellnessSourceFor(session: Session): WellnessSource {
 
 /**
  * Fetch the last days' readiness kinds now, unless a background sync is on it or Garmin said to wait. Never throws.
- * `fresh` also fetches today's summary again unless it was fetched a minute ago, so the steps on screen are not up to half an hour old.
+ * What was fetched lately is kept (see refreshMs): today's for a minute when a Sync button asks (`manual`, which fetches every kind) and
+ * five otherwise (the kinds a readiness is made of), the days before for half an hour, so `fetched: 0` (and no error, not busy) means
+ * all of it was that recent.
  */
-export async function refreshWellness(profile?: string, options: { fresh?: boolean } = {}): Promise<{ fetched: number; busy: boolean; error: string | null }> {
+export async function refreshWellness(profile?: string, options: { manual?: boolean } = {}): Promise<{ fetched: number; busy: boolean; error: string | null }> {
   const session = getSession(profile), store = getStore(), name = session.profile.name;
   if (isWellnessBackfilling(store, name)) return { fetched: 0, busy: true, error: null };
   const wait = Math.max(store.wellness.state(name).retryAfter ?? 0, store.activities.state(name).retryAfter ?? 0);
@@ -70,10 +70,7 @@ export async function refreshWellness(profile?: string, options: { fresh?: boole
   try {
     const leased = await withWellnessLease(store, name, holder(), async (renew) => {
       const source = wellnessSourceFor(session), today = localToday(store, name), gapMs = detailGapMs();
-      const found = await syncWellness(store, name, source, { today, days: RECENT_DAYS, kinds: NOW_KINDS, renew, gapMs });
-      if (!options.fresh || found.stopped) return found;
-      const again = await syncWellness(store, name, source, { today, days: 1, kinds: ["summary"], staleMs: FRESH_MS, renew, gapMs });
-      return { fetched: found.fetched + again.fetched, failed: found.failed + again.failed, stopped: again.stopped };
+      return syncWellness(store, name, source, { today, days: RECENT_DAYS, kinds: options.manual ? WELLNESS_KINDS : NOW_KINDS, renew, gapMs, manual: options.manual });
     });
     if (!leased.ok) return { fetched: 0, busy: true, error: null };
     return { fetched: leased.value.fetched, busy: false, error: leased.value.stopped };
@@ -88,18 +85,18 @@ export function rereadWeighIns(profile?: string): number {
   return store.wellness.forgetEmptyWeighIns(name, addDays(today, -(keptDays() - 1)), today);
 }
 
-/** Keep filling the table in the background: the last 60 days, every kind. A no-op when all is stored. */
-export function startBackgroundWellness(profile?: string): { started: boolean; reason?: string } {
+/** Keep filling the table in the background: the last 60 days (more when a page shows more), every kind. A no-op when all is stored. */
+export function startBackgroundWellness(profile?: string, span = 0): { started: boolean; reason?: string } {
   const session = getSession(profile), store = getStore(), name = session.profile.name;
   if (session.mock) return { started: false, reason: "Mock mode." };
-  const { started, reason } = startWellnessBackfill(store, name, wellnessSourceFor(session), { holder: holder(), today: localToday(store, name), days: keptDays(), gapMs: detailGapMs() });
+  const { started, reason } = startWellnessBackfill(store, name, wellnessSourceFor(session), { holder: holder(), today: localToday(store, name), days: filledDays(span), gapMs: detailGapMs() });
   return { started, reason };
 }
 
 /** How the wellness sync stands, for a profile: what is stored, what is still to fetch, whether it runs, and why it stopped. */
-export function wellnessSyncStatus(profile: string) {
+export function wellnessSyncStatus(profile: string, span = 0) {
   const store = getStore();
-  return wellnessStatus(store, profile, localToday(store, profile), Date.now(), keptDays());
+  return wellnessStatus(store, profile, localToday(store, profile), Date.now(), filledDays(span));
 }
 
 /** What a result says of the sync: how much is stored, whether it fills in the background, and why it stopped early. */

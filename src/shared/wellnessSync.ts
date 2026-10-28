@@ -4,8 +4,8 @@
  * One Garmin call per day and kind, newest day first, the kinds a daily check reads (the day's summary, sleep, HRV)
  * before the series (heart rate, stress, Body Battery, respiration, SpO2), so a sync that stops half way, on a rate
  * limit, still leaves what the check needs. A day's data keeps changing until the watch has synced and the day is over, so
- * a response fetched less than FINAL_AFTER_MS after its day began is fetched again (at most every REFRESH_MS); older
- * responses are final, and so are the empty ones. Like the activity sync it stops, and records why, on a rate limit or a
+ * a response fetched less than FINAL_AFTER_MS after its day began is fetched again, no sooner than refreshMs says (today's: a minute
+ * for a Sync button, five for everything else; the days before: half an hour); older responses are final, and so are the empty ones. Like the activity sync it stops, and records why, on a rate limit or a
  * login failure; a lease keeps the two processes from syncing at once; after a rate limit (never after a login failure)
  * the background job starts again by itself once the cool-off is over.
  */
@@ -18,10 +18,22 @@ export interface WellnessSource {
 }
 
 export const BACKFILL_DAYS = 60;
+/** The last days a Sync (and a tool call) fetches at once, as the watch syncs late. */
+export const RECENT_DAYS = 3;
 /** A response fetched less than this after its day began may still change. */
 export const FINAL_AFTER_MS = 2 * 86_400_000;
-/** A response that may still change is fetched again no sooner than this after the last time. */
-export const REFRESH_MS = 30 * 60_000;
+/**
+ * How long a response that may still change is kept before it is fetched again, by its day and by who asks: today's no sooner than a
+ * minute after the last time for a Sync button (manual), five minutes for everything else (opening a view, a tool call, the
+ * background fill: auto); the days before today, half an hour whoever asks.
+ */
+export const TODAY_MANUAL_MS = 60_000;
+export const TODAY_AUTO_MS = 5 * 60_000;
+export const EARLIER_MS = 30 * 60_000;
+/** Who asks: a Sync button, anything else, or only for what was never fetched (the pending count). */
+export type Ask = "manual" | "auto" | "missing";
+export const refreshMs = (day: string, today: string, ask: Exclude<Ask, "missing"> = "auto"): number =>
+  day !== today ? EARLIER_MS : ask === "manual" ? TODAY_MANUAL_MS : TODAY_AUTO_MS;
 const DAY_MS = 86_400_000;
 const DEFAULT_GAP_MS = 500;
 
@@ -59,15 +71,18 @@ export interface Wanted {
   kind: WellnessKind;
 }
 
-/** The responses to fetch: the ones missing, and the ones that may still have changed. Kinds in order, then the newest day first. */
-export function wanted(store: SqliteStore, profile: string, today: string, days = BACKFILL_DAYS, kinds: readonly WellnessKind[] = WELLNESS_KINDS, now = Date.now(), staleMs = REFRESH_MS): Wanted[] {
+/**
+ * The responses to fetch: the ones missing, and the ones that may still have changed and are older than refreshMs (`ask` "missing"
+ * leaves those out). Kinds in order, then the newest day first.
+ */
+export function wanted(store: SqliteStore, profile: string, today: string, days = BACKFILL_DAYS, kinds: readonly WellnessKind[] = WELLNESS_KINDS, now = Date.now(), ask: Ask = "auto"): Wanted[] {
   const have = store.wellness.fetchedAt(profile, addDays(today, -(days - 1)), today);
   const out: Wanted[] = [];
   for (const kind of kinds) {
     for (let i = 0; i < days; i++) {
       const day = addDays(today, -i), at = have.get(`${day}|${kind}`);
-      const stale = at !== undefined && at - Date.parse(`${day}T00:00:00Z`) < FINAL_AFTER_MS && now - at > staleMs;
-      if (at === undefined || stale) out.push({ day, kind });
+      const stale = at !== undefined && at - Date.parse(`${day}T00:00:00Z`) < FINAL_AFTER_MS && now - at > refreshMs(day, today, ask === "manual" ? "manual" : "auto");
+      if (at === undefined || (stale && ask !== "missing")) out.push({ day, kind });
     }
   }
   return out;
@@ -84,14 +99,14 @@ export interface WellnessSyncOptions {
   gapMs?: number;
   sleep?: (ms: number) => Promise<void>;
   now?: number;
-  /** Fetch a response that may still change again after this long (REFRESH_MS by default). */
-  staleMs?: number;
+  /** A Sync button asked: today's responses are kept a minute instead of five. */
+  manual?: boolean;
 }
 
 /** Fetch the responses that are missing or may have changed. Stops, and records why, on a rate limit or a login failure. */
 export async function syncWellness(store: SqliteStore, profile: string, source: WellnessSource, options: WellnessSyncOptions): Promise<{ fetched: number; failed: number; stopped: string | null }> {
   const table = store.wellness, now = options.now ?? Date.now(), sleep = options.sleep ?? sleepFor;
-  const todo = wanted(store, profile, options.today, options.days, options.kinds, now, options.staleMs).slice(0, options.limit ?? Infinity);
+  const todo = wanted(store, profile, options.today, options.days, options.kinds, now, options.manual ? "manual" : "auto").slice(0, options.limit ?? Infinity);
   let fetched = 0, failed = 0;
   for (let i = 0; i < todo.length; i++) {
     if (options.renew && !options.renew()) throw new LeaseLost();
@@ -195,7 +210,9 @@ export interface WellnessStatus {
   rows: number;
   oldest: string | null;
   newest: string | null;
-  /** Responses still to fetch of the days kept (BACKFILL_DAYS unless asked otherwise). */
+  /** How long until a Sync button may ask Garmin again: TODAY_MANUAL_MS after the last response fetched for today (0: now). */
+  cooldownMs: number;
+  /** Responses never fetched of the days kept (BACKFILL_DAYS unless asked otherwise); the ones to ask again are not counted. */
   pending: number;
   syncing: boolean;
   error: string | null;
@@ -203,12 +220,14 @@ export interface WellnessStatus {
 
 export function wellnessStatus(store: SqliteStore, profile: string, today: string, now = Date.now(), days = BACKFILL_DAYS): WellnessStatus {
   const counts = store.wellness.counts(profile), state = store.wellness.state(profile);
+  const lastAsked = Math.max(0, ...store.wellness.fetchedAt(profile, today, today).values());
   return {
     days: counts.days,
     rows: counts.rows,
     oldest: counts.oldest,
     newest: counts.newest,
-    pending: wanted(store, profile, today, days, undefined, now).length,
+    cooldownMs: lastAsked ? Math.min(TODAY_MANUAL_MS, Math.max(0, lastAsked + TODAY_MANUAL_MS - now)) : 0,
+    pending: wanted(store, profile, today, days, undefined, now, "missing").length,
     syncing: !!state.holder && (state.leaseUntil ?? 0) > now,
     error: state.error,
   };

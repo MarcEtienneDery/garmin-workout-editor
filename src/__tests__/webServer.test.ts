@@ -48,7 +48,7 @@ jest.mock("../mcp/tools/wellness", () => {
     refreshWellness: jest.fn(async () => ({ fetched: 3, busy: false, error: null })),
     startBackgroundWellness: jest.fn(() => ({ started: true })),
     rereadWeighIns: jest.fn(() => 4),
-    wellnessSyncStatus: (profile: string) => sync.wellnessStatus(stores.getStore(), profile, sync.localToday(stores.getStore(), profile)),
+    wellnessSyncStatus: (profile: string, span = 0) => sync.wellnessStatus(stores.getStore(), profile, sync.localToday(stores.getStore(), profile), Date.now(), Math.max(60, span)),
   };
 });
 // The Renpho and Garmin sides of the Settings view: no network.
@@ -581,8 +581,8 @@ describe("web plan editor", () => {
         const out = await call("POST", "/api/wellness/sync", {});
         expect(out.status).toBe(200);
         expect(out.json).toEqual(expect.objectContaining({ fetched: 3, busy: false, error: null, background: { started: true } }));
-        expect(w.refreshWellness).toHaveBeenLastCalledWith("MED");
-        expect(w.startBackgroundWellness).toHaveBeenCalledWith("MED");
+        expect(w.refreshWellness).toHaveBeenLastCalledWith("MED", { manual: false });
+        expect(w.startBackgroundWellness).toHaveBeenCalledWith("MED", 0);
         expect(w.rereadWeighIns).not.toHaveBeenCalled(); // only when the Weight view asks
         await call("POST", "/api/wellness/sync", { rereadWeight: true });
         expect(w.rereadWeighIns).toHaveBeenCalledWith("MED");
@@ -719,12 +719,24 @@ describe("web plan editor", () => {
         expect((await call("GET", "/api/today", undefined, as("MED", "med-pw"))).json.day.steps).toBe(1234);
       });
 
-      it("asks Garmin for today's summary again only when the page says fresh", async () => {
+      it("tells a Sync button's refresh from the look a view takes on opening, and fills as far back as the page shows only for a button", async () => {
         addProfile("MED");
-        await call("POST", "/api/wellness/sync", {});
-        expect(w.refreshWellness).toHaveBeenLastCalledWith("MED");
-        await call("POST", "/api/wellness/sync", { fresh: true });
-        expect(w.refreshWellness).toHaveBeenLastCalledWith("MED", { fresh: true });
+        await call("POST", "/api/wellness/sync", { days: 90 });
+        expect(w.refreshWellness).toHaveBeenLastCalledWith("MED", { manual: false });
+        expect(w.startBackgroundWellness).toHaveBeenLastCalledWith("MED", 0); // opening a view fills no more than what is kept
+        await call("POST", "/api/wellness/sync", { manual: true, days: 90 });
+        expect(w.refreshWellness).toHaveBeenLastCalledWith("MED", { manual: true });
+        expect(w.startBackgroundWellness).toHaveBeenLastCalledWith("MED", 90);
+        await call("POST", "/api/wellness/sync", { manual: true, days: "soon" });
+        expect(w.startBackgroundWellness).toHaveBeenLastCalledWith("MED", 0);
+      });
+
+      it("counts what the Recovery and Weight views show as still to fetch, not only the days kept", async () => {
+        addProfile("MED");
+        const pending = async (path: string) => (await call("GET", path)).json.sync.pending;
+        const kept = await pending("/api/wellness?days=30");
+        expect(await pending("/api/wellness?days=90")).toBe(kept + 30 * 9); // 90 days shown, 60 kept: 30 days of 9 kinds more
+        expect(await pending("/api/weight?days=90")).toBe(kept + 30 * 9);
       });
     });
 
