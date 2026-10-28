@@ -67,7 +67,9 @@ fi
 # The Food view's AI box needs the same Claude login as live (renewed there, picked up here on the next deploy).
 {
   cat "$tokens"
-  [[ -f $LIVE_WEB_ENV ]] && grep -E '^(FOOD_AI_[A-Z_]*|CLAUDE_CODE_OAUTH_TOKEN|ANTHROPIC_API_KEY)=' "$LIVE_WEB_ENV" || true
+  [[ -f $LIVE_WEB_ENV ]] && grep -E '^(FOOD_AI_[A-Z_]*|CLAUDE_CODE_OAUTH_TOKEN|ANTHROPIC_API_KEY|TRUST_PROXY)=' "$LIVE_WEB_ENV" || true
+  # live's key only when the copied logins are kept: they are sealed with it, and a scrubbed copy has nothing to open
+  (( keep_logins )) && [[ -f $LIVE_WEB_ENV ]] && { grep -E '^CREDENTIALS_KEY=' "$LIVE_WEB_ENV" || true; }
 } > "$run_env"
 
 echo "==> stopping dev"

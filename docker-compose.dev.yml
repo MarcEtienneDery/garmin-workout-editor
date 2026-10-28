@@ -18,8 +18,7 @@ services:
     environment:
       MCP_AUTH_TOKEN: ${MCP_AUTH_TOKEN:?run scripts/dev-deploy.sh}
       GARMIN_TZ: ${GARMIN_TZ:-America/Toronto}
-      FOOD_AI_BACKEND: ${FOOD_AI_BACKEND:-}
-      CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
+      CREDENTIALS_KEY: ${CREDENTIALS_KEY:-}   # live's key, copied by dev-deploy.sh --keep-logins only: dev's copy holds no logins otherwise
     ports:
       - "${DEV_MCP_BIND:-127.0.0.1}:${DEV_MCP_PORT:-8797}:8787"
     volumes:
@@ -35,6 +34,8 @@ services:
     environment:
       WEB_AUTH_TOKEN: ${WEB_AUTH_TOKEN:?run scripts/dev-deploy.sh}
       GARMIN_TZ: ${GARMIN_TZ:-America/Toronto}
+      CREDENTIALS_KEY: ${CREDENTIALS_KEY:-}
+      TRUST_PROXY: ${TRUST_PROXY:-}
       FOOD_AI_BACKEND: ${FOOD_AI_BACKEND:-}
       CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
     ports:

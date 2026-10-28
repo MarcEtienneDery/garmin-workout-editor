@@ -66,6 +66,8 @@ docker logs --tail 5 garmin-mcp   # expect "listening on http://0.0.0.0:8787/mcp
 
 Reconnect MCP clients afterwards so they pick up tool changes.
 
+Live settings are in the two `env_file`s, not in the repo's compose: `CREDENTIALS_KEY` (the **same** value in `./garmin-mcp/.env` and `./garmin-mcp/web.env`; it encrypts the saved Garmin and Renpho passwords, so a lost or changed key means entering them again in Settings) and, in `web.env` only, `TRUST_PROXY=cloudflare` (the web editor is reached through the Cloudflare tunnel, so without it every visitor shares one wrong-password limit and a stranger can lock the sign-in out).
+
 ### Dev environment
 
 `scripts/dev-deploy.sh [--keep-logins] [source-dir]` (compose file `docker-compose.dev.yml`) deploys a second stack, `garmin-dev-web` (port 8798) and `garmin-dev-mcp` (127.0.0.1:8797), built from `source-dir` (default: the checkout the script is in, uncommitted changes included) into the image `garmin-workout-editor-mcp:dev`. Every run stops dev, takes a fresh `sqlite3 .backup` of the live database (live is only read), and replaces dev's copy, so dev edits do not survive a deploy. Its state is in `~/garmin-dev` (outside `~/docker`, so `backup.sh` skips it): `data/garmin.db`, and `tokens.env` with dev's own `MCP_AUTH_TOKEN` and `WEB_AUTH_TOKEN` (made once, never live's). `scripts/dev-deploy.sh down` stops it.

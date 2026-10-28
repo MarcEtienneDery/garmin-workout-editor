@@ -3,6 +3,36 @@
  * tens of milliseconds on purpose; this keeps a flood of wrong guesses from costing the server more than it costs the sender, and
  * a guess from being free. After `max` wrong passwords within `windowMs` the address waits out the rest of that window.
  */
+import type { IncomingHttpHeaders } from "http";
+import { isIP } from "net";
+
+/**
+ * Whose address the throttle counts. Behind a tunnel or reverse proxy every connection comes from the proxy, so counting the socket
+ * puts every visitor in one bucket: ten wrong passwords from anyone would lock the owner out. With a proxy in front, say which header to
+ * believe (TRUST_PROXY): `cloudflare` reads CF-Connecting-IP, which Cloudflare sets itself; `proxy` reads the last X-Forwarded-For
+ * entry, the address the one proxy in front saw (earlier entries are whatever the client sent). Only for a port that the proxy alone
+ * can reach: anyone who can connect directly could send the header.
+ */
+export type TrustProxy = "off" | "cloudflare" | "proxy";
+
+/** TRUST_PROXY as a setting: empty or `off`, `cloudflare`, or `proxy` (`1` and `true` too). Anything else is an error, so a typo does not leave it off unseen. */
+export function trustProxyOf(value: string | undefined): TrustProxy {
+  const asked = (value ?? "").trim().toLowerCase();
+  if (asked === "" || asked === "off" || asked === "0" || asked === "false") return "off";
+  if (asked === "cloudflare") return "cloudflare";
+  if (asked === "proxy" || asked === "1" || asked === "true") return "proxy";
+  throw new Error(`TRUST_PROXY must be cloudflare, proxy or off (got "${value}").`);
+}
+
+/** The address a request counts against: the one the trusted header names, else (no header, or not an IP address) the socket's own. */
+export function clientAddress(headers: IncomingHttpHeaders, socketAddress: string, trust: TrustProxy): string {
+  const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[v.length - 1] : v)?.trim() ?? "";
+  let claimed = "";
+  if (trust === "cloudflare") claimed = one(headers["cf-connecting-ip"]);
+  else if (trust === "proxy") claimed = one(headers["x-forwarded-for"]).split(",").pop()?.trim() ?? "";
+  return isIP(claimed) ? claimed : socketAddress;
+}
+
 export class LoginThrottle {
   private readonly seen = new Map<string, { count: number; since: number }>();
 

@@ -14,6 +14,7 @@ import * as dotenv from "dotenv";
 import * as path from "path";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { PROJECT_ROOT } from "../shared/profileLoader";
+import { getStore } from "../shared/store";
 import { configureMcp } from "./context";
 import { createServer } from "./createServer";
 import { startHttpServer } from "./http";
@@ -54,6 +55,8 @@ async function main(): Promise<void> {
 
   const httpServer = await startHttpServer({ host, port, token });
   console.error(`[mcp] garmin-workout-editor listening on http://${host}:${port}/mcp/<token> (health: /healthz)`);
+  const plain = getStore().credentials.plainWarning();
+  if (plain) console.error(`[mcp] ${plain}`);
 
   const shutdown = (signal: string) => {
     console.error(`[mcp] ${signal} received, shutting down`);

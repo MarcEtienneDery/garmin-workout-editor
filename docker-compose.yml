@@ -4,6 +4,7 @@
 #      mkdir -p data
 #   2. echo "MCP_AUTH_TOKEN=$(openssl rand -hex 32)" >> .env     # compose reads .env
 #      echo "WEB_AUTH_TOKEN=$(openssl rand -hex 16)" >> .env     # plan editor password
+#      echo "CREDENTIALS_KEY=$(openssl rand -hex 32)" >> .env    # encrypts the saved Garmin / Renpho passwords; keep it with the deployment
 #   3. docker compose up -d --build
 #   4. Open the plan editor and add a profile (a name and its sign-in password). Garmin and a Renpho scale are optional and connected in Settings.
 #   5. (optional public URL)  docker compose --profile tunnel up -d
@@ -25,6 +26,8 @@ services:
     environment:
       MCP_AUTH_TOKEN: ${MCP_AUTH_TOKEN:?Set MCP_AUTH_TOKEN in .env (openssl rand -hex 32)}
       GARMIN_PROFILE: ${GARMIN_PROFILE:-}
+      # encrypts the saved Garmin and Renpho passwords in garmin.db; the same value in garmin-web below (empty: stored as plain text)
+      CREDENTIALS_KEY: ${CREDENTIALS_KEY:-}
       TZ: ${TZ:-}                      # your time zone, for "today" (needed for a profile without Garmin)
     ports:
       # Loopback by default: a reverse proxy on the NAS (or the tunnel below) reaches it.
@@ -44,6 +47,10 @@ services:
     environment:
       WEB_AUTH_TOKEN: ${WEB_AUTH_TOKEN:?Set WEB_AUTH_TOKEN in .env (openssl rand -hex 16)}
       GARMIN_PROFILE: ${GARMIN_PROFILE:-}
+      CREDENTIALS_KEY: ${CREDENTIALS_KEY:-}
+      # behind the Cloudflare tunnel or a reverse proxy: which header names the visitor, so the wrong-password limit counts each one
+      # apart (cloudflare, or proxy for X-Forwarded-For). Empty: the connection's own address, which behind a proxy is the proxy's.
+      TRUST_PROXY: ${TRUST_PROXY:-}
       # the Food view's AI box: empty means it is off (the page says how to set it up)
       FOOD_AI_BACKEND: ${FOOD_AI_BACKEND:-}
       CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}

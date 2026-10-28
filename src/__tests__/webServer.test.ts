@@ -1929,6 +1929,43 @@ describe("web plan editor", () => {
         }
       });
 
+      describe("limit on wrong passwords", () => {
+        const guess = (at: string, headers: Record<string, string>, password: string) =>
+          fetch(at + "/api/login", { method: "POST", headers: { ...H, ...headers }, body: JSON.stringify({ user: "MED", password }) });
+        const wrong = async (at: string, headers: Record<string, string>) => {
+          for (let i = 0; i < 10; i++) expect((await guess(at, headers, "nope")).status).toBe(401);
+        };
+
+        it("counts the connection's address when no proxy is trusted, whatever header a visitor sends", async () => {
+          await wrong(base, { "CF-Connecting-IP": "203.0.113.9" });
+          const blocked = await guess(base, { "CF-Connecting-IP": "198.51.100.4", "X-Forwarded-For": "192.0.2.1" }, "med-pw");
+          expect(blocked.status).toBe(429);
+          expect(Number(blocked.headers.get("retry-after"))).toBeGreaterThan(0);
+        });
+
+        it("counts each visitor apart behind a trusted Cloudflare proxy", async () => {
+          const proxied = await startWebServer({ host: "127.0.0.1", port: 0, trustProxy: "cloudflare" });
+          const at = `http://127.0.0.1:${(proxied.address() as AddressInfo).port}`;
+          await wrong(at, { "CF-Connecting-IP": "203.0.113.9" });
+          expect((await guess(at, { "CF-Connecting-IP": "203.0.113.9" }, "med-pw")).status).toBe(429);
+          // someone else on the internet is not locked out, and the owner signs in
+          expect((await guess(at, { "CF-Connecting-IP": "198.51.100.4" }, "med-pw")).status).toBe(200);
+          // a header that is no address is not believed: it counts as the connection
+          expect((await guess(at, { "CF-Connecting-IP": "not-an-ip" }, "med-pw")).status).toBe(200);
+          await new Promise((r) => proxied.close(r));
+        });
+
+        it("reads the last X-Forwarded-For entry behind a trusted proxy, not what the visitor put first", async () => {
+          const proxied = await startWebServer({ host: "127.0.0.1", port: 0, trustProxy: "proxy" });
+          const at = `http://127.0.0.1:${(proxied.address() as AddressInfo).port}`;
+          await wrong(at, { "X-Forwarded-For": "1.1.1.1, 203.0.113.9" });
+          // a new first entry does not escape the limit; a different visitor (last entry) is not affected
+          expect((await guess(at, { "X-Forwarded-For": "2.2.2.2, 203.0.113.9" }, "med-pw")).status).toBe(429);
+          expect((await guess(at, { "X-Forwarded-For": "2.2.2.2, 198.51.100.4" }, "med-pw")).status).toBe(200);
+          await new Promise((r) => proxied.close(r));
+        });
+      });
+
       it("refuses a sign-in that lacks the X-Requested-With header", async () => {
         expect((await signIn("MED", "med-pw", { "Content-Type": "application/json" })).status).toBe(403);
       });

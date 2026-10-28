@@ -53,6 +53,12 @@ export class CredentialTable {
     return this.db.prepare("SELECT COUNT(*) AS n FROM credentials WHERE password NOT LIKE 'enc1:%'").get()!.n as number;
   }
 
+  /** What to tell the person at start-up when saved passwords sit in the database as plain text (no CREDENTIALS_KEY); null when none do. */
+  plainWarning(): string | null {
+    const plain = this.plainCount();
+    return plain > 0 && !sealing() ? `CREDENTIALS_KEY is not set: ${plain} saved Garmin/Renpho password${plain === 1 ? " is" : "s are"} stored as plain text in the database. Set it on every service that shares the database.` : null;
+  }
+
   delete(profile: string, service: CredentialService): void {
     this.db.prepare("DELETE FROM credentials WHERE profile = ? AND service = ?").run(profile, service);
   }

@@ -68,6 +68,16 @@ describe("the credentials table", () => {
     expect(store.credentials.plainCount()).toBe(1);
   });
 
+  it("warns at start-up only while passwords are plain text and there is no key", () => {
+    expect(store.credentials.plainWarning()).toBeNull(); // nothing saved
+    store.credentials.put("MED", "garmin", "a@b.c", "plainpw");
+    expect(store.credentials.plainWarning()).toMatch(/CREDENTIALS_KEY is not set: 1 saved Garmin\/Renpho password is stored as plain text/);
+    store.credentials.put("MED", "renpho", "a@b.c", "plainpw");
+    expect(store.credentials.plainWarning()).toMatch(/2 saved Garmin\/Renpho passwords are stored/);
+    process.env.CREDENTIALS_KEY = KEY; // set, the plain ones are sealed when read: no warning to give
+    expect(store.credentials.plainWarning()).toBeNull();
+  });
+
   it("encrypts a plain password the first time it is read with a key", () => {
     store.credentials.put("MED", "garmin", "a@b.c", "plainpw");
     process.env.CREDENTIALS_KEY = KEY;

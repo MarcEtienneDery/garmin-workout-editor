@@ -72,7 +72,7 @@ import { createHash, randomBytes, timingSafeEqual } from "crypto";
 import * as dotenv from "dotenv";
 import { GarminNotConnectedError, PROJECT_ROOT, findProfile, garminConnected, getAvailableProfiles } from "../shared/profileLoader";
 import { type DocMeta, type StoreErrorCode, StoreError, WELLNESS_KINDS, type WellnessKind, decoyCheck, getStore, normalizeLogicalPath, profileOfPath } from "../shared/store";
-import { LoginThrottle } from "./loginThrottle";
+import { LoginThrottle, type TrustProxy, clientAddress, trustProxyOf } from "./loginThrottle";
 import { getSettings, resolveProfileName, runCaptured } from "../mcp/context";
 import { installConsoleRedirect } from "../mcp/logCapture";
 import { slimStored } from "../activityExporter";
@@ -141,6 +141,8 @@ export interface WebServerOptions {
   port: number;
   /** Optional shared secret (HTTP Basic password). Required unless host is loopback. */
   token?: string;
+  /** Which forwarding header names the client behind a proxy or tunnel (default: TRUST_PROXY, else none: the socket's address). */
+  trustProxy?: TrustProxy;
 }
 
 class HttpError extends Error {
@@ -1483,13 +1485,14 @@ export function startWebServer(options: WebServerOptions): Promise<http.Server> 
 
   // Wrong passwords per client address. A password is checked with scrypt, so a flood of guesses is slowed, and each costs the same.
   const throttle = new LoginThrottle();
+  const trustProxy = options.trustProxy ?? trustProxyOf(process.env.TRUST_PROXY);
 
   /**
    * Who a user name and secret stand for. A profile name matches in any case; the token is the admin login. A wrong guess from an
    * address that has made too many waits (429), and takes as long whichever name it was made with, so the time says nothing.
    */
   const verify = async (req: http.IncomingMessage, user: string, secret: string): Promise<Principal | null> => {
-    const address = req.socket.remoteAddress ?? "";
+    const address = clientAddress(req.headers, req.socket.remoteAddress ?? "", trustProxy);
     const wait = throttle.waitMs(address);
     if (wait > 0) {
       const seconds = Math.ceil(wait / 1000);
@@ -1647,6 +1650,8 @@ if (require.main === module) {
   startWebServer({ host, port, token: process.env.WEB_AUTH_TOKEN || undefined })
     .then(() => {
       console.log(`Plan editor on http://${host}:${port}  (store: ${store().location})`);
+      const plain = store().credentials.plainWarning();
+      if (plain) console.warn(`[web] ${plain}`);
       startRenphoTimer(); // the Renpho runs that are due, from the Settings view's switches
     })
     .catch((error) => {
