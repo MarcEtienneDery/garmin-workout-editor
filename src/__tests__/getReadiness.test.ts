@@ -3,11 +3,12 @@ jest.mock("../mcp/context", () => ({ ...jest.requireActual("../mcp/context"), ge
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
-import { getSession } from "../mcp/context";
+import { configureMcp, getSession, getSettings } from "../mcp/context";
 import { type GetReadinessArgs, type GetWellnessArgs, getReadiness, getWellness, refreshWellness } from "../mcp/tools/wellness";
 import { closeStore, getStore } from "../shared/store";
 import { addDays, isWellnessBackfilling } from "../shared/wellnessSync";
 import { hrvResponse, sleepResponse, summaryResponse } from "./fixtures/wellness";
+import { seedProfile } from "./fixtures/profiles";
 
 const PROFILE = "MED";
 const TODAY = new Date().toISOString().slice(0, 10); // GARMIN_TZ is UTC below
@@ -52,6 +53,7 @@ beforeEach(() => {
   process.env.GARMIN_DETAIL_GAP_MS = "0";
   process.env.GARMIN_TZ = "UTC";
   process.env.WELLNESS_DAYS = String(KEPT);
+  seedProfile(PROFILE, { garmin: true });
 });
 afterEach(async () => {
   await settled();
@@ -116,8 +118,13 @@ describe("get_readiness", () => {
   });
 
   it("says so in mock mode and keeps nothing", async () => {
-    (getSession as jest.Mock).mockReturnValue({ profile: { name: "mock" }, mock: true });
-    expect(await readiness({})).toEqual(expect.objectContaining({ mock: true }));
+    const before = getSettings().mock;
+    configureMcp({ mock: true });
+    try {
+      expect(await readiness({})).toEqual(expect.objectContaining({ mock: true }));
+    } finally {
+      configureMcp({ mock: before });
+    }
   });
 });
 

@@ -57,3 +57,25 @@ describe("a weigh-in", () => {
     expect(SM.uploadState({ ...m, pushedAt: 5, pushError: "old" })).toEqual({ label: "on Garmin", cls: "ok" });
   });
 });
+
+describe("the web sign-in password typed twice", () => {
+  it("accepts two equal passwords of enough characters", () => {
+    expect(SM.passwordProblem("long enough", "long enough")).toBe("");
+    expect(SM.passwordProblem("12345678", "12345678")).toBe("");
+  });
+
+  it("says what is wrong: nothing typed, too short, or two fields that differ", () => {
+    expect(SM.passwordProblem("", "")).toBe("Enter a password.");
+    expect(SM.passwordProblem("short", "short")).toBe(`The password is at least ${SM.MIN_PASSWORD} characters.`);
+    expect(SM.passwordProblem("long enough", "long enougH")).toBe("The two passwords are not the same.");
+    expect(SM.passwordProblem("long enough", "")).toBe("The two passwords are not the same.");
+  });
+
+  it("checks a new profile's name first, then its password", () => {
+    expect(SM.profileProblem("SAM", "long enough", "long enough")).toBe("");
+    expect(SM.profileProblem(" Sam_2-b ", "long enough", "long enough")).toBe("");
+    expect(SM.profileProblem("a b", "long enough", "long enough")).toMatch(/letters, numbers, hyphens and underscores/);
+    expect(SM.profileProblem("", "long enough", "long enough")).toMatch(/letters, numbers/);
+    expect(SM.profileProblem("SAM", "long enough", "nope")).toBe("The two passwords are not the same.");
+  });
+});

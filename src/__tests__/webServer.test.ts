@@ -15,6 +15,8 @@ import * as foodSearch from "../shared/foodSearch";
 import * as foodAi from "../shared/foodAi";
 import { Decoder, Stream } from "@garmin/fitsdk";
 import { renphoRow } from "./fixtures/renpho";
+import { type SeedOptions, seedProfile } from "./fixtures/profiles";
+import { garminConnected as garminConnectedFor } from "../shared/profileLoader";
 import { hrvResponse, noWeighIn, sleepResponse, summaryResponse, weightResponse } from "./fixtures/wellness";
 
 // The Garmin actions are the MCP tool bodies; stub them so no test touches Garmin.
@@ -91,7 +93,7 @@ describe("web plan editor", () => {
   let server: http.Server;
   let base: string;
   const prevData = process.env.GARMIN_DATA_DIR;
-  const prevProfiles = process.env.GARMIN_PROFILES_DIR;
+  const prevStore = process.env.GARMIN_STORE_PATH;
   const prevDefault = process.env.GARMIN_PROFILE;
 
   const plan = {
@@ -104,9 +106,8 @@ describe("web plan editor", () => {
     dir = fs.mkdtempSync(path.join(os.tmpdir(), "web-test-"));
     fs.mkdirSync(path.join(dir, "data"));
     process.env.GARMIN_DATA_DIR = path.join(dir, "data");
-    process.env.GARMIN_PROFILES_DIR = path.join(dir, "config");
+    delete process.env.GARMIN_STORE_PATH;
     delete process.env.GARMIN_PROFILE;
-    fs.mkdirSync(path.join(dir, "config"));
     jest.clearAllMocks();
     seed("workout-plans/a.json", plan);
     server = await startWebServer({ host: "127.0.0.1", port: 0 });
@@ -118,14 +119,10 @@ describe("web plan editor", () => {
     closeStore();
     fs.rmSync(dir, { recursive: true, force: true });
     if (prevData === undefined) delete process.env.GARMIN_DATA_DIR; else process.env.GARMIN_DATA_DIR = prevData;
-    if (prevProfiles === undefined) delete process.env.GARMIN_PROFILES_DIR; else process.env.GARMIN_PROFILES_DIR = prevProfiles;
+    if (prevStore === undefined) delete process.env.GARMIN_STORE_PATH; else process.env.GARMIN_STORE_PATH = prevStore;
     if (prevDefault === undefined) delete process.env.GARMIN_PROFILE; else process.env.GARMIN_PROFILE = prevDefault;
   });
-  const addProfile = (name: string, webPassword?: string) =>
-    fs.writeFileSync(
-      path.join(dir, "config", `.env.${name}`),
-      `GARMIN_EMAIL=a@b.c\nGARMIN_PASSWORD=x\n${webPassword ? `WEB_PASSWORD=${webPassword}\n` : ""}`
-    );
+  const addProfile = (name: string, webPassword?: string, garmin: SeedOptions["garmin"] = true) => seedProfile(name, { garmin, webPassword });
 
   const call = async (method: string, url: string, body?: unknown, headers = H) => {
     const res = await fetch(base + url, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
@@ -1087,6 +1084,26 @@ describe("web plan editor", () => {
         expect(w.refreshWellness).not.toHaveBeenCalled(); // a read never calls Garmin
       });
 
+      it("shows the weigh-ins of a Renpho scale without Garmin, and leaves a day Garmin has its own weight for to Garmin", async () => {
+        addProfile("SAM", undefined, false);
+        const weigh = (id: string, back: number, kg: number, fat?: number) => {
+          const at = Date.parse(`${dayOf(back)}T07:30:00Z`);
+          store().renpho.addMeasurement("SAM", { id, measuredAt: at, day: dayOf(back), data: { weight: kg, bodyfat: fat, bmi: 24, muscle: 45, timeStamp: at / 1000 } });
+        };
+        weigh("a", 9, 82, 20); weigh("b", 6, 81.4); weigh("c", 3, 81, 19.5); weigh("d", 3, 81.4, 19.7); weigh("e", 0, 80.6);
+        const out = (await call("GET", "/api/weight")).json;
+        expect(out.days.map((d: any) => [d.day, d.weightKg])).toEqual([[dayOf(9), 82], [dayOf(6), 81.4], [dayOf(3), 81.2], [dayOf(0), 80.6]]); // two on a day are averaged
+        expect(out.days[2]).toEqual(expect.objectContaining({ bodyFatPercent: 19.6, bmi: 24, muscleKg: 36.54, totalKcal: null }));
+        expect(out.body).toEqual(expect.objectContaining({ weighIns: 4, latest: { day: dayOf(0), kg: 80.6, bodyFatPercent: null }, direction: "losing" }));
+        expect((await call("GET", "/api/garmin")).json.profileInfo.SAM).toEqual(expect.objectContaining({ garmin: false, hasWeight: true }));
+
+        // Renpho uploaded the weigh-in of dayOf(6) to Garmin, which kept it as its own: Garmin's number is the one shown
+        store().wellness.put("SAM", dayOf(6), "weight", weightResponse({ grams: 81_450 }));
+        const both = (await call("GET", "/api/weight")).json;
+        expect(both.days.find((d: any) => d.day === dayOf(6)).weightKg).toBe(81.45);
+        expect(both.body.weighIns).toBe(4);
+      });
+
       it("keeps one person's weight from another's", async () => {
         addProfile("MED", "med-pw");
         addProfile("SAM", "sam-pw");
@@ -1104,28 +1121,30 @@ describe("web plan editor", () => {
       beforeEach(() => { delete process.env.CREDENTIALS_KEY; });
       afterEach(() => { if (prevKey === undefined) delete process.env.CREDENTIALS_KEY; else process.env.CREDENTIALS_KEY = prevKey; });
 
-      it("shows where each login comes from, and never a password", async () => {
+      it("shows what each profile has connected, and never a password", async () => {
         expect((await call("GET", "/api/settings")).json).toEqual({ profile: null });
         addProfile("MED");
         const out = (await call("GET", "/api/settings")).json;
-        expect(out).toEqual(expect.objectContaining({ profile: "MED", garmin: { source: "file", email: "a@b.c", hasPassword: true, fileHasLogin: true } }));
+        expect(out).toEqual(expect.objectContaining({ profile: "MED", garmin: { connected: true, email: "a@b.c", hasPassword: true }, web: { hasPassword: false } }));
         expect(out.renpho).toEqual(expect.objectContaining({ account: null, settings: expect.objectContaining({ fetchEnabled: false, pushEnabled: false }), log: [], recent: [] }));
-        expect(out.encryption).toEqual({ enabled: false, plain: 0 });
+        expect(out.encryption).toEqual({ enabled: false, plain: 1 }); // the Garmin login is the one password kept
         expect(JSON.stringify(out)).not.toMatch(/"x"|password":"/);
       });
 
-      it("saves the Garmin login in the database, where it comes before the .env file, checks it and gives the file's back", async () => {
-        addProfile("MED");
+      it("saves the Garmin login in the database, checks it and removes it, the profile staying", async () => {
+        addProfile("MED", undefined, false);
+        expect((await call("GET", "/api/settings")).json.garmin).toEqual({ connected: false, email: null, hasPassword: false });
         expect((await call("POST", "/api/settings/garmin", { action: "save", email: "new@x.y", password: "" })).json.error).toBe("Enter the password.");
         const saved = await call("POST", "/api/settings/garmin", { action: "save", email: "new@x.y", password: "newpw" });
         expect(saved.status).toBe(200);
-        expect(saved.json.garmin).toEqual({ source: "settings", email: "new@x.y", hasPassword: true, fileHasLogin: true });
+        expect(saved.json.garmin).toEqual({ connected: true, email: "new@x.y", hasPassword: true });
         expect(JSON.stringify(saved.json)).not.toContain("newpw");
         expect(store().credentials.get("MED", "garmin")).toEqual(expect.objectContaining({ email: "new@x.y", password: "newpw" }));
         expect((await call("POST", "/api/settings/garmin", { action: "test" })).json).toEqual(expect.objectContaining({ ok: true, message: "Garmin accepted the login." }));
         expect(st.testGarminLogin).toHaveBeenCalledWith("MED");
-        expect((await call("POST", "/api/settings/garmin", { action: "remove" })).json.garmin.source).toBe("file");
-        expect((await call("POST", "/api/settings/garmin", { action: "import-env" })).json.garmin.source).toBe("settings");
+        expect((await call("POST", "/api/settings/garmin", { action: "remove" })).json.garmin.connected).toBe(false);
+        expect(store().profiles.has("MED")).toBe(true);
+        expect((await call("POST", "/api/settings/garmin", { action: "import-env" })).status).toBe(400);
         expect((await call("POST", "/api/settings/garmin", { action: "nonsense" })).status).toBe(400);
       });
 
@@ -1168,6 +1187,31 @@ describe("web plan editor", () => {
         expect((decoder.read().messages as any).weightScaleMesgs).toHaveLength(3);
       });
 
+      it("sets the web sign-in password of a profile, typed twice, and the profile signs in with it at once", async () => {
+        addProfile("MED");
+        const save = (body: object, headers = H) => call("POST", "/api/settings/web", { action: "save", ...body }, headers);
+        expect((await save({ password: "short", confirm: "short" })).json.error).toMatch(/at least 8 characters/);
+        expect((await save({ password: "", confirm: "" })).json.error).toBe("Enter a password.");
+        expect((await save({ password: "long enough", confirm: "long enougH" })).json.error).toBe("The two passwords are not the same.");
+        expect((await save({ password: "long enough" })).status).toBe(400); // the second field is part of the request
+        expect(store().profiles.webPasswordHash("MED")).toBeNull(); // none of those saved anything
+        expect((await call("POST", "/api/settings/web", { action: "nonsense" })).status).toBe(400);
+        const saved = await save({ password: "long enough", confirm: "long enough" });
+        expect(saved.status).toBe(200);
+        expect(saved.json.web).toEqual({ hasPassword: true });
+        expect(JSON.stringify(saved.json)).not.toContain("long enough");
+        expect((await call("GET", "/api/files")).status).toBe(401); // a profile with a password makes the editor ask for one
+        expect((await call("GET", "/api/files", undefined, login("MED", "long enough"))).status).toBe(200);
+        expect((await call("GET", "/api/files", undefined, login("MED", "wrong"))).status).toBe(401);
+        // it can be changed, by the profile itself, but not taken away: the password is mandatory
+        expect((await save({ password: "a new password", confirm: "a new password" }, login("MED", "long enough"))).json.web).toEqual({ hasPassword: true });
+        expect((await call("GET", "/api/files", undefined, login("MED", "long enough"))).status).toBe(401);
+        expect((await call("GET", "/api/files", undefined, login("MED", "a new password"))).status).toBe(200);
+        const removed = await call("POST", "/api/settings/web", { action: "remove" }, login("MED", "a new password"));
+        expect(removed.status).toBe(400);
+        expect(store().profiles.webPasswordHash("MED")).not.toBeNull();
+      });
+
       it("lets a profile login change only its own logins", async () => {
         addProfile("MED", "med-pw");
         addProfile("SAM", "sam-pw");
@@ -1176,7 +1220,7 @@ describe("web plan editor", () => {
         const out = await call("POST", "/api/settings/garmin", { profile: "MED", action: "save", email: "sam-new@x.y", password: "pw" }, as("SAM", "sam-pw"));
         expect(out.json.profile).toBe("SAM"); // a profile login always acts as itself
         expect(store().credentials.get("SAM", "garmin")!.email).toBe("sam-new@x.y");
-        expect(store().credentials.get("MED", "garmin")).toBeNull();
+        expect(store().credentials.get("MED", "garmin")!.email).toBe("a@b.c"); // MED's own login is as it was
         expect((await call("GET", "/api/settings?profile=MED", undefined, as("SAM", "sam-pw"))).json.profile).toBe("SAM");
       });
     });
@@ -1267,9 +1311,96 @@ describe("web plan editor", () => {
     it("is disabled without a configured profile", async () => {
       const info = await call("GET", "/api/garmin");
       expect(info.json).toEqual(expect.objectContaining({ enabled: false, profiles: [] }));
-      expect(info.json.reason).toMatch(/No Garmin profiles/);
+      expect(info.json.reason).toMatch(/Garmin is not connected/);
       expect((await act({ action: "upload" })).status).toBe(409);
       expect(g.uploadPlan).not.toHaveBeenCalled();
+    });
+
+    it("is per profile: one without a Garmin login is refused with a 409 where Garmin is needed, and the others go on", async () => {
+      addProfile("PLAIN", undefined, false);
+      addProfile("WITH");
+      const info = (await call("GET", "/api/garmin")).json;
+      expect(info).toEqual(expect.objectContaining({ enabled: true, profiles: ["PLAIN", "WITH"], connected: ["WITH"] }));
+      expect(info.profileInfo).toEqual({
+        PLAIN: { garmin: false, renpho: false, webPassword: false, hasActivities: false, hasWellness: false, hasWeight: false },
+        WITH: { garmin: true, renpho: false, webPassword: false, hasActivities: false, hasWellness: false, hasWeight: false },
+      });
+      const refused: [string, string, unknown?][] = [
+        ["POST", "/api/garmin/action", { action: "upload", path: "workout-plans/a.json", confirm: true, profile: "PLAIN" }],
+        ["GET", "/api/workouts?profile=PLAIN"],
+        ["GET", "/api/garmin/devices?profile=PLAIN"],
+        ["GET", "/api/garmin/workout?id=5&profile=PLAIN"],
+        ["POST", "/api/garmin/status", { path: "workout-plans/a.json", profile: "PLAIN" }],
+        ["POST", "/api/activities/sync", { profile: "PLAIN" }],
+        ["POST", "/api/activities/detail", { profile: "PLAIN", id: "1" }],
+        ["POST", "/api/wellness/sync", { profile: "PLAIN" }],
+        ["POST", "/api/settings/garmin", { profile: "PLAIN", action: "test" }],
+      ];
+      for (const [method, url, body] of refused) {
+        const r = await call(method, url, body);
+        if (url === "/api/settings/garmin") { expect(r.status).toBe(200); expect(r.json.garmin.connected).toBe(false); continue; } // the test asks the profile's login, which is none
+        expect([method, url, r.status, r.json.error]).toEqual([method, url, 409, expect.stringMatching(/Profile "PLAIN" has no Garmin login/)]);
+      }
+      expect(g.uploadPlan).not.toHaveBeenCalled();
+      expect(a.refreshActivities).not.toHaveBeenCalled();
+      expect(w.refreshWellness).not.toHaveBeenCalled();
+      expect((await act({ action: "upload", profile: "WITH" })).status).toBe(200);
+      expect(g.uploadPlan).toHaveBeenCalledWith("WITH", "workout-plans/a.json");
+    });
+
+    it("reads what the database holds for a profile without Garmin, and says where a view's data comes from", async () => {
+      addProfile("PLAIN", undefined, false);
+      expect((await call("GET", "/api/today")).json).toEqual(expect.objectContaining({ profile: "PLAIN", health: false, day: null }));
+      store().wellness.put("PLAIN", "2026-01-01", "summary", { totalSteps: 1 });
+      expect((await call("GET", "/api/today")).json.health).toBe(true); // something was stored from Garmin once
+      expect((await call("GET", "/api/garmin")).json.profileInfo.PLAIN).toEqual(expect.objectContaining({ garmin: false, hasWellness: true }));
+      expect((await call("GET", "/api/activities")).json).toEqual(expect.objectContaining({ profile: "PLAIN", activities: [] }));
+    });
+
+    it("adds a profile from a name and a password typed twice, for the admin only, and refuses one without a password", async () => {
+      const pw = { password: "long enough", confirm: "long enough" };
+      expect((await call("POST", "/api/profiles", { name: "a b", ...pw })).status).toBe(400);
+      expect((await call("POST", "/api/profiles", pw)).status).toBe(400);
+      const noPassword = await call("POST", "/api/profiles", { name: "NEW" });
+      expect(noPassword.status).toBe(400);
+      expect(noPassword.json.error).toBe("Enter a password.");
+      expect((await call("POST", "/api/profiles", { name: "NEW", password: "long enough", confirm: "long enougH" })).json.error).toBe("The two passwords are not the same.");
+      expect((await call("POST", "/api/profiles", { name: "NEW", password: "short", confirm: "short" })).json.error).toMatch(/at least 8 characters/);
+      expect(store().profiles.has("NEW")).toBe(false); // a refused request makes no profile, with or without a password
+      const made = await call("POST", "/api/profiles", { name: " NEW ", ...pw });
+      expect(made.status).toBe(201);
+      expect(made.json).toEqual(expect.objectContaining({ name: "NEW", profiles: ["NEW"], connected: [], enabled: false }));
+      expect(made.json.profileInfo.NEW.webPassword).toBe(true);
+      expect(JSON.stringify(made.json)).not.toContain("long enough");
+      expect(store().profiles.checkWebPassword("NEW", "long enough")).toBe(true);
+      expect(garminConnectedFor("NEW")).toBe(false);
+      // with a password on the new profile, the editor asks for a sign-in from now on, and the profile signs in with it
+      expect((await call("GET", "/api/files")).status).toBe(401);
+      const login = { ...H, Authorization: "Basic " + Buffer.from("new:long enough").toString("base64") };
+      expect((await call("GET", "/api/files", undefined, login)).status).toBe(200);
+      expect((await call("POST", "/api/profiles", { name: "OTHER", ...pw }, login)).status).toBe(403); // the profile itself cannot add another
+
+      // a name that is taken, in any case, is refused and nothing is replaced (the admin token is how to ask now)
+      const admin = await startWebServer({ host: "127.0.0.1", port: 0, token: "admin-token" });
+      const again = await fetch(`http://127.0.0.1:${(admin.address() as AddressInfo).port}/api/profiles`, {
+        method: "POST",
+        headers: { ...H, Authorization: "Basic " + Buffer.from("x:admin-token").toString("base64") },
+        body: JSON.stringify({ name: "new", password: "another one", confirm: "another one" }),
+      });
+      expect(again.status).toBe(409);
+      expect(((await again.json()) as any).error).toMatch(/"NEW" exists already/);
+      expect(store().profiles.checkWebPassword("NEW", "long enough")).toBe(true);
+      await new Promise((r) => admin.close(r));
+    });
+
+    it("requires a Garmin login to switch the Renpho upload on, and works with the scale alone", async () => {
+      addProfile("PLAIN", undefined, false);
+      const refused = await call("POST", "/api/settings/renpho", { profile: "PLAIN", action: "save", email: "me@x.y", password: "rpw", fetchEnabled: true, pushEnabled: true });
+      expect(refused.status).toBe(400);
+      expect(refused.json.error).toMatch(/Connect Garmin first/);
+      const ok = await call("POST", "/api/settings/renpho", { profile: "PLAIN", action: "save", email: "me@x.y", password: "rpw", fetchEnabled: true });
+      expect(ok.status).toBe(200);
+      expect((await call("GET", "/api/garmin")).json.profileInfo.PLAIN.renpho).toBe(true);
     });
 
     it("requires confirmation, a known action and a usable profile", async () => {
@@ -1379,10 +1510,10 @@ describe("web plan editor", () => {
       expect((await call("GET", "/api/workouts?refresh=1")).json.truncated).toBe(true);
       expect(g.listLibraryWorkouts).toHaveBeenLastCalledWith("TEST", true);
 
-      fs.rmSync(path.join(dir, "config", ".env.TEST"));
+      store().credentials.delete("TEST", "garmin");
       const off = await call("GET", "/api/workouts");
       expect(off.status).toBe(409);
-      expect(off.json.error).toMatch(/No Garmin profiles/);
+      expect(off.json.error).toMatch(/Garmin is not connected/);
     });
 
     it("shows one workout from Garmin with the plan entries that carry it", async () => {
@@ -1620,6 +1751,16 @@ describe("web plan editor", () => {
       await new Promise((r) => admin.close(r));
     });
 
+    it("lets only the admin add a profile", async () => {
+      const body = { name: "NEW", password: "long enough", confirm: "long enough" };
+      expect((await as("MED", "med-pw")("POST", "/api/profiles", body)).status).toBe(403);
+      expect(store().profiles.has("NEW")).toBe(false);
+      const admin = await startWebServer({ host: "127.0.0.1", port: 0, token: "admin-token" });
+      const res = await fetch(`http://127.0.0.1:${(admin.address() as AddressInfo).port}/api/profiles`, { method: "POST", headers: { ...H, ...basic("x", "admin-token") }, body: JSON.stringify(body) });
+      expect(res.status).toBe(201);
+      await new Promise((r) => admin.close(r));
+    });
+
     it("runs Garmin actions as the logged-in profile, whatever the request says", async () => {
       const med = as("MED", "med-pw");
       const info = (await med("GET", "/api/garmin")).json;
@@ -1754,8 +1895,8 @@ describe("web plan editor", () => {
     it("allows a non-loopback bind with only profile passwords", async () => {
       const open = await startWebServer({ host: "0.0.0.0", port: 0 });
       await new Promise((r) => open.close(r));
-      fs.rmSync(path.join(dir, "config"), { recursive: true });
-      fs.mkdirSync(path.join(dir, "config"));
+      store().profiles.setWebPassword("MED", null);
+      store().profiles.setWebPassword("SAM", null);
       expect(() => startWebServer({ host: "0.0.0.0", port: 0 })).toThrow(/WEB_AUTH_TOKEN/);
     });
   });

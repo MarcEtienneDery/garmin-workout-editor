@@ -19,6 +19,7 @@ import { getLastNWeeksStart } from "../activityExporter";
 import ActivityExporter from "../activityExporter";
 import { GarminClient } from "../shared/garminClient";
 import { getAvailableProfiles, getMockProfile } from "../shared/profileLoader";
+import { seedProfile } from "./fixtures/profiles";
 
 const EXPECTED_TOOLS = [
   "create_workout",
@@ -80,11 +81,11 @@ beforeAll(() => {
   tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "garmin-mcp-test-"));
   dataDir = path.join(tmpRoot, "data");
 
-  for (const key of ["GARMIN_DATA_DIR", "GARMIN_PROFILES_DIR"]) {
+  for (const key of ["GARMIN_DATA_DIR", "GARMIN_STORE_PATH"]) {
     saved[key] = process.env[key];
   }
   process.env.GARMIN_DATA_DIR = dataDir;
-  process.env.GARMIN_PROFILES_DIR = path.join(tmpRoot, "config"); // does not exist yet
+  delete process.env.GARMIN_STORE_PATH;
 
   configureMcp({ mock: true, defaultProfile: undefined });
 });
@@ -354,6 +355,17 @@ describe("MCP server (mock mode, in-memory transport)", () => {
       expect(getStore().head("workout-plans/written.json")).toBeDefined();
     });
 
+    it("makes a new plan under workout-plans/ belong to the profile, and an overwrite keeps its owner", async () => {
+      const mock = getMockProfile().name;
+      const made = await callTool(client, "write_plan", { path: "workout-plans/owned.json", content: [{ workoutName: "v1" }] });
+      expect(made.value.owner).toBe(mock);
+      expect(getStore().head("workout-plans/owned.json")!.owner).toBe(mock);
+      getStore().setOwner("workout-plans/owned.json", null);
+      const again = await callTool(client, "write_plan", { path: "workout-plans/owned.json", content: [{ workoutName: "v2" }] });
+      expect(again.value.owner).toBeUndefined();
+      expect(getStore().head("workout-plans/owned.json")!.owner).toBeNull();
+    });
+
     it("keeps the version it overwrites in the history", async () => {
       await callTool(client, "write_plan", { path: "workout-plans/history.json", content: [{ workoutName: "v1" }] });
       await callTool(client, "write_plan", { path: "workout-plans/history.json", content: [{ workoutName: "v2" }] });
@@ -515,9 +527,7 @@ describe("MCP server (mock mode, in-memory transport)", () => {
     });
 
     it("refuses a profile that does not exist, as the web editor does, rather than logging under a made-up name", async () => {
-      const configDir = process.env.GARMIN_PROFILES_DIR!, file = path.join(configDir, ".env.TESTER");
-      fs.mkdirSync(configDir, { recursive: true });
-      fs.writeFileSync(file, 'GARMIN_EMAIL=t@example.com\nGARMIN_PASSWORD="pw"\n');
+      seedProfile("TESTER");
       configureMcp({ mock: false, defaultProfile: undefined });
       try {
         const item = { name: "Soup", kcal: 120 };
@@ -531,7 +541,6 @@ describe("MCP server (mock mode, in-memory transport)", () => {
         getStore().nutrition.remove("TESTER", getStore().nutrition.range("TESTER", "2000-01-01", "2100-01-01").map((e) => e.id));
       } finally {
         configureMcp({ mock: true, defaultProfile: undefined });
-        fs.rmSync(file, { force: true });
       }
     });
 
@@ -628,6 +637,94 @@ describe("MCP server (mock mode, in-memory transport)", () => {
       const out = await callTool(client, "list_devices");
       expect(out.value.devices).toEqual([]);
     });
+  });
+});
+
+describe("Garmin and Renpho are optional (a profile without a Garmin login)", () => {
+  let client: Client;
+  beforeAll(async () => {
+    seedProfile("PLAIN");
+    seedProfile("WITHGARMIN", { garmin: true });
+    configureMcp({ mock: false, defaultProfile: "PLAIN" });
+    client = await connect();
+  });
+  afterAll(async () => {
+    await client.close();
+    configureMcp({ mock: true, defaultProfile: undefined });
+  });
+
+  it("list_profiles says which profiles have a Garmin login", async () => {
+    const out = await callTool(client, "list_profiles");
+    expect(out.value.profiles).toEqual(expect.arrayContaining(["PLAIN", "WITHGARMIN"]));
+    expect(out.value.garminProfiles).toEqual(["WITHGARMIN"]);
+  });
+
+  it("the Garmin tools say there is no login instead of failing at the sign-in", async () => {
+    for (const [name, args] of [["list_workouts", {}], ["list_devices", {}]] as const) {
+      const out = await callTool(client, name, args);
+      expect(out.isError).toBe(true);
+      expect(out.text).toMatch(/Profile "PLAIN" has no Garmin login/);
+    }
+  });
+
+  it("get_activities, get_readiness and get_wellness answer from what is stored, and say Garmin is not connected", async () => {
+    const activities = await callTool(client, "get_activities", { period: "all" });
+    expect(activities.isError).toBe(false);
+    expect(activities.value.activities).toEqual([]);
+    expect(activities.value.sync).toEqual(expect.objectContaining({ garmin: "not connected", note: expect.stringMatching(/no Garmin login/) }));
+    const readiness = await callTool(client, "get_readiness");
+    expect(readiness.isError).toBe(false);
+    expect(readiness.value.profile).toBe("PLAIN");
+    expect(readiness.value.sync.garmin).toBe("not connected");
+    const wellness = await callTool(client, "get_wellness", { days: 7 });
+    expect(wellness.isError).toBe(false);
+    expect(wellness.value.sync.garmin).toBe("not connected");
+  });
+
+  it("the plan and food tools work for it as for any profile", async () => {
+    const out = await callTool(client, "log_meal", { date: "2026-10-17", meal: "lunch", items: [{ name: "Soup", kcal: 120 }] });
+    expect(out.isError).toBe(false);
+    expect(out.value.profile).toBe("PLAIN");
+    expect((await callTool(client, "list_plans")).isError).toBe(false);
+  });
+
+  it("write_plan gives a new plan to the named profile, else to the default, and an existing plan keeps its owner", async () => {
+    const byDefault = await callTool(client, "write_plan", { path: "workout-plans/own-default.json", content: [{ workoutName: "a" }] });
+    expect(byDefault.value.owner).toBe("PLAIN");
+    expect(getStore().head("workout-plans/own-default.json")!.owner).toBe("PLAIN");
+    const named = await callTool(client, "write_plan", { path: "workout-plans/own-named.json", content: [{ workoutName: "a" }], profile: "WITHGARMIN" });
+    expect(named.value.owner).toBe("WITHGARMIN");
+    expect(getStore().head("workout-plans/own-named.json")!.owner).toBe("WITHGARMIN");
+    await callTool(client, "write_plan", { path: "workout-plans/own-named.json", content: [{ workoutName: "b" }], profile: "PLAIN" });
+    expect(getStore().head("workout-plans/own-named.json")!.owner).toBe("WITHGARMIN");
+    const unknown = await callTool(client, "write_plan", { path: "workout-plans/own-nobody.json", content: [], profile: "NOBODY" });
+    expect(unknown.isError).toBe(true);
+    expect(getStore().head("workout-plans/own-nobody.json")).toBeUndefined();
+  });
+
+  it("write_plan asks which profile a new plan is for when there are several and no default", async () => {
+    configureMcp({ mock: false, defaultProfile: undefined });
+    try {
+      const out = await callTool(client, "write_plan", { path: "workout-plans/own-ambiguous.json", content: [] });
+      expect(out.isError).toBe(true);
+      expect(out.text).toMatch(/Multiple profiles are available/);
+      expect(getStore().head("workout-plans/own-ambiguous.json")).toBeUndefined();
+      // a plan under data/<profile>/ needs no profile argument: its path says whose it is
+      expect((await callTool(client, "write_plan", { path: "data/PLAIN/note.json", content: { a: 1 } })).isError).toBe(false);
+    } finally {
+      configureMcp({ mock: false, defaultProfile: "PLAIN" });
+    }
+  });
+
+  it("get_wellness counts the weigh-ins of a Renpho scale in the body trend, with or without Garmin", async () => {
+    const day = (n: number) => `2026-10-${String(n).padStart(2, "0")}`;
+    for (let n = 1; n <= 20; n += 3) {
+      getStore().renpho.addMeasurement("PLAIN", { id: `w${n}`, measuredAt: Date.parse(`${day(n)}T08:00:00Z`), day: day(n), data: { weight: 80 + n / 10, timeStamp: Date.parse(`${day(n)}T08:00:00Z`) / 1000, bodyfat: 18 } });
+    }
+    const out = await callTool(client, "get_wellness", { from: "2026-10-01", to: "2026-10-20" });
+    expect(out.value.body.weighIns).toBe(7);
+    expect(out.value.body.latest).toEqual({ day: "2026-10-19", kg: 81.9, bodyFatPercent: 18 });
+    expect(out.value.body.direction).toBe("gaining");
   });
 });
 
@@ -770,14 +867,9 @@ describe("supporting refactors", () => {
   });
 
   describe("profile loader overrides", () => {
-    it("reads profiles from GARMIN_PROFILES_DIR and keeps mock data under GARMIN_DATA_DIR", () => {
-      const configDir = process.env.GARMIN_PROFILES_DIR!;
-      expect(getAvailableProfiles()).toEqual([]); // directory does not exist yet
-
-      fs.mkdirSync(configDir, { recursive: true });
-      fs.writeFileSync(path.join(configDir, ".env.TESTER"), 'GARMIN_EMAIL=t@example.com\nGARMIN_PASSWORD="pw"\n');
-      fs.writeFileSync(path.join(configDir, ".env.example"), "");
-      expect(getAvailableProfiles()).toEqual(["TESTER"]);
+    it("lists the profiles of the database and keeps mock data under GARMIN_DATA_DIR", () => {
+      seedProfile("LISTED");
+      expect(getAvailableProfiles()).toContain("LISTED");
 
       expect(getMockProfile().dataDir).toBe(path.join(dataDir, "mock"));
     });

@@ -6,7 +6,8 @@ import { getLastNWeeksStart } from "../../activityExporter";
 import { lapIntervals } from "../../shared/activityChart";
 import { type ActivitySource, COOL_OFF_MS, LeaseLost, SETTLE_MS, isBackfilling, startBackfill, syncCharts, syncDetails, syncList, syncStatus, withLease, type SyncStatus } from "../../shared/activitySync";
 import { getStore } from "../../shared/store";
-import { type Session, getSession, requireAuth, runCaptured } from "../context";
+import { garminConnected } from "../../shared/profileLoader";
+import { type Session, dataProfile, getDataExporter, getSession, getSettings, requireAuth, runCaptured } from "../context";
 
 /**
  * Names the one that syncs, in the lease the MCP server and the web editor share. Every operation takes a name of its
@@ -135,7 +136,7 @@ export function startBackgroundSync(profile?: string): { started: boolean; reaso
 }
 
 export function activitySyncStatus(profile?: string): SyncStatus {
-  return syncStatus(getStore(), getSession(profile).profile.name);
+  return syncStatus(getStore(), dataProfile(profile));
 }
 
 // ── get_activities ──
@@ -174,7 +175,6 @@ function rangeFor(args: GetActivitiesArgs): { from?: string; to?: string } {
  * history and of the details fills in the background.
  */
 export async function getActivities(args: GetActivitiesArgs) {
-  const session = getSession(args.profile);
   const options = {
     filterToLastWeek: !args.weekStart && !args.weekEnd && args.period === "last-week",
     filterToThisWeek: !args.weekStart && !args.weekEnd && args.period === "this-week",
@@ -183,15 +183,18 @@ export async function getActivities(args: GetActivitiesArgs) {
     customWeekEnd: args.weekEnd,
   };
 
-  if (session.mock) {
+  if (getSettings().mock) {
     // Mock mode answers with generated activities and keeps nothing: the database holds only what Garmin returned.
+    const session = getSession(args.profile);
     const raw = await session.exporter.fetchActivities(args.limit, args.includeDetails);
     if (raw.length === 0) throw new Error("No mock activities.");
     return { ...session.exporter.buildExtractedActivities(raw, options), mock: true };
   }
 
-  const store = getStore(), name = session.profile.name;
-  const refreshed = await refreshActivities(args.profile);
+  const store = getStore(), name = dataProfile(args.profile), exporter = getDataExporter();
+  // Garmin is optional: a profile without a login answers from what is stored, which is nothing unless it had a login before.
+  const connected = garminConnected(name);
+  const refreshed = connected ? await refreshActivities(name) : { added: 0, busy: false, error: null };
   const range = rangeFor(args);
   const inRange = () => store.activities.between(name, { ...range, type: args.type });
   let rows = inRange();
@@ -200,19 +203,19 @@ export async function getActivities(args: GetActivitiesArgs) {
   if (args.includeDetails) {
     const lacking = new Set(store.activities.needingDetail(name, { settleMs: SETTLE_MS }).map((r) => r.id));
     const ids = rows.filter((r) => lacking.has(r.id)).map((r) => r.id);
-    const got = await fetchDetailsNow(args.profile, ids);
+    const got = connected ? await fetchDetailsNow(name, ids) : { fetched: 0, error: null };
     detailsError = got.error;
     if (got.fetched > 0) rows = inRange();
   }
 
   const raw = rows.map((r) => ({ ...r.raw, ...(r.detail ?? {}) }));
-  const data = session.exporter.buildExtractedActivities(raw, options);
+  const data = exporter.buildExtractedActivities(raw, options);
   const total = data.activities.length;
   const shown = data.activities.slice(0, args.limit);
   const runs = shown.filter((a: any) => a.activityType === "running").map((a: any) => String(a.id));
-  if (args.includeDetails && runs.length) {
+  if (connected && args.includeDetails && runs.length) {
     // a run's laps, newest first: the background job takes any that are left
-    for (const { id } of store.activities.needingChart(name, { ids: runs, limit: INLINE_CHARTS })) await fetchChartNow(args.profile, id);
+    for (const { id } of store.activities.needingChart(name, { ids: runs, limit: INLINE_CHARTS })) await fetchChartNow(name, id);
   }
   // A run's laps tell the reps apart; Garmin's own summary of it merges the laps of a kind into one block. Without laps stored, the summary stays.
   const activities = shown.map((a: any) => {
@@ -220,9 +223,10 @@ export async function getActivities(args: GetActivitiesArgs) {
     const laps = lapIntervals(store.activities.getChart(name, String(a.id)));
     return laps.length ? { ...a, exerciseSets: laps } : a;
   });
-  const background = startBackgroundSync(args.profile);
+  const background = connected ? startBackgroundSync(name) : { started: false };
 
-  const sync = activitySyncStatus(args.profile);
+  // without a Garmin login nothing is fetched, so nothing is pending or running, and an old failure no longer says anything
+  const sync = connected ? activitySyncStatus(name) : { ...activitySyncStatus(name), pendingDetails: 0, pendingCharts: 0, syncing: false, error: null };
   return {
     ...data,
     totalActivities: activities.length,
@@ -233,11 +237,14 @@ export async function getActivities(args: GetActivitiesArgs) {
       ...sync,
       added: refreshed.added,
       ...(refreshed.error || detailsError ? { error: refreshed.error ?? detailsError } : {}),
-      note: sync.syncing || background.started
-        ? "The rest of the history and of the details is being stored in the background; ask again later for more."
-        : sync.error
-          ? "The last sync stopped early; it resumes on the next call."
-          : undefined,
+      ...(connected ? {} : { garmin: "not connected" }),
+      note: !connected
+        ? `Profile "${name}" has no Garmin login, so these are only the activities already stored.`
+        : sync.syncing || background.started
+          ? "The rest of the history and of the details is being stored in the background; ask again later for more."
+          : sync.error
+            ? "The last sync stopped early; it resumes on the next call."
+            : undefined,
     },
   };
 }

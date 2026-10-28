@@ -1,8 +1,6 @@
 # Garmin Workout Editor
 
-Keep your Garmin activities in a database, edit your workout plans in a web editor or through Claude (MCP), and push them to Garmin.
-
-> **⚠️ Authentication Note:** Direct email/password authentication is currently blocked by Garmin. Use the **session cookie method** instead. See [AUTH_ISSUES.md](AUTH_ISSUES.md) and [GET_SESSION.md](GET_SESSION.md) for solutions.
+Edit your workout plans in a web editor or through Claude (MCP), log what you eat, and, if you have them, keep your Garmin activities and health data in a database and push workouts to Garmin. **Garmin is optional, and so is a Renpho scale**: a profile with neither still has the plan editor, the calendar and the food log.
 
 ## Features
 
@@ -14,41 +12,17 @@ Keep your Garmin activities in a database, edit your workout plans in a web edit
 - Schedule a workout plan to Garmin calendar
 - Comprehensive test suite with unit and integration tests
 - Mock mode for testing without real Garmin credentials
-- **Session cookie authentication** (works even with 2FA enabled)
+- Garmin and Renpho are optional, per profile
 
 ## Setup
 
-### Quick Start (Session Cookie - Recommended)
+1. Install dependencies: `npm install`.
+2. Run the plan editor (`npm run web`, <http://127.0.0.1:8788>) or the MCP server (`npm run mcp`); see below.
+3. **Add a profile**: on the Today page of a new install press *Add a profile* (or *Settings → + Add profile*) and give it a name and a **web sign-in password, typed twice** (at least 8 characters; it is mandatory). Its plans, calendar and food log need nothing else. Profiles live in the database; there are no `.env.<profile>` files. Once a profile has a password the editor asks for a sign-in, so the page asks you to sign in with the name and password you just chose.
+4. **Optional, per profile, in Settings**: connect **Garmin** (email and password) to sync activities and health data and to send workouts to the watch, and a **Renpho** scale for weigh-ins (they show in the Weight view with or without Garmin; uploading them to Garmin needs a Garmin login). Views that need a connection that a profile does not have are left out of the header: Workouts needs Garmin; Activities and Recovery need Garmin or data stored from it; Weight needs Garmin, a Renpho scale or stored weigh-ins.
+5. Garmin-less profiles need a time zone for "today" (`TZ`, or `GARMIN_TZ`), as there are no activities to read it from.
 
-1. Install dependencies:
-```bash
-npm install
-```
-
-2. Get your session cookie (see [GET_SESSION.md](GET_SESSION.md)):
-```bash
-# Add to .env file:
-GARMIN_SESSION_COOKIE="your_cookie_from_browser"
-```
-
-3. Run the plan editor (`npm run web`) or the MCP server (`npm run mcp`); see below.
-
-### Alternative: Email & Password (If no 2FA)
-
-1. Install dependencies:
-```bash
-npm install
-```
-
-2. Create a `.env` file with your Garmin credentials:
-```
-GARMIN_EMAIL=your_email@example.com
-GARMIN_PASSWORD="your_password"
-```
-
-3. Run the plan editor (`npm run web`) or the MCP server (`npm run mcp`); see below.
-
-**Note:** If this fails with "You have been blocked", use the session cookie method instead.
+**Upgrading from `.env.<profile>` files.** They are not read any more. Every profile that already has data (activities, food, plans, a saved login) stays, and one that has no web sign-in password yet is asked to set one (a notice on its Today page, and *Settings → Web sign-in* says "password required"). To bring in a login or a web password that lived only in a file, run once `npm run store -- import-env <dir of the files>` (Docker: `docker exec garmin-mcp node dist/storeCli.js import-env /config`, with the old `./config` mounted for that one run). It registers each file's profile, saves its `GARMIN_EMAIL`/`GARMIN_PASSWORD`, and keeps `WEB_PASSWORD` as a hash; what the database already holds is never replaced.
 
 ## Usage
 
@@ -82,11 +56,11 @@ npm run web          # http://127.0.0.1:8788
 - **Validation**: the same pre-upload checks as `validate_plan`, run as you type; saving is never blocked by validation errors. `Ctrl/Cmd+S` saves.
 - **Safe writes**: *Save* is enabled, with a ● on it, only while the editor has unsaved changes. A save is refused (409) if someone else saved the file since you opened it (e.g. through the MCP server). Reload to see their version.
 - **History**: every save keeps the version it replaces. *History* (in the *File* menu, with *Reload*, *Duplicate*, *Rename* and *Delete*) lists the earlier versions of the open file with who saved them (web, mcp, cli, restore); *Load* puts one in the editor and *Save* makes it the current version again. A deleted file can be brought back from the command line (see [Storage](#storage)).
-- **Config**: `WEB_PORT` (8788), `WEB_HOST` (127.0.0.1). Binding to a non-loopback host requires `WEB_AUTH_TOKEN` or at least one profile `WEB_PASSWORD` (below). `FOOD_AI_BACKEND`, `CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_API_KEY`, `FOOD_AI_MODEL` and `FOOD_AI_DAILY_LIMIT` are for the Food view's AI box (see [Food log](#food-log)).
-- **Logins**: the page opens with a sign-in form. Add `WEB_PASSWORD=<password>` to a profile's `.env.<profile>` and sign in with the profile name as user name (any case: `med` signs in as `MED`). That login sees only `data/<profile>/`, the shared plans in `workout-plans/` and the plans it created itself, and its Garmin buttons always act as that profile. `WEB_AUTH_TOKEN` (any user name, the token as password) stays the admin login with access to everything. The header shows who is signed in (the profile name, or *Admin*) with a *Sign out* entry; a login lasts 7 days (kept in an `HttpOnly` cookie, in memory, so a restart signs everyone out) and ends when its password changes or is removed. Passwords are read on every request, so edits apply without a restart. Generate one with `openssl rand -hex 16`. Scripts can skip the form and send the same credentials as HTTP Basic.
+- **Config**: `WEB_PORT` (8788), `WEB_HOST` (127.0.0.1). Binding to a non-loopback host requires `WEB_AUTH_TOKEN` or at least one profile with a web sign-in password (below). `FOOD_AI_BACKEND`, `CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_API_KEY`, `FOOD_AI_MODEL` and `FOOD_AI_DAILY_LIMIT` are for the Food view's AI box (see [Food log](#food-log)).
+- **Logins**: the page opens with a sign-in form. Every profile has a **web sign-in password**: it is given when the profile is added, and *Settings → Web sign-in* changes it (typed in two fields that must match, at least 8 characters; kept as a salted scrypt hash in the database; it cannot be removed). Sign in with the profile name as user name (any case: `med` signs in as `MED`). That login sees only `data/<profile>/`, the shared plans in `workout-plans/` and the plans it created itself, and its Garmin buttons always act as that profile. `WEB_AUTH_TOKEN` (any user name, the token as password) stays the admin login with access to everything, and is the only login that can add a profile. The header shows who is signed in (the profile name, or *Admin*) with a *Sign out* entry; a login lasts 7 days (kept in an `HttpOnly` cookie, in memory, so a restart signs everyone out) and ends when its password changes or is removed. Passwords are checked on every request, so a change applies without a restart. Generate a token with `openssl rand -hex 16`. Scripts can skip the form and send the same credentials as HTTP Basic.
 - **Garmin menu** (header): *Upload*, *Schedule*, *Upload + schedule* and *Send to watch* run the same code as the MCP tools `upload_workouts`, `schedule_plan`, `upload_and_schedule_plan` and `send_to_device`. Each one saves the file first, shows what it will do (workouts with a `workoutId` are deleted and recreated) and asks for confirmation; uploads are refused while validation has errors. New `workoutId`s are written back and the editor reloads them, and the Garmin log appears under *Checks → Garmin*.
-- The buttons need the Garmin credentials: the `.env.<profile>` files in `GARMIN_PROFILES_DIR` (Docker: mount `./config` at `/config:ro`). Without a profile (or in mock mode) they stay disabled. Plans under `data/<profile>/` use that profile; for `workout-plans/` a profile picker appears when you have several.
-- Anyone with `WEB_AUTH_TOKEN` (or a profile's `WEB_PASSWORD`, for that profile) can change that Garmin account from here; use HTTPS (reverse proxy or tunnel) if the editor is reachable beyond your LAN. Behind an HTTPS proxy, forward `X-Forwarded-Proto` so the session cookie is marked `Secure`.
+- The buttons need a Garmin login on the profile they act as (*Settings → Garmin account*). For a profile without one (or in mock mode) they stay disabled, and a request that needs Garmin is answered 409. Plans under `data/<profile>/` use that profile; for `workout-plans/` a profile picker appears when you have several.
+- Anyone with `WEB_AUTH_TOKEN` (or a profile's web sign-in password, for that profile) can change that Garmin account from here; use HTTPS (reverse proxy or tunnel) if the editor is reachable beyond your LAN. Behind an HTTPS proxy, forward `X-Forwarded-Proto` so the session cookie is marked `Secure`.
 - **Navigation** is the same in every view and at every width: the header always shows the *Today / Plans / Workouts / Calendar / Activities / Recovery / Weight / Food* switcher and your account (on a phone the strip scrolls, and the open view is brought into sight). The Plans view adds a toolbar under it (Save, the file tools and the Garmin menu); the other views keep their own controls in their panes. A plan opens on its **Outline**; the JSON editor is the Editor tab on phones (the middle pane on desktop), and a file with no workout list, or with broken JSON, opens in the editor.
 - Works on phones: below 900px the Plans view shows one pane at a time (Files / Editor / Outline / Checks tabs at the bottom) with the file tools in a ⋯ menu; in the calendars (plans and activities) the bars and chips only colour the days, and a tap lists the day below the grid; the Activities list and its details are one pane at a time.
 
@@ -105,7 +79,7 @@ An MCP server exposes this repo's functionality to Claude, so the model can revi
 | Garmin writes | `upload_workouts`, `upload_single_workout`, `schedule_plan`, `upload_and_schedule_plan`, `send_to_device` |
 | Garmin writes, no plan file | `create_workout`, `schedule_workout` |
 
-There is also an `update_weekly_workouts` prompt that walks through the weekly review. Plans are addressed as `workout-plans/<name>.json` or `data/<profile>/<name>.json`; only `.json` documents under those two roots exist (the token cache and `.env` files are never reachable). Every `write_plan` / `upsert_plan_workout` keeps the previous version in the [history](#storage).
+There is also an `update_weekly_workouts` prompt that walks through the weekly review. Plans are addressed as `workout-plans/<name>.json` or `data/<profile>/<name>.json`; only `.json` documents under those two roots exist (the token cache and `.env` files are never reachable). Every `write_plan` / `upsert_plan_workout` keeps the previous version in the [history](#storage). A new plan under `workout-plans/` belongs to the profile named in `write_plan`'s `profile` argument (or the default or only profile) and other profiles do not see it; an existing plan keeps its owner.
 
 Garmin write tools are marked destructive so the client asks before running them, and the server instructions tell Claude to get your explicit confirmation first. Uploads delete and recreate any workout that already has a `workoutId` and write the new IDs back into the plan file.
 
@@ -127,9 +101,11 @@ The **Weight** view is a tab of its own, from the same table: the last weigh-in,
 
 The web editor's **Settings** view (the account menu, top right) holds a profile's logins and the Renpho sync, and monitors it.
 
-- **Garmin account:** the email and password the web editor and the MCP server sign in to Garmin with. A login saved here is kept in the database and **comes before the profile's `.env.<name>` file**; *Move the .env login here* takes the file's in (the file is left as it was, so its `GARMIN_` lines can be deleted afterwards), and *Use the .env login again* forgets the saved one. A profile can exist by a saved login alone. The MCP server reads the same database, so a change applies to it at once, without a restart. A password is only ever sent to the server, never back to the page.
+- **Profiles:** *+ Add profile* (admin login only) makes a profile from a name and its web sign-in password, typed twice. Nothing else is needed for it to have plans, a calendar and a food log.
+- **Garmin account (optional):** the email and password the web editor and the MCP server sign in to Garmin with, saved in the database. *Disconnect Garmin* forgets the login and its session and switches the Renpho upload off; the profile and everything synced stay (the views that have data stay, the ones that only fed on Garmin go). The MCP server reads the same database, so a change applies to it at once, without a restart. A password is only ever sent to the server, never back to the page.
+- **Web sign-in (required):** the password this profile signs in to the web editor with (see *Logins* above), typed twice to change it. A profile made before the password was mandatory, or imported without one, shows *password required* here and a notice on its Today page until it has one.
 - **Encryption:** set `CREDENTIALS_KEY` (`openssl rand -hex 32`) in the compose file, **for every service that shares the database**, and saved passwords are encrypted in the database (AES-256-GCM, bound to their row), so a copy or a backup of `garmin.db` gives no password; a password saved before the key was set is encrypted the first time it is read. The view says whether passwords are encrypted. The key protects the file at rest, not a running container whose environment can be read. Without a key passwords are stored as plain text, as the Garmin tokens in the same database are. If a login is encrypted and the key is missing or wrong, the tools say so instead of acting as if there were no login.
-- **Renpho scale:** brings your Renpho weigh-ins in, and can upload them to Garmin Connect with their body composition. Renpho has **no public API**: the client follows what the Renpho Health app does (an encrypted JSON protocol on `cloud.renpho.com`, as others have documented it), so it can stop working when Renpho changes the app, and an account that signs in with Google or Apple needs a password set in the Renpho app first. Only reads from Renpho. Every weigh-in is kept as Renpho sent it in `renpho_measurements`, a ledger with when it was uploaded to Garmin. *Fetch my weigh-ins* runs on a schedule (every 1 to 24 hours; the web editor's timer looks every 5 minutes); *Sync now* runs once. *Upload new weigh-ins to Garmin* is **off by default and changes your Garmin account**: each weigh-in is sent once, as a FIT weight file like a Garmin scale's (built with Garmin's FIT SDK) through the endpoint of Garmin Connect's import page, from the day you choose on (today when you switch it on, so the history is not sent by surprise). Try one file by hand first: *Download the latest 3 as a FIT file*, import it on connect.garmin.com and look at what the Weight view shows. A day uploaded is read from Garmin again after ten minutes, so the Weight view shows it. A refused login stops the schedule until the login is saved or tested again; a rate limit waits six hours; every step is in the log. The numbers are mapped from sources that disagree in places (the weight is read as kilograms, `muscle` as a percentage of the weight, `bone` as kilograms): check the table in the Monitor against the Renpho app and the first imported file, and change `toWeighIn` in `src/shared/renphoFit.ts` if they differ.
+- **Renpho scale (optional):** brings your Renpho weigh-ins in, with or without Garmin: the Weight view shows them from the ledger (on a day Garmin has a weight of its own, Garmin's is shown, so an uploaded weigh-in is not counted twice), and `get_wellness`'s `body` trend counts them. With a Garmin login it can also upload them to Garmin Connect with their body composition. Renpho has **no public API**: the client follows what the Renpho Health app does (an encrypted JSON protocol on `cloud.renpho.com`, as others have documented it), so it can stop working when Renpho changes the app, and an account that signs in with Google or Apple needs a password set in the Renpho app first. Only reads from Renpho. Every weigh-in is kept as Renpho sent it in `renpho_measurements`, a ledger with when it was uploaded to Garmin. *Fetch my weigh-ins* runs on a schedule (every 1 to 24 hours; the web editor's timer looks every 5 minutes); *Sync now* runs once. *Upload new weigh-ins to Garmin* is **off by default, needs a Garmin login, and changes your Garmin account**: each weigh-in is sent once, as a FIT weight file like a Garmin scale's (built with Garmin's FIT SDK) through the endpoint of Garmin Connect's import page, from the day you choose on (today when you switch it on, so the history is not sent by surprise). Try one file by hand first: *Download the latest 3 as a FIT file*, import it on connect.garmin.com and look at what the Weight view shows. A day uploaded is read from Garmin again after ten minutes, so the Weight view shows it. A refused login stops the schedule until the login is saved or tested again; a rate limit waits six hours; every step is in the log. The numbers are mapped from sources that disagree in places (the weight is read as kilograms, `muscle` as a percentage of the weight, `bone` as kilograms): check the table in the Monitor against the Renpho app and the first imported file, and change `toWeighIn` in `src/shared/renphoFit.ts` if they differ.
 
 ### Food log
 
@@ -148,25 +124,24 @@ The **Food** view of the web editor logs what you ate, per meal (breakfast, lunc
 
 ### Run it in Docker (e.g. on a NAS)
 
-Run this from a checkout of the repo on the NAS. The plans live in the database (`./data/garmin.db`), so nothing else needs to be mounted.
+Run this from a checkout of the repo on the NAS. Everything (profiles, plans, food, logins, activities) lives in the database (`./data/garmin.db`), so nothing else needs to be mounted.
 
 ```bash
-mkdir -p config data
-cp .env.MED config/                      # one .env.<profile> per Garmin account
+mkdir -p data
 echo "MCP_AUTH_TOKEN=$(openssl rand -hex 32)" >> .env
+echo "WEB_AUTH_TOKEN=$(openssl rand -hex 16)" >> .env
 docker compose up -d --build
 ```
 
-Volumes (see `docker-compose.yml`):
+Then open the plan editor, sign in with any user name and `WEB_AUTH_TOKEN`, and add a profile (a name and a password, typed twice). Volumes (see `docker-compose.yml`):
 
 | Mount | Purpose |
 |---|---|
-| `./config:/config:ro` | `.env.<profile>` files with the Garmin credentials |
-| `./data:/data` | the database `garmin.db`: all plans and data, the activities and the Garmin login tokens (see [Storage](#storage)) |
+| `./data:/data` | the database `garmin.db`: profiles, all plans and data, the food log, the activities, the logins and the Garmin login tokens (see [Storage](#storage)) |
 
-The container runs as `PUID:PGID` (default 1000:1000), so `data/` must be writable by that user. Set `PUID`/`PGID` in `.env` to match your NAS user. The port is published on `127.0.0.1:8787` only; set `MCP_BIND=0.0.0.0` to allow LAN clients. `GET /healthz` is the unauthenticated health check.
+The container runs as `PUID:PGID` (default 1000:1000), so `data/` must be writable by that user. Set `PUID`/`PGID` in `.env` to match your NAS user. Set `TZ` (for example `TZ=America/Toronto`) so "today" is right for a profile without Garmin. The port is published on `127.0.0.1:8787` only; set `MCP_BIND=0.0.0.0` to allow LAN clients. `GET /healthz` is the unauthenticated health check.
 
-The same compose file also starts `garmin-web`, the [plan editor](#plan-editor-web-ui) (shared image; `/data` and `/config` mounts, the last one for the Garmin buttons). It needs `WEB_AUTH_TOKEN` in `.env` (`echo "WEB_AUTH_TOKEN=$(openssl rand -hex 16)" >> .env`) and is published on `127.0.0.1:8788`; set `WEB_BIND=0.0.0.0` for LAN access. Sign in with any user name and the token as password (or with a profile name and its `WEB_PASSWORD`). To turn on the Food view's AI box add `FOOD_AI_BACKEND=cli` and `CLAUDE_CODE_OAUTH_TOKEN=...` (a Claude plan, from `claude setup-token`) or `ANTHROPIC_API_KEY=...` (API credit) to `.env`; compose passes them on, with the optional `FOOD_AI_MODEL` and `FOOD_AI_DAILY_LIMIT`.
+The same compose file also starts `garmin-web`, the [plan editor](#plan-editor-web-ui) (shared image, the same `/data` mount). It needs `WEB_AUTH_TOKEN` in `.env` and is published on `127.0.0.1:8788`; set `WEB_BIND=0.0.0.0` for LAN access. Sign in with any user name and the token as password (or with a profile name and its web sign-in password). To turn on the Food view's AI box add `FOOD_AI_BACKEND=cli` and `CLAUDE_CODE_OAUTH_TOKEN=...` (a Claude plan, from `claude setup-token`) or `ANTHROPIC_API_KEY=...` (API credit) to `.env`; compose passes them on, with the optional `FOOD_AI_MODEL` and `FOOD_AI_DAILY_LIMIT`.
 
 ### Storage
 
@@ -210,7 +185,7 @@ MCP_AUTH_TOKEN=$(openssl rand -hex 32) npm run mcp:http -- --mock --port 8787
 npx @modelcontextprotocol/inspector      # then connect to http://127.0.0.1:8787/mcp/<token>
 ```
 
-`--mock` (or `MOCK_MODE=true`) serves mock data and refuses every Garmin write except `dryRun` validation. Use `--profile <name>` or `GARMIN_PROFILE` to choose the default account. `GARMIN_PROFILES_DIR` and `GARMIN_DATA_DIR` relocate the credentials and the data directory (database and token cache); the Docker image sets them to `/config` and `/data`. `GARMIN_STORE_PATH` moves the database (default `<GARMIN_DATA_DIR>/garmin.db`). `GARMIN_DETAIL_GAP_MS` sets the pause between two activity-detail calls of the sync (default 500; the wellness sync uses it too). `GARMIN_TZ` (or `TZ`) is your time zone, for "today" in the readiness tools; `CREDENTIALS_KEY` encrypts the logins saved in the Settings view; `WELLNESS_DAYS` is how many days of health data the background sync keeps (default 60).
+`--mock` (or `MOCK_MODE=true`) serves mock data and refuses every Garmin write except `dryRun` validation. Use `--profile <name>` or `GARMIN_PROFILE` to choose the default account. `GARMIN_DATA_DIR` relocates the data directory (the database); the Docker image sets it to `/data`. `GARMIN_STORE_PATH` moves the database (default `<GARMIN_DATA_DIR>/garmin.db`). `GARMIN_DETAIL_GAP_MS` sets the pause between two activity-detail calls of the sync (default 500; the wellness sync uses it too). `GARMIN_TZ` (or `TZ`) is your time zone, for "today" (needed for a profile without Garmin; with Garmin the newest activity's offset is the fallback); `CREDENTIALS_KEY` encrypts the logins saved in the Settings view; `WELLNESS_DAYS` is how many days of health data the background sync keeps (default 60).
 
 ## Testing
 

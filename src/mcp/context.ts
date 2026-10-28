@@ -2,7 +2,7 @@ import * as os from "os";
 import * as path from "path";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { GarminClient } from "../shared/garminClient";
-import { ProfileConfig, findProfile, getAvailableProfiles, getMockProfile, loadProfile } from "../shared/profileLoader";
+import { GarminNotConnectedError, ProfileConfig, findProfile, garminConnected, getAvailableProfiles, getMockProfile, loadProfile, unknownProfileMessage } from "../shared/profileLoader";
 import { type DocMeta, StoreError, getStore, normalizeLogicalPath } from "../shared/store";
 import WorkoutEditor from "../workoutEditor";
 import ActivityExporter from "../activityExporter";
@@ -50,9 +50,7 @@ export function resolveProfileName(requested?: string): string {
   const available = getAvailableProfiles();
   if (available.length === 1) return available[0];
   if (available.length === 0) {
-    throw new Error(
-      "No Garmin profiles are configured (expected .env.<profile> files in the profiles directory)."
-    );
+    throw new Error("No profiles exist yet: add one in the web editor's Settings.");
   }
   throw new Error(
     `Multiple profiles are available (${available.join(", ")}). Pass the "profile" argument.`
@@ -66,25 +64,36 @@ export function resolveProfileName(requested?: string): string {
 export function dataProfile(requested?: string): string {
   if (settings.mock) return getMockProfile().name;
   const name = resolveProfileName(requested);
-  if (!getAvailableProfiles().includes(name)) throw new Error(`Unknown profile "${name}" (list_profiles shows the ones that exist).`);
+  const available = getAvailableProfiles();
+  if (!available.includes(name)) {
+    const similar = available.filter((p) => p.toLowerCase() === name.toLowerCase());
+    throw new Error(similar.length > 1 ? unknownProfileMessage(name) : `Unknown profile "${name}" (list_profiles shows the ones that exist).`);
+  }
   return name;
+}
+
+/** Whether Garmin can be reached for the profile: it has a login (mock mode counts, with its fake one). */
+export function garminAvailable(name: string): boolean {
+  return settings.mock || garminConnected(name);
 }
 
 /**
  * Get (or lazily create) the Garmin client/editor/exporter for a profile.
  * The client is cached so the Garmin login and token cache are reused across calls.
+ * Throws GarminNotConnectedError for a profile that has no Garmin login.
  */
 export function getSession(requested?: string): Session {
   const mock = settings.mock;
   const profile = mock ? getMockProfile() : loadProfile(resolveProfileName(requested));
+  if (!profile.login) throw new GarminNotConnectedError(profile.name);
 
   // a login changed in Settings (by the other process, perhaps) makes a new client
   const cached = sessions.get(profile.name);
-  if (cached && cached.profile.email === profile.email && cached.profile.password === profile.password) return cached;
+  if (cached && cached.profile.login?.email === profile.login.email && cached.profile.login.password === profile.login.password) return cached;
 
   const garminClient = new GarminClient(
-    profile.email,
-    profile.password,
+    profile.login.email,
+    profile.login.password,
     mock,
     profile.dataDir
   );
@@ -134,6 +143,19 @@ export function getValidatorEditor(): WorkoutEditor {
   return validatorEditor;
 }
 
+let dataExporter: ActivityExporter | undefined;
+
+/**
+ * An exporter for the pure helpers (the slim form of stored activities); needs no profile and never talks to Garmin, so a
+ * profile without a Garmin login can be read with it.
+ */
+export function getDataExporter(): ActivityExporter {
+  if (!dataExporter) {
+    dataExporter = new ActivityExporter(new GarminClient("data@example.com", "unused", true, path.join(os.tmpdir(), "garmin-mcp-validator")));
+  }
+  return dataExporter;
+}
+
 // ─── Documents (plans and per-profile data) ─────────────────────────────────
 
 /**
@@ -162,9 +184,12 @@ export function readJsonDoc(logical: string): unknown {
 
 const jsonText = (data: unknown): string => JSON.stringify(data, null, 2);
 
-/** Create or replace a stored document; the previous version stays in its history. */
-export function writeJsonDoc(logical: string, data: unknown, source = "mcp"): DocMeta {
-  return getStore().put(logical, jsonText(data), { source });
+/**
+ * Create or replace a stored document; the previous version stays in its history. `owner` is who a NEW plan under workout-plans/
+ * belongs to (null: shared); a document that exists keeps its owner, and one under data/<profile>/ belongs to that profile.
+ */
+export function writeJsonDoc(logical: string, data: unknown, source = "mcp", owner: string | null = null): DocMeta {
+  return getStore().put(logical, jsonText(data), { source, owner });
 }
 
 /** Read, change and save a document as one step, so another writer cannot slip in between. */

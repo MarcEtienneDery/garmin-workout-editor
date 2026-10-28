@@ -1,16 +1,17 @@
 /**
- * accounts.ts — what the Settings view does with a profile's logins: the Garmin login (kept in the database, which comes
- * before the profile's .env file) and the Renpho login with its sync settings. What it tells a browser never includes a
- * password, only that one is set.
+ * accounts.ts — what the Settings view does with a profile's logins: the Garmin login and the Renpho login with its sync
+ * settings (both optional, kept in the database), and the password of the profile's own sign-in to the web editor (which is
+ * not optional). What it tells a browser never includes a password, only that one is set.
  */
-import { fileLogin, storedLogin } from "./profileLoader";
-import { INTERVAL_HOURS, type Measurement, type RenphoSettings, SealKeyError, type SqliteStore, sealing } from "./store";
-import { localToday } from "./wellnessSync";
+import { garminLogin } from "./profileLoader";
+import { INTERVAL_HOURS, MAX_PROFILE_NAME, type Measurement, type RenphoSettings, SealKeyError, type SqliteStore, isProfileName, sealing } from "./store";
+import { isRealDay, localToday } from "./wellnessSync";
 
 /** A request the person can fix: the message is for them. */
 export class SettingsError extends Error {}
 
 const EMAIL = /^\S+@\S+\.\S+$/;
+export const MIN_WEB_PASSWORD = 8;
 
 function checkEmail(email: unknown): string {
   const value = typeof email === "string" ? email.trim() : "";
@@ -21,60 +22,94 @@ function checkEmail(email: unknown): string {
 // ── Garmin ──
 
 export interface GarminAccount {
-  /** Where the login in use comes from: the database (this view), the profile's .env file, or nowhere. */
-  source: "settings" | "file" | null;
+  /** A Garmin login is saved: the profile can sync and send workouts. Without one the app works without Garmin. */
+  connected: boolean;
   email: string | null;
   hasPassword: boolean;
-  /** The .env file holds a login too, to move into the database. */
-  fileHasLogin: boolean;
 }
 
 export function garminAccount(profile: string): GarminAccount & { error?: string } {
-  const file = fileLogin(profile);
   try {
-    const saved = storedLogin(profile), use = saved ?? file;
-    return { source: saved ? "settings" : file ? "file" : null, email: use?.email ?? null, hasPassword: !!use?.password, fileHasLogin: !!file };
+    const saved = garminLogin(profile);
+    return { connected: !!saved, email: saved?.email ?? null, hasPassword: !!saved };
   } catch (error) {
     if (!(error instanceof SealKeyError)) throw error;
-    return { source: "settings", email: null, hasPassword: true, fileHasLogin: !!file, error: error.message };
+    return { connected: true, email: null, hasPassword: true, error: error.message };
   }
 }
 
-/** Save the Garmin login. A blank password keeps the one saved; the first save (from the .env file's login) needs one. */
-export function saveGarminLogin(store: SqliteStore, profile: string, input: { email?: unknown; password?: unknown }): void {
-  const email = checkEmail(input.email);
-  const typed = typeof input.password === "string" ? input.password : "";
-  const current = typed ? null : (storedLogin(profile) ?? fileLogin(profile)); // only looked at when the password is kept
-  const password = typed || (current && current.email === email ? current.password : "");
-  if (!password) throw new SettingsError("Enter the password.");
-  const before = effectiveLogin(profile);
-  store.credentials.put(profile, "garmin", email, password);
-  if (!before || before.email !== email || before.password !== password) store.tokens.delete(profile); // the session that was open belongs to the old login: the next sign-in, and the test, must try this one
-}
-
-/** The Garmin login in use now, or null (also when it is encrypted and cannot be read). */
-function effectiveLogin(profile: string) {
+/** The Garmin login saved now, or null (also when it is encrypted and cannot be read). */
+function savedLogin(profile: string) {
   try {
-    return storedLogin(profile) ?? fileLogin(profile);
+    return garminLogin(profile);
   } catch {
     return null;
   }
 }
 
-/** Take the .env file's Garmin login into the database (the file is left as it is; the login in the database wins from now on). */
-export function moveGarminLoginFromFile(store: SqliteStore, profile: string): void {
-  const file = fileLogin(profile);
-  if (!file) throw new SettingsError("The profile's .env file holds no Garmin login.");
-  store.credentials.put(profile, "garmin", file.email, file.password);
+/** Save the Garmin login. A blank password keeps the one saved; the first save needs one. */
+export function saveGarminLogin(store: SqliteStore, profile: string, input: { email?: unknown; password?: unknown }): void {
+  const email = checkEmail(input.email);
+  const typed = typeof input.password === "string" ? input.password : "";
+  const before = savedLogin(profile);
+  const password = typed || (before && before.email === email ? before.password : "");
+  if (!password) throw new SettingsError("Enter the password.");
+  store.credentials.put(profile, "garmin", email, password);
+  if (!before || before.email !== email || before.password !== password) store.tokens.delete(profile); // the session that was open belongs to the old login: the next sign-in, and the test, must try this one
 }
 
-/** Forget the login saved in the database, so the .env file's is used again. Refused when there is none to fall back on. */
-export function removeGarminLogin(store: SqliteStore, profile: string): void {
-  const file = fileLogin(profile);
-  if (!file) throw new SettingsError("This is the profile's only Garmin login: replace it instead of removing it.");
-  const before = effectiveLogin(profile);
+/**
+ * Forget the Garmin login and its session. What was synced stays, and the profile goes on without Garmin: uploading weigh-ins to
+ * it is switched off, as there is nothing to upload to, and the error or wait the last sync left is forgotten, as none will run.
+ */
+export function removeGarminLogin(store: SqliteStore, profile: string, now = Date.now()): void {
   store.credentials.delete(profile, "garmin");
-  if (!before || before.email !== file.email || before.password !== file.password) store.tokens.delete(profile);
+  store.tokens.delete(profile);
+  store.wellness.saveProgress(profile, { error: null, retryAfter: null }, now);
+  store.activities.saveProgress(profile, { error: null, retryAfter: null }, now);
+  if (store.renpho.settings(profile).pushEnabled) {
+    store.renpho.saveSettings(profile, { pushEnabled: false });
+    store.renpho.log(profile, "info", "Upload to Garmin switched off: the Garmin login was removed.", now);
+  }
+}
+
+/** Whether a Garmin login is saved (one that cannot be decrypted is there). */
+function hasGarminLogin(store: SqliteStore, profile: string): boolean {
+  try {
+    return store.credentials.get(profile, "garmin") !== null;
+  } catch (error) {
+    if (error instanceof SealKeyError) return true;
+    throw error;
+  }
+}
+
+// ── Web sign-in ──
+
+/**
+ * The password of a profile's own sign-in to the web editor, typed twice. It is mandatory (a profile has one from the day it is made,
+ * and Settings cannot remove it), so a short one, an empty one and two fields that differ are all refused. The words are the ones the
+ * page uses before it asks (settingsModel.js passwordProblem), so the person reads the same thing either way.
+ */
+export function checkWebPassword(password: unknown, confirm: unknown): string {
+  const typed = typeof password === "string" ? password : "";
+  if (!typed) throw new SettingsError("Enter a password.");
+  if (typed.length < MIN_WEB_PASSWORD) throw new SettingsError(`The password is at least ${MIN_WEB_PASSWORD} characters.`);
+  if (typed !== confirm) throw new SettingsError("The two passwords are not the same.");
+  return typed;
+}
+
+/** Set or change the password the profile signs in to the web editor with (the admin token needs none of this). */
+export function saveWebPassword(store: SqliteStore, profile: string, input: { password?: unknown; confirm?: unknown }): void {
+  store.profiles.setWebPassword(profile, checkWebPassword(input.password, input.confirm));
+}
+
+/** Add a profile: a name and its web sign-in password, typed twice. Garmin and Renpho are optional and connected afterwards. */
+export function createProfile(store: SqliteStore, input: { name?: unknown; password?: unknown; confirm?: unknown }): string {
+  const name = typeof input.name === "string" ? input.name.trim() : "";
+  if (!isProfileName(name)) throw new SettingsError(`A profile name is letters, numbers, hyphens and underscores, at most ${MAX_PROFILE_NAME}.`);
+  const password = checkWebPassword(input.password, input.confirm);
+  store.profiles.create(name, password);
+  return name;
 }
 
 // ── Renpho ──
@@ -90,7 +125,6 @@ export interface RenphoSettingsInput {
 }
 
 const AREA = /^[A-Za-z]{2,3}$/;
-const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
 /** Save the Renpho login and settings (each given field; a blank password keeps the one saved). */
 export function saveRenpho(store: SqliteStore, profile: string, input: RenphoSettingsInput, now = Date.now()): void {
@@ -108,11 +142,12 @@ export function saveRenpho(store: SqliteStore, profile: string, input: RenphoSet
   }
   if (input.fetchEnabled !== undefined) change.fetchEnabled = input.fetchEnabled === true;
   if (input.pushSince !== undefined) {
-    if (input.pushSince !== null && input.pushSince !== "" && !(typeof input.pushSince === "string" && DAY.test(input.pushSince))) throw new SettingsError("The upload start day is a date.");
+    if (input.pushSince !== null && input.pushSince !== "" && !isRealDay(input.pushSince)) throw new SettingsError("The upload start day is a date.");
     change.pushSince = input.pushSince ? (input.pushSince as string) : null;
   }
   if (input.pushEnabled !== undefined) {
     change.pushEnabled = input.pushEnabled === true;
+    if (change.pushEnabled && !hasGarminLogin(store, profile)) throw new SettingsError("Connect Garmin first: the weigh-ins are uploaded to a Garmin account.");
     // switching the upload on starts from today, unless a day was chosen: the scale's whole history is not sent by surprise
     if (change.pushEnabled && change.pushSince === undefined && !store.renpho.settings(profile).pushSince) change.pushSince = localToday(store, profile, now);
   }
@@ -181,6 +216,7 @@ export function settingsView(store: SqliteStore, profile: string, now = Date.now
   return {
     profile,
     garmin: garminAccount(profile),
+    web: { hasPassword: store.profiles.webPasswordHash(profile) !== null },
     renpho: renphoView(store, profile, now),
     // whether the saved passwords are encrypted (CREDENTIALS_KEY), and how many are not
     encryption: { enabled: sealing(), plain: store.credentials.plainCount() },

@@ -3,13 +3,14 @@ import { getDataRoot } from "../profileLoader";
 import { SqliteStore } from "./sqliteStore";
 
 export * from "./types";
-export { normalizeLogicalPath, profileOfPath, summarizeText } from "./paths";
+export { MAX_PROFILE_NAME, normalizeLogicalPath, profileOfPath, summarizeText } from "./paths";
 export { exportFiles } from "./transfer";
 export { SqliteStore, KEEP_REVISIONS } from "./sqliteStore";
 export * from "./activities";
 export { TokenTable, type StoredToken } from "./tokens";
 export * from "./wellness";
 export * from "./credentials";
+export { ProfileTable, decoyCheck, isProfileName } from "./profiles";
 export { SealKeyError, sealing } from "./seal";
 export * from "./renpho";
 export * from "./nutrition";

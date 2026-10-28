@@ -4,10 +4,11 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import ActivityExporter from "../activityExporter";
-import { getSession } from "../mcp/context";
+import { configureMcp, getSession, getSettings } from "../mcp/context";
 import { fetchChartNow, getActivities, type GetActivitiesArgs } from "../mcp/tools/activities";
 import { isBackfilling } from "../shared/activitySync";
 import { closeStore, getStore } from "../shared/store";
+import { seedProfile } from "./fixtures/profiles";
 
 const PROFILE = "MED";
 const DAY = 86_400_000;
@@ -61,6 +62,7 @@ beforeEach(() => {
   dir = fs.mkdtempSync(path.join(os.tmpdir(), "get-activities-"));
   process.env.GARMIN_STORE_PATH = path.join(dir, "garmin.db");
   process.env.GARMIN_DETAIL_GAP_MS = "0";
+  seedProfile(PROFILE, { garmin: true });
   jest.spyOn(console, "log").mockImplementation(() => undefined);
 });
 afterEach(async () => {
@@ -243,9 +245,15 @@ describe("get_activities", () => {
     const exporter = new ActivityExporter({ isMockMode: () => true } as any);
     jest.spyOn(exporter, "fetchActivities").mockResolvedValue([{ activityId: 1, activityName: "Mock", activityType: { typeKey: "running" }, startTimeGMT: when(1), startTimeLocal: when(1) }]);
     (getSession as jest.Mock).mockReturnValue({ profile: { name: "mock" }, mock: true, garminClient: {}, exporter });
-    const out = await ask();
-    expect(out.mock).toBe(true);
-    expect(out.activities).toHaveLength(1);
-    expect(getStore().activities.counts("mock").total).toBe(0);
+    const before = getSettings().mock;
+    configureMcp({ mock: true });
+    try {
+      const out = await ask();
+      expect(out.mock).toBe(true);
+      expect(out.activities).toHaveLength(1);
+      expect(getStore().activities.counts("mock").total).toBe(0);
+    } finally {
+      configureMcp({ mock: before });
+    }
   });
 });

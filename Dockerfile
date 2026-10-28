@@ -8,7 +8,7 @@ COPY package.json package-lock.json ./
 RUN npm ci
 COPY tsconfig.json ./
 COPY src ./src
-RUN npm run build && npm prune --omit=dev && chmod -R a+rX dist
+RUN npm run build && npm prune --omit=dev && chmod -R a+rX dist package.json
 
 FROM node:24-slim
 WORKDIR /app
@@ -17,22 +17,21 @@ ENV NODE_ENV=production \
     MCP_PORT=8787 \
     WEB_HOST=0.0.0.0 \
     WEB_PORT=8788 \
-    GARMIN_PROFILES_DIR=/config \
     GARMIN_DATA_DIR=/data
 
 # Claude Code, for the Food view's AI box on a Claude plan (FOOD_AI_BACKEND=cli runs `claude -p`: src/shared/foodAiCli.ts). Pinned, because
 # that module relies on its flags. It signs in with CLAUDE_CODE_OAUTH_TOKEN (from `claude setup-token`) and keeps its settings in /tmp.
+# `claude --version` fails the build when the install leaves a binary that cannot run (seen once: a 1.6 MB layer holding a placeholder claude.exe).
 ARG CLAUDE_CODE_VERSION=2.1.310
-RUN npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION} && npm cache clean --force
+RUN npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION} && claude --version && npm cache clean --force
 ENV CLAUDE_CONFIG_DIR=/tmp/claude-config
 
 COPY --from=build /app/package.json ./
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 
-# /data must be writable by the runtime user (the database); /config only
-# needs to be readable.
-RUN mkdir -p /config /data && chown node:node /data
+# /data must be writable by the runtime user (the database).
+RUN mkdir -p /data && chown node:node /data
 USER node
 
 EXPOSE 8787 8788

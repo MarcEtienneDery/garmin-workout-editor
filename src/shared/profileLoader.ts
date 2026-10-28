@@ -1,27 +1,28 @@
 import * as fs from "fs";
 import * as path from "path";
-import * as dotenv from "dotenv";
-import { getStore, getStorePath } from "./store";
+import { getStore, getStorePath, isProfileName } from "./store";
 import { SealKeyError } from "./store/seal";
+
+export interface Login {
+  email: string;
+  password: string;
+}
 
 export interface ProfileConfig {
   name: string;
-  email: string;
-  password: string;
+  /** The Garmin login, or null for a profile that has none (Garmin is optional). */
+  login: Login | null;
   dataDir: string;
 }
 
 export const PROJECT_ROOT = path.resolve(__dirname, "../..");
-const PROFILE_NAME_REGEX = /^[a-zA-Z0-9_-]+$/;
 
-/**
- * Directory holding the .env.<profile> files. Defaults to the project root;
- * override with GARMIN_PROFILES_DIR (e.g. a read-only /config volume in Docker).
- */
-export function getProfilesDir(): string {
-  return process.env.GARMIN_PROFILES_DIR
-    ? path.resolve(process.env.GARMIN_PROFILES_DIR)
-    : PROJECT_ROOT;
+/** A profile that has no Garmin login was asked to do something that needs one. */
+export class GarminNotConnectedError extends Error {
+  constructor(readonly profile: string) {
+    super(`Profile "${profile}" has no Garmin login: add one in the web editor's Settings (Garmin account).`);
+    this.name = "GarminNotConnectedError";
+  }
 }
 
 /**
@@ -34,56 +35,34 @@ export function getDataRoot(): string {
     : path.join(PROJECT_ROOT, "data");
 }
 
-export interface Login {
-  email: string;
-  password: string;
-}
-
-/** The Garmin login saved in the database (the Settings view), when there is a database and one is saved; it comes before the .env file's. */
-export function storedLogin(name: string): Login | null {
-  try {
-    return fs.existsSync(getStorePath()) ? getStore().credentials.get(name, "garmin") : null;
-  } catch (error) {
-    if (error instanceof SealKeyError) throw error; // the login is there but cannot be read: say so, do not fall back as if it were not
-    return null;
-  }
-}
-
-/** The Garmin login in the profile's .env.<name> file, when there is one. */
-export function fileLogin(name: string): Login | null {
-  const file = path.join(getProfilesDir(), `.env.${name}`);
-  if (!fs.existsSync(file)) return null;
-  const parsed = dotenv.parse(fs.readFileSync(file, "utf-8"));
-  return parsed.GARMIN_EMAIL && parsed.GARMIN_PASSWORD ? { email: parsed.GARMIN_EMAIL, password: parsed.GARMIN_PASSWORD } : null;
-}
-
 /**
- * Discover available profiles: the .env.<name> files in the profiles directory (not .env.example) and the profiles that
- * have a Garmin login saved in the database.
+ * The Garmin login saved in the database (the Settings view), when there is a database and one is saved. A login that is there but
+ * cannot be read (SealKeyError, or a database that cannot be opened) throws: it is not the same as no login.
  */
-export function getAvailableProfiles(): string[] {
-  const profilesDir = getProfilesDir();
-  const profiles = new Set<string>();
-  if (fs.existsSync(profilesDir)) {
-    for (const file of fs.readdirSync(profilesDir)) {
-      if (file.startsWith(".env.") && file !== ".env.example") {
-        const name = file.slice(5); // remove ".env." prefix
-        if (PROFILE_NAME_REGEX.test(name)) profiles.add(name);
-      }
-    }
-  }
+export function garminLogin(name: string): Login | null {
+  const saved = fs.existsSync(getStorePath()) ? getStore().credentials.get(name, "garmin") : null;
+  return saved && { email: saved.email, password: saved.password };
+}
+
+/** Whether the profile has a Garmin login (one that cannot be decrypted counts: it is there). */
+export function garminConnected(name: string): boolean {
   try {
-    if (fs.existsSync(getStorePath())) for (const name of getStore().credentials.profiles("garmin")) if (PROFILE_NAME_REGEX.test(name)) profiles.add(name);
-  } catch {
-    // an unreadable database leaves the files' profiles
+    return garminLogin(name) !== null;
+  } catch (error) {
+    if (error instanceof SealKeyError) return true;
+    throw error;
   }
-  return [...profiles].sort();
+}
+
+/** The profiles that exist (the Settings view makes them), by name. No database yet means none. */
+export function getAvailableProfiles(): string[] {
+  return fs.existsSync(getStorePath()) ? getStore().profiles.names() : [];
 }
 
 /**
  * The profile a name stands for, ignoring case ("med" -> "MED"): the exact spelling wins,
- * otherwise a single profile that differs only in case. Profiles keep the spelling of their
- * .env.<name> file, which names their data/<name>/ folder, so only lookups are case-insensitive.
+ * otherwise a single profile that differs only in case. Profiles keep the spelling they were
+ * made with, which names their data/<name>/ folder, so only lookups are case-insensitive.
  */
 export function findProfile(name: string): string | undefined {
   const available = getAvailableProfiles();
@@ -92,63 +71,37 @@ export function findProfile(name: string): string | undefined {
   return matches.length === 1 ? matches[0] : undefined;
 }
 
+/** Why a name is no profile: it is several that differ only in case, or it does not exist. */
+export function unknownProfileMessage(name: string): string {
+  const available = getAvailableProfiles();
+  const similar = available.filter((p) => p.toLowerCase() === name.toLowerCase());
+  if (similar.length > 1) return `Profile "${name}" matches several profiles (${similar.join(", ")}): use the exact spelling.`;
+  return `Profile "${name}" not found.\n${available.length > 0 ? `Available profiles: ${available.join(", ")}` : "No profiles yet: add one in the web editor's Settings."}`;
+}
+
 /**
- * Load a profile's credentials and resolve its data directory.
- * Throws if the profile doesn't exist or is missing required vars.
+ * Load a profile: its Garmin login (null when it has none) and its data directory.
+ * Throws if the profile doesn't exist.
  */
 export function loadProfile(requested: string): ProfileConfig {
-  if (!PROFILE_NAME_REGEX.test(requested)) {
+  if (!isProfileName(requested)) {
     throw new Error(
       `Invalid profile name "${requested}". Use only letters, numbers, hyphens, and underscores.`
     );
   }
-  const name = findProfile(requested) ?? requested;
-
-  const envFile = path.join(getProfilesDir(), `.env.${name}`);
-  const saved = storedLogin(name);
-  if (!fs.existsSync(envFile) && !saved) {
-    const available = getAvailableProfiles();
-    const list = available.length > 0
-      ? `Available profiles: ${available.join(", ")}`
-      : `No profiles found. Create a .env.<name> file (e.g., .env.MED) in the project root.`;
-    throw new Error(
-      `Profile "${name}" not found (expected ${envFile}).\n${list}`
-    );
-  }
-
-  // Load the profile's env file (does NOT override existing process.env vars)
-  const parsed = fs.existsSync(envFile) ? dotenv.parse(fs.readFileSync(envFile, "utf-8")) : {};
-
-  // the login saved in Settings wins over the file's
-  const email = saved?.email ?? parsed.GARMIN_EMAIL;
-  const password = saved?.password ?? parsed.GARMIN_PASSWORD;
-
-  if (!email || !password) {
-    throw new Error(
-      `Profile "${name}" is missing GARMIN_EMAIL or GARMIN_PASSWORD in ${envFile}.`
-    );
-  }
+  const name = findProfile(requested);
+  if (!name) throw new Error(unknownProfileMessage(requested));
 
   const dataDir = path.join(getDataRoot(), name);
-
-  // Ensure the profile data directory exists
   if (!fs.existsSync(dataDir)) {
     fs.mkdirSync(dataDir, { recursive: true });
   }
 
-  // Also set any other env vars from the profile file (e.g., GITHUB_TOKEN)
-  for (const [key, value] of Object.entries(parsed)) {
-    if (key === "WEB_PASSWORD") continue; // the web editor reads it per profile; never share it process-wide
-    if (!process.env[key]) {
-      process.env[key] = value;
-    }
-  }
-
-  return { name, email, password, dataDir };
+  return { name, login: garminLogin(name), dataDir };
 }
 
 /**
- * Dummy profile for mock mode; does not require a .env file.
+ * Dummy profile for mock mode; does not require a database.
  */
 export function getMockProfile(): ProfileConfig {
   const dataDir = path.join(getDataRoot(), "mock");
@@ -157,8 +110,7 @@ export function getMockProfile(): ProfileConfig {
   }
   return {
     name: "mock",
-    email: "mock@example.com",
-    password: "mock",
+    login: { email: "mock@example.com", password: "mock" },
     dataDir,
   };
 }

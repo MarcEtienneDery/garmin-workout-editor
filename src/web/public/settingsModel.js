@@ -2,7 +2,8 @@
  * settingsModel.js — the logic of the Settings view: how long ago or from now a time is, what state the Renpho sync is
  * in, how a weigh-in and a log line read.
  *
- * Pure functions on what GET /api/settings returns ({ garmin, renpho: { account, settings, state, counts, recent, log }, encryption }).
+ * Pure functions on what GET /api/settings returns ({ garmin, web, renpho: { account, settings, state, counts, recent, log }, encryption }),
+ * and the checks of the web sign-in password typed twice (the server makes the same ones, in the same words).
  * Loaded by the page as a plain script; the tests require() it.
  */
 (function (root, factory) {
@@ -48,5 +49,22 @@
     return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
   };
 
-  return { ago, until, renphoStatus, uploadState, FIELDS, cell, stamp };
+  /** The fewest characters of a web sign-in password. */
+  const MIN_PASSWORD = 8;
+
+  /** What is wrong with a password typed in two fields, in words for the person; "" when it is fine. */
+  function passwordProblem(password, confirm) {
+    if (!password) return "Enter a password.";
+    if (password.length < MIN_PASSWORD) return `The password is at least ${MIN_PASSWORD} characters.`;
+    if (password !== confirm) return "The two passwords are not the same.";
+    return "";
+  }
+
+  /** What is wrong with the form that adds a profile (a name, and the password twice); "" when it is fine. */
+  function profileProblem(name, password, confirm) {
+    if (!/^[A-Za-z0-9_-]{1,64}$/.test(String(name).trim())) return "A profile name is letters, numbers, hyphens and underscores, at most 64.";
+    return passwordProblem(password, confirm);
+  }
+
+  return { ago, until, renphoStatus, uploadState, FIELDS, cell, stamp, MIN_PASSWORD, passwordProblem, profileProblem };
 });

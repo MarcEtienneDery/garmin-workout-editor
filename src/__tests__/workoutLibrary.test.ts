@@ -56,6 +56,7 @@ import { configureMcp } from "../mcp/context";
 import { type NewWorkout, diffPlanWorkout } from "../mcp/tools/plans";
 import { checkWorkoutSync, createWorkout, deleteLibraryWorkout, getLibraryWorkout, invalidateLibrary, listLibraryWorkouts, saveWorkout, scheduleWorkout, uploadAndSchedulePlan, uploadPlan } from "../mcp/tools/garmin";
 import { closeStore, getStore } from "../shared/store";
+import { seedProfile } from "./fixtures/profiles";
 
 const squat = (): any => ({
   workoutName: "Squat day",
@@ -113,15 +114,14 @@ describe("compareWorkouts", () => {
 
 describe("workouts on Garmin", () => {
   let dir: string;
-  const saved = { data: process.env.GARMIN_DATA_DIR, profiles: process.env.GARMIN_PROFILES_DIR };
+  const saved = { data: process.env.GARMIN_DATA_DIR, store: process.env.GARMIN_STORE_PATH };
 
   beforeAll(() => {
     for (const method of ["log", "warn", "error"] as const) jest.spyOn(console, method).mockImplementation(() => undefined);
     dir = fs.mkdtempSync(path.join(os.tmpdir(), "workout-library-"));
-    fs.mkdirSync(path.join(dir, "config"));
-    fs.writeFileSync(path.join(dir, "config", ".env.TEST"), "GARMIN_EMAIL=a@b.c\nGARMIN_PASSWORD=x\n");
     process.env.GARMIN_DATA_DIR = path.join(dir, "data");
-    process.env.GARMIN_PROFILES_DIR = path.join(dir, "config");
+    delete process.env.GARMIN_STORE_PATH;
+    seedProfile("TEST", { garmin: true });
     configureMcp({ mock: false, defaultProfile: "TEST" });
   });
 
@@ -131,7 +131,7 @@ describe("workouts on Garmin", () => {
     configureMcp({ mock: true, defaultProfile: undefined });
     fs.rmSync(dir, { recursive: true, force: true });
     if (saved.data === undefined) delete process.env.GARMIN_DATA_DIR; else process.env.GARMIN_DATA_DIR = saved.data;
-    if (saved.profiles === undefined) delete process.env.GARMIN_PROFILES_DIR; else process.env.GARMIN_PROFILES_DIR = saved.profiles;
+    if (saved.store === undefined) delete process.env.GARMIN_STORE_PATH; else process.env.GARMIN_STORE_PATH = saved.store;
   });
 
   beforeEach(() => {

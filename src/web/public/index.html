@@ -532,7 +532,8 @@
   dialog .dfoot .spacer { flex:1; }
   dialog label { display:flex; gap:6px; align-items:center; }
   dialog .opts { display:grid; gap:8px; }
-  #dlg, #hdlg { width:min(520px, 96vw); }
+  #dlg, #hdlg, #pdlg { width:min(520px, 96vw); }
+  #pdlg .pfield { display:grid; gap:4px; margin:10px 0; } #pdlg .pfield input { width:100%; min-width:0; max-width:100%; }
   #hdlg .hlist { display:grid; gap:4px; max-height:50vh; overflow:auto; }
   #hdlg .hrow { display:flex; gap:8px; align-items:center; padding:4px 0; border-bottom:1px solid var(--line); }
   #hdlg .hrow span { flex:1; min-width:0; }
@@ -623,7 +624,7 @@
     #wbody { padding:12px 14px 24px; font-size:15px; }
     #wdPlanRow label { flex-direction:column; align-items:stretch; width:100%; gap:4px; }
     #wdlg[open] { width:100vw; max-width:100vw; height:var(--vvh, 100dvh); max-height:var(--vvh, 100dvh); top:var(--vvtop, 0px); margin:0; border-radius:0; border:0; }
-    #dlg, #hdlg { width:94vw; }
+    #dlg, #hdlg, #pdlg { width:94vw; }
 
     #aview { display:block; position:relative; overflow:hidden; }
     #amain, #adetail { width:100%; height:100%; border:0; }
@@ -908,6 +909,7 @@
     <button id="sBack" title="Back to the view you came from">◀ Back</button>
     <b>Settings</b>
     <select id="sProfile" title="Profile" hidden></select>
+    <button id="sAddProfile" title="Add a profile" hidden>+ Add profile</button>
   </div>
   <div id="sNote" class="empty" hidden></div>
   <div id="sscroll"><div id="sbody"><div class="empty">Loading…</div></div></div>
@@ -962,6 +964,18 @@
   <div class="dfoot"><span class="spacer"></span><button id="photoCancel">Cancel</button><button id="photoSnap" class="primary" disabled>Take photo</button></div>
 </dialog>
 
+<dialog id="pdlg">
+  <div class="dhead"><b>Add a profile</b></div>
+  <div class="dbody">
+    <div class="dlg-line meta">A profile keeps its own plans, calendar and food log. It signs in to the editor with its name and the password below, typed twice. Garmin and a Renpho scale are optional and connected afterwards, in Settings.</div>
+    <label class="pfield"><span>Profile name</span><input id="pdlgName" type="text" autocomplete="off" autocapitalize="none" spellcheck="false"></label>
+    <label class="pfield"><span>Password</span><input id="pdlgPass" type="password" autocomplete="new-password"></label>
+    <label class="pfield"><span>Repeat the password</span><input id="pdlgPass2" type="password" autocomplete="new-password"></label>
+    <div id="pdlgError" class="dlg-line warn" role="alert" hidden></div>
+  </div>
+  <div class="dfoot"><span class="spacer"></span><button id="pdlgCancel">Cancel</button><button id="pdlgOk" class="primary">Add profile</button></div>
+</dialog>
+
 <dialog id="hdlg">
   <div class="dhead"><b id="hdlgTitle"></b></div>
   <div class="dbody"><div id="hdlgText" class="meta"></div><div class="hlist" id="hdlgList"></div></div>
@@ -981,6 +995,7 @@
 <script src="/barcodeScanner.js"></script>
 <script src="/foodPhoto.js"></script>
 <script src="/settingsModel.js"></script>
+<script src="/navModel.js"></script>
 <script src="/trendCharts.js"></script>
 <script src="/workoutListModel.js"></script>
 <script src="/vendor/monaco/loader.js"></script>
@@ -1059,7 +1074,7 @@ window.addEventListener("popstate", (e) => {
       navRestoring = true;
       try { setView(view); } finally { navRestoring = false; }
       navKeyNow = navKey(navState());
-      history.replaceState({ ...navState(), prev: null }, "");
+      history.replaceState({ ...navState(), prev: null }, "", urlOfView(document.body.dataset.view)); // the address follows when the view asked for is not offered
     }
     if (view === "food" && F.ai.open !== (subInUrl() === "ai")) showAi(!F.ai.open); // #food/ai opens the AI box, #food closes it
     return;
@@ -1071,7 +1086,8 @@ window.addEventListener("popstate", (e) => {
     document.body.dataset.wpane = s.wpane === "detail" && !(s.view === "activities" ? A.selected : W.selected) ? "list" : s.wpane;
   } finally { navRestoring = false; }
   navKeyNow = navKey(navState());
-  if (s.ov && !($(s.ov) && $(s.ov).open)) history.replaceState({ ...navState(), prev: s.prev }, ""); // forward onto a dialog that is no longer open
+  if (document.body.dataset.view !== s.view) history.replaceState({ ...navState(), prev: s.prev }, "", urlOfView(document.body.dataset.view)); // an entry for a view that is not offered now
+  else if (s.ov && !($(s.ov) && $(s.ov).open)) history.replaceState({ ...navState(), prev: s.prev }, ""); // forward onto a dialog that is no longer open
 });
 function toggleMenu() {
   const open = document.body.classList.toggle("menu-open");
@@ -1082,11 +1098,16 @@ let files = [];
 let current = null;        // { path, version }
 let savedText = "";
 let validateTimer;
-let garmin = { enabled: false, profiles: [], defaultProfile: null, reason: null };
+let garmin = { enabled: false, mock: false, profiles: [], connected: [], profileInfo: {}, defaultProfile: null, reason: null };
+// Garmin is optional, per profile: a Garmin button shows only for a profile that has a Garmin login (and not in mock mode).
+const garminOn = (profile) => garmin.enabled && garmin.connected.includes(profile || garmin.defaultProfile || garmin.profiles[0]);
+const garminWhy = (profile) => (garminOn(profile) ? "" : garmin.mock ? garmin.reason : "This profile has no Garmin login: add one in Settings.");
 let garminBusy = false;
-const profileOwner = () => current && (/^data\/([^/]+)\//.exec(current.path) || [])[1];
+const ownerOfPath = (path) => (/^data\/([^/]+)\//.exec(path) || [])[1];
+const profileOwner = () => current && ownerOfPath(current.path);
+const pickedProfile = () => (garmin.profiles.length > 1 ? $("profile").value : garmin.profiles[0]);
 // The Garmin profile the open plan acts as: its data/<profile>/ owner, else the picker (or the only profile).
-const planProfile = () => profileOwner() || (garmin.profiles.length > 1 ? $("profile").value : garmin.profiles[0]);
+const planProfile = () => profileOwner() || pickedProfile();
 
 // ── API ────────────────────────────────────────────────────────────────
 async function request(method, url, body) {
@@ -1247,7 +1268,7 @@ function renderFiles() {
 /** The buttons beside a plan file: the Garmin actions (plan files only), duplicate and delete. */
 function fileActions(f) {
   const acts = [];
-  if (garmin.enabled && isPlanFile(f)) {
+  if (garminOn(ownerOfPath(f.path) || pickedProfile()) && isPlanFile(f)) { // the action acts as the file's profile, else as the picker's
     acts.push(
       { icon: "upload", title: "Upload the plan to Garmin", run: () => garminFile(f.path, "upload") },
       { icon: "calendar", title: "Schedule the plan on the Garmin calendar", run: () => garminFile(f.path, "schedule") },
@@ -1282,10 +1303,10 @@ async function openFile(p) {
 }
 
 function setButtons() {
-  const on = !!current, dirty = !!isDirty(), garminOff = !on || !garmin.enabled || garminBusy;
+  const on = !!current, dirty = !!isDirty(), garminOff = !on || !garminOn(planProfile()) || garminBusy;
   for (const id of ["fileBtn", "validate", "format", "reload", "history", "dup", "rename", "delete"]) $(id).disabled = !on;
   $("save").disabled = !dirty; $("save").classList.toggle("dirty", dirty);
-  const why = garmin.enabled ? "" : garmin.reason || "Garmin actions are unavailable";
+  const why = garminWhy(planProfile()) || "";
   for (const id of [...Object.keys(GARMIN_ACTIONS), "garminBtn"]) { $(id).disabled = garminOff; $(id).title = why; }
   $("profile").hidden = !(on && garmin.enabled && garmin.profiles.length > 1 && !profileOwner());
   const cur = $("current");
@@ -1402,12 +1423,34 @@ const ACTION_TITLE = { upload: "Upload the plan to Garmin?", schedule: "Schedule
 
 async function loadGarmin() {
   try { garmin = await api("GET", "/api/garmin"); } catch { return; }
-  const sel = $("profile"); sel.innerHTML = "";
+  garmin.loaded = true;
+  const sel = $("profile"), kept = sel.value; sel.innerHTML = "";
   for (const name of garmin.profiles) sel.add(new Option(name, name));
-  if (garmin.defaultProfile) sel.value = garmin.defaultProfile;
+  const chosen = garmin.profiles.includes(kept) ? kept : garmin.defaultProfile; // a save in Settings reloads this: the picker stays where it was
+  if (chosen) sel.value = chosen;
   setButtons();
+  applyNav();
   refreshFiles(); // the file rows show the Garmin buttons only once Garmin is known to be available
   refreshSync();
+}
+
+/** The profiles in a view's picker, made again when a profile was added. */
+function fillProfiles(sel) {
+  if (sel.options.length === garmin.profiles.length) return;
+  sel.replaceChildren(...garmin.profiles.map((name) => new Option(name, name)));
+}
+
+/** Whether this login is offered the view (Settings is always there); true until the profiles are known. */
+function viewAllowed(view) {
+  return !garmin.loaded || NavModel.visibleViews(garmin.profileInfo)[view] !== false;
+}
+
+/** Garmin and Renpho are optional: a view that needs one of them shows only for a profile that has it, or has data from it. */
+function applyNav() {
+  const shown = NavModel.visibleViews(garmin.profileInfo);
+  for (const [view, id] of [["workouts", "vWorkouts"], ["activities", "vActivities"], ["recovery", "vRecovery"], ["weight", "vWeight"]]) $(id).hidden = !shown[view];
+  const now = document.body.dataset.view;
+  if (now in shown && !shown[now]) setView("today"); // the view in the address, or left behind by a login that was removed
 }
 
 function showActivity(title, cls, lines, log) {
@@ -1555,12 +1598,12 @@ const SYNC_CHIPS = {
 
 function scheduleSync() {
   clearTimeout(syncTimer);
-  if (current && garmin.enabled) syncTimer = setTimeout(() => refreshSync(), 1500);
+  if (current && garminOn(planProfile())) syncTimer = setTimeout(() => refreshSync(), 1500);
 }
 
 async function refreshSync(force = false) {
   clearTimeout(syncTimer);
-  const list = current && garmin.enabled && workoutsOf(parsed());
+  const list = current && garminOn(planProfile()) && workoutsOf(parsed());
   const seq = ++syncSeq;
   if (!list) { sync = null; return renderOutline(); }
   const text = editor.getValue(), path = current.path, sigs = list.map((w) => JSON.stringify(w));
@@ -1580,7 +1623,7 @@ function syncOf(i, w) {
 
 function renderSyncBar(list) {
   const bar = $("syncbar");
-  bar.hidden = !(garmin.enabled && current && list);
+  bar.hidden = !(garminOn(planProfile()) && current && list);
   if (bar.hidden) return;
   const counts = {};
   list.forEach((w, i) => { const s = syncOf(i, w); if (s) counts[s.state] = (counts[s.state] || 0) + 1; });
@@ -1660,9 +1703,9 @@ function renderOutline() {
       acts.append(b);
     };
     name.textContent = label;
-    small.textContent = [w?.steps ? w.steps.length + " steps" : "", date, garmin.enabled ? "" : w?.workoutId ? "↑" : ""].filter(Boolean).join(" ");
-    const st = garmin.enabled ? syncOf(i, w) : null;
-    if (garmin.enabled) {
+    small.textContent = [w?.steps ? w.steps.length + " steps" : "", date, garminOn(planProfile()) ? "" : w?.workoutId ? "↑" : ""].filter(Boolean).join(" ");
+    const st = garminOn(planProfile()) ? syncOf(i, w) : null;
+    if (garminOn(planProfile())) {
       const [glyph, cls, tip] = st ? SYNC_CHIPS[st.state] : ["…", "", "Checking against Garmin"];
       const chip = document.createElement(st && st.differences.length ? "button" : "span");
       chip.className = "chip " + cls; chip.textContent = glyph; chip.title = [tip, ...(st?.differences || [])].join("\n");
@@ -1675,7 +1718,7 @@ function renderOutline() {
     // the name opens the workout's picture; the JSON is one button away
     name.setAttribute("aria-expanded", String(open));
     clickable(name, () => { if (open) outlineOpen.names.delete(label); else outlineOpen.names.add(label); renderOutline(); });
-    if (garmin.enabled) {
+    if (garminOn(planProfile())) {
       const state = st?.state;
       const up = ["modified", "not-uploaded", "missing"].includes(state);
       addButton("upload", up ? "Upload this workout to Garmin" : `Upload: ${state === "synced" ? "already up to date" : "still checking"}`, up && !garminBusy, guard(() => planRowGarmin(i, "upload", state)));
@@ -1726,6 +1769,7 @@ const upcoming = (w) => [].concat((w && w.scheduledDate) || []).filter((d) => d 
 
 let prevView = "today";
 function setView(view) {
+  if (garmin.loaded && !viewAllowed(view)) view = "today"; // Back, or an address, to a view this profile does not offer
   document.body.dataset.view = view;
   $("vToday").setAttribute("aria-pressed", String(view === "today"));
   $("vPlans").setAttribute("aria-pressed", String(view === "plans"));
@@ -1762,14 +1806,14 @@ async function loadWorkouts(refresh = false) {
   await garminReady;
   const run = ++W.run, note = $("wNote");
   const sel = $("wProfile");
-  if (!sel.options.length) for (const name of garmin.profiles) sel.add(new Option(name, name));
+  fillProfiles(sel);
   sel.hidden = !(garmin.user && garmin.user.admin && garmin.profiles.length > 1);
   W.profile = W.profile || garmin.defaultProfile || garmin.profiles[0];
   sel.value = W.profile || "";
   note.hidden = true;
-  if (!garmin.enabled) {
+  if (!garminOn(W.profile)) {
     W.rows = []; renderRows();
-    note.textContent = garmin.reason || "Garmin is not available."; note.hidden = false;
+    note.textContent = garminWhy(W.profile) || garmin.reason || "Garmin is not available."; note.hidden = false;
     return;
   }
   if (!W.rows.length) $("wrows").innerHTML = '<div class="empty">Loading from Garmin…</div>';
@@ -2431,11 +2475,11 @@ async function loadActivities() {
   await garminReady;
   const run = ++A.run, note = $("aNote");
   const sel = $("aProfile");
-  if (!sel.options.length) for (const name of garmin.profiles) sel.add(new Option(name, name));
+  fillProfiles(sel);
   sel.hidden = !(garmin.user && garmin.user.admin && garmin.profiles.length > 1);
   A.profile = A.profile || garmin.defaultProfile || garmin.profiles[0] || null;
   sel.value = A.profile || "";
-  $("aSync").hidden = !garmin.enabled;
+  $("aSync").hidden = !garminOn(A.profile);
   let r;
   try { r = await api("GET", "/api/activities?" + activityQuery()); }
   catch (e) { if (run === A.run) { A.error = e.message; A.loaded = true; renderActivities(); } return; }
@@ -2446,7 +2490,7 @@ async function loadActivities() {
   if (A.sync && A.sync.syncing) pollActivities();
   // The cheap look for what is new (one Garmin call), once per visit to the page: only when there is something stored already,
   // since the first fill of an empty table is the person's call.
-  if (garmin.enabled && !A.refreshed && A.rows.length) { A.refreshed = true; syncActivities(false, true); }
+  if (garminOn(A.profile) && !A.refreshed && A.rows.length) { A.refreshed = true; syncActivities(false, true); }
 }
 
 /** Ask Garmin for what is new; with history, also start the background fill of the whole history and of every activity's details. */
@@ -2536,7 +2580,7 @@ function renderActivityNote() {
   if (!A.loaded) { line("Loading…"); return; }
   const s = A.sync;
   if (!A.rows.length) {
-    if (!garmin.enabled) { line(garmin.reason || "Garmin is not available, and nothing is stored yet."); return; }
+    if (!garminOn(A.profile)) { line(garminWhy(A.profile) || "Garmin is not available, and nothing is stored yet."); return; }
     line("No activities are stored yet. ");
     button("Fetch history from Garmin", () => syncActivities(true), "Lists your whole history, then fetches every activity's details in the background, about a second each");
     if (s && s.syncing) line("A fill is running…");
@@ -2550,7 +2594,7 @@ function renderActivityNote() {
   if (note.hidden) return;
   line(parts.join(" · "));
   const missing = s.pendingDetails + s.pendingCharts;
-  if (garmin.enabled && !s.syncing && (!s.historyComplete || missing)) {
+  if (garminOn(A.profile) && !s.syncing && (!s.historyComplete || missing)) {
     button(s.historyComplete ? `Fetch ${s.pendingDetails} missing details and ${s.pendingCharts} graphs` : "Fetch the rest of the history", () => syncActivities(true), "Runs in the background; this view follows it. The graphs take about three Garmin calls each.");
   }
 }
@@ -2837,7 +2881,7 @@ async function selectActivity(id, show = true) {
 }
 
 async function completeActivity(id, token) {
-  if (!garmin.enabled || (A.sync && A.sync.syncing)) return;
+  if (!garminOn(A.profile) || (A.sync && A.sync.syncing)) return;
   if (A.detail && !A.detail.detailed) await fetchActivityDetails(id, token);
   if (token !== A.detailRun || !A.detail) return;
   if (!A.detail.chart) await fetchActivityChart(id, token);
@@ -2923,7 +2967,7 @@ function chartSection(d, box) {
     if (A.chartBusy) note.textContent = "Fetching the graphs from Garmin…";
     else {
       note.append(A.chartFailure ? `Could not fetch the graphs: ${A.chartFailure} ` : A.sync && A.sync.syncing ? "The graphs are being filled in; they appear here when stored. " : "The graphs are not stored yet. ");
-      if (garmin.enabled && !(A.sync && A.sync.syncing)) { const b = mk("button", "", "Fetch them now"); b.onclick = guard(() => fetchActivityChart(id)); note.append(b); }
+      if (garminOn(A.profile) && !(A.sync && A.sync.syncing)) { const b = mk("button", "", "Fetch them now"); b.onclick = guard(() => fetchActivityChart(id)); note.append(b); }
     }
     box.append(note);
     return;
@@ -2989,7 +3033,7 @@ function renderActivityDetail() {
     if (A.detailBusy) note.textContent = "Fetching the details from Garmin…";
     else {
       note.append(A.detailFailure ? `Could not fetch the details: ${A.detailFailure} ` : A.sync && A.sync.syncing ? "The details are being filled in; they appear here when stored. " : "The details (feel, RPE, sets, intervals) are not stored yet. ");
-      if (garmin.enabled && !(A.sync && A.sync.syncing)) { const b = mk("button", "", "Fetch them now"); b.onclick = guard(() => fetchActivityDetails(r.id)); note.append(b); }
+      if (garminOn(A.profile) && !(A.sync && A.sync.syncing)) { const b = mk("button", "", "Fetch them now"); b.onclick = guard(() => fetchActivityDetails(r.id)); note.append(b); }
     }
     box.append(note);
   }
@@ -3060,11 +3104,11 @@ const SIGNAL_NAMES = { hrv: "HRV", restingHr: "Resting heart rate", sleep: "Slee
 async function loadWellness(V) {
   await garminReady;
   const run = ++V.run, sel = $(V.p + "Profile");
-  if (!sel.options.length) for (const name of garmin.profiles) sel.add(new Option(name, name));
+  fillProfiles(sel);
   sel.hidden = !(garmin.user && garmin.user.admin && garmin.profiles.length > 1);
   V.profile = V.profile || garmin.defaultProfile || garmin.profiles[0] || null;
   sel.value = V.profile || "";
-  $(V.p + "Sync").hidden = !garmin.enabled;
+  $(V.p + "Sync").hidden = !garminOn(V.profile);
   let d;
   try { d = await api("GET", `${V.path}?${wellnessQuery(V)}`); }
   catch (e) { if (run === V.run) { V.error = e.message; V.loaded = true; V.render(); } return; }
@@ -3073,7 +3117,7 @@ async function loadWellness(V) {
   V.render();
   if (d.sync && d.sync.syncing) pollWellness(V);
   // The cheap look at the last days, once per visit, and only when something is stored already: the first fill is the person's call.
-  if (garmin.enabled && !V.refreshed && d.sync && d.sync.days > 0) { V.refreshed = true; syncWellness(V, true); }
+  if (garminOn(V.profile) && !V.refreshed && d.sync && d.sync.days > 0) { V.refreshed = true; syncWellness(V, true); }
 }
 const loadRecovery = () => loadWellness(R), loadWeight = () => loadWellness(B);
 
@@ -3117,8 +3161,9 @@ function renderWellnessNote(V) {
   const parts = [];
   if (V.note) parts.push(V.note);
   if (s && s.days) parts.push(`${s.days} days stored (${RM.shortDay(s.oldest)} to ${RM.shortDay(s.newest)})`);
-  if (s && s.pending && (s.syncing || V.data.profile)) parts.push(s.syncing ? `filling in the background: ${s.pending} responses to go` : `${s.pending} responses not fetched yet`);
-  const error = V.error || (s && s.error ? `Garmin: ${s.error}` : "");
+  const onGarmin = garminOn(V.profile); // a profile without a Garmin login has nothing to fetch, and no sync to fail
+  if (onGarmin && s && s.pending && (s.syncing || V.data.profile)) parts.push(s.syncing ? `filling in the background: ${s.pending} responses to go` : `${s.pending} responses not fetched yet`);
+  const error = V.error || (onGarmin && s && s.error ? `Garmin: ${s.error}` : "");
   note.className = error ? "empty err" : "empty";
   note.textContent = error || parts.join(" · ");
   note.hidden = !(error || parts.length);
@@ -3137,8 +3182,8 @@ function renderRecovery() {
   if (R.error && !d) { box.append(mk("div", "msg err", R.error)); return; }
   if (!d || !d.profile) { box.append(mk("div", "empty", "No Garmin profile is configured.")); return; }
   if (!d.sync || !d.sync.days) {
-    box.append(mk("div", "empty", garmin.enabled ? "No health data is stored yet." : "No health data is stored yet, and Garmin is not available here to fetch it."));
-    if (garmin.enabled) { const b = mk("button", "primary", "Fetch the last 60 days from Garmin"); b.onclick = guard(() => syncWellness(R, false)); box.append(b); }
+    box.append(mk("div", "empty", garminOn(R.profile) ? "No health data is stored yet." : "No health data is stored yet, and Garmin is not connected for this profile to fetch it."));
+    if (garminOn(R.profile)) { const b = mk("button", "primary", "Fetch the last 60 days from Garmin"); b.onclick = guard(() => syncWellness(R, false)); box.append(b); }
     return;
   }
 
@@ -3256,22 +3301,27 @@ function renderWeight() {
   if (!B.loaded) { box.append(mk("div", "empty", "Loading…")); return; }
   if (B.error && !d) { box.append(mk("div", "msg err", B.error)); return; }
   if (!d || !d.profile) { box.append(mk("div", "empty", "No Garmin profile is configured.")); return; }
-  if (!d.sync || !d.sync.days) {
-    box.append(mk("div", "empty", garmin.enabled ? "No daily data is stored yet." : "No daily data is stored yet, and Garmin is not available here to fetch it."));
-    if (garmin.enabled) { const b = mk("button", "primary", "Fetch the last 60 days from Garmin"); b.onclick = guard(() => syncWellness(B, false)); box.append(b); }
+  // The days of a range carry the scale's weigh-ins too, so a profile with only a Renpho scale has days and no Garmin row at all.
+  const garminRows = !!(d.sync && d.sync.days), scaleOnly = !garminRows && d.days.length > 0;
+  if (!garminRows && !scaleOnly) {
+    const info = garmin.profileInfo[B.profile] || {};
+    box.append(mk("div", "empty", garminOn(B.profile) ? "No weigh-ins are stored yet." : info.renpho ? "No weigh-ins are stored yet. The scale's arrive when the Renpho sync runs: check it in Settings." : "No weigh-ins are stored yet. Connect a Renpho scale or Garmin in Settings to get them."));
+    if (garminOn(B.profile)) { const b = mk("button", "primary", "Fetch the last 60 days from Garmin"); b.onclick = guard(() => syncWellness(B, false)); box.append(b); }
     return;
   }
   const figs = mk("div", "rfigs");
   for (const f of WtM.figures(d, B.unit)) { const tile = mk("div", "rfig"); tile.append(mk("small", "", f.label), mk("b", "", f.value), mk("span", "", f.note)); figs.append(tile); }
   box.append(figs);
-  if (!d.body.weighIns) box.append(mk("div", "empty", "No weigh-in is stored for these days. Garmin Connect keeps the ones from a Garmin scale and the ones typed in by hand; press Sync after a new one."));
+  if (!d.body.weighIns) box.append(mk("div", "empty", garminOn(B.profile) ? "No weigh-in is stored for these days. Garmin Connect keeps the ones from a Garmin scale and the ones typed in by hand; press Sync after a new one." : "No weigh-in is stored for these days."));
   box.append(mk("h3", "", `Trends, ${d.days.length} days`));
   box.append(TrendCharts.trends(d.days, WtM.charts(d.days, B.unit), { selected: d.date, onPick: pickWeightDay }));
   box.append(mk("h3", "", "Every stored number"));
   box.append(metricsTable(d.days, WtM.GROUPS, (f, day) => WtM.cell(f, day, B.unit), d.date, pickWeightDay));
-  box.append(mk("h3", "", `Garmin's responses for ${RM.dayLabel(d.date)}`));
-  box.append(renderRawResponses(B, d, WtM.KINDS));
-  box.append(mk("div", "rfoot", "The trend is a straight line through the weigh-ins of the days shown, as one weigh-in moves a kilo or more with water and meals. The calories are Garmin's estimate from the watch: what the day burned, not what was eaten."));
+  if (garminRows) {
+    box.append(mk("h3", "", `Garmin's responses for ${RM.dayLabel(d.date)}`));
+    box.append(renderRawResponses(B, d, WtM.KINDS));
+  }
+  box.append(mk("div", "rfoot", "The trend is a straight line through the weigh-ins of the days shown, as one weigh-in moves a kilo or more with water and meals." + (garminRows ? " The calories are Garmin's estimate from the watch: what the day burned, not what was eaten." : " They are the scale's own numbers, as Renpho sent them.")));
   $("bscroll").scrollTop = keep;
 }
 
@@ -3309,7 +3359,7 @@ const foodQuery = () => `${F.profile ? `profile=${encodeURIComponent(F.profile)}
 async function loadFood() {
   await garminReady;
   const run = ++F.run, sel = $("fProfile");
-  if (!sel.options.length) for (const name of garmin.profiles) sel.add(new Option(name, name));
+  fillProfiles(sel);
   sel.hidden = !(garmin.user && garmin.user.admin && garmin.profiles.length > 1);
   F.profile = F.profile || garmin.defaultProfile || garmin.profiles[0] || null;
   sel.value = F.profile || "";
@@ -3435,10 +3485,10 @@ function renderFood() {
   trends.append(mk("h3", "", "Trends"), foodRangeSelect());
   box.append(trends);
   if (d.average) box.append(mk("div", "fnote", NM.averageNote(d.average)));
-  box.append(TrendCharts.trends(NM.chartDays(d.days), NM.charts(), { selected: d.date, onPick: pickFoodDay }));
+  box.append(TrendCharts.trends(NM.chartDays(d.days), NM.charts(d), { selected: d.date, onPick: pickFoodDay }));
   box.append(mk("h3", "", "Every day"));
-  box.append(metricsTable(d.days, NM.GROUPS, NM.cell, d.date, pickFoodDay));
-  box.append(mk("div", "rfoot", "The calories and macros are what you typed in or an assistant estimated from your description, so they are estimates. A day with nothing logged is not a day of zero. Fiber, sodium and the other nutrients are only what a food states: a total that counts fewer foods than the day has reads “≥”, because the foods that do not state it are unknown, not zero. Foods found by search or barcode come from Open Food Facts, a community-made database: check the numbers against the package when they matter. Foods estimated by AI (the box above the meals) are Claude's estimates from your words or photos, which are sent to Anthropic to be read; this app keeps neither. What Garmin says the day burned comes from the watch: today's is only what has burned so far. The food is kept here; Garmin has no place to store it."));
+  box.append(metricsTable(d.days, NM.groupsFor(d), NM.cell, d.date, pickFoodDay));
+  box.append(mk("div", "rfoot", "The calories and macros are what you typed in or an assistant estimated from your description, so they are estimates. A day with nothing logged is not a day of zero. Fiber, sodium and the other nutrients are only what a food states: a total that counts fewer foods than the day has reads “≥”, because the foods that do not state it are unknown, not zero. Foods found by search or barcode come from Open Food Facts, a community-made database: check the numbers against the package when they matter. Foods estimated by AI (the box above the meals) are Claude's estimates from your words or photos, which are sent to Anthropic to be read; this app keeps neither. " + (NM.hasBurn(d) ? "What Garmin says the day burned comes from the watch: today's is only what has burned so far. The food is kept here; Garmin has no place to store it." : "The food is kept here.")));
   $("fscroll").scrollTop = keep;
   if (F.ai.focus) { F.ai.focus = false; focusAi(); }
 }
@@ -4118,7 +4168,7 @@ async function loadToday() {
 /** The new activities, so that "done today" is current: one Garmin call, at most every ten minutes, and only once some are stored (the first fill is the person's call, as in the Activities view). */
 async function lookForActivities(force = false) {
   const d = T.data;
-  if (!garmin.enabled || !d || !d.profile || T.activitiesBusy) return;
+  if (!garminOn(d && d.profile) || !d || !d.profile || T.activitiesBusy) return;
   if (!force && (!d.hasActivities || Date.now() - T.activitiesAt < ACTIVITY_LOOK_MS)) return;
   T.activitiesBusy = true; T.activitiesAt = Date.now();
   try {
@@ -4153,8 +4203,9 @@ const syncToday = guard(async () => {
 function renderTodayNote(V) {
   const note = $("tNote"), s = V.data && V.data.sync, parts = [];
   if (V.note) parts.push(V.note);
-  if (s && s.syncing) parts.push("updating from Garmin in the background");
-  const error = V.error || (s && s.error ? `Garmin: ${s.error}` : "");
+  const onGarmin = garminOn(V.profile);
+  if (onGarmin && s && s.syncing) parts.push("updating from Garmin in the background");
+  const error = V.error || (onGarmin && s && s.error ? `Garmin: ${s.error}` : "");
   note.className = error ? "empty err" : "empty";
   note.textContent = error || parts.join(" · ");
   note.hidden = !(error || parts.length);
@@ -4170,12 +4221,28 @@ function renderToday() {
   box.replaceChildren();
   if (!T.loaded) { box.append(mk("div", "empty", "Loading…")); return; }
   if (T.error && !d) { box.append(mk("div", "msg err", T.error)); return; }
-  if (!ready) { box.append(mk("div", "empty", "No Garmin profile is configured.")); return; }
+  if (!ready) {
+    const empty = mk("div", "empty");
+    if (garmin.user && garmin.user.admin) {
+      empty.append("No profile yet. A profile keeps your plans and food log; Garmin and a Renpho scale are optional and connected in Settings. ");
+      const b = mk("button", "primary", "Add a profile"); b.onclick = guard(addProfile); empty.append(b);
+    } else empty.append("No profile.");
+    box.append(empty);
+    return;
+  }
 
-  const hint = TM.watchHint(d, Date.now());
+  // Every profile needs a web sign-in password; one made before that was a rule asks for it here until it is set.
+  const info = garmin.profileInfo[d.profile];
+  if (info && !info.webPassword) {
+    const note = mk("div", "msg warn thint", "This profile has no web sign-in password yet, and every profile needs one. ");
+    const set = mk("button", "", "Set it in Settings"); set.onclick = () => { S.profile = d.profile; setView("settings"); };
+    note.append(set); box.append(note);
+  }
+  // Without Garmin (and nothing stored from it) there are no steps, sleep or Body Battery: they are left out, not shown as "not synced yet".
+  const hint = d.health ? TM.watchHint(d, Date.now()) : "";
   if (hint) box.append(mk("div", "msg warn thint", hint));
   box.append(todayWorkouts(d));
-  box.append(todayTiles(TM.progressTiles(d)));
+  if (d.health) box.append(todayTiles(TM.progressTiles(d)));
   box.append(mk("h3", "", "Food"));
   box.append(todayTiles(TM.foodTiles(d)));
   const ahead = TM.workoutDays(d, measureWorkout).filter((day) => !day.today && day.items.length);
@@ -4186,7 +4253,7 @@ function renderToday() {
     for (const day of ahead) { card.append(mk("div", "tday", day.label)); for (const w of day.items) card.append(todayWorkout(w)); }
     box.append(mk("h3", "", "Next days"), card);
   }
-  box.append(mk("div", "rfoot", "Steps, Body Battery and sleep are Garmin's, as of the watch's last sync with the phone: the age above says how old. The intensity minutes are the week from Monday (a vigorous minute counts twice) against Garmin's weekly goal. The workouts are the ones the plan files schedule (their scheduledDate), not Garmin's own calendar; one counts as done when an activity today was started from it. The food is what was logged."));
+  box.append(mk("div", "rfoot", (d.health ? "Steps, Body Battery and sleep are Garmin's, as of the watch's last sync with the phone: the age above says how old. The intensity minutes are the week from Monday (a vigorous minute counts twice) against Garmin's weekly goal. " : "") + "The workouts are the ones the plan files schedule (their scheduledDate)" + (d.health ? ", not Garmin's own calendar" : "") + "; one counts as done when an activity today was started from it. The food is what was logged."));
   $("tscroll").scrollTop = keep;
 }
 
@@ -4230,11 +4297,11 @@ function todayWorkouts(d) {
   head.append(mk("b", "", "Today's workout"), mk("span", "tspace"));
   const chip = mk("button", "chip" + (r.cls === "go" ? " ok" : r.cls === "back" ? " warn" : ""), r.score !== null ? `${r.label} · ${r.score}` : r.label);
   chip.title = "How recovered you are today. Opens the Recovery view."; chip.onclick = () => setView("recovery");
-  head.append(chip);
+  if (d.health) head.append(chip); // how recovered you are needs the watch's data
   card.append(head);
   if (!day.items.length) card.append(mk("div", "tnone", "Nothing is planned for today."));
   for (const w of day.items) card.append(todayWorkout(w));
-  if (day.items.some((w) => !w.done) && r.text) card.append(mk("div", "tsug", r.text));
+  if (d.health && day.items.some((w) => !w.done) && r.text) card.append(mk("div", "tsug", r.text));
   if (d.activities.length) {
     const done = mk("div", "tdone");
     done.append(mk("h4", "", "Done so far"));
@@ -4266,8 +4333,9 @@ const S = { profile: null, data: null, error: "", loaded: false, run: 0, busy: "
 async function loadSettings() {
   await garminReady;
   const run = ++S.run, sel = $("sProfile");
-  if (!sel.options.length) for (const name of garmin.profiles) sel.add(new Option(name, name));
+  fillProfiles(sel);
   sel.hidden = !(garmin.user && garmin.user.admin && garmin.profiles.length > 1);
+  $("sAddProfile").hidden = !(garmin.user && garmin.user.admin);
   S.profile = S.profile || garmin.defaultProfile || garmin.profiles[0] || null;
   sel.value = S.profile || "";
   let d;
@@ -4299,6 +4367,16 @@ function runText(run) {
   return `Renpho holds ${run.seen} weigh-in${run.seen === 1 ? "" : "s"}; ${run.added} new${run.uploaded ? `, ${run.uploaded} uploaded to Garmin` : ""}.`;
 }
 
+/**
+ * Changing the password of the profile you are signed in as ends its sessions, which were made with the old one: sign in again with the
+ * new one, quietly, so this browser stays signed in (other browsers do not). Nothing to do for the admin token or for another profile.
+ */
+async function keepSignedIn(password) {
+  if (!me || !me.user || me.user.admin || me.user.name !== S.profile) return;
+  const { res, data } = await request("POST", "/api/login", { user: me.user.name, password });
+  if (res.ok) me = data;
+}
+
 /** Post an action for the profile. The answer holds the fresh view, and for a check or a run what it found. */
 async function settingsPost(area, body, doneNote) {
   if (S.busy) return;
@@ -4306,8 +4384,10 @@ async function settingsPost(area, body, doneNote) {
   try {
     const r = await api("POST", `/api/settings/${area}`, { profile: S.profile, ...body });
     S.data = r;
+    if (area === "web") await keepSignedIn(body.password); // before anything else asks the server: the old session is over
+    if (area !== "renpho" || body.action === "save" || body.action === "remove") await loadGarmin(); // what the profile has connected decides which views show
     S.msg[area] = r.run ? { ok: !r.run.error && r.run.ran, text: runText(r.run) } : r.message !== undefined ? { ok: r.ok, text: r.message } : doneNote ? { ok: true, text: doneNote } : null;
-    if (body.action === "save" || body.action === "remove" || body.action === "import-env") for (const k of ["gEmail", "gPass", "rEmail", "rPass", "rArea"]) delete S.draft[k];
+    if (body.action === "save" || body.action === "remove") for (const k of ["gEmail", "gPass", "rEmail", "rPass", "rArea", "wPass", "wPass2"]) delete S.draft[k];
   } catch (e) { S.msg[area] = { ok: false, text: e.message }; }
   finally { S.busy = ""; renderSettings(); }
 }
@@ -4338,8 +4418,10 @@ const messageLine = (area) => { const m = S.msg[area]; return m ? sline(m.ok ? "
 
 function garminCard(d) {
   const g = d.garmin, card = mk("div", "scard"), head = mk("h2", "", "Garmin account");
-  head.append(mk("span", "chip " + (g.source === "settings" ? "ok" : g.source ? "warn" : "err"), g.source === "settings" ? "login saved here" : g.source === "file" ? "login in the .env file" : "no login"));
-  card.append(head, mk("p", "sub", "The login the web editor and the MCP server sign in to Garmin Connect with. A login saved here comes before the profile's .env file. A password is only sent to the server, never shown again; leave it empty to keep the saved one."));
+  head.append(mk("span", "chip " + (g.connected ? "ok" : ""), g.connected ? "connected" : "not connected (optional)"));
+  card.append(head, mk("p", "sub", g.connected
+    ? "The login the web editor and the MCP server sign in to Garmin Connect with, to sync activities and health data and to send workouts to the watch. A password is only sent to the server, never shown again; leave it empty to keep the saved one."
+    : "Garmin is optional. Without it you still have plans, the calendar, the food log and the weigh-ins of a Renpho scale. Connect it to sync activities and health data and to send workouts to the watch."));
   if (g.error) card.append(sline("err", g.error));
   const form = mk("div", "sform");
   sfield(form, "Email", "gEmail", { value: g.email || "" });
@@ -4347,23 +4429,49 @@ function garminCard(d) {
   card.append(form);
   const buttons = mk("div", "sbtns");
   buttons.append(
-    sbtn("Save", () => settingsPost("garmin", { action: "save", email: S.draft.gEmail ?? g.email ?? "", password: S.draft.gPass ?? "" }, "Saved."), { cls: "primary", key: "garmin:save" }),
-    sbtn("Test login", () => settingsPost("garmin", { action: "test" }), { key: "garmin:test", disabled: !garmin.enabled }),
+    sbtn(g.connected ? "Save" : "Connect Garmin", () => settingsPost("garmin", { action: "save", email: S.draft.gEmail ?? g.email ?? "", password: S.draft.gPass ?? "" }, "Saved."), { cls: "primary", key: "garmin:save" }),
+    sbtn("Test login", () => settingsPost("garmin", { action: "test" }), { key: "garmin:test", disabled: !g.connected || garmin.mock }),
   );
-  if (g.source === "file") buttons.append(sbtn("Move the .env login here", () => settingsPost("garmin", { action: "import-env" }, "Moved: the login is saved here now. The .env file is left as it was; you can delete its GARMIN_ lines."), { key: "garmin:import-env" }));
-  if (g.source === "settings" && g.fileHasLogin) buttons.append(sbtn("Use the .env login again", async () => {
-    if (await confirmDialog({ title: "Use the .env file's login?", text: "The login saved here is forgotten and the profile's .env file is used again.", ok: "Use the file", danger: true })) await settingsPost("garmin", { action: "remove" }, "The .env file's login is in use again.");
+  if (g.connected) buttons.append(sbtn("Disconnect Garmin", async () => {
+    if (await confirmDialog({ title: "Disconnect Garmin?", text: "The login is forgotten and uploading weigh-ins to Garmin is switched off. What was synced (activities, health data) stays.", ok: "Disconnect", danger: true })) await settingsPost("garmin", { action: "remove" }, "Garmin is disconnected.");
   }, { cls: "danger", key: "garmin:remove" }));
   card.append(buttons);
   const msg = messageLine("garmin"); if (msg) card.append(msg);
   return card;
 }
 
+/** The password this profile signs in to the web editor with: required, typed twice, changed but never removed (the admin token needs none of it). */
+function webCard(d) {
+  const w = d.web, card = mk("div", "scard"), head = mk("h2", "", "Web sign-in");
+  head.append(mk("span", "chip " + (w.hasPassword ? "ok" : "warn"), w.hasPassword ? "password set" : "password required"));
+  card.append(head, mk("p", "sub", "Every profile has a password of its own to sign in to the editor, with the profile name as user name. That login sees only this profile's data and the plans shared or its own. The admin token keeps access to everything. The password is kept as a hash, and typed twice so a typing mistake does not lock you out."));
+  if (!w.hasPassword) card.append(sline("warn", "This profile has no password yet, so it cannot sign in on its own. Set one."));
+  const form = mk("div", "sform");
+  sfield(form, w.hasPassword ? "New password" : "Password", "wPass", { type: "password", placeholder: w.hasPassword ? "type a new one to change it" : `at least ${SetM.MIN_PASSWORD} characters` });
+  sfield(form, "Repeat password", "wPass2", { type: "password" });
+  card.append(form);
+  const same = mk("div", "sline err"); same.hidden = true;
+  const check = () => { const a = S.draft.wPass ?? "", b = S.draft.wPass2 ?? ""; same.textContent = b && a !== b ? "The two passwords are not the same." : ""; same.hidden = !same.textContent; };
+  for (const id of ["s-wPass", "s-wPass2"]) card.querySelector("#" + id).addEventListener("input", check);
+  card.append(same);
+  const buttons = mk("div", "sbtns");
+  buttons.append(sbtn(w.hasPassword ? "Change password" : "Set password", async () => {
+    const problem = SetM.passwordProblem(S.draft.wPass ?? "", S.draft.wPass2 ?? "");
+    if (problem) { S.msg.web = { ok: false, text: problem }; renderSettings(); return; }
+    const local = !!me && !me.authRequired; // no sign-in was needed until now: the first password turns it on
+    await settingsPost("web", { action: "save", password: S.draft.wPass, confirm: S.draft.wPass2 }, "Password saved.");
+    if (local && S.msg.web && S.msg.web.ok) { $("loginUser").value = S.profile; showLogin("Password saved. The editor now asks for a sign-in: use this profile's name and the new password."); }
+  }, { cls: "primary", key: "web:save" }));
+  card.append(buttons);
+  const msg = messageLine("web"); if (msg) card.append(msg);
+  return card;
+}
+
 function renphoCard(d) {
   const r = d.renpho, s = r.settings, st = r.state, now = Date.now(), card = mk("div", "scard"), head = mk("h2", "", "Renpho scale");
   const status = SetM.renphoStatus(r, now);
-  head.append(mk("span", "chip " + status.cls, status.label));
-  card.append(head, mk("p", "sub", "Brings the weigh-ins of your Renpho scale in, and can upload them to Garmin Connect with their body composition (body fat, water, bone, muscle), where the Weight view and the MCP read them. Renpho has no public API: this follows what its app does, so it can stop working when Renpho changes the app. It only reads from Renpho."));
+  head.append(mk("span", "chip " + status.cls, r.account ? status.label : "not connected (optional)"));
+  card.append(head, mk("p", "sub", "Optional. Brings the weigh-ins of your Renpho scale in, with their body composition (body fat, water, bone, muscle), to the Weight view and the MCP, with or without Garmin. With a Garmin login they can also be uploaded to Garmin Connect. Renpho has no public API: this follows what its app does, so it can stop working when Renpho changes the app. It only reads from Renpho."));
   if (r.accountError) card.append(sline("err", r.accountError));
 
   const form = mk("div", "sform");
@@ -4373,7 +4481,7 @@ function renphoCard(d) {
   card.append(form, mk("div", "sline dim", "An account that signs in to Renpho with Google or Apple needs a password set in the Renpho app first."));
   const buttons = mk("div", "sbtns");
   buttons.append(
-    sbtn("Save login", () => settingsPost("renpho", { action: "save", email: S.draft.rEmail ?? (r.account ? r.account.email : ""), password: S.draft.rPass ?? "", areaCode: S.draft.rArea ?? s.areaCode }, "Login saved."), { cls: "primary", key: "renpho:save" }),
+    sbtn(r.account ? "Save login" : "Connect Renpho", () => settingsPost("renpho", { action: "save", email: S.draft.rEmail ?? (r.account ? r.account.email : ""), password: S.draft.rPass ?? "", areaCode: S.draft.rArea ?? s.areaCode }, "Login saved."), { cls: "primary", key: "renpho:save" }),
     sbtn("Test login", () => settingsPost("renpho", { action: "test" }), { key: "renpho:test", disabled: !r.account }),
   );
   if (r.account) buttons.append(sbtn("Remove login", async () => {
@@ -4393,13 +4501,14 @@ function renphoCard(d) {
   fetchRow.querySelector("span").append(interval);
   sync.append(fetchRow);
 
-  const pushRow = stoggle(s.pushEnabled, "Upload new weigh-ins to Garmin", "Each weigh-in is sent once as a FIT file, like a Garmin scale's, through Garmin Connect's import. This changes your Garmin account. Try one file by hand first (below).", async (on, box) => {
+  const pushRow = stoggle(s.pushEnabled, "Upload new weigh-ins to Garmin", d.garmin.connected ? "Each weigh-in is sent once as a FIT file, like a Garmin scale's, through Garmin Connect's import. This changes your Garmin account. Try one file by hand first (below)." : "Connect Garmin first: the weigh-ins are uploaded to a Garmin account.", async (on, box) => {
     if (!on) return settingsPost("renpho", { action: "save", pushEnabled: false });
     const ok = await confirmDialog({ title: "Upload your Renpho weigh-ins to Garmin?", lines: ["From now on every new weigh-in is added to your Garmin Connect account, by itself, on each run.", ["warn", "Weigh-ins Garmin already has (typed in, or from another sync) may appear twice. Try the FIT file by hand first."]], ok: "Switch on" });
     if (!ok) { box.checked = false; return; }
     await settingsPost("renpho", { action: "save", pushEnabled: true });
   });
-  const since = mk("input"); since.type = "date"; since.value = s.pushSince || ""; since.disabled = !!S.busy;
+  if (!d.garmin.connected) pushRow.querySelector("input").disabled = true;
+  const since = mk("input"); since.type = "date"; since.value = s.pushSince || ""; since.disabled = !!S.busy || !d.garmin.connected;
   since.onchange = guard(() => settingsPost("renpho", { action: "save", pushSince: since.value || null }));
   const sinceRow = mk("small", "", "Only weigh-ins from this day on: "); sinceRow.append(since);
   pushRow.querySelector("span").append(sinceRow);
@@ -4465,18 +4574,63 @@ function renderSettings() {
   $("sNote").hidden = true;
   if (!S.loaded) box.append(mk("div", "empty", "Loading…"));
   else if (S.error && !d) box.append(mk("div", "msg err", S.error));
-  else if (!d || !d.profile) box.append(mk("div", "empty", "No Garmin profile is configured."));
+  else if (!d || !d.profile) box.append(mk("div", "empty", garmin.user && garmin.user.admin ? "No profile yet: add one with + Add profile. Garmin and Renpho are optional." : "No profile."));
   else {
     const enc = d.encryption;
     box.append(enc.enabled && !enc.plain
       ? sline("ok", "Saved passwords are encrypted in the database (CREDENTIALS_KEY).")
       : sline("warn", enc.enabled ? `Saved passwords are encrypted, but ${enc.plain} older one${enc.plain === 1 ? "" : "s"} is still plain text: it is encrypted the next time it is used.` : "Saved passwords are stored as plain text in the database. Set CREDENTIALS_KEY (in the compose file, for both services) to encrypt them."));
-    box.append(garminCard(d), renphoCard(d));
+    box.append(garminCard(d), renphoCard(d), webCard(d));
   }
   $("sscroll").scrollTop = keep;
 }
 
+/**
+ * A new profile: its name and the password it signs in to the editor with, typed twice (the password is mandatory). Garmin and a Renpho
+ * scale are optional and connected afterwards, in Settings. The dialog stays open, with the reason, until the server accepts it.
+ */
+async function addProfile() {
+  const dlg = $("pdlg"), ok = $("pdlgOk"), cancel = $("pdlgCancel"), error = $("pdlgError");
+  const fields = [$("pdlgName"), $("pdlgPass"), $("pdlgPass2")];
+  for (const f of fields) f.value = "";
+  error.hidden = true; ok.disabled = false;
+  const added = await new Promise((resolve) => {
+    let busy = false;
+    const say = (text) => { error.textContent = text; error.hidden = !text; };
+    const submit = async () => {
+      if (busy) return;
+      const problem = SetM.profileProblem(fields[0].value, fields[1].value, fields[2].value);
+      if (problem) return say(problem);
+      busy = true; ok.disabled = true; say("");
+      try {
+        const r = await api("POST", "/api/profiles", { name: fields[0].value.trim(), password: fields[1].value, confirm: fields[2].value });
+        resolve(r); dlg.close();
+      } catch (e) { say(e.message); busy = false; ok.disabled = false; }
+    };
+    ok.onclick = submit;
+    cancel.onclick = () => { resolve(null); dlg.close(); };
+    dlg.onclose = () => resolve(null); // Escape, or Back on a phone
+    for (const f of fields) f.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); submit(); } };
+    dlg.showModal(); navDialog(dlg); fields[0].focus();
+  });
+  await dlg.settled;
+  ok.onclick = cancel.onclick = dlg.onclose = null;
+  for (const f of fields) { f.onkeydown = null; f.value = ""; } // a password does not stay in the page
+  if (!added) return;
+  if (me && !me.authRequired) { // the profile has a password now, so the editor asks for a sign-in: with the profile just made
+    $("loginUser").value = added.name;
+    showLogin(`Profile ${added.name} added. Sign in with its name and the password you chose.`);
+    return;
+  }
+  await loadGarmin();
+  Object.assign(S, { profile: added.name, data: null, loaded: false, error: "", draft: {}, msg: {} });
+  for (const V of [T, F, A, R, B, W]) if (!V.profile) V.profile = added.name;
+  setView("settings");
+  guard(loadSettings)();
+}
+
 function bindSettingsView() {
+  $("sAddProfile").onclick = guard(addProfile);
   $("openSettings").onclick = () => { $("account").classList.remove("open"); $("accountBtn").setAttribute("aria-expanded", "false"); setView("settings"); };
   $("sBack").onclick = () => setView(S.from && S.from !== "settings" ? S.from : "plans");
   $("sProfile").onchange = (e) => { Object.assign(S, { profile: e.target.value, data: null, loaded: false, error: "", draft: {}, msg: {} }); guard(loadSettings)(); };
@@ -4621,7 +4775,8 @@ async function openWorkoutDialog(mode, workout, opts = {}) {
     sel.value = planFiles.some((f) => f.path === wanted) ? wanted : opts.link && planFiles.length ? planFiles[0].path : "";
   }
   $("wdUploadLabel").textContent = opts.link ? "Already on Garmin: only the plan changes" : mode === "new" ? "Upload to Garmin" : garminOnly ? "Save to Garmin" : "Also update on Garmin (replaces the workout: new id)";
-  $("wdUpload").checked = garmin.enabled && !opts.link; $("wdUpload").disabled = garminOnly || !!opts.link;
+  const onGarmin = garminOn(W.profile || planProfile()); // a profile without a Garmin login has nothing to upload to
+  $("wdUpload").checked = onGarmin && !opts.link; $("wdUpload").disabled = garminOnly || !!opts.link || !onGarmin;
   $("wdSchedule").checked = true;
   dlgEditor.setValue(JSON.stringify(workout, null, 2) + "\n");
   $("wdlg").showModal(); navDialog($("wdlg"));
@@ -4866,7 +5021,7 @@ require(["vs/editor/editor.main"], async (m) => {
   $("actions").addEventListener("click", (e) => e.target.closest("button") && document.body.classList.remove("menu-open"));
   document.querySelectorAll("#tabbar button[data-tab]").forEach((b) => (b.onclick = () => { setView("plans"); setTab(b.dataset.tab); }));
   $("syncRefresh").onclick = guard(() => refreshSync(true));
-  $("profile").onchange = () => refreshSync(true);
+  $("profile").onchange = () => { setButtons(); renderFiles(); refreshSync(true); }; // the Garmin buttons follow the profile chosen
   window.addEventListener("beforeunload", (e) => { if (!leaving && isDirty()) e.preventDefault(); });
 });
 setTab("files");

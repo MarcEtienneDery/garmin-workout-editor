@@ -141,11 +141,12 @@ export class RenphoTable {
     return Number(r.changes) > 0;
   }
 
-  /** The weigh-ins newest first (`limit`), or oldest first from `since` when given, optionally only those not uploaded. */
-  measurements(profile: string, options: { limit?: number; pending?: boolean; sinceDay?: string } = {}): Measurement[] {
+  /** The weigh-ins newest first (`limit`), optionally only those of the days `sinceDay` to `untilDay` or only those not uploaded (oldest first). */
+  measurements(profile: string, options: { limit?: number; pending?: boolean; sinceDay?: string; untilDay?: string } = {}): Measurement[] {
     const where = ["profile = ?"], params: unknown[] = [profile];
     if (options.pending) where.push("pushed_at IS NULL");
     if (options.sinceDay) { where.push("day >= ?"); params.push(options.sinceDay); }
+    if (options.untilDay) { where.push("day <= ?"); params.push(options.untilDay); }
     const order = options.pending ? "ASC" : "DESC";
     const limit = options.limit ? ` LIMIT ${Math.max(1, Math.floor(options.limit))}` : "";
     return this.db.prepare(`SELECT * FROM renpho_measurements WHERE ${where.join(" AND ")} ORDER BY measured_at ${order}${limit}`).all(...params).map(toMeasurement);

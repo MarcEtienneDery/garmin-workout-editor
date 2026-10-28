@@ -1,6 +1,8 @@
 import { StoreError, type DocSummary } from "./types";
 
-export const PROFILE_NAME_REGEX = /^[a-zA-Z0-9_-]+$/;
+/** Most characters of a profile name: it is a folder name (data/<name>/), so it must fit one. */
+export const MAX_PROFILE_NAME = 64;
+export const PROFILE_NAME_REGEX = new RegExp(`^[a-zA-Z0-9_-]{1,${MAX_PROFILE_NAME}}$`);
 export const MAX_SUMMARY_BYTES = 5 * 1024 * 1024;
 
 /**

@@ -11,6 +11,7 @@ import { getStore } from "../../shared/store";
 import type { DetailedWorkout } from "../../shared/types";
 import { compareWorkouts } from "../../shared/workoutSync";
 import {
+  dataProfile,
   getValidatorEditor,
   logicalPath as checkedPath,
   readJsonDoc,
@@ -336,24 +337,31 @@ export function registerPlanTools(server: McpServer): void {
     {
       title: "Write plan",
       description:
-        "Create or overwrite a plan with the given content. Workout plans/arrays are validated afterwards; the plan is saved even if validation reports errors, so check `validation`. To change a single workout, prefer upsert_plan_workout. The version it replaces stays in the plan's history, so an overwrite can be undone from the web editor.\n\n" +
+        "Create or overwrite a plan with the given content. A new plan under workout-plans/ belongs to the profile (see list_profiles; optional when a default profile is configured or only one exists), and other profiles do not see it; an existing plan keeps its owner. Workout plans/arrays are validated afterwards; the plan is saved even if validation reports errors, so check `validation`. To change a single workout, prefer upsert_plan_workout. The version it replaces stays in the plan's history, so an overwrite can be undone from the web editor.\n\n" +
         WORKOUT_FORMAT,
       inputSchema: {
         path: z.string().describe('Logical path starting with "workout-plans/" or "data/", ending in .json.'),
         content: z
           .union([z.array(z.any()), z.record(z.string(), z.any())])
           .describe("The full JSON document: a plan object ({ generatedAt, weekStart, weekEnd, workouts }) or an array."),
+        profile: z
+          .string()
+          .optional()
+          .describe("Profile name that owns a new plan under workout-plans/ (see list_profiles). Optional when a default profile is configured or only one exists; ignored for a plan that exists and for data/<profile>/ paths."),
       },
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true },
     },
-    ({ path: logicalPath, content }) =>
+    ({ path: logicalPath, content, profile }) =>
       runTool(async () => {
         const logical = checkedPath(logicalPath);
         const existed = getStore().head(logical) !== undefined;
-        writeJsonDoc(logical, content);
+        // only a new plan needs an owner, so overwriting one never fails for want of a profile
+        const owner = !existed && logical.startsWith("workout-plans/") ? dataProfile(profile) : null;
+        writeJsonDoc(logical, content, "mcp", owner);
         return {
           path: logical,
           overwritten: existed,
+          ...(owner ? { owner } : {}),
           validation: looksLikeWorkoutsFile(content) ? validatePlanData(content) : undefined,
         };
       })

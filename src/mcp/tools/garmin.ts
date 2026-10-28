@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { getAvailableProfiles } from "../../shared/profileLoader";
+import { garminConnected, getAvailableProfiles } from "../../shared/profileLoader";
 import { getStore } from "../../shared/store";
 import {
   assertLive,
@@ -21,7 +21,7 @@ import { NEW_WORKOUT_FORMAT, type NewWorkout, diffPlanWorkout, extractWorkouts, 
 export const profileArg = z
   .string()
   .optional()
-  .describe("Garmin profile name (see list_profiles). Optional when a default profile is configured or only one exists.");
+  .describe("Profile name (see list_profiles). Optional when a default profile is configured or only one exists.");
 
 const planPath = z
   .string()
@@ -382,9 +382,9 @@ export function registerGarminTools(server: McpServer): void {
   server.registerTool(
     "list_profiles",
     {
-      title: "List Garmin profiles",
+      title: "List profiles",
       description:
-        "List the configured Garmin profiles (one per account), the default profile, and whether the server runs in mock mode (mock data, Garmin writes disabled).",
+        "List the profiles (one per person), which of them have a Garmin login (garminProfiles; the Garmin tools need one, the plan and food tools do not), the default profile, and whether the server runs in mock mode (mock data, Garmin writes disabled).",
       annotations: { readOnlyHint: true },
     },
     () =>
@@ -392,6 +392,7 @@ export function registerGarminTools(server: McpServer): void {
         mock: getSettings().mock,
         defaultProfile: getSettings().defaultProfile ?? null,
         profiles: getAvailableProfiles(),
+        garminProfiles: getAvailableProfiles().filter(garminConnected),
       }))
   );
 
@@ -491,7 +492,7 @@ export function registerGarminTools(server: McpServer): void {
           const session = getSession(profile);
           const out = outputPath ? checkedPath(outputPath) : `data/${session.profile.name}/workouts.json`;
           const workouts = await session.editor.fetchWorkouts(true);
-          writeJsonDoc(out, workouts);
+          writeJsonDoc(out, workouts, "mcp", session.profile.name);
           console.log(`✅ Workouts saved to ${out}`);
           return { savedTo: out, count: workouts.length };
         },

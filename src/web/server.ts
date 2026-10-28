@@ -7,11 +7,15 @@
  * Reaches the same documents as the MCP plan tools ("workout-plans/*.json" and
  * "data/<profile>/*.json") through the same store, which keeps the earlier versions
  * of every document (GET /api/history). Non-loopback binds
- * require WEB_AUTH_TOKEN or a profile WEB_PASSWORD (below).
+ * require WEB_AUTH_TOKEN or a profile with a web sign-in password (below).
+ *
+ * Profiles live in the database (POST /api/profiles adds one; the Settings view shows them). Garmin and Renpho are optional
+ * for each: GET /api/garmin says which profile has what (profileInfo), the Garmin parts of the page show for the profiles that
+ * have a Garmin login, and a request that needs Garmin for a profile without one is answered 409.
  *
  * The Garmin actions (upload / schedule / send to device) reuse the MCP tool
- * bodies, so they need the profile credentials (GARMIN_PROFILES_DIR) and are
- * disabled when no profile is configured or in mock mode.
+ * bodies, so they need the profile's Garmin login and are disabled for a profile
+ * without one and in mock mode.
  *
  * The Workouts view lists the Garmin library next to the workouts of the plan files
  * (GET /api/workouts), compares plan workouts with their Garmin copy (POST /api/garmin/status)
@@ -51,7 +55,7 @@
  *
  * Logins: the page shows a sign-in form (POST /api/login, GET /api/session, POST /api/logout)
  * and keeps the login in an HttpOnly session cookie. user = a profile name (any case),
- * password = WEB_PASSWORD from that profile's .env.<profile> -> sees only data/<profile>/ and
+ * password = the web sign-in password set for that profile in Settings (kept as a hash) -> sees only data/<profile>/ and
  * the plans in workout-plans/ that are shared or its own, and its Garmin actions run as that
  * profile. WEB_AUTH_TOKEN as the password (any user name) is the admin login with full access.
  * Scripts can send the same credentials as HTTP Basic instead of using a session.
@@ -61,8 +65,9 @@ import * as http from "http";
 import * as path from "path";
 import { createHash, randomBytes, timingSafeEqual } from "crypto";
 import * as dotenv from "dotenv";
-import { PROJECT_ROOT, findProfile, getAvailableProfiles, getProfilesDir } from "../shared/profileLoader";
-import { type DocMeta, type StoreErrorCode, StoreError, WELLNESS_KINDS, type WellnessKind, getStore, normalizeLogicalPath, profileOfPath } from "../shared/store";
+import { GarminNotConnectedError, PROJECT_ROOT, findProfile, garminConnected, getAvailableProfiles } from "../shared/profileLoader";
+import { type DocMeta, type StoreErrorCode, StoreError, WELLNESS_KINDS, type WellnessKind, decoyCheck, getStore, normalizeLogicalPath, profileOfPath } from "../shared/store";
+import { LoginThrottle } from "./loginThrottle";
 import { getSettings, resolveProfileName, runCaptured } from "../mcp/context";
 import { installConsoleRedirect } from "../mcp/logCapture";
 import { slimStored } from "../activityExporter";
@@ -76,7 +81,7 @@ import { fetchChartNow, fetchDetailsNow, refreshActivities, startBackgroundSync 
 import { diffPlanWorkout, extractWorkouts, validatePlanData } from "../mcp/tools/plans";
 import { refreshWellness, rereadWeighIns, startBackgroundWellness, wellnessSyncStatus } from "../mcp/tools/wellness";
 import { bodyRange, intensityWeek, readinessAt, wellnessRange } from "../shared/wellnessReport";
-import { SettingsError, moveGarminLoginFromFile, removeGarminLogin, removeRenpho, saveGarminLogin, saveRenpho, settingsView } from "../shared/accounts";
+import { SettingsError, createProfile, removeGarminLogin, removeRenpho, saveGarminLogin, saveRenpho, saveWebPassword, settingsView } from "../shared/accounts";
 import { recentFit, testRenphoLogin } from "../shared/renphoSync";
 import { runRenpho, startRenphoTimer } from "../mcp/tools/renpho";
 import { testGarminLogin } from "../mcp/tools/settings";
@@ -131,7 +136,9 @@ class HttpError extends Error {
     readonly status: number,
     message: string,
     /** Extra fields for the JSON error body (e.g. the Garmin log). */
-    readonly extra: Record<string, unknown> = {}
+    readonly extra: Record<string, unknown> = {},
+    /** Extra response headers (Retry-After). */
+    readonly headers: http.OutgoingHttpHeaders = {}
   ) {
     super(message);
   }
@@ -147,16 +154,8 @@ const sameSecret = (a: string, b: string) => timingSafeEqual(sha256(a), sha256(b
 export type Principal = { admin: true; profile?: undefined } | { admin: false; profile: string };
 const ADMIN: Principal = { admin: true };
 
-/** WEB_PASSWORD from a profile's .env file; read per request so edits apply without a restart. */
-function profileWebPassword(name: string): string | undefined {
-  try {
-    const file = path.join(getProfilesDir(), `.env.${name}`);
-    return dotenv.parse(fs.readFileSync(file, "utf8")).WEB_PASSWORD || undefined;
-  } catch {
-    return undefined;
-  }
-}
-const profilesWithWebPassword = (): string[] => getAvailableProfiles().filter((p) => profileWebPassword(p));
+/** The profiles that sign in with a password of their own; read per request so one set in Settings applies at once. */
+const profilesWithWebPassword = (): string[] => store().profiles.withWebPassword();
 
 /** A profile login reaches its own data/<profile>/ and the plans in workout-plans/ that are shared or its own. */
 function canReach(who: Principal, logical: string, owner: string | null): boolean {
@@ -186,11 +185,15 @@ async function readBody(req: http.IncomingMessage): Promise<any> {
     chunks.push(chunk as Buffer);
   }
   if (!chunks.length) return {};
+  let body: unknown;
   try {
-    return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+    body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
   } catch {
     throw new HttpError(400, "Request body is not valid JSON");
   }
+  // every route reads fields off the body: null, a number or a list would be a crash, not a bad request
+  if (body === null || typeof body !== "object" || Array.isArray(body)) throw new HttpError(400, "Request body must be a JSON object");
+  return body;
 }
 
 function logicalOr400(logicalPath: unknown): string {
@@ -324,22 +327,50 @@ type GarminAction = (typeof GARMIN_ACTIONS)[number];
 /** What the page shows about the login: the profile name, or admin. */
 const userInfo = (who: Principal) => (who.admin ? { admin: true } : { admin: false, name: who.profile });
 
+/** Whether the profile has Garmin health data to show: a Garmin login, or rows stored from one that was disconnected. */
+const hasHealth = (profile: string): boolean => garminConnected(profile) || store().wellness.hasRows(profile);
+
+/** What one profile has: the connections it made and whether the views that depend on them have anything stored. */
+function profileSources(profile: string) {
+  const renpho = store().renpho.counts(profile);
+  let renphoLogin = false;
+  try {
+    renphoLogin = store().credentials.get(profile, "renpho") !== null;
+  } catch {
+    renphoLogin = true; // saved, but encrypted with a key this process lacks
+  }
+  return {
+    garmin: garminConnected(profile),
+    renpho: renphoLogin,
+    // every profile needs a web sign-in password; one made before that was a rule, or imported without one, is asked to set it
+    webPassword: store().profiles.webPasswordHash(profile) !== null,
+    hasActivities: store().activities.counts(profile).total > 0,
+    hasWellness: store().wellness.hasRows(profile),
+    hasWeight: renpho.total > 0 || store().wellness.hasWeighIn(profile),
+  };
+}
+
 function garminInfo(who: Principal) {
   const all = getAvailableProfiles();
   const profiles = who.admin ? all : all.filter((p) => p === who.profile);
   const mock = getSettings().mock;
+  const profileInfo = Object.fromEntries(profiles.map((p) => [p, profileSources(p)]));
+  const connected = profiles.filter((p) => profileInfo[p].garmin);
   return {
-    enabled: profiles.length > 0 && !mock,
+    // some profile can reach Garmin; the page asks per profile (profileInfo) before it shows a Garmin button
+    enabled: connected.length > 0 && !mock,
     mock,
     profiles,
+    connected,
+    profileInfo,
     user: userInfo(who),
     defaultProfile: who.admin
       ? (getSettings().defaultProfile ?? (profiles.length === 1 ? profiles[0] : null))
       : who.profile,
     reason: mock
       ? "Mock mode: Garmin writes are disabled."
-      : profiles.length === 0
-        ? "No Garmin profiles configured (mount the .env.<profile> files at GARMIN_PROFILES_DIR)."
+      : connected.length === 0
+        ? "Garmin is not connected: add a Garmin login in Settings to sync and send workouts."
         : null,
   };
 }
@@ -347,7 +378,7 @@ function garminInfo(who: Principal) {
 /** data/<PROFILE>/... files and owned plans belong to that profile; other plans need an explicit or default one. */
 function profileFor(who: Principal, logical: string, requested: unknown): string {
   if (!who.admin) {
-    if (!getAvailableProfiles().includes(who.profile)) throw new HttpError(400, `Unknown Garmin profile "${who.profile}".`);
+    if (!getAvailableProfiles().includes(who.profile)) throw new HttpError(400, `Unknown profile "${who.profile}".`);
     return who.profile; // a profile login always acts as itself
   }
   const owner = profileOfPath(logical) ?? (logical ? (store().head(logical)?.owner ?? undefined) : undefined);
@@ -358,7 +389,7 @@ function profileFor(who: Principal, logical: string, requested: unknown): string
   } catch (error) {
     throw new HttpError(400, (error as Error).message);
   }
-  if (!getAvailableProfiles().includes(resolved)) throw new HttpError(400, `Unknown Garmin profile "${resolved}".`);
+  if (!getAvailableProfiles().includes(resolved)) throw new HttpError(400, `Unknown profile "${resolved}".`);
   return resolved;
 }
 
@@ -374,6 +405,7 @@ async function garminAction(body: any, who: Principal): Promise<{ status: number
   const doc = store().get(logical);
   if (!doc) throw new HttpError(404, `File not found: ${logical}`);
   const profile = profileFor(who, logical, body.profile);
+  requireConnected(profile);
 
   if (action === "upload" || action === "upload_schedule") {
     const validation = validateText(doc.text) as { errors: string[] } | null;
@@ -398,7 +430,7 @@ async function garminAction(body: any, who: Principal): Promise<{ status: number
   const version = store().head(logical)?.version;
   if (!outcome.ok) {
     const message = outcome.error instanceof Error ? outcome.error.message : String(outcome.error);
-    return { status: 502, payload: { error: message, log: outcome.log, profile, version } };
+    return { status: garminFailure(outcome.error), payload: { error: message, log: outcome.log, profile, version } };
   }
   return { status: 200, payload: { action, profile, result: outcome.value, log: outcome.log, version } };
 }
@@ -640,16 +672,24 @@ function requireGarmin(who: Principal): void {
   if (!info.enabled) throw new HttpError(409, info.reason ?? "Garmin actions are disabled.");
 }
 
+/** The profile a Garmin request is about must have a Garmin login of its own; the others work without Garmin. */
+function requireConnected(profile: string): void {
+  if (!garminConnected(profile)) throw new HttpError(409, `Profile "${profile}" has no Garmin login: add one in Settings.`);
+}
+
 function requireConfirm(body: any): void {
   // The UI asks first; the API insists so a stray request can't change the account.
   if (body.confirm !== true) throw new HttpError(400, "Confirmation required (confirm: true).");
 }
 
+/** A call that failed on Garmin's side is a 502; one that could not start because the profile has no Garmin login is a 409. */
+const garminFailure = (error: unknown): number => (error instanceof GarminNotConnectedError ? 409 : 502);
+
 /** Run a Garmin call serialized with the others; a failure becomes a 502 that carries the Garmin log. */
 async function viaGarmin<T>(fn: () => Promise<T>): Promise<{ value: T; log: string }> {
   const outcome = await runCaptured(fn);
   if (!outcome.ok) {
-    throw new HttpError(502, outcome.error instanceof Error ? outcome.error.message : String(outcome.error), { log: outcome.log });
+    throw new HttpError(garminFailure(outcome.error), outcome.error instanceof Error ? outcome.error.message : String(outcome.error), { log: outcome.log });
   }
   return { value: outcome.value, log: outcome.log };
 }
@@ -736,6 +776,7 @@ async function createWorkout(body: any, who: Principal): Promise<unknown> {
     requireGarmin(who);
     requireConfirm(body);
     const profile = profileFor(who, plan?.logical ?? "", body.profile);
+    requireConnected(profile);
     const toUpload = { ...workout };
     delete toUpload.workoutId; // a new workout never replaces an existing one
     ({ value: saved, log } = await viaGarmin(() => saveWorkout(profile, toUpload, body.schedule === true)));
@@ -772,6 +813,7 @@ async function updateWorkout(body: any, who: Principal): Promise<unknown> {
     requireGarmin(who);
     requireConfirm(body);
     const profile = profileFor(who, ownerHint(files), body.profile);
+    requireConnected(profile);
     const toUpload = { ...workout };
     if (hasId(body.workoutId)) toUpload.workoutId = body.workoutId;
     else delete toUpload.workoutId;
@@ -801,6 +843,7 @@ async function deleteWorkout(body: any, who: Principal): Promise<unknown> {
     requireConfirm(body);
     if (!hasId(body.workoutId)) throw new HttpError(400, "Missing workoutId");
     const profile = profileFor(who, ownerHint(files), body.profile);
+    requireConnected(profile);
     ({ log } = await viaGarmin(() => deleteLibraryWorkout(profile, body.workoutId)));
   }
 
@@ -922,6 +965,8 @@ function nutritionView(profile: string, asked: unknown, daysAsked: unknown) {
     average: averageOf(days, today),
     recent: recentFoods(store(), profile),
     ai: foodAiStatus(profile, today),
+    // false: no Garmin and nothing stored from it, so there is no burn to set the food against
+    burn: hasHealth(profile),
   };
 }
 
@@ -971,6 +1016,8 @@ function todayView(profile: string) {
     workouts: plannedAhead(profile, today, doneIds),
     activities,
     hasActivities: store().activities.counts(profile).total > 0,
+    // false: no Garmin and nothing stored from it, so the page leaves out the steps, sleep and readiness
+    health: hasHealth(profile),
     food,
     sync: wellnessSyncStatus(profile),
   };
@@ -1047,8 +1094,9 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
       const info = garminInfo(who);
       if (!info.enabled) throw new HttpError(409, info.reason ?? "Garmin actions are disabled.");
       const profile = profileFor(who, queryPath && /^data\/[^/]+\//.test(queryPath) ? queryPath : "", url.searchParams.get("profile"));
+      requireConnected(profile);
       const outcome = await runCaptured(() => listDevices(profile));
-      if (!outcome.ok) throw new HttpError(502, outcome.error instanceof Error ? outcome.error.message : String(outcome.error));
+      if (!outcome.ok) throw new HttpError(garminFailure(outcome.error), outcome.error instanceof Error ? outcome.error.message : String(outcome.error));
       return send(res, 200, outcome.value);
     }
 
@@ -1060,6 +1108,7 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
     case "GET /api/workouts": {
       requireGarmin(who);
       const profile = profileFor(who, "", url.searchParams.get("profile"));
+      requireConnected(profile);
       const { value: library } = await viaGarmin(() => listLibraryWorkouts(profile, url.searchParams.get("refresh") === "1"));
       return send(res, 200, { profile, ...workoutRows(library, planEntriesFor(profile)) });
     }
@@ -1167,16 +1216,15 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
     }
 
     case "POST /api/settings/garmin": {
-      // The Garmin login of a profile: saved in the database (which comes before the profile's .env file), checked, moved in from the file or removed.
+      // The Garmin login of a profile (optional): saved in the database, checked or removed.
       const body = await readBody(req);
       const profile = profileFor(who, "", body.profile);
       let result: Record<string, unknown> = {};
       try {
         if (body.action === "save") saveGarminLogin(store(), profile, body);
-        else if (body.action === "import-env") moveGarminLoginFromFile(store(), profile);
         else if (body.action === "remove") removeGarminLogin(store(), profile);
         else if (body.action === "test") {
-          requireGarmin(who);
+          if (getSettings().mock) throw new HttpError(409, "Mock mode: Garmin writes are disabled.");
           result = await testGarminLogin(profile);
         } else throw new HttpError(400, `Unknown action "${body.action}".`);
       } catch (error) {
@@ -1184,6 +1232,39 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
         throw error;
       }
       return send(res, 200, { ...result, ...settingsView(store(), profile) });
+    }
+
+    case "POST /api/settings/web": {
+      // The password the profile signs in to the web editor with, typed twice (password, confirm). It is mandatory: it can be changed, not removed.
+      const body = await readBody(req);
+      const profile = profileFor(who, "", body.profile);
+      try {
+        if (body.action === "save") saveWebPassword(store(), profile, body);
+        else throw new HttpError(400, `Unknown action "${body.action}".`);
+      } catch (error) {
+        if (error instanceof SettingsError) throw new HttpError(400, error.message);
+        throw error;
+      }
+      return send(res, 200, settingsView(store(), profile));
+    }
+
+    case "POST /api/profiles": {
+      // A new profile: a name and the password it signs in with, typed twice (name, password, confirm). Garmin and Renpho are connected
+      // afterwards, in Settings, if the person wants them. Once a profile has a password the editor asks for a sign-in.
+      if (!who.admin) throw new HttpError(403, "Only the admin login can add a profile.");
+      const body = await readBody(req);
+      // a name is taken whatever its case: "med" next to "MED" would be two folders the lookups cannot tell apart
+      const wanted = typeof body.name === "string" ? body.name.trim().toLowerCase() : "";
+      const taken = wanted ? getAvailableProfiles().find((p) => p.toLowerCase() === wanted) : undefined;
+      if (taken) throw new HttpError(409, `Profile "${taken}" exists already.`);
+      let name: string;
+      try {
+        name = createProfile(store(), body);
+      } catch (error) {
+        if (error instanceof SettingsError) throw new HttpError(400, error.message);
+        throw error;
+      }
+      return send(res, 201, { name, ...garminInfo(who) });
     }
 
     case "POST /api/settings/renpho": {
@@ -1230,6 +1311,7 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
       requireGarmin(who);
       const body = await readBody(req);
       const profile = profileFor(who, "", body.profile);
+      requireConnected(profile);
       // the Weight view's button asks for the weigh-ins again: one may have been added on Garmin since the empty answer was stored
       if (body.rereadWeight === true) rereadWeighIns(profile);
       // fresh: the Today view's button wants today's steps as they are now, not as they were up to half an hour ago
@@ -1252,6 +1334,7 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
       requireGarmin(who);
       const body = await readBody(req);
       const profile = profileFor(who, "", body.profile);
+      requireConnected(profile);
       const refreshed = await refreshActivities(profile);
       const background = body.history === true ? startBackgroundSync(profile) : null;
       return send(res, 200, { ...refreshed, background, sync: syncStatus(store(), profile) });
@@ -1261,6 +1344,7 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
       requireGarmin(who);
       const body = await readBody(req);
       const profile = profileFor(who, "", body.profile);
+      requireConnected(profile);
       const id = String(body.id ?? "");
       if (!/^[\w-]+$/.test(id) || !store().activities.get(profile, id)) throw new HttpError(404, `Activity ${id} is not stored.`);
       const fetched = await fetchChartNow(profile, id);
@@ -1271,6 +1355,7 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
       requireGarmin(who);
       const body = await readBody(req);
       const profile = profileFor(who, "", body.profile);
+      requireConnected(profile);
       const id = String(body.id ?? "");
       if (!/^[\w-]+$/.test(id) || !store().activities.get(profile, id)) throw new HttpError(404, `Activity ${id} is not stored.`);
       const fetched = await fetchDetailsNow(profile, [id]);
@@ -1297,6 +1382,7 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
       const id = url.searchParams.get("id") ?? "";
       if (!/^[\w-]+$/.test(id)) throw new HttpError(400, "Missing or invalid workout id");
       const profile = profileFor(who, "", url.searchParams.get("profile"));
+      requireConnected(profile);
       const { value: workout } = await viaGarmin(() => getLibraryWorkout(profile, id));
       if (!workout) throw new HttpError(404, `Workout ${id} not found on Garmin.`);
       const plans = planEntriesFor(profile)
@@ -1337,6 +1423,7 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
       const workouts = Array.isArray(data) ? data : Array.isArray(data?.workouts) ? data.workouts : null;
       if (!workouts) return send(res, 200, { statuses: [] });
       const profile = profileFor(who, logical, body.profile);
+      requireConnected(profile);
       const { value: statuses } = await viaGarmin(() => checkWorkoutSync(profile, workouts, body.refresh === true));
       return send(res, 200, { profile, statuses });
     }
@@ -1353,25 +1440,40 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
 
 export function startWebServer(options: WebServerOptions): Promise<http.Server> {
   if (!isLoopback(options.host) && !options.token && profilesWithWebPassword().length === 0) {
-    throw new Error("WEB_AUTH_TOKEN (or a WEB_PASSWORD in a profile .env file) is required when binding to a non-loopback host.");
+    throw new Error("WEB_AUTH_TOKEN (or a profile with a web sign-in password) is required when binding to a non-loopback host.");
   }
-  // Checked per request: WEB_PASSWORD edits in a profile file apply without a restart.
+  // Checked per request: a web sign-in password set or removed in Settings applies without a restart.
   const authRequired = () => !!options.token || profilesWithWebPassword().length > 0;
 
-  /** Who a user name and secret stand for. A profile name matches in any case; the token is the admin login. */
-  const verify = (user: string, secret: string): Principal | null => {
+  // Wrong passwords per client address. A password is checked with scrypt, so a flood of guesses is slowed, and each costs the same.
+  const throttle = new LoginThrottle();
+
+  /**
+   * Who a user name and secret stand for. A profile name matches in any case; the token is the admin login. A wrong guess from an
+   * address that has made too many waits (429), and takes as long whichever name it was made with, so the time says nothing.
+   */
+  const verify = async (req: http.IncomingMessage, user: string, secret: string): Promise<Principal | null> => {
+    const address = req.socket.remoteAddress ?? "";
+    const wait = throttle.waitMs(address);
+    if (wait > 0) {
+      const seconds = Math.ceil(wait / 1000);
+      throw new HttpError(429, `Too many wrong passwords. Try again in ${seconds} second${seconds === 1 ? "" : "s"}.`, { retryAfter: seconds }, { "Retry-After": String(seconds) });
+    }
     const profile = user ? findProfile(user) : undefined;
-    const profilePassword = profile ? profileWebPassword(profile) : undefined;
-    if (profile && profilePassword && sameSecret(secret, profilePassword)) return { admin: false, profile };
-    if (options.token && sameSecret(secret, options.token)) return ADMIN;
-    return null;
+    let who: Principal | null = null;
+    if (profile && (await store().profiles.checkWebPasswordAsync(profile, secret))) who = { admin: false, profile };
+    else if (options.token && sameSecret(secret, options.token)) who = ADMIN;
+    else if (!profile) await decoyCheck(secret); // no such profile: spend what a real check would
+    if (who) throttle.clear(address);
+    else throttle.fail(address);
+    return who;
   };
 
   // Logins made through the form. A session ends when it expires, on logout, or when the secret it was made
-  // with changes (a rotated WEB_PASSWORD or a removed profile), just as Basic credentials stop working then.
+  // with changes (a changed or removed web sign-in password), just as Basic credentials stop working then.
   interface Session { who: Principal; secretHash: Buffer; expires: number }
   const sessions = new Map<string, Session>();
-  const currentSecret = (who: Principal) => (who.admin ? options.token : profileWebPassword(who.profile));
+  const currentSecret = (who: Principal) => (who.admin ? options.token : (store().profiles.webPasswordHash(who.profile) ?? undefined));
 
   const cookieValue = (req: http.IncomingMessage, name: string): string | undefined => {
     for (const part of (req.headers.cookie ?? "").split(";")) {
@@ -1396,7 +1498,7 @@ export function startWebServer(options: WebServerOptions): Promise<http.Server> 
     return session.who;
   };
 
-  const authenticate = (req: http.IncomingMessage): Principal | null => {
+  const authenticate = async (req: http.IncomingMessage): Promise<Principal | null> => {
     if (!authRequired()) return ADMIN;
     const session = sessionOf(req);
     if (session) return session;
@@ -1405,7 +1507,7 @@ export function startWebServer(options: WebServerOptions): Promise<http.Server> 
     if (!m) return null;
     const decoded = Buffer.from(m[1], "base64").toString("utf8");
     const colon = decoded.indexOf(":");
-    return verify(colon < 0 ? "" : decoded.slice(0, colon), decoded.slice(colon + 1));
+    return await verify(req, colon < 0 ? "" : decoded.slice(0, colon), decoded.slice(colon + 1));
   };
 
   async function login(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
@@ -1413,7 +1515,7 @@ export function startWebServer(options: WebServerOptions): Promise<http.Server> 
     if (!authRequired()) return send(res, 200, { authRequired: false, user: userInfo(ADMIN) });
     const user = typeof body.user === "string" ? body.user.trim() : "";
     const password = typeof body.password === "string" ? body.password : "";
-    const who = password ? verify(user, password) : null;
+    const who = password ? await verify(req, user, password) : null;
     if (!who) throw new HttpError(401, "Wrong user name or password.");
     const now = Date.now();
     for (const [id, s] of sessions) if (s.expires < now) sessions.delete(id);
@@ -1457,17 +1559,18 @@ export function startWebServer(options: WebServerOptions): Promise<http.Server> 
       }
       if (route === "GET /api/session") {
         // 200 even when signed out, so the page can tell "show the form" from a failure.
-        const who = authenticate(req);
+        const who = await authenticate(req);
         return send(res, 200, { authRequired: authRequired(), user: who ? userInfo(who) : null });
       }
 
-      const who = authenticate(req);
+      const who = await authenticate(req);
       // No WWW-Authenticate: the browser must not open its own login dialog over the form.
       if (!who) return send(res, 401, { error: "Authentication required" });
       await handleApi(req, res, url, who);
     } catch (error) {
       if (res.headersSent) return void res.destroy();
-      if (error instanceof HttpError) return send(res, error.status, { error: error.message, ...error.extra });
+      if (error instanceof HttpError) return send(res, error.status, { error: error.message, ...error.extra }, error.headers);
+      if (error instanceof GarminNotConnectedError) return send(res, 409, { error: error.message });
       if (error instanceof StoreError) return send(res, STORE_STATUS[error.code], { error: error.message });
       console.error("[web] error:", error);
       send(res, 500, { error: "Internal error" });

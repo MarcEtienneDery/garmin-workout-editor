@@ -8,7 +8,7 @@ import * as os from "os";
 import * as path from "path";
 import { type RenphoPush, type RenphoRun, dueProfiles, syncRenpho } from "../../shared/renphoSync";
 import { getStore } from "../../shared/store";
-import { getSession, requireAuth } from "../context";
+import { garminAvailable, getSession, requireAuth } from "../context";
 import { locked, holder } from "./activities";
 import { startBackgroundWellness } from "./wellness";
 
@@ -75,8 +75,10 @@ export function pushToGarmin(profile: string): RenphoPush {
 /** One run for a profile: fetch from Renpho and, when switched on, upload. Afterwards the Garmin weigh-ins of the days uploaded earlier are read again. */
 export async function runRenpho(profile: string, manual: boolean): Promise<RenphoRun> {
   const store = getStore();
-  const run = await syncRenpho(store, profile, { holder: holder(), manual, push: pushToGarmin(profile) });
-  if (run.ran) {
+  // Garmin is optional: a profile without a login only fetches (the weigh-ins are shown from what Renpho sent)
+  const garmin = garminAvailable(profile);
+  const run = await syncRenpho(store, profile, { holder: holder(), manual, push: garmin ? pushToGarmin(profile) : undefined });
+  if (run.ran && garmin) {
     try {
       startBackgroundWellness(profile); // fills in the weigh-in rows that were forgotten for a second read
     } catch (error) {

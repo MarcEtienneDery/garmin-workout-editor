@@ -8,7 +8,7 @@ import { registerNutritionTools } from "./tools/nutrition";
 import { registerPlanTools } from "./tools/plans";
 import { registerWellnessTools } from "./tools/wellness";
 
-const INSTRUCTIONS = `Tools to review Garmin training data and manage Garmin Connect workouts, for one or more Garmin profiles.
+const INSTRUCTIONS = `Tools to plan workouts, log food and review training and health data, for one or more profiles. Garmin Connect is optional: list_profiles says which profiles have a Garmin login (garminProfiles). The plan tools (list_plans, read_plan, write_plan, upsert_plan_workout, validate_plan, list_exercise_names) and the food tools work for every profile; the Garmin tools fail with a "no Garmin login" error for a profile without one, and get_activities, get_readiness and get_wellness then answer only from what is already stored. A Renpho scale is optional too: its weigh-ins show in get_wellness's body trend whether or not Garmin is connected.
 
 Typical weekly flow:
 1. get_activities (period "last-week") to see what was actually done.

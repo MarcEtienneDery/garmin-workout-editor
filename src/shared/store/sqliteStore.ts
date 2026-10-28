@@ -4,6 +4,7 @@ import { ACTIVITY_SCHEMA, ActivityTable } from "./activities";
 import { CREDENTIAL_SCHEMA, CredentialTable } from "./credentials";
 import { FOOD_CACHE_SCHEMA, FoodCacheTable } from "./foods";
 import { NUTRITION_SCHEMA, NutritionTable, migrateNutrition } from "./nutrition";
+import { PROFILE_SCHEMA, ProfileTable, backfillProfiles } from "./profiles";
 import { RENPHO_SCHEMA, RenphoTable } from "./renpho";
 import { TOKEN_SCHEMA, TokenTable } from "./tokens";
 import { WELLNESS_SCHEMA, WellnessTable } from "./wellness";
@@ -57,6 +58,7 @@ ${CREDENTIAL_SCHEMA}
 ${RENPHO_SCHEMA}
 ${NUTRITION_SCHEMA}
 ${FOOD_CACHE_SCHEMA}
+${PROFILE_SCHEMA}
 `;
 
 const META_COLUMNS = "path, owner, size, version, updated_at, source, summary";
@@ -86,6 +88,8 @@ export class SqliteStore {
   readonly tokens: TokenTable;
   /** The daily health data (sleep, HRV, resting heart rate, Body Battery, stress) of every profile (see wellness.ts). */
   readonly wellness: WellnessTable;
+  /** The profiles that exist, and the hash of each one's web sign-in password (see profiles.ts). */
+  readonly profiles: ProfileTable;
   /** The logins of every profile for Garmin and Renpho (see credentials.ts). */
   readonly credentials: CredentialTable;
   /** The Renpho scale sync of every profile: settings, weigh-ins, state and log (see renpho.ts). */
@@ -103,6 +107,7 @@ export class SqliteStore {
     this.activities = new ActivityTable(db, (fn) => this.tx(fn));
     this.tokens = new TokenTable(db);
     this.wellness = new WellnessTable(db, (fn) => this.tx(fn));
+    this.profiles = new ProfileTable(db);
     this.credentials = new CredentialTable(db);
     this.renpho = new RenphoTable(db, (fn) => this.tx(fn));
     this.nutrition = new NutritionTable(db, (fn) => this.tx(fn));
@@ -119,6 +124,7 @@ export class SqliteStore {
     store.tx(() => {
       db.exec(SCHEMA);
       migrateNutrition(db);
+      backfillProfiles(db);
     });
     return store;
   }

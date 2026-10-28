@@ -75,17 +75,24 @@
     return { protein, carbs, fat: Math.max(0, 100 - protein - carbs) };
   }
 
-  /** The tiles above the day: eaten, burned, the difference, and the macros with their shares. */
+  /**
+   * Whether the view has a burn to show: the server says `burn: false` for a profile that has no Garmin and nothing stored from it,
+   * where "burned" would only ever read "no day summary from Garmin". A view that does not say shows it.
+   */
+  const hasBurn = (view) => !view || view.burn !== false;
+
+  /** The tiles above the day: eaten, burned, the difference (the last two when there is a burn), and the macros with their shares. */
   function figures(view) {
     const d = view.day, logged = d.entries > 0, today = d.day === view.today;
     const s = shares(d);
     const net = d.netKcal;
-    return [
-      { label: "Eaten", value: logged ? kcal(d.kcal) : "–", note: logged ? foods(d.entries) : "nothing logged" },
+    const eaten = { label: "Eaten", value: logged ? kcal(d.kcal) : "–", note: logged ? foods(d.entries) : "nothing logged" };
+    const burn = [
       { label: "Burned", value: kcal(d.burnedKcal), note: d.burnedKcal === null ? "no day summary from Garmin" : today ? "so far today, by Garmin" : "by Garmin" },
       { label: "Eaten − burned", value: signed(net), note: net === null ? (logged ? "needs the day's burn" : "needs a logged day") : `${net > 0 ? "above" : net < 0 ? "below" : "at"} what the day burned${today ? " so far" : ""}` },
-      { label: "Macros", value: logged ? macros(d) : "–", note: s ? `${s.protein} % protein · ${s.carbs} % carbs · ${s.fat} % fat` : "grams a day" },
     ];
+    const macro = { label: "Macros", value: logged ? macros(d) : "–", note: s ? `${s.protein} % protein · ${s.carbs} % carbs · ${s.fat} % fat` : "grams a day" };
+    return [eaten, ...(hasBurn(view) ? burn : []), macro];
   }
 
   /** What the logged days before today average, or null. */
@@ -104,6 +111,9 @@
     { name: "Nutrients", fields: NUTRIENTS.map((n) => ({ key: n.key, label: n.label, unit: n.unit, nutrient: true })) },
   ];
 
+  /** The groups the table shows for a view: without a burn (no Garmin) the Garmin group is left out. */
+  const groupsFor = (view) => (hasBurn(view) ? GROUPS : GROUPS.filter((group) => group.name !== "Garmin"));
+
   /** How one field of a day reads; a day nothing was logged on has no eaten numbers. */
   function cell(field, day) {
     if (field.net) return signed(day.netKcal);
@@ -118,12 +128,13 @@
   /** The days for the charts: a day nothing was logged on has no eaten numbers (it is not a day of zero). */
   const chartDays = (days) => days.map((d) => (d.entries ? d : { ...d, kcal: null, proteinG: null, carbsG: null, fatG: null }));
 
-  /** What the view draws: the calories eaten against the burn, and the macros piled up. */
-  function charts() {
+  /** What the view draws: the calories eaten against the burn (when there is one), and the macros piled up. */
+  function charts(view) {
+    const burn = hasBurn(view);
     return [
       {
-        id: "eaten", title: "Calories eaten", unit: "kcal", kind: "bars", min: 0, value: (d) => d.kcal, ref: { label: "Burned by Garmin", value: (d) => d.burnedKcal },
-        read: (d) => (valid(d.kcal) ? `${num(d.kcal)} kcal${valid(d.burnedKcal) ? ` · burned ${num(d.burnedKcal)}` : ""}` : "not logged"),
+        id: "eaten", title: "Calories eaten", unit: "kcal", kind: "bars", min: 0, value: (d) => d.kcal, ...(burn ? { ref: { label: "Burned by Garmin", value: (d) => d.burnedKcal } } : {}),
+        read: (d) => (valid(d.kcal) ? `${num(d.kcal)} kcal${burn && valid(d.burnedKcal) ? ` · burned ${num(d.burnedKcal)}` : ""}` : "not logged"),
       },
       {
         id: "macros", title: "Macros", unit: "g", kind: "stack", min: 0, scaleBy: 1,
@@ -408,5 +419,5 @@
     return { items };
   }
 
-  return { AI_LIMITS, mealForHour, canEstimate, aiFood, aiRows, aiRowValue, aiGroups, aiTotals, approx, aiItems, gtinOk, expandUpcE, normalizeBarcode, MAX_AMOUNT, parseAmount, amountGrams, scale, brandOf, entryName, portion, productOf, pickOf, allNutrients, per100Line, foodTitle, MEAL_LABELS, mealLabel, kcal, grams, signed, macros, shares, figures, averageNote, GROUPS, cell, chartDays, charts, kcalOf, parseDraft, draftOf, EMPTY_DRAFT, hasNumbers, hasNutrients, recentMatch, recentFor, again, foods, NUTRIENTS, nutrientLine, nutrientTiles, scaleNutrients };
+  return { AI_LIMITS, mealForHour, canEstimate, aiFood, aiRows, aiRowValue, aiGroups, aiTotals, approx, aiItems, gtinOk, expandUpcE, normalizeBarcode, MAX_AMOUNT, parseAmount, amountGrams, scale, brandOf, entryName, portion, productOf, pickOf, allNutrients, per100Line, foodTitle, MEAL_LABELS, mealLabel, kcal, grams, signed, macros, shares, hasBurn, figures, averageNote, GROUPS, groupsFor, cell, chartDays, charts, kcalOf, parseDraft, draftOf, EMPTY_DRAFT, hasNumbers, hasNutrients, recentMatch, recentFor, again, foods, NUTRIENTS, nutrientLine, nutrientTiles, scaleNutrients };
 });

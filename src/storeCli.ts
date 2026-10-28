@@ -8,9 +8,11 @@
  *   npm run store -- trash                           # deleted documents that can be restored
  *   npm run store -- owner <path> <profile|shared>   # who sees a plan under workout-plans/
  *   npm run store -- export <dir>                    # write every document back out as a file
+ *   npm run store -- import-env <dir>                # take the profiles of old .env.<name> files into the database, once
  *
  * In the container: docker exec garmin-mcp node dist/storeCli.js <command>
  */
+import { importEnvProfiles } from "./shared/profileImport";
 import { StoreError, closeStore, exportFiles, getStore, normalizeLogicalPath } from "./shared/store";
 
 const when = (ms: number) => new Date(ms).toISOString().replace("T", " ").slice(0, 19);
@@ -78,8 +80,15 @@ export function runStoreCli(args: string[], out: (line: string) => void): number
       out(`Wrote ${written.length} file(s) under ${rest[0]}`);
       return 0;
     }
+    case "import-env": {
+      if (!rest[0]) throw new Error("import-env: missing <dir>");
+      const profiles = importEnvProfiles(store, rest[0]);
+      for (const p of profiles) out(`${p.name}\tGarmin login: ${p.garmin}\tweb password: ${p.webPassword}`);
+      out(`${profiles.length} profile(s) imported from ${rest[0]}; the files are not read any more and can be deleted`);
+      return 0;
+    }
     default:
-      out("Usage: store <list [prefix] | history <path> | show <path> [id] | restore <path> [id] | trash | owner <path> <profile|shared> | export <dir>>");
+      out("Usage: store <list [prefix] | history <path> | show <path> [id] | restore <path> [id] | trash | owner <path> <profile|shared> | export <dir> | import-env <dir>>");
       return command ? 2 : 0;
   }
 }

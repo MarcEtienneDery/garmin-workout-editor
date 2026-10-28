@@ -43,6 +43,7 @@
    */
   function freshness(view, now) {
     const p = view.progress;
+    if (view.health === false) return { text: "", stale: false }; // no Garmin and nothing from it: there is no summary to wait for
     if (!p) return { text: "Garmin's summary for today is not stored yet.", stale: true };
     const parts = [];
     if (valid(p.watchSyncedAt)) parts.push(`Watch synced ${ago(p.watchSyncedAt, now)}`);

@@ -173,6 +173,11 @@ const DIVISOR: Partial<Record<Field, number>> = { weightKg: 1000, muscleKg: 1000
 const FIELDS = Object.keys(SOURCES) as Field[];
 const TEXT_FIELDS = new Set<Field>(["hrvStatus"]);
 
+/** A day nothing is stored for: every number null. */
+export function emptyDayMetrics(day: string): DayMetrics {
+  return Object.fromEntries([["day", day], ...FIELDS.map((f) => [f, null])]) as unknown as DayMetrics;
+}
+
 /** One column per field: the first of its places that holds a value. Paths and kinds are constants above, never input. */
 const column = (f: Field): string => {
   const places = SOURCES[f].map(([kind, path]) => `MAX(CASE WHEN kind = '${kind}' THEN json_extract(data, '${path}') END)`);
@@ -189,6 +194,17 @@ export class WellnessTable {
     private readonly db: Database,
     private readonly tx: <T>(fn: () => T) => T
   ) {}
+
+  /** Whether any response is kept for the profile. */
+  hasRows(profile: string): boolean {
+    return !!this.db.prepare("SELECT 1 FROM wellness WHERE profile = ? LIMIT 1").get(profile);
+  }
+
+  /** Whether any stored weigh-in has a weight. */
+  hasWeighIn(profile: string): boolean {
+    const paths = SOURCES.weightKg.map(([, path]) => `json_extract(data, '${path}') IS NOT NULL`).join(" OR ");
+    return !!this.db.prepare(`SELECT 1 FROM wellness WHERE profile = ? AND kind = 'weight' AND (${paths}) LIMIT 1`).get(profile);
+  }
 
   /** Keep one response as Garmin sent it; `undefined` is kept as JSON null, an answer of "nothing for that day". */
   put(profile: string, day: string, kind: WellnessKind, data: unknown, now = Date.now()): void {

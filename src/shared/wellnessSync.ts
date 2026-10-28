@@ -32,6 +32,12 @@ const hasNothing = (error: unknown) => /\((404|400)\)/.test(message(error));
 
 export const addDays = (day: string, n: number): string => new Date(Date.parse(`${day}T00:00:00Z`) + n * DAY_MS).toISOString().slice(0, 10);
 
+/** Whether the text is a real calendar day, YYYY-MM-DD ("2026-13-45" and "2026-02-30" are not). */
+export function isRealDay(text: unknown): text is string {
+  const ms = typeof text === "string" && /^\d{4}-\d{2}-\d{2}$/.test(text) ? Date.parse(`${text}T00:00:00Z`) : NaN;
+  return !Number.isNaN(ms) && new Date(ms).toISOString().slice(0, 10) === text;
+}
+
 /**
  * The user's calendar day now: in the zone of GARMIN_TZ (or TZ) when one is set, else by the offset the newest activity
  * shows (the container runs in UTC), else in UTC. A wrong guess around midnight is corrected by the refetching of the last days.
