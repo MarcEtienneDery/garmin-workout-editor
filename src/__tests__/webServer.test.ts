@@ -913,6 +913,38 @@ describe("web plan editor", () => {
         expect((await call("POST", "/api/settings/goals", { action: "explode" })).status).toBe(400);
       });
 
+      it("adds the burned calories to the calorie goal only when the person turns that on in Settings", async () => {
+        addProfile("MED");
+        await call("POST", "/api/settings/goals", { action: "save", goals: { kcal: 2000 } });
+        await call("POST", "/api/nutrition", { action: "add", day: dayOf(1), meal: "lunch", items: [rice] });
+        await call("POST", "/api/nutrition", { action: "add", meal: "lunch", items: [{ ...rice, kcal: 1000 }] });
+        store().wellness.put("MED", dayOf(1), "summary", { ...summaryResponse(), totalKilocalories: 2600, activeKilocalories: 400 });
+        store().wellness.put("MED", dayOf(0), "summary", { ...summaryResponse(), totalKilocalories: 1900, activeKilocalories: 600 });
+        // off by default: the goal is the number set, every day
+        let view = (await call("GET", "/api/nutrition?days=7")).json;
+        expect(view.progress[0]).toMatchObject({ key: "kcal", goal: 2000 });
+        expect(view.progress[0].adjust).toBeUndefined();
+        expect(view.days.map((d: any) => d.kcalGoal)).toEqual(Array(7).fill(2000));
+        expect((await call("GET", "/api/settings")).json.goals.fields.map((f: any) => f.key).slice(0, 3)).toEqual(["kcal", "kcalBurnPct", "proteinG"]);
+        // on: today's goal is the number plus half of the active calories so far, and so is each day's in the trend
+        const saved = (await call("POST", "/api/settings/goals", { action: "save", goals: { kcalBurnPct: 50 } })).json;
+        expect(saved.goals.values).toEqual({ kcal: 2000, kcalBurnPct: 50 });
+        view = (await call("GET", "/api/nutrition?days=7")).json;
+        expect(view.progress[0]).toMatchObject({ key: "kcal", goal: 2300, amount: 1000, left: 1300, adjust: { base: 2000, pct: 50, activeKcal: 600, added: 300 } });
+        expect(view.days.slice(-2).map((d: any) => [d.day, d.activeKcal, d.kcalGoal])).toEqual([[dayOf(1), 400, 2200], [dayOf(0), 600, 2300]]);
+        expect(view.days[0]).toMatchObject({ activeKcal: null, kcalGoal: 2000 }); // no summary that day: the set goal, not less
+        expect((await call("GET", `/api/nutrition?date=${dayOf(1)}`)).json.progress[0]).toMatchObject({ goal: 2200, adjust: { activeKcal: 400, added: 200 } });
+        expect((await call("GET", "/api/today")).json.foodProgress[0]).toMatchObject({ goal: 2300, adjust: { added: 300 } });
+        // it needs a calorie goal, and goes with it
+        expect((await call("POST", "/api/settings/goals", { action: "save", goals: { kcalBurnPct: 101 } })).status).toBe(400);
+        expect((await call("POST", "/api/settings/goals", { action: "save", goals: { kcal: null } })).json.goals.values).toEqual({});
+        expect((await call("POST", "/api/settings/goals", { action: "save", goals: { kcalBurnPct: 50 } })).json.error).toMatch(/Set a calorie goal/);
+        // turned off again by emptying it
+        await call("POST", "/api/settings/goals", { action: "save", goals: { kcal: 2000, kcalBurnPct: 50 } });
+        expect((await call("POST", "/api/settings/goals", { action: "save", goals: { kcalBurnPct: null } })).json.goals.values).toEqual({ kcal: 2000 });
+        expect((await call("GET", "/api/nutrition")).json.progress[0].goal).toBe(2000);
+      });
+
       it("keeps each profile's goals to itself", async () => {
         addProfile("MED", "med-pw");
         addProfile("SAM", "sam-pw");

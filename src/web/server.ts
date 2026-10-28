@@ -94,7 +94,7 @@ import { addDays, localToday } from "../shared/wellnessSync";
 import { FoodInputError, FoodSourceError, lookupBarcode, searchFoods } from "../shared/foodSearch";
 import { FoodAiError, type FoodAiErrorKind, estimateFoods, foodAiStatus } from "../shared/foodAi";
 import { MAX_ITEMS, MEALS, NutritionError, addFoods, averageOf, changeFood, copyFoods, deleteFoods, nutritionDays, parseDay, recentFoods } from "../shared/nutrition";
-import { getGoals, goalProgress, setGoals } from "../shared/nutritionGoals";
+import { getGoals, goalProgress, kcalGoalOf, setGoals } from "../shared/nutritionGoals";
 import {
   LIBRARY_LIMIT,
   type LibraryWorkout,
@@ -973,11 +973,11 @@ function nutritionView(profile: string, asked: unknown, daysAsked: unknown) {
     date,
     meals: MEALS,
     day,
-    // the trend carries totals only; the entries are in `day`
-    days: days.map(({ meals, ...totals }) => totals),
+    // the trend carries totals only (and each day's calorie goal, which follows the burn when the person set it so); the entries are in `day`
+    days: days.map(({ meals, ...totals }) => ({ ...totals, kcalGoal: kcalGoalOf(goals, totals.activeKcal) })),
     // the daily goals by key, and where the day shown stands against each (the meals' own totals are in `day`)
     goals,
-    progress: goalProgress(goals, day),
+    progress: goalProgress(goals, day, day.activeKcal),
     average: averageOf(days, today),
     recent: recentFoods(store(), profile),
     ai: foodAiStatus(profile, today),
@@ -1037,7 +1037,7 @@ function todayView(profile: string) {
     health: hasHealth(profile),
     food,
     goals,
-    foodProgress: goalProgress(goals, food),
+    foodProgress: goalProgress(goals, food, food.activeKcal),
     sync: wellnessSyncStatus(profile),
   };
 }

@@ -334,7 +334,7 @@
   .fmeal-row { display:grid; grid-template-columns:5.2em minmax(0,1fr) auto; column-gap:8px; align-items:center; margin-bottom:8px; } .fmeal-row .fb { height:14px; } .fmeal-row .fb .fmeter { margin:0; height:14px; background:none; }
   .fmeal-row .fv { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; } .fmeal-row .fmn { grid-column:2 / -1; color:var(--dim); font-size:12px; }
   .fnrow { margin-bottom:10px; } .fnrow .fmr .fmeter { height:8px; } .fnrow.plain .fmr .fv { color:var(--dim); } .fnrow.plain.part .fmn { color:var(--warn); }
-  .rc-goal { stroke:var(--fg); stroke-width:1.2; stroke-dasharray:5 3; opacity:.75; } .rck i.sw-goal { height:0; border-top:2px dashed var(--fg); border-radius:0; } .rc-bar.protein { fill:#4a90c2; }
+  .rc-goal { fill:none; stroke:var(--fg); stroke-width:1.2; stroke-dasharray:5 3; opacity:.75; } .rck i.sw-goal { height:0; border-top:2px dashed var(--fg); border-radius:0; } .rc-bar.protein { fill:#4a90c2; }
   @media (max-width:700px) { .fdet, .fmrows { grid-template-columns:minmax(0,1fr); } .fhero b { font-size:26px; } .fhero .fhn { flex-basis:100%; margin-left:0; text-align:left; } }
   .fnut { grid-template-columns:repeat(3,minmax(0,1fr)); } .fnut .rfig b { font-size:17px; } .fnut .rfig.part span { color:var(--warn); }
   .fmore { flex:1 1 100%; } .fmore > summary { cursor:pointer; color:var(--dim); font-size:12px; }
@@ -366,7 +366,7 @@
   .sbtns { display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; }
   .sgl { grid-column:1 / -1; margin-top:6px; font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:var(--dim); }
   .sline { margin:6px 0; line-height:1.5; } .sline.warn { color:var(--warn); } .sline.ok { color:var(--ok); } .sline.err { color:var(--err); } .sline.dim { color:var(--dim); }
-  .stoggle { display:flex; gap:8px; align-items:flex-start; margin:10px 0 2px; } .stoggle input { margin-top:3px; flex:none; } .stoggle small { display:block; color:var(--dim); line-height:1.5; }
+  .sform .stoggle { grid-column:1 / -1; } .stoggle { display:flex; gap:8px; align-items:flex-start; margin:10px 0 2px; } .stoggle input { margin-top:3px; flex:none; } .stoggle small { display:block; color:var(--dim); line-height:1.5; }
   .sgroup { margin-top:14px; padding-top:12px; border-top:1px solid var(--line); } .sgroup h4 { margin:0 0 6px; font-size:12px; text-transform:uppercase; letter-spacing:.05em; color:var(--dim); }
   .slog { max-height:280px; overflow:auto; padding:6px 10px; background:#1b1b1b; border:1px solid var(--line); border-radius:4px; font:12px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace; }
   .sok { color:var(--ok); } .serr { color:var(--err); }
@@ -3522,7 +3522,7 @@ function macroLegend(day) {
 }
 
 function foodSummary(d) {
-  const card = mk("section", "fsum"), head = NM.headline(d), goal = d.goals.kcal;
+  const card = mk("section", "fsum"), head = NM.headline(d), goal = NM.calorieGoal(d);
   card.append(mk("small", "", d.date === d.today ? "Today" : RM.dayLabel(d.date)));
   const hero = mk("div", "fhero st-" + head.state);
   hero.append(mk("b", "", head.value), mk("span", "fhu", head.unit), mk("span", "fhn", head.note));
@@ -3532,6 +3532,8 @@ function foodSummary(d) {
   if (bar) card.append(macroLegend(d.day));
   const burn = NM.burnLine(d);
   if (burn) card.append(mk("div", "fburn", burn));
+  const follows = NM.goalLine(d);
+  if (follows) card.append(mk("div", "fburn", follows));
   const rows = mk("div", "fmrows");
   for (const r of NM.macroRows(d)) {
     const row = mk("div", `fmr ${r.cls} st-${r.state}` + (r.kind ? ` k-${r.kind}` : ""));
@@ -4575,18 +4577,24 @@ function garminCard(d) {
  * the field says which. They are what the Food view measures the day against and what an assistant sees through the MCP.
  */
 function goalsCard(d) {
-  const g = d.goals, card = mk("div", "scard"), head = mk("h2", "", "Nutrition goals"), count = Object.keys(g.values).length;
+  const g = d.goals, card = mk("div", "scard"), head = mk("h2", "", "Nutrition goals"), count = Object.keys(g.values).filter((key) => key !== "kcalBurnPct").length;
   head.append(mk("span", "chip " + (count ? "ok" : ""), count ? `${count} set` : "none set"));
   card.append(head, mk("p", "sub", "What a day of food is measured against in the Food view, and what an assistant sees when it reads or logs your food through the MCP (it can set them too). One number a day; leave a field empty for no goal. Protein, fiber and the minerals are goals to reach, sodium, sugars and the fats are limits, calories, carbs and fat are an aim (within 10 %)."));
   const form = mk("div", "sform"), inputs = {};
   const group = (name) => { const h = mk("div", "sgl", name); form.append(h); };
+  // adjusting the calorie goal to the burn is opt-in: off unless a share is saved, and turned on here
+  const burnOn = () => S.draft.goal_burnOn ?? g.values.kcalBurnPct !== undefined;
   g.fields.forEach((f, i) => {
     if (i === 0) group("Calories and macros");
     if (f.key === "fiberG") group("Nutrients");
-    inputs[f.key] = sfield(form, `${f.label} (${f.unit})`, "goal_" + f.key, { value: g.values[f.key] === undefined ? "" : String(g.values[f.key]), placeholder: NM.kindLabel(f.kind) });
+    if (f.kind === "burn") {
+      form.append(stoggle(burnOn(), "Add the calories I burn to the calorie goal", "Off: the calorie goal is the same every day. On: a share of the day's active calories (what Garmin counts above resting) is added to it, so a day of training lets you eat more. It grows through the day as the watch counts, and stays the set number on a day Garmin has no burn for.", (on) => { S.draft.goal_burnOn = on; renderSettings(); }));
+      if (!burnOn()) return;
+    }
+    inputs[f.key] = sfield(form, `${f.label} (${f.unit})`, "goal_" + f.key, { value: g.values[f.key] === undefined ? (f.kind === "burn" ? "100" : "") : String(g.values[f.key]), placeholder: NM.kindLabel(f.kind) });
     inputs[f.key].inputMode = "decimal";
   });
-  const texts = () => Object.fromEntries(g.fields.map((f) => [f.key, S.draft["goal_" + f.key] ?? (g.values[f.key] === undefined ? "" : String(g.values[f.key]))]));
+  const texts = () => Object.fromEntries(g.fields.map((f) => [f.key, f.kind === "burn" && !burnOn() ? "" : S.draft["goal_" + f.key] ?? (g.values[f.key] === undefined ? (f.kind === "burn" ? "100" : "") : String(g.values[f.key]))]));
   const note = mk("div", "sline dim");
   const sum = () => { note.textContent = SetM.macroGoalsNote(texts()); note.hidden = !note.textContent; };
   sum();

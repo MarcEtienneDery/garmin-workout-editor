@@ -231,6 +231,8 @@ export interface NutritionDay extends Totals {
   day: string;
   /** What the day burned, from the watch; null when no day summary is stored. Today's is what has burned so far. */
   burnedKcal: number | null;
+  /** Of that, what is above resting (what a calorie goal that follows the burn adds); null when no day summary states it. */
+  activeKcal: number | null;
   burnedSoFar: boolean;
   /** Eaten minus burned; null on a day nothing was logged or Garmin has no burn for. */
   netKcal: number | null;
@@ -242,7 +244,7 @@ export function nutritionDays(store: SqliteStore, profile: string, from: string,
   if (from > to) throw new NutritionError("from is after to.");
   if (Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`) > MAX_RANGE_DAYS * 86_400_000) throw new NutritionError(`Ask for at most ${MAX_RANGE_DAYS} days at a time.`);
   const entries = store.nutrition.range(profile, from, to);
-  const burned = new Map(store.wellness.metrics(profile, from, to).map((m) => [m.day, m.totalKcal]));
+  const burned = new Map(store.wellness.metrics(profile, from, to).map((m) => [m.day, m]));
   const days: NutritionDay[] = [];
   for (let day = from; day <= to; day = addDays(day, 1)) {
     const ofDay = entries.filter((e) => e.day === day);
@@ -250,8 +252,8 @@ export function nutritionDays(store: SqliteStore, profile: string, from: string,
       const mine = ofDay.filter((e) => e.meal === meal);
       return { meal, entries: mine, totals: totalsOf(mine) };
     });
-    const totals = totalsOf(ofDay), burnedKcal = burned.get(day) ?? null;
-    days.push({ day, ...totals, burnedKcal, burnedSoFar: day === today && burnedKcal !== null, netKcal: burnedKcal !== null && totals.entries ? totals.kcal - burnedKcal : null, meals });
+    const totals = totalsOf(ofDay), burnedKcal = burned.get(day)?.totalKcal ?? null, activeKcal = burned.get(day)?.activeKcal ?? null;
+    days.push({ day, ...totals, burnedKcal, activeKcal, burnedSoFar: day === today && burnedKcal !== null, netKcal: burnedKcal !== null && totals.entries ? totals.kcal - burnedKcal : null, meals });
   }
   return days;
 }

@@ -575,6 +575,24 @@ describe("MCP server (mock mode, in-memory transport)", () => {
         expect(read.goalProgress[1]).toMatchObject({ key: "proteinG", amount: 60 });
       });
 
+      it("follows the burn only when asked to: a share of the active calories added to the calorie goal", async () => {
+        const off = await callTool(client, "set_nutrition_goals", { goals: { kcal: 2200 } });
+        expect(off.value.kcalBurnPct).toBeNull();
+        expect(off.value.goalProgress[0].adjust).toBeUndefined();
+        expect((await callTool(client, "set_nutrition_goals", { goals: { kcalBurnPct: 50 } })).value.kcalBurnPct).toBe(50);
+        expect(getStore().goals.get("mock")).toEqual({ kcal: 2200, kcalBurnPct: 50 });
+        const read = (await callTool(client, "get_nutrition", { days: 1 })).value;
+        expect(read.kcalBurnPct).toBe(50);
+        expect(read.goals.map((g: any) => g.key)).toEqual(["kcal"]); // the share is not a goal
+        expect(read.goalProgress[0]).toMatchObject({ key: "kcal", adjust: { base: 2200, pct: 50 } });
+        expect((await callTool(client, "set_nutrition_goals", { goals: { kcalBurnPct: null } })).value.kcalBurnPct).toBeNull();
+        for (const goals of [{ kcalBurnPct: 0 }, { kcalBurnPct: 101 }, { kcalBurnPct: 12.5 }]) expect((await callTool(client, "set_nutrition_goals", { goals })).isError).toBe(true);
+        await callTool(client, "set_nutrition_goals", { goals: { kcal: null } });
+        const none = await callTool(client, "set_nutrition_goals", { goals: { kcalBurnPct: 50 } });
+        expect(none.isError).toBe(true);
+        expect(getStore().goals.get("mock")).toEqual({});
+      });
+
       it("has no goals to report until some are set", async () => {
         const read = (await callTool(client, "get_nutrition", { days: 1 })).value;
         expect(read.goals).toEqual([]);

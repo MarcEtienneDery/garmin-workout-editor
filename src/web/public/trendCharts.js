@@ -36,6 +36,7 @@
     let values = [], include = [];
     let totals = null, lows = null, highs = null, bandLo = null, bandHi = null, refs = null, vals = null;
     const goal = spec.goal && RM.valid(spec.goal.value) ? spec.goal.value : null; // one level for every day (a daily goal)
+    const goals = spec.goal && typeof spec.goal.values === "function" ? per(spec.goal.values) : null; // or a level of its own for each day (a goal that follows something of the day)
     if (spec.kind === "stack") {
       totals = days.map((d) => { const parts = spec.parts.filter((p) => RM.valid(d[p.key])); return parts.length ? parts.reduce((a, p) => a + d[p.key] * (p.weight || 1), 0) / spec.scaleBy : null; });
       values = totals;
@@ -47,6 +48,7 @@
     if (spec.band) { bandLo = per((d) => spec.band(d)[0]); bandHi = per((d) => spec.band(d)[1]); include = include.concat(bandLo, bandHi); }
     if (spec.ref) { refs = per(spec.ref.value); include = include.concat(refs); }
     if (goal !== null) include = include.concat([goal]);
+    if (goals) include = include.concat(goals);
 
     const sc = RM.scale(values, { min: spec.min, max: spec.max, include });
     if (!sc || !values.some((v) => v !== null)) {
@@ -98,6 +100,15 @@
     if (spec.kind === "line" || spec.kind === "range") vals.forEach((v, i) => { if (v !== null) svg.append(make("circle", { cx: xAt(i), cy: yAt(v), r: 2.4, class: "rc-dot" })); });
 
     if (goal !== null) svg.append(make("line", { x1: LEFT, x2: W - RIGHT, y1: yAt(goal), y2: yAt(goal), class: "rc-goal" })); // over the bars, under the cursor
+    if (goals && goals.some((v) => v !== null)) { // steps from day to day, broken where a day has no goal
+      let path = "", before = null;
+      goals.forEach((v, i) => {
+        if (v === null) { before = null; return; }
+        path += `${before === null ? `M${xAt(i) - step / 2},${yAt(v)}` : `V${yAt(v)}`}H${xAt(i) + step / 2}`;
+        before = v;
+      });
+      svg.append(make("path", { d: path, class: "rc-goal" }));
+    }
     const cursor = make("line", { y1: TOP, y2: H - BOTTOM, class: "rc-cursor", visibility: "hidden" });
     const over = make("rect", { x: LEFT, y: 0, width: W - LEFT - RIGHT, height: H, class: "rc-over" });
     const indexAt = (e) => {
@@ -114,7 +125,7 @@
     const key = (cls, text) => { const s = html("span", "rck"), i = html("i", cls); s.append(i, text); legend.append(s); };
     if (spec.band) key("sw-band", "Garmin's balanced range");
     if (spec.ref) key("sw-ref", spec.ref.label);
-    if (goal !== null) key("sw-goal", spec.goal.label);
+    if (goal !== null || (goals && goals.some((v) => v !== null))) key("sw-goal", spec.goal.label);
     if (spec.kind === "stack") for (const p of spec.parts) key(`sw-part ${p.cls}`, p.label);
     if (spec.kind === "range") key("sw-range", "low to high of the day, dot on waking");
     if (legend.childNodes.length) card.append(legend);

@@ -92,6 +92,15 @@ describe("the goals form", () => {
     expect(SM.goalsPatch({}, fields, { kcal: 2000 })).toEqual({ goals: { kcal: null } });
   });
 
+  it("sends the share of the burn only with a calorie goal, and removes it when it is emptied (turned off)", () => {
+    const withBurn = [...fields.slice(0, 1), { key: "kcalBurnPct", label: "Share of active calories" }, ...fields.slice(1)];
+    expect(SM.goalsPatch({ kcal: "2200", kcalBurnPct: "50" }, withBurn, {})).toEqual({ goals: { kcal: 2200, kcalBurnPct: 50 } });
+    expect(SM.goalsPatch({ kcal: "2200", kcalBurnPct: "" }, withBurn, { kcal: 2200, kcalBurnPct: 50 })).toEqual({ goals: { kcal: 2200, kcalBurnPct: null } });
+    expect(SM.goalsPatch({ kcal: "2200", kcalBurnPct: "" }, withBurn, { kcal: 2200 })).toEqual({ goals: { kcal: 2200 } }); // off and was off
+    expect(SM.goalsPatch({ kcal: "", kcalBurnPct: "50" }, withBurn, {})).toEqual({ error: "Set a calorie goal to add the burned calories to." });
+    expect(SM.goalsPatch({ kcal: "2200", kcalBurnPct: "150" }, withBurn, {})).toEqual({ error: "The share of the active calories added to the calorie goal is at most 100 %." });
+  });
+
   it.each([["abc"], ["0"], ["-5"], ["1e999"]])("says what is wrong with %s", (text) => {
     expect(SM.goalsPatch({ kcal: "2000", proteinG: text }, fields, {})).toEqual({ error: "Protein must be a number above 0, or empty for no goal." });
   });

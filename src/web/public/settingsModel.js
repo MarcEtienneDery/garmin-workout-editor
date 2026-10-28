@@ -84,6 +84,8 @@
       if (!Number.isFinite(n) || n <= 0) return { error: `${f.label} must be a number above 0, or empty for no goal.` };
       goals[f.key] = n;
     }
+    if (typeof goals.kcalBurnPct === "number" && !(Number(String(texts.kcal == null ? "" : texts.kcal).trim().replace(",", ".")) > 0)) return { error: "Set a calorie goal to add the burned calories to." };
+    if (typeof goals.kcalBurnPct === "number" && goals.kcalBurnPct > 100) return { error: "The share of the active calories added to the calorie goal is at most 100 %." };
     return { goals };
   }
 

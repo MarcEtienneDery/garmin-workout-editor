@@ -1,7 +1,8 @@
 import { SqliteStore } from "../shared/store";
 import { NUTRIENTS } from "../shared/nutrients";
 import { addFoods, nutritionDays } from "../shared/nutrition";
-import { GOALS, NUTRIENT_KINDS, getGoals, goalList, goalProgress, setGoals } from "../shared/nutritionGoals";
+import { GOALS, NUTRIENT_KINDS, SETTING_FIELDS, getGoals, goalList, goalProgress, kcalGoalOf, setGoals } from "../shared/nutritionGoals";
+import { summaryResponse } from "./fixtures/wellness";
 
 let store: SqliteStore;
 beforeEach(() => {
@@ -129,5 +130,78 @@ describe("where a day stands", () => {
     expect(by.fiberG).toMatchObject({ amount: 4, partial: true, state: "short", left: 26 });
     expect(by.sodiumMg).toMatchObject({ amount: null, state: "unknown", partial: false }); // not 0 of 2300
     expect(by.kcal).toMatchObject({ amount: 230 }); // the macros are counted for every food
+  });
+});
+
+describe("a calorie goal that follows the burn", () => {
+  it("is off until it is set: the calorie goal stays the number given, whatever the day burned", () => {
+    setGoals(store, "MED", { kcal: 2000 });
+    expect(getGoals(store, "MED")).toEqual({ kcal: 2000 });
+    expect(kcalGoalOf({ kcal: 2000 }, 650)).toBe(2000);
+    log([{ name: "Rice", kcal: 500 }]);
+    const [row] = goalProgress({ kcal: 2000 }, dayOf(), 650);
+    expect(row).toMatchObject({ goal: 2000, left: 1500 });
+    expect(row.adjust).toBeUndefined();
+  });
+
+  it("is listed in Settings right after the calories, apart from the goals", () => {
+    expect(SETTING_FIELDS.map((f) => f.key).slice(0, 3)).toEqual(["kcal", "kcalBurnPct", "proteinG"]);
+    expect(SETTING_FIELDS[1]).toMatchObject({ unit: "%", kind: "burn", max: 100 });
+    expect(GOALS.map((g) => g.key)).not.toContain("kcalBurnPct");
+  });
+
+  it("adds the chosen share of the active calories to the goal, whole", () => {
+    expect(setGoals(store, "MED", { kcal: 2200, kcalBurnPct: 50 })).toEqual({ kcal: 2200, kcalBurnPct: 50 });
+    expect(kcalGoalOf(getGoals(store, "MED"), 620)).toBe(2510);
+    expect(kcalGoalOf({ kcal: 2200, kcalBurnPct: 100 }, 333)).toBe(2533);
+    expect(kcalGoalOf({ kcal: 2200, kcalBurnPct: 33 }, 101)).toBe(2233); // 33.33 added, rounded
+    expect(kcalGoalOf({ kcal: 2200, kcalBurnPct: 50 }, 0)).toBe(2200);
+    expect(kcalGoalOf({ kcalBurnPct: 50 }, 620)).toBeNull(); // no calorie goal, nothing to add to
+  });
+
+  it("measures the day against the adjusted goal, and says how it came about", () => {
+    log([{ name: "Rice", kcal: 1000 }]);
+    const [row] = goalProgress({ kcal: 2200, kcalBurnPct: 50 }, dayOf(), 620);
+    expect(row).toMatchObject({ goal: 2510, amount: 1000, left: 1510, pct: 40, state: "short", adjust: { base: 2200, pct: 50, activeKcal: 620, added: 310 } });
+  });
+
+  it("keeps the set goal, flagged, when the day has no burn: unknown is not zero", () => {
+    log([{ name: "Rice", kcal: 1000 }]);
+    const [row] = goalProgress({ kcal: 2200, kcalBurnPct: 50 }, dayOf(), null);
+    expect(row).toMatchObject({ goal: 2200, adjust: { base: 2200, pct: 50, activeKcal: null, added: null } });
+    const [none] = goalProgress({ kcal: 2200, kcalBurnPct: 50 }, dayOf("SAM"), null); // nothing logged
+    expect(none).toMatchObject({ goal: 2200, amount: null, state: "unknown", adjust: { added: null } });
+    expect(goalProgress({ kcal: 2200, kcalBurnPct: 50 }, dayOf(), 0)[0]).toMatchObject({ goal: 2200, adjust: { activeKcal: 0, added: 0 } }); // a burn of 0 is known
+  });
+
+  it("leaves the other goals alone", () => {
+    log([{ name: "Rice", kcal: 500, proteinG: 40 }]);
+    const rows = goalProgress({ kcal: 2200, kcalBurnPct: 100, proteinG: 140 }, dayOf(), 800);
+    expect(rows.map((r) => [r.key, r.goal])).toEqual([["kcal", 3000], ["proteinG", 140]]);
+    expect(rows[1].adjust).toBeUndefined();
+  });
+
+  it("takes a share from 1 to 100, whole, as a patch like the goals", () => {
+    setGoals(store, "MED", { kcal: 2000 });
+    expect(setGoals(store, "MED", { kcalBurnPct: "50" })).toEqual({ kcal: 2000, kcalBurnPct: 50 });
+    expect(setGoals(store, "MED", { kcalBurnPct: 62.6 })).toEqual({ kcal: 2000, kcalBurnPct: 63 });
+    expect(setGoals(store, "MED", { kcal: 1800 })).toEqual({ kcal: 1800, kcalBurnPct: 63 }); // stays
+    expect(setGoals(store, "MED", { kcalBurnPct: null })).toEqual({ kcal: 1800 }); // fixed again
+    for (const bad of [0, -5, 101, "lots", Infinity]) expect(() => setGoals(store, "MED", { kcalBurnPct: bad })).toThrow(/share of the active calories/);
+    expect(getGoals(store, "MED")).toEqual({ kcal: 1800 });
+  });
+
+  it("needs a calorie goal: asking for it with none is refused, and removing the goal drops it", () => {
+    expect(() => setGoals(store, "MED", { kcalBurnPct: 50 })).toThrow(/Set a calorie goal/);
+    expect(getGoals(store, "MED")).toEqual({});
+    expect(setGoals(store, "MED", { kcal: 2000, kcalBurnPct: 50 })).toEqual({ kcal: 2000, kcalBurnPct: 50 }); // both at once
+    expect(setGoals(store, "MED", { kcal: null })).toEqual({});
+    expect(getGoals(store, "MED")).toEqual({});
+  });
+
+  it("reaches the day through its summary: the active calories Garmin states, null when it has none", () => {
+    store.wellness.put("MED", TODAY, "summary", { ...summaryResponse(), totalKilocalories: 2600, activeKilocalories: 650 });
+    expect(dayOf()).toMatchObject({ burnedKcal: 2600, activeKcal: 650 });
+    expect(dayOf("SAM").activeKcal).toBeNull();
   });
 });

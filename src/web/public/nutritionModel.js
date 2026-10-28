@@ -87,7 +87,7 @@
     const s = shares(d);
     const net = d.netKcal;
     const kp = (view.progress || []).find((p) => p.key === "kcal");
-    const eaten = { label: "Eaten", value: logged ? kcal(d.kcal) : "–", note: logged ? (kp ? `of ${num(kp.goal)} · ${goalNote(kp, d.entries)}` : foods(d.entries)) : "nothing logged" };
+    const eaten = { label: "Eaten", value: logged ? kcal(d.kcal) : "–", note: logged ? (kp ? `of ${num(kp.goal)}${kp.adjust && kp.adjust.added ? ` (+${num(kp.adjust.added)} burned)` : ""} · ${goalNote(kp, d.entries)}` : foods(d.entries)) : "nothing logged" };
     const burn = [
       { label: "Burned", value: kcal(d.burnedKcal), note: d.burnedKcal === null ? "no day summary from Garmin" : today ? "so far today, by Garmin" : "by Garmin" },
       { label: "Eaten − burned", value: signed(net), note: net === null ? (logged ? "needs the day's burn" : "needs a logged day") : `${net > 0 ? "above" : net < 0 ? "below" : "at"} what the day burned${today ? " so far" : ""}` },
@@ -136,10 +136,13 @@
   function charts(view) {
     const burn = hasBurn(view), goals = (view && view.goals) || {};
     const against = (key, unit) => (valid(goals[key]) ? { goal: { label: `Goal ${num(goals[key])} ${unit}`, value: goals[key] } } : {});
+    // a calorie goal that follows the burn is a level of its own each day (the server works it out per day)
+    const follows = valid(goals.kcal) && valid(goals.kcalBurnPct);
+    const kcalGoal = follows ? { goal: { label: `Goal ${num(goals.kcal)} kcal + ${num(goals.kcalBurnPct)} % of active`, values: (d) => d.kcalGoal } } : against("kcal", "kcal");
     return [
       {
-        id: "eaten", title: "Calories eaten", unit: "kcal", kind: "bars", min: 0, value: (d) => d.kcal, ...(burn ? { ref: { label: "Burned by Garmin", value: (d) => d.burnedKcal } } : {}), ...against("kcal", "kcal"),
-        read: (d) => (valid(d.kcal) ? `${num(d.kcal)} kcal${burn && valid(d.burnedKcal) ? ` · burned ${num(d.burnedKcal)}` : ""}` : "not logged"),
+        id: "eaten", title: "Calories eaten", unit: "kcal", kind: "bars", min: 0, value: (d) => d.kcal, ...(burn ? { ref: { label: "Burned by Garmin", value: (d) => d.burnedKcal } } : {}), ...kcalGoal,
+        read: (d) => (valid(d.kcal) ? `${num(d.kcal)} kcal${burn && valid(d.burnedKcal) ? ` · burned ${num(d.burnedKcal)}` : ""}${follows && valid(d.kcalGoal) ? ` · goal ${num(d.kcalGoal)}` : ""}` : "not logged"),
       },
       {
         id: "macros", title: "Macros", unit: "g", kind: "stack", min: 0, scaleBy: 1,
@@ -196,6 +199,20 @@
     return { segments, tick: valid(goal) && day.kcal > goal ? (goal / top) * 100 : null };
   }
 
+  /** The calorie goal the day is measured against: the server's (it follows the burn when the person set it so), else the set one; undefined when there is none. */
+  function calorieGoal(view) {
+    const kp = (view.progress || []).find((p) => p.key === "kcal");
+    return kp ? kp.goal : (view.goals || {}).kcal;
+  }
+
+  /** How a calorie goal that follows the burn came about ("Goal 2,510 kcal = 2,200 set + 310 (50 % of 620 active kcal burned so far)"); "" when the goal is fixed or there is none. */
+  function goalLine(view) {
+    const kp = (view.progress || []).find((p) => p.key === "kcal"), a = kp && kp.adjust;
+    if (!a) return "";
+    if (a.added === null) return `Goal ${qty(a.base, "kcal")} as set: no burn from Garmin for this day to add to it`;
+    return `Goal ${qty(kp.goal, "kcal")} = ${num(a.base)} set + ${num(a.added)} (${num(a.pct)} % of ${num(a.activeKcal)} active kcal burned${view.day.day === view.today ? " so far" : ""})`;
+  }
+
   /** The figure the summary leads with: what was eaten, and where it stands against the calorie goal. */
   function headline(view) {
     const d = view.day, kp = (view.progress || []).find((p) => p.key === "kcal");
@@ -231,7 +248,7 @@
    * carbs and fat. `share` is the meal's part of the calorie goal (or of the day without one). A meal with nothing logged has no bar.
    */
   function mealBars(view) {
-    const d = view.day, goal = (view.goals || {}).kcal, blocks = d.meals || [], top = Math.max(0, ...blocks.map((b) => b.totals.kcal));
+    const d = view.day, goal = calorieGoal(view), blocks = d.meals || [], top = Math.max(0, ...blocks.map((b) => b.totals.kcal));
     return blocks.map((b) => {
       const t = b.totals, logged = t.entries > 0, parts = MACRO_KEYS.map(([cls, key, label]) => ({ cls, label, kcal: t[key] * MACRO_KCAL[cls] })), sum = parts.reduce((x, y) => x + y.kcal, 0);
       const base = valid(goal) ? goal : d.kcal;
@@ -260,7 +277,7 @@
   }
 
   /** What a goal is, in words: protein is "at least", sodium "at most", calories "the aim". */
-  const KIND_LABELS = { min: "at least", max: "at most", target: "the aim" };
+  const KIND_LABELS = { min: "at least", max: "at most", target: "the aim", burn: "100" };
   const kindLabel = (kind) => KIND_LABELS[kind] || "";
 
 
@@ -539,5 +556,5 @@
     return { items };
   }
 
-  return { AI_LIMITS, mealForHour, canEstimate, aiFood, aiRows, aiRowValue, aiGroups, aiTotals, approx, aiItems, gtinOk, expandUpcE, normalizeBarcode, MAX_AMOUNT, parseAmount, amountGrams, scale, brandOf, entryName, portion, productOf, pickOf, allNutrients, per100Line, foodTitle, MEAL_LABELS, mealLabel, kcal, grams, signed, macros, shares, hasBurn, figures, averageNote, bare, qty, goalValue, goalNote, goalMeter, calorieBar, headline, burnLine, macroRows, sharesLine, mealBars, nutrientRows, kindLabel, GROUPS, groupsFor, cell, chartDays, charts, kcalOf, parseDraft, draftOf, EMPTY_DRAFT, hasNumbers, hasNutrients, recentMatch, recentFor, again, foods, NUTRIENTS, nutrientLine, nutrientTiles, scaleNutrients };
+  return { AI_LIMITS, mealForHour, canEstimate, aiFood, aiRows, aiRowValue, aiGroups, aiTotals, approx, aiItems, gtinOk, expandUpcE, normalizeBarcode, MAX_AMOUNT, parseAmount, amountGrams, scale, brandOf, entryName, portion, productOf, pickOf, allNutrients, per100Line, foodTitle, MEAL_LABELS, mealLabel, kcal, grams, signed, macros, shares, hasBurn, figures, averageNote, bare, qty, goalValue, goalNote, goalMeter, calorieBar, headline, calorieGoal, goalLine, burnLine, macroRows, sharesLine, mealBars, nutrientRows, kindLabel, GROUPS, groupsFor, cell, chartDays, charts, kcalOf, parseDraft, draftOf, EMPTY_DRAFT, hasNumbers, hasNutrients, recentMatch, recentFor, again, foods, NUTRIENTS, nutrientLine, nutrientTiles, scaleNutrients };
 });

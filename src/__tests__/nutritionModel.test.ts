@@ -635,3 +635,45 @@ describe("the charts with goals", () => {
     expect(charts[0].goal).toBeUndefined();
   });
 });
+
+describe("a calorie goal that follows the burn", () => {
+  const foods = [{ meal: "lunch", kcal: 1000, proteinG: 60 }];
+  const follow = (active: number | null, goals: Record<string, number> = { kcal: 2200, kcalBurnPct: 50 }) => {
+    const v = goalView(foods, goals);
+    return { ...v, progress: goalProgress(goals, v.day as any, active) };
+  };
+
+  it("measures the day, draws the bar and splits the meals against the adjusted goal", () => {
+    const v = follow(620);
+    expect(NM.calorieGoal(v)).toBe(2510);
+    expect(NM.headline(v)).toMatchObject({ unit: "kcal eaten", note: `${(1510).toLocaleString()} kcal to go · goal ${(2510).toLocaleString()} kcal`, state: "short" });
+    expect(NM.mealBars(v)[1]).toMatchObject({ share: 40, shareOf: "of the goal" }); // 1000 of 2510
+    expect(NM.figures(v)[0].note).toBe(`of ${(2510).toLocaleString()} (+310 burned) · ${(1510).toLocaleString()} kcal to go`);
+  });
+
+  it("says how the goal came about, and when the day has no burn to add", () => {
+    expect(NM.goalLine(follow(620))).toBe(`Goal ${(2510).toLocaleString()} kcal = ${(2200).toLocaleString()} set + 310 (50 % of 620 active kcal burned so far)`);
+    expect(NM.goalLine({ ...follow(620), today: "2026-10-19" })).toMatch(/active kcal burned\)$/); // a day that is over: not "so far"
+    expect(NM.goalLine(follow(null))).toBe(`Goal ${(2200).toLocaleString()} kcal as set: no burn from Garmin for this day to add to it`);
+    expect(NM.calorieGoal(follow(null))).toBe(2200);
+  });
+
+  it("says nothing when the goal is fixed or there is none", () => {
+    expect(NM.goalLine(follow(620, { kcal: 2200 }))).toBe("");
+    expect(NM.goalLine(follow(620, { proteinG: 100 }))).toBe("");
+    expect(NM.calorieGoal(follow(620, { kcal: 2200 }))).toBe(2200);
+    expect(NM.calorieGoal(follow(620, { proteinG: 100 }))).toBeUndefined();
+    expect(NM.calorieGoal({ day: day(), goals: { kcal: 1800 } })).toBe(1800); // a view without the server's progress: the set goal
+  });
+
+  it("draws a goal of its own for each day on the calories chart, and names it in the reading", () => {
+    const [eaten] = NM.charts({ burn: true, goals: { kcal: 2200, kcalBurnPct: 50 } });
+    expect(eaten.goal.value).toBeUndefined();
+    expect(eaten.goal.label).toBe(`Goal ${(2200).toLocaleString()} kcal + 50 % of active`);
+    expect(eaten.goal.values(day({ kcalGoal: 2510 }))).toBe(2510);
+    expect(eaten.read(day({ kcalGoal: 2510 }))).toBe(`${(2000).toLocaleString()} kcal · burned ${(2500).toLocaleString()} · goal ${(2510).toLocaleString()}`);
+    expect(eaten.read(day())).toBe(`${(2000).toLocaleString()} kcal · burned ${(2500).toLocaleString()}`);
+    expect(NM.charts({ burn: true, goals: { kcal: 2200 } })[0].goal).toEqual({ label: `Goal ${(2200).toLocaleString()} kcal`, value: 2200 }); // fixed: one level
+    expect(NM.charts({ burn: true, goals: { kcalBurnPct: 50 } })[0].goal).toBeUndefined(); // a share of nothing
+  });
+});
