@@ -24,7 +24,7 @@ export interface GarminRawSet {
 export const LOGIN_COOLDOWN_MS = 60_000;
 
 /** The HTTP status in a Garmin client error ("ERROR: (429), Too Many Requests, ..."), when it has one. */
-const httpStatus = (error: any): number | null => {
+export const httpStatus = (error: any): number | null => {
   const status = error?.response?.status ?? /\((\d{3})\)/.exec(String(error?.message ?? ""))?.[1];
   return status ? Number(status) : null;
 };

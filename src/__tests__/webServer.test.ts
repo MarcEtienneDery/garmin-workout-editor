@@ -33,6 +33,13 @@ jest.mock("../mcp/tools/garmin", () => ({
   checkWorkoutSync: jest.fn(async () => []),
   saveWorkout: jest.fn(async () => ({ workoutId: 999, previousWorkoutId: 5 })),
   deleteLibraryWorkout: jest.fn(async () => undefined),
+  // archiving: what Garmin deletes is the MCP body's business (workoutLibrary.test.ts); here only the route is under test
+  archivePlan: jest.fn(async (_profile: string | undefined, logical: string) => {
+    jest.requireActual("../shared/store").getStore().setArchived(logical, true);
+    return { path: logical, archived: true, removedFromGarmin: [], alreadyGone: [], keptOnGarmin: [], note: "" };
+  }),
+  plannedOnGarmin: (data: unknown) => jest.requireActual("../mcp/tools/garmin").plannedOnGarmin(data),
+  unarchivePlan: (logical: string) => jest.requireActual("../mcp/tools/garmin").unarchivePlan(logical),
 }));
 // Likewise Garmin's side of the activity sync.
 jest.mock("../mcp/tools/activities", () => ({
@@ -1543,6 +1550,107 @@ describe("web plan editor", () => {
       expect(typeof r.json.version).toBe("number");
     });
   });
+  describe("archiving a plan", () => {
+    const easy = { workoutName: "Easy run", workoutType: "running", distanceMeters: 5000 };
+    const archive = (body: object) => call("POST", "/api/plans/archive", { path: "workout-plans/a.json", ...body });
+    const archivedAt = (p = "workout-plans/a.json") => store().head(p)?.archivedAt;
+    const calendarPaths = async () => ((await call("GET", "/api/calendar")).json.plans as any[]).map((p) => p.path);
+
+    it("archives a plan that is not on Garmin without Garmin or a confirmation, and keeps it in the database", async () => {
+      const version = versionOf("workout-plans/a.json");
+      const r = await archive({});
+      expect(r.status).toBe(200);
+      expect(r.json).toMatchObject({ path: "workout-plans/a.json", archived: true, version });
+      expect(g.archivePlan).toHaveBeenCalledWith(undefined, "workout-plans/a.json");
+      expect(archivedAt()).toEqual(expect.any(Number));
+
+      // listed, with its mark, but off the calendar
+      expect((await call("GET", "/api/files")).json.files).toEqual([expect.objectContaining({ path: "workout-plans/a.json", archivedAt: expect.any(Number) })]);
+      expect(await calendarPaths()).toEqual([]);
+      expect(JSON.parse((await call("GET", q("workout-plans/a.json"))).json.text)).toEqual(plan); // still readable and editable
+    });
+
+    it("asks for a confirmation and a Garmin login when the plan has workouts on Garmin", async () => {
+      seed("workout-plans/a.json", { ...plan, workouts: [{ ...easy, workoutId: 5 }] });
+      expect((await archive({})).status).toBe(409); // no profile has a Garmin login
+      addProfile("PLAIN", undefined, false);
+      addProfile("WITH");
+      expect((await archive({ profile: "WITH" })).status).toBe(400); // no confirmation
+      expect((await archive({ profile: "PLAIN", confirm: true })).json.error).toMatch(/Profile "PLAIN" has no Garmin login/);
+      expect(g.archivePlan).not.toHaveBeenCalled();
+      expect(archivedAt()).toBeNull();
+
+      const r = await archive({ profile: "WITH", confirm: true });
+      expect(r.status).toBe(200);
+      expect(g.archivePlan).toHaveBeenCalledWith("WITH", "workout-plans/a.json");
+      expect(archivedAt()).not.toBeNull();
+    });
+
+    it("reports a failure on Garmin's side and leaves the plan active", async () => {
+      seed("workout-plans/a.json", { ...plan, workouts: [{ ...easy, workoutId: 5 }] });
+      addProfile("WITH");
+      g.archivePlan.mockRejectedValueOnce(new Error("ERROR: (500), Internal Server Error, {}"));
+      const r = await archive({ profile: "WITH", confirm: true });
+      expect(r.status).toBe(502);
+      expect(r.json.error).toMatch(/500/);
+      expect(archivedAt()).toBeNull();
+    });
+
+    it("refuses a stale version, a missing plan and a document that is not a plan", async () => {
+      expect((await archive({ version: versionOf("workout-plans/a.json") + 1 })).status).toBe(409);
+      expect((await archive({ path: "workout-plans/none.json" })).status).toBe(404);
+      expect((await archive({ path: "workout-plans/../x.json" })).status).toBe(400);
+      expect((await archive({ path: undefined })).status).toBe(400);
+      seed("data/MED/training-plan.json", { goal: "10k" });
+      expect((await archive({ path: "data/MED/training-plan.json" })).status).toBe(400);
+      expect(archivedAt()).toBeNull();
+    });
+
+    it("leaves an archived plan out of the calendar, the Workouts view and the Today view, and brings it back", async () => {
+      addProfile("TEST");
+      const day = (offset: number) => new Date(Date.now() + offset * 86_400_000).toISOString().slice(0, 10);
+      seed("workout-plans/a.json", { weekStart: "2026-10-12", weekEnd: "2026-10-18", workouts: [{ ...easy, workoutId: 5, scheduledDate: day(1) }] });
+      seed("workout-plans/b.json", { weekStart: "2026-10-12", weekEnd: "2026-10-18", workouts: [{ ...easy, workoutName: "Kept", workoutId: 6, scheduledDate: day(2) }] });
+      const names = async () => ((await call("GET", "/api/today")).json.workouts as any[]).map((x) => x.name).sort();
+      expect(await names()).toEqual(["Easy run", "Kept"]);
+      expect(await calendarPaths()).toEqual(expect.arrayContaining(["workout-plans/a.json", "workout-plans/b.json"]));
+
+      await archive({ confirm: true, profile: "TEST" });
+      expect(await names()).toEqual(["Kept"]);
+      expect(await calendarPaths()).toEqual(["workout-plans/b.json"]);
+      g.listLibraryWorkouts.mockResolvedValueOnce([{ workoutId: 5, workoutName: "Easy run" }]);
+      const rows = (await call("GET", "/api/workouts")).json.rows;
+      expect(rows.find((r: any) => r.key === "g:5")).toMatchObject({ state: "garmin-only", plans: [] }); // no plan names it any more
+
+      const back = await call("POST", "/api/plans/unarchive", { path: "workout-plans/a.json" });
+      expect(back.json).toMatchObject({ path: "workout-plans/a.json", archived: false });
+      expect(archivedAt()).toBeNull();
+      expect(await names()).toEqual(["Easy run", "Kept"]);
+      expect((await call("POST", "/api/plans/unarchive", { path: "workout-plans/none.json" })).status).toBe(404);
+    });
+
+    it("refuses to send an archived plan's workouts to Garmin, from the toolbar or from a workout save", async () => {
+      addProfile("WITH");
+      await archive({});
+      for (const action of ["upload", "schedule", "upload_schedule", "send"]) {
+        const r = await call("POST", "/api/garmin/action", { path: "workout-plans/a.json", action, confirm: true });
+        expect([action, r.status, r.json.error]).toEqual([action, 409, expect.stringMatching(/is archived/)]);
+      }
+      expect(g.uploadPlan).not.toHaveBeenCalled();
+
+      const save = await call("POST", "/api/garmin/workout", { workout: easy, planPath: "workout-plans/a.json", upload: true, confirm: true });
+      expect(save.status).toBe(409);
+      const edit = await call("PUT", "/api/garmin/workout", { workout: easy, plans: [{ path: "workout-plans/a.json", index: 0, version: versionOf("workout-plans/a.json") }], upload: true, confirm: true });
+      expect(edit.status).toBe(409);
+      expect(g.saveWorkout).not.toHaveBeenCalled();
+
+      // saving it into the plan alone, without Garmin, is still allowed
+      expect((await call("POST", "/api/garmin/workout", { workout: easy, planPath: "workout-plans/a.json" })).status).toBe(201);
+      await call("POST", "/api/plans/unarchive", { path: "workout-plans/a.json" });
+      expect((await call("POST", "/api/garmin/action", { path: "workout-plans/a.json", action: "upload", confirm: true, profile: "WITH" })).status).toBe(200);
+    });
+  });
+
   describe("Workouts view", () => {
     const easy = { workoutName: "Easy run", workoutType: "running", distanceMeters: 5000 };
     const lift = {
@@ -1856,6 +1964,20 @@ describe("web plan editor", () => {
       expect((await med("POST", "/api/garmin/action", body)).status).toBe(200);
       expect(g.uploadPlan).toHaveBeenLastCalledWith("MED", "workout-plans/a.json");
       expect((await med("POST", "/api/garmin/action", { ...body, path: "data/SAM/w.json" })).status).toBe(403);
+    });
+
+    it("lets a profile archive and unarchive the plans it can reach, and no others", async () => {
+      const med = as("MED", "med-pw");
+      seed("workout-plans/sam.json", plan);
+      store().setOwner("workout-plans/sam.json", "SAM");
+      for (const path of ["workout-plans/sam.json", "data/SAM/w.json"]) {
+        expect([path, (await med("POST", "/api/plans/archive", { path })).status]).toEqual([path, 403]);
+        expect([path, (await med("POST", "/api/plans/unarchive", { path })).status]).toEqual([path, 403]);
+        expect(store().head(path)?.archivedAt).toBeNull();
+      }
+      expect((await med("POST", "/api/plans/archive", { path: "workout-plans/a.json" })).status).toBe(200); // a shared plan
+      expect(store().head("workout-plans/a.json")?.archivedAt).not.toBeNull();
+      expect((await med("POST", "/api/plans/unarchive", { path: "workout-plans/a.json" })).status).toBe(200);
     });
 
     it("keeps the token as an admin login and picks up password edits without a restart", async () => {

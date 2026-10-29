@@ -22,7 +22,7 @@ To log what the person ate: log_meal (a meal of a day, one item per food, with c
 
 For one workout that belongs to no plan: create_workout makes a new workout in the Garmin library from the workout you give it and returns its workoutId (dryRun=true validates it and sends nothing: show the user that result first), and schedule_workout puts any workout of the library, by workoutId, on a day. Neither reads or writes a plan file, and create_workout never replaces a workout.
 
-Tools that change the Garmin account — upload_workouts, upload_single_workout, schedule_plan, upload_and_schedule_plan, create_workout, schedule_workout, send_to_device — must NEVER be called without the user's explicit confirmation after you have shown them the validation result. Uploading replaces any existing workout that has a workoutId and writes the new workoutIds back into the plan file, which is what keeps later uploads from creating duplicates.`;
+Tools that change the Garmin account — upload_workouts, upload_single_workout, schedule_plan, upload_and_schedule_plan, archive_plan, create_workout, schedule_workout, send_to_device — must NEVER be called without the user's explicit confirmation after you have shown them the validation result. Uploading replaces any existing workout that has a workoutId and writes the new workoutIds back into the plan file, which is what keeps later uploads from creating duplicates. archive_plan deletes a plan's workouts from Garmin and keeps the plan here, marked archived (unarchive_plan reverses the mark; the workouts come back with an upload).`;
 
 function readVersion(): string {
   try {

@@ -22,6 +22,7 @@ import { getAvailableProfiles, getMockProfile } from "../shared/profileLoader";
 import { seedProfile } from "./fixtures/profiles";
 
 const EXPECTED_TOOLS = [
+  "archive_plan",
   "create_workout",
   "delete_meal_entry",
   "export_workouts",
@@ -41,6 +42,7 @@ const EXPECTED_TOOLS = [
   "schedule_workout",
   "send_to_device",
   "set_nutrition_goals",
+  "unarchive_plan",
   "update_meal_entry",
   "upload_and_schedule_plan",
   "upload_single_workout",
@@ -152,7 +154,7 @@ describe("MCP server (mock mode, in-memory transport)", () => {
   it("marks Garmin writes destructive and reads read-only", async () => {
     const { tools } = await client.listTools();
     const byName = Object.fromEntries(tools.map((t) => [t.name, t]));
-    for (const name of ["upload_workouts", "upload_and_schedule_plan", "schedule_plan", "create_workout", "schedule_workout", "send_to_device", "write_plan"]) {
+    for (const name of ["upload_workouts", "upload_and_schedule_plan", "schedule_plan", "archive_plan", "create_workout", "schedule_workout", "send_to_device", "write_plan"]) {
       expect(byName[name].annotations?.destructiveHint).toBe(true);
     }
     for (const name of ["list_workouts", "get_activities", "validate_plan", "read_plan", "get_nutrition"]) {
@@ -202,6 +204,26 @@ describe("MCP server (mock mode, in-memory transport)", () => {
 
     const missing = await callTool(client, "get_workout", { workoutId: 999999999 });
     expect(missing.isError).toBe(true);
+  });
+
+  it("lists an archived plan with its mark, and archive_plan changes nothing in mock mode", async () => {
+    writePlan("shelved.json", { weekStart: "2026-10-12", weekEnd: "2026-10-18", workouts: [{ ...STRENGTH_WORKOUT, workoutId: 5 }] });
+    const refused = await callTool(client, "archive_plan", { path: "workout-plans/shelved.json" });
+    expect(refused.isError).toBe(true);
+    expect(refused.text).toMatch(/Mock mode/);
+    expect(getStore().head("workout-plans/shelved.json")!.archivedAt).toBeNull();
+    expect(JSON.parse(stored("workout-plans/shelved.json")!).workouts[0].workoutId).toBe(5);
+
+    expect((await callTool(client, "unarchive_plan", { path: "workout-plans/none.json" })).isError).toBe(true);
+    getStore().setArchived("workout-plans/shelved.json", true);
+    const listed = (await callTool(client, "list_plans")).value["workout-plans"].find((f: any) => f.path === "workout-plans/shelved.json");
+    expect(listed).toMatchObject({ archived: true, archivedAt: expect.any(String) });
+    const dry = await callTool(client, "upload_workouts", { path: "workout-plans/shelved.json", dryRun: true });
+    expect(dry.isError).toBe(false); // checking an archived plan sends nothing, so it is allowed
+
+    expect((await callTool(client, "unarchive_plan", { path: "workout-plans/shelved.json" })).value).toMatchObject({ archived: false });
+    const after = (await callTool(client, "list_plans")).value["workout-plans"].find((f: any) => f.path === "workout-plans/shelved.json");
+    expect(after.archived).toBeUndefined();
   });
 
   it("lists plan files from the overridden directories", async () => {

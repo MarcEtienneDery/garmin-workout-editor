@@ -1,5 +1,7 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { httpStatus } from "../../shared/garminClient";
+import { activePlanDocs } from "../../shared/planDocs";
 import { garminConnected, getAvailableProfiles } from "../../shared/profileLoader";
 import { getStore } from "../../shared/store";
 import {
@@ -11,11 +13,12 @@ import {
   readJsonDoc,
   requireAuth,
   runTool,
+  updateJsonDoc,
   writeJsonDoc,
 } from "../context";
 import type { DetailedWorkout } from "../../shared/types";
 import type { SyncStatus } from "../../shared/workoutSync";
-import { getActivities } from "./activities";
+import { detailGapMs, getActivities } from "./activities";
 import { NEW_WORKOUT_FORMAT, type NewWorkout, diffPlanWorkout, extractWorkouts, newWorkoutSchema } from "./plans";
 
 export const profileArg = z
@@ -59,12 +62,18 @@ export async function listDevices(profile?: string) {
   };
 }
 
+/** An archived plan is put away and off Garmin: whatever puts its workouts there again must wait until it is unarchived. */
+export function assertActive(logical: string): void {
+  if (getStore().head(logical)?.archivedAt != null) throw new Error(`${logical} is archived: unarchive it before sending its workouts to Garmin.`);
+}
+
 export async function uploadPlan(profile: string | undefined, logicalPath: string, dryRun = false) {
   const session = getSession(profile);
   if (!dryRun) assertLive(session, "upload_workouts");
   const logical = checkedPath(logicalPath);
   const doc = getStore().get(logical);
   if (!doc) throw new Error(`File not found: ${logical}`);
+  if (!dryRun) assertActive(logical);
   const result = await session.editor.uploadWorkoutsFromText(doc.text, dryRun, (updated) => getStore().put(logical, updated, { source: "mcp" }), logical);
   return {
     path: logical,
@@ -79,6 +88,7 @@ export async function schedulePlan(profile: string | undefined, logicalPath: str
   const session = getSession(profile);
   assertLive(session, "schedule_plan");
   const logical = checkedPath(logicalPath);
+  assertActive(logical);
   const plan = session.editor.parseWorkoutPlan(storedText(logical));
 
   const attempted = plan.workouts.flatMap((w) =>
@@ -101,6 +111,7 @@ export async function uploadAndSchedulePlan(profile: string | undefined, logical
   assertLive(session, "upload_and_schedule_plan");
 
   const logical = checkedPath(logicalPath);
+  assertActive(logical);
   const plan = session.editor.parseWorkoutPlan(storedText(logical));
   const before = plan.workouts.map((w) => w.workoutId);
 
@@ -131,6 +142,7 @@ export async function sendPlanToDevice(profile: string | undefined, logicalPath:
   const session = getSession(profile);
   assertLive(session, "send_to_device");
 
+  assertActive(checkedPath(logicalPath));
   const data = readJsonDoc(checkedPath(logicalPath));
   const { workouts } = extractWorkouts(data);
   if (workouts.length === 0) throw new Error("No workouts found in file.");
@@ -148,6 +160,124 @@ export async function sendPlanToDevice(profile: string | undefined, logicalPath:
     requested: toSend.map((w) => w.workoutName),
     note: "Workouts without a workoutId are skipped; see the log.",
   };
+}
+
+// ── Archive a plan: its workouts leave Garmin, the plan stays here ─────────
+
+export interface ArchivedWorkout {
+  workoutName: string;
+  workoutId: number | string;
+}
+
+export interface ArchiveResult {
+  path: string;
+  archived: true;
+  /** Deleted from the Garmin library. */
+  removedFromGarmin: ArchivedWorkout[];
+  /** The plan named them, but Garmin no longer had them. */
+  alreadyGone: ArchivedWorkout[];
+  /** Left on Garmin because a plan that is not archived still uses the same workout. */
+  keptOnGarmin: (ArchivedWorkout & { usedBy: string[] })[];
+  note: string;
+}
+
+const archiveWorkouts = (data: unknown): any[] =>
+  extractWorkouts(data).workouts.filter((w) => w && typeof w === "object" && w.workoutId !== undefined && w.workoutId !== null && w.workoutId !== "");
+
+/** The workouts a plan has on Garmin (those with a workoutId), once per id, with what they are called. */
+export function plannedOnGarmin(data: unknown): ArchivedWorkout[] {
+  const seen = new Map<string, ArchivedWorkout>();
+  for (const w of archiveWorkouts(data)) if (!seen.has(String(w.workoutId))) seen.set(String(w.workoutId), { workoutName: String(w.workoutName ?? ""), workoutId: w.workoutId });
+  return [...seen.values()];
+}
+
+/**
+ * Archive a plan: delete its workouts from the Garmin library (their calendar entries go with them, as saveWorkout assumes), take their
+ * workoutIds out of the plan, and mark the plan archived. The plan itself stays in the database, as "not uploaded", and
+ * unarchivePlan brings it back; upload_workouts then makes new workouts. A workout that another plan which is not archived also
+ * carries by id stays on Garmin, since deleting it would break that plan. A plan with nothing on Garmin needs no Garmin login.
+ *
+ * Deleted ids are taken out of the plan as they go, so a delete that fails half way leaves the plan telling the truth (not
+ * archived yet, the ones that were deleted unlinked) and archiving again finishes the rest.
+ */
+export async function archivePlan(profile: string | undefined, logicalPath: string): Promise<ArchiveResult> {
+  const logical = checkedPath(logicalPath);
+  const store = getStore();
+  const planned = plannedOnGarmin(readJsonDoc(logical));
+
+  const removed: ArchivedWorkout[] = [];
+  const gone: ArchivedWorkout[] = [];
+  const kept: ArchiveResult["keptOnGarmin"] = [];
+
+  if (planned.length) {
+    const session = getSession(profile);
+    assertLive(session, "archive_plan");
+    await requireAuth(session);
+
+    // who else holds each id: the plans of this profile that are not archived
+    const usedBy = new Map<string, string[]>();
+    for (const meta of activePlanDocs(store, session.profile.name)) {
+      if (meta.path === logical) continue;
+      let others: ArchivedWorkout[];
+      try {
+        others = plannedOnGarmin(JSON.parse(store.get(meta.path)?.text ?? ""));
+      } catch {
+        continue; // not a plan, or broken JSON: it names no workout
+      }
+      for (const w of others) usedBy.set(String(w.workoutId), [...(usedBy.get(String(w.workoutId)) ?? []), meta.path]);
+    }
+
+    const unlinked = new Set<string>();
+    const unlink = () =>
+      updateJsonDoc(logical, (data) => {
+        for (const w of archiveWorkouts(data)) if (unlinked.has(String(w.workoutId))) delete w.workoutId;
+      });
+    try {
+      for (const w of planned) {
+        const id = String(w.workoutId);
+        const others = usedBy.get(id);
+        if (others) {
+          kept.push({ ...w, usedBy: others });
+          unlinked.add(id); // not deleted, but this plan lets go of it
+          continue;
+        }
+        if (removed.length + gone.length > 0) await new Promise((resolve) => setTimeout(resolve, detailGapMs() ?? 500));
+        try {
+          await deleteLibraryWorkout(session.profile.name, w.workoutId);
+          removed.push(w);
+        } catch (error) {
+          if (httpStatus(error) !== 404) throw error;
+          gone.push(w); // Garmin does not have it any more: the plan lets go of it all the same
+        }
+        unlinked.add(id);
+      }
+    } finally {
+      if (unlinked.size) unlink();
+    }
+  }
+
+  getStore().setArchived(logical, true);
+  const parts = [
+    removed.length ? `${removed.length} workout${removed.length === 1 ? "" : "s"} deleted from Garmin` : null,
+    gone.length ? `${gone.length} already gone from Garmin` : null,
+    kept.length ? `${kept.length} left on Garmin because another plan uses ${kept.length === 1 ? "it" : "them"}` : null,
+  ].filter(Boolean);
+  return {
+    path: logical,
+    archived: true,
+    removedFromGarmin: removed,
+    alreadyGone: gone,
+    keptOnGarmin: kept,
+    note: `${parts.length ? parts.join("; ") + ". " : "Nothing was on Garmin. "}The plan is kept here without workoutIds; unarchive_plan brings it back, and upload_workouts puts its workouts on Garmin again.`,
+  };
+}
+
+/** Bring an archived plan back: it is listed and used again. Its workouts are not on Garmin until it is uploaded. */
+export function unarchivePlan(logicalPath: string): { path: string; archived: false; note: string } {
+  const logical = checkedPath(logicalPath);
+  if (!getStore().head(logical)) throw new Error(`File not found: ${logical}`);
+  getStore().setArchived(logical, false);
+  return { path: logical, archived: false, note: "Back among the plans. Its workouts are not on Garmin: upload_workouts (or upload_and_schedule_plan) puts them there." };
 }
 
 // ── Workout library: view, check against plans, save, delete ───────────────
@@ -562,6 +692,7 @@ export function registerGarminTools(server: McpServer): void {
           if (!dryRun) assertLive(session, "upload_single_workout");
 
           const logical = checkedPath(logicalPath);
+          if (!dryRun) assertActive(logical);
           const data = readJsonDoc(logical);
           const { workouts } = extractWorkouts(data);
 
@@ -635,6 +766,36 @@ export function registerGarminTools(server: McpServer): void {
         () => sendPlanToDevice(profile, logicalPath, deviceId),
         { serialize: true }
       )
+  );
+
+  // ── Archive: a plan's workouts leave Garmin, the plan stays ───────────────
+
+  server.registerTool(
+    "archive_plan",
+    {
+      title: "Archive a plan",
+      description:
+        "Archive a plan: delete its workouts from the Garmin Connect library (and so from the calendar), take their workoutIds out of the plan, and mark the plan archived. The plan itself stays in the database, hidden from the web editor's Today and Calendar views, and unarchive_plan brings it back (its workouts are then not on Garmin until it is uploaded again). A workout that another plan which is not archived also carries by workoutId stays on Garmin and is reported in keptOnGarmin. A plan with no workoutIds needs no Garmin login. An archived plan cannot be uploaded, scheduled or sent to the watch. Confirm with the user first, naming the workouts that will be deleted (read_plan shows them).",
+      inputSchema: { profile: profileArg, path: planPath },
+      annotations: WRITE_GARMIN,
+    },
+    ({ profile, path: logicalPath }) =>
+      runTool(
+        () => archivePlan(profile, logicalPath),
+        { serialize: true }
+      )
+  );
+
+  server.registerTool(
+    "unarchive_plan",
+    {
+      title: "Unarchive a plan",
+      description:
+        "Bring an archived plan back among the active ones. Only the database changes: the plan's workouts are not on Garmin (archiving deleted them), so upload_workouts or upload_and_schedule_plan puts them there again.",
+      inputSchema: { path: planPath },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+    },
+    ({ path: logicalPath }) => runTool(async () => unarchivePlan(logicalPath))
   );
 
   // ── Writes with no plan file: one workout made, one workout put on a day ──

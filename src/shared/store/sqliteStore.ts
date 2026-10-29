@@ -40,7 +40,8 @@ CREATE TABLE IF NOT EXISTS documents (
   version    INTEGER NOT NULL,
   updated_at INTEGER NOT NULL,
   source     TEXT NOT NULL,
-  summary    TEXT NOT NULL
+  summary    TEXT NOT NULL,
+  archived_at INTEGER
 );
 CREATE TABLE IF NOT EXISTS revisions (
   id       INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -63,7 +64,7 @@ ${PROFILE_SCHEMA}
 ${SESSION_SCHEMA}
 `;
 
-const META_COLUMNS = "path, owner, size, version, updated_at, source, summary";
+const META_COLUMNS = "path, owner, size, version, updated_at, source, summary, archived_at";
 
 const toMeta = (r: Row): DocMeta => ({
   path: r.path,
@@ -73,7 +74,14 @@ const toMeta = (r: Row): DocMeta => ({
   updatedAt: r.updated_at,
   source: r.source,
   summary: JSON.parse(r.summary),
+  archivedAt: r.archived_at ?? null,
 });
+
+/** A database made before plans could be archived gets the column when it is opened. */
+function migrateDocuments(db: Database): void {
+  const columns = new Set(db.prepare("PRAGMA table_info(documents)").all().map((column) => column.name));
+  if (!columns.has("archived_at")) db.exec("ALTER TABLE documents ADD COLUMN archived_at INTEGER");
+}
 
 const toRevision = (r: Row): RevisionMeta => ({ id: r.id, version: r.version, savedAt: r.saved_at, source: r.source, size: r.size });
 
@@ -132,6 +140,7 @@ export class SqliteStore {
     store.tx(() => {
       db.exec(SCHEMA);
       migrateNutrition(db);
+      migrateDocuments(db);
       backfillProfiles(db);
     });
     return store;
@@ -257,6 +266,20 @@ export class SqliteStore {
       this.db.prepare("UPDATE documents SET path = ?, owner = ? WHERE path = ?").run(to, owner, from);
       this.db.prepare("UPDATE revisions SET path = ? WHERE path = ?").run(to, from);
       return this.head(to)!;
+    });
+  }
+
+  /**
+   * Archive a document or bring it back. The text, its version and its history stay as they are: archiving is a mark on the row,
+   * not a save, so a write_plan that overwrites the plan keeps it archived. Marking an archived one again keeps the first date.
+   */
+  setArchived(documentPath: string, archived: boolean): DocMeta {
+    return this.tx(() => {
+      const current = this.row(documentPath);
+      if (!current) throw new StoreError("not_found", `File not found: ${documentPath}`);
+      const archivedAt = archived ? (current.archived_at ?? Date.now()) : null;
+      this.db.prepare("UPDATE documents SET archived_at = ? WHERE path = ?").run(archivedAt, documentPath);
+      return this.head(documentPath)!;
     });
   }
 

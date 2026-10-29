@@ -286,6 +286,7 @@ function listDocuments(prefix: string): FileEntry[] {
     sizeBytes: meta.size,
     modified: new Date(meta.updatedAt).toISOString(),
     ...(meta.owner && !meta.path.startsWith("data/") ? { owner: meta.owner } : {}),
+    ...(meta.archivedAt !== null ? { archived: true, archivedAt: new Date(meta.archivedAt).toISOString() } : {}),
     ...summarizeJsonText(store.get(meta.path)?.text ?? "", meta.size),
   }));
 }
@@ -296,7 +297,7 @@ export function registerPlanTools(server: McpServer): void {
     {
       title: "List plans",
       description:
-        "List the stored plans and data the other plan tools can reach: workout plans under workout-plans/ and per-profile data under data/<profile>/ (workouts.json, training-plan.json, ...; activities are not documents, get_activities reads them). Each entry includes metadata about its content (for plans: dates, source, notes preview, workout count/types/names, uploaded and scheduled counts).",
+        "List the stored plans and data the other plan tools can reach: workout plans under workout-plans/ and per-profile data under data/<profile>/ (workouts.json, training-plan.json, ...; activities are not documents, get_activities reads them). Each entry includes metadata about its content (for plans: dates, source, notes preview, workout count/types/names, uploaded and scheduled counts). An archived plan (archive_plan) is listed too, with archived: true.",
       inputSchema: {
         profile: z.string().optional().describe("Only list data/<profile>/. Omit to list every profile."),
       },

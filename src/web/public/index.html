@@ -25,6 +25,7 @@
   #actions { display:contents; }
   #menu, #tabbar { display:none; }
   #current b { color:var(--fg); }
+  #current.archived::after { content:" · archived"; flex:none; }
   #save.dirty::after { content:" ●"; }
   button { background:#333; color:var(--fg); border:1px solid var(--line); border-radius:3px; padding:4px 10px; cursor:pointer; font:inherit; }
   button:hover:not(:disabled) { background:#3d3d3d; }
@@ -42,6 +43,11 @@
   .file { display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:0 8px; padding:5px 10px; cursor:pointer; border-left:2px solid transparent; }
   .file > span:first-child { grid-column:1 / -1; overflow-wrap:anywhere; }
   .file .wact { align-self:center; }
+  details.shelved > summary { cursor:pointer; list-style:none; font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--dim); padding:10px 10px 4px; }
+  details.shelved > summary::-webkit-details-marker { display:none; }
+  details.shelved > summary::before { content:"▸ "; }
+  details.shelved[open] > summary::before { content:"▾ "; }
+  details.shelved .file > span:first-child { color:var(--dim); }
   .file:hover { background:#2d2d2e; }
   .file.active { background:#37373d; border-left-color:var(--accent); }
   .file small { display:flex; flex-wrap:wrap; column-gap:8px; color:var(--dim); min-width:0; }
@@ -741,6 +747,7 @@
         <button id="history" disabled>History</button>
         <button id="dup" disabled>Duplicate</button>
         <button id="rename" disabled>Rename</button>
+        <button id="archive" disabled title="Remove the plan's workouts from Garmin and keep the plan here">Archive</button>
         <hr>
         <button id="delete" class="danger" disabled>Delete</button>
       </div>
@@ -1262,12 +1269,32 @@ function renderFiles() {
   }
   sort.value = fileSort;
   $("filebar").hidden = files.length < 2;
-  const groups = {};
-  for (const f of [...files].sort(FILE_SORTS[fileSort][1])) (groups[f.path.split("/").slice(0, -1).join("/")] ||= []).push(f);
   const el = $("filelist"); el.innerHTML = "";
-  for (const [dir, list] of Object.entries(groups)) {
-    const h = document.createElement("h2"); h.textContent = dir; el.append(h);
-    for (const f of list) {
+  const sorted = [...files].sort(FILE_SORTS[fileSort][1]);
+  addFileGroups(el, sorted.filter((f) => f.archivedAt == null));
+  const shelved = sorted.filter((f) => f.archivedAt != null);
+  if (shelved.length) { // archived plans are put away: listed apart, closed unless the open file is one of them
+    const box = document.createElement("details"), head = document.createElement("summary");
+    box.className = "shelved"; head.textContent = `Archived (${shelved.length})`; box.append(head);
+    box.open = showArchived || (current && shelved.some((f) => f.path === current.path));
+    box.ontoggle = () => { showArchived = box.open; };
+    addFileGroups(box, shelved);
+    el.append(box);
+  }
+  if (!files.length) el.innerHTML = '<div class="empty">No plans yet.</div>';
+}
+
+let showArchived = false;
+const fileInfoOf = (path) => files.find((f) => f.path === path);
+const isArchived = (path) => { const f = fileInfoOf(path); return !!f && f.archivedAt != null; };
+
+/** The files under a heading per folder. */
+function addFileGroups(parent, list) {
+  const groups = {};
+  for (const f of list) (groups[f.path.split("/").slice(0, -1).join("/")] ||= []).push(f);
+  for (const [dir, group] of Object.entries(groups)) {
+    const h = document.createElement("h2"); h.textContent = dir; parent.append(h);
+    for (const f of group) {
       const d = document.createElement("div");
       d.className = "file" + (current && current.path === f.path ? " active" : "");
       d.innerHTML = `<span></span><small></small><span class="wact"></span>`;
@@ -1285,15 +1312,21 @@ function renderFiles() {
         d.children[2].append(b);
       }
       d.onclick = guard(() => openFile(f.path));
-      el.append(d);
+      parent.append(d);
     }
   }
-  if (!files.length) el.innerHTML = '<div class="empty">No plans yet.</div>';
 }
 
 /** The buttons beside a plan file: the Garmin actions (plan files only), duplicate and delete. */
 function fileActions(f) {
   const acts = [];
+  if (f.archivedAt != null) { // put away: no Garmin buttons (the server refuses them too)
+    return [
+      { icon: "unarchive", title: "Unarchive the plan", run: () => unarchive(f.path) },
+      { icon: "clone", title: "Duplicate the file", run: () => duplicate(f.path) },
+      { icon: "delete", title: "Delete the file", run: () => remove(f.path), danger: true },
+    ];
+  }
   if (garminOn(ownerOfPath(f.path) || pickedProfile()) && isPlanFile(f)) { // the action acts as the file's profile, else as the picker's
     acts.push(
       { icon: "upload", title: "Upload the plan to Garmin", run: () => garminFile(f.path, "upload") },
@@ -1301,6 +1334,7 @@ function fileActions(f) {
       { icon: "watch", title: "Send the plan to the watch", run: () => garminFile(f.path, "send") },
     );
   }
+  if (isPlanFile(f)) acts.push({ icon: "archive", title: "Archive the plan: remove its workouts from Garmin, keep the plan here", run: () => archive(f.path) });
   acts.push({ icon: "clone", title: "Duplicate the file", run: () => duplicate(f.path) }, { icon: "delete", title: "Delete the file", run: () => remove(f.path), danger: true });
   return acts;
 }
@@ -1329,13 +1363,15 @@ async function openFile(p) {
 }
 
 function setButtons() {
-  const on = !!current, dirty = !!isDirty(), garminOff = !on || !garminOn(planProfile()) || garminBusy;
+  const on = !!current, dirty = !!isDirty(), shelved = on && isArchived(current.path), garminOff = !on || !garminOn(planProfile()) || garminBusy || shelved;
   for (const id of ["fileBtn", "validate", "format", "reload", "history", "dup", "rename", "delete"]) $(id).disabled = !on;
+  $("archive").disabled = !on || !isPlanFile(fileInfoOf(current.path) || {}) || garminBusy; $("archive").textContent = shelved ? "Unarchive" : "Archive";
   $("save").disabled = !dirty; $("save").classList.toggle("dirty", dirty);
-  const why = garminWhy(planProfile()) || "";
+  const why = shelved ? "This plan is archived: unarchive it to send its workouts to Garmin." : garminWhy(planProfile()) || "";
   for (const id of [...Object.keys(GARMIN_ACTIONS), "garminBtn"]) { $(id).disabled = garminOff; $(id).title = why; }
   $("profile").hidden = !(on && garmin.enabled && garmin.profiles.length > 1 && !profileOwner());
   const cur = $("current");
+  cur.classList.toggle("archived", !!shelved);
   if (cur.dataset.path !== (on ? current.path : "")) {
     cur.dataset.path = on ? current.path : ""; cur.title = on ? current.path : ""; cur.replaceChildren();
     if (!on) cur.textContent = "No file open";
@@ -1399,6 +1435,51 @@ const remove = guard(async (path = current.path) => {
   if (current && current.path === path) { current = null; savedText = ""; editor.setValue(""); setButtons(); renderOutline(); showValidation(null); setTab("files"); }
   refreshFiles();
   toast("Deleted");
+});
+
+/** The workouts a plan has on Garmin: those with a workoutId, once each. */
+const idsOnGarmin = (text) => {
+  let data; try { data = JSON.parse(text); } catch { return new Set(); }
+  return new Set((workoutsOf(data) || []).filter((w) => w && w.workoutId !== undefined && w.workoutId !== null && w.workoutId !== "").map((w) => String(w.workoutId)));
+};
+
+/** Archive a plan: its workouts are deleted from Garmin, the plan stays here (listed under Archived). */
+const archive = guard(async (path = current.path) => {
+  if (current && current.path === path && isDirty()) { // the server archives the saved file
+    if (!(await confirmSaveFirst())) return;
+    await save();
+    if (isDirty()) return;
+  }
+  const doc = await api("GET", fileUrl(path));
+  const ids = idsOnGarmin(doc.text), profile = ownerOfPath(path) || pickedProfile();
+  if (ids.size && !garminOn(profile)) return toast(garminWhy(profile) || "Garmin is not available for this plan.", 6000);
+  const lines = [["meta", ids.size ? `${path} · Garmin profile ${profile}` : path]];
+  if (ids.size) {
+    lines.push(`Deletes ${ids.size} workout${ids.size === 1 ? "" : "s"} from the Garmin library, and with ${ids.size === 1 ? "it" : "them"} from the Garmin calendar.`);
+    lines.push("A workout that another plan also uses stays on Garmin.");
+  } else lines.push("This plan has no workouts on Garmin, so nothing changes there.");
+  lines.push("The plan stays here, without workoutIds, under Archived. It leaves the Calendar and Today views; unarchive it to use it again (uploading it then makes its workouts anew).");
+  if (ids.size) lines.push(["warn", "This changes your Garmin account."]);
+  if (!(await confirmDialog({ title: "Archive this plan?", lines, ok: "Archive" }))) return;
+
+  garminBusy = true; setButtons();
+  if (ids.size) toast("Archiving… this can take a minute.", 60000);
+  try {
+    const r = await api("POST", "/api/plans/archive", { path, version: doc.version, profile, confirm: true });
+    const kept = (r.keptOnGarmin || []).length;
+    toast(kept ? `Archived. ${kept} workout${kept === 1 ? " stays" : "s stay"} on Garmin: another plan uses ${kept === 1 ? "it" : "them"}.` : "Archived", kept ? 8000 : 3500);
+  } finally { // a failure half way has already unlinked the workouts it deleted: show the plan as it is
+    garminBusy = false;
+    await refreshFiles();
+    if (current && current.path === path) await reloadFromDisk((await api("GET", fileUrl(path))).version); // the ids are gone from the file
+    setButtons(); refreshSync(true);
+  }
+});
+
+const unarchive = guard(async (path = current.path) => {
+  await api("POST", "/api/plans/unarchive", { path });
+  await refreshFiles(); setButtons();
+  toast("Unarchived: upload the plan to put its workouts on Garmin again", 6000);
 });
 
 const reload = guard(async () => {
@@ -1571,6 +1652,8 @@ const ICONS = {
   delete: '<svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>',
   calendar: '<svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M8 3v4M16 3v4"/></svg>',
   watch: '<svg viewBox="0 0 24 24"><rect x="7" y="6" width="10" height="12" rx="3"/><path d="M9 6l1-3h4l1 3M9 18l1 3h4l1-3"/></svg>',
+  archive: '<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="5" rx="1"/><path d="M5 9v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9M10 13h4"/></svg>',
+  unarchive: '<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="5" rx="1"/><path d="M5 9v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9M12 18v-6M9 15l3-3 3 3"/></svg>',
 };
 
 function showValidation(v, parseError) {
@@ -4956,7 +5039,7 @@ async function openWorkoutDialog(mode, workout, opts = {}) {
   if (mode === "new") {
     await refreshFiles();
     const sel = $("wdPlan"); sel.innerHTML = "";
-    const planFiles = files.filter(isPlanFile);
+    const planFiles = files.filter((f) => isPlanFile(f) && f.archivedAt == null);
     if (!opts.link) sel.add(new Option("(none — Garmin only)", ""));
     for (const f of planFiles) sel.add(new Option(f.path, f.path));
     const wanted = opts.planPath ?? (current ? current.path : "");
@@ -5204,6 +5287,7 @@ require(["vs/editor/editor.main"], async (m) => {
   $("save").onclick = save; $("new").onclick = newFile; $("validate").onclick = runValidate;
   $("format").onclick = format; $("reload").onclick = reload; $("history").onclick = showHistory; $("dup").onclick = () => duplicate();
   $("rename").onclick = rename; $("delete").onclick = () => remove();
+  $("archive").onclick = () => (isArchived(current.path) ? unarchive() : archive());
   $("menu").onclick = toggleMenu;
   for (const [id, action] of Object.entries(GARMIN_ACTIONS)) $(id).onclick = guard(() => garminRun(action));
   $("actions").addEventListener("click", (e) => e.target.closest("button") && document.body.classList.remove("menu-open"));

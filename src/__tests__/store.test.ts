@@ -71,6 +71,39 @@ describe("documents", () => {
     expect(codeOf(() => store.update("workout-plans/none.json", (t) => t))).toBe("not_found");
   });
 
+  it("archives a document without saving it, and keeps it archived through saves and renames", () => {
+    const first = store.put("workout-plans/a.json", plan("A"));
+    expect(first.archivedAt).toBeNull();
+    expect(codeOf(() => store.setArchived("workout-plans/none.json", true))).toBe("not_found");
+
+    const archived = store.setArchived("workout-plans/a.json", true);
+    expect(archived.archivedAt).toEqual(expect.any(Number));
+    expect(archived.version).toBe(first.version); // a mark on the row, not a save
+    expect(store.history("workout-plans/a.json")).toEqual([]);
+    expect(store.setArchived("workout-plans/a.json", true).archivedAt).toBe(archived.archivedAt); // the first date stays
+
+    expect(store.put("workout-plans/a.json", plan("B")).archivedAt).toBe(archived.archivedAt);
+    expect(store.rename("workout-plans/a.json", "workout-plans/b.json").archivedAt).toBe(archived.archivedAt);
+    expect(store.list().map((m) => [m.path, m.archivedAt !== null])).toEqual([["workout-plans/b.json", true]]);
+
+    expect(store.setArchived("workout-plans/b.json", false).archivedAt).toBeNull();
+    store.setArchived("workout-plans/b.json", true);
+    store.remove("workout-plans/b.json");
+    expect(store.put("workout-plans/b.json", plan("C")).archivedAt).toBeNull(); // made again, it is a new plan
+  });
+
+  it("gives a database made before archiving the column", () => {
+    store.put("workout-plans/a.json", plan("A"));
+    store.close();
+    const { DatabaseSync } = require("node:sqlite");
+    const raw = new DatabaseSync(path.join(dir, "garmin.db"));
+    raw.exec("ALTER TABLE documents DROP COLUMN archived_at");
+    raw.close();
+    store = SqliteStore.open(path.join(dir, "garmin.db"));
+    expect(store.head("workout-plans/a.json")?.archivedAt).toBeNull();
+    expect(store.setArchived("workout-plans/a.json", true).archivedAt).not.toBeNull();
+  });
+
   it("removes and renames", () => {
     store.put("workout-plans/a.json", plan("A"));
     store.put("workout-plans/b.json", plan("B"));

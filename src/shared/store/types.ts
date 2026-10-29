@@ -34,6 +34,8 @@ export interface DocMeta {
   /** Who saved this version: "web", "mcp", "cli", "restore". */
   source: string;
   summary: DocSummary;
+  /** When the plan was archived (put away: off the calendar and the Today view, off Garmin); null = active. Saving a new text keeps it. */
+  archivedAt: number | null;
 }
 
 export interface StoredDoc extends DocMeta {

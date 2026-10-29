@@ -6,6 +6,7 @@ const mockGarmin = {
   scheduled: [] as { workoutId: number; date: string }[],
   failCreate: false,
   failSchedule: false,
+  failDeleteId: null as number | null,
   calls: { getWorkouts: 0, getWorkoutDetail: 0 },
 };
 
@@ -38,7 +39,8 @@ jest.mock("@flow-js/garmin-connect", () => ({
         return stored;
       }),
       deleteWorkout: jest.fn(async ({ workoutId }: { workoutId: string }) => {
-        if (!mockGarmin.library.delete(Number(workoutId))) throw new Error("404 not found");
+        if (mockGarmin.failDeleteId === Number(workoutId)) throw new Error("ERROR: (500), Internal Server Error, {}");
+        if (!mockGarmin.library.delete(Number(workoutId))) throw new Error("ERROR: (404), Not Found, {}");
       }),
       scheduleWorkout: jest.fn(async ({ workoutId }: { workoutId: number }, date: Date) => {
         if (mockGarmin.failSchedule) throw new Error("ERROR: (500), Internal Server Error, {}");
@@ -54,7 +56,7 @@ import * as path from "path";
 import { compareWorkouts } from "../shared/workoutSync";
 import { configureMcp } from "../mcp/context";
 import { type NewWorkout, diffPlanWorkout } from "../mcp/tools/plans";
-import { checkWorkoutSync, createWorkout, deleteLibraryWorkout, getLibraryWorkout, invalidateLibrary, listLibraryWorkouts, saveWorkout, scheduleWorkout, uploadAndSchedulePlan, uploadPlan } from "../mcp/tools/garmin";
+import { archivePlan, checkWorkoutSync, createWorkout, deleteLibraryWorkout, sendPlanToDevice, schedulePlan, unarchivePlan, getLibraryWorkout, invalidateLibrary, listLibraryWorkouts, saveWorkout, scheduleWorkout, uploadAndSchedulePlan, uploadPlan } from "../mcp/tools/garmin";
 import { closeStore, getStore } from "../shared/store";
 import { seedProfile } from "./fixtures/profiles";
 
@@ -139,6 +141,7 @@ describe("workouts on Garmin", () => {
     mockGarmin.scheduled = [];
     mockGarmin.failCreate = false;
     mockGarmin.failSchedule = false;
+    mockGarmin.failDeleteId = null;
     mockGarmin.calls = { getWorkouts: 0, getWorkoutDetail: 0 };
     invalidateLibrary("TEST");
   });
@@ -298,6 +301,124 @@ describe("workouts on Garmin", () => {
     it("says so when the plan is not in the store", async () => {
       await expect(uploadPlan("TEST", "workout-plans/none.json")).rejects.toThrow(/File not found/);
       await expect(uploadAndSchedulePlan("TEST", "workout-plans/none.json")).rejects.toThrow(/File not found/);
+    });
+  });
+
+  describe("archiving a plan", () => {
+    const planDoc = (workouts: any[]) => JSON.stringify({ generatedAt: "2026-10-11T00:00:00Z", weekStart: "2026-10-12", weekEnd: "2026-10-18", notes: "base block", workouts }, null, 2);
+    const idsIn = (logical: string) => JSON.parse(getStore().get(logical)!.text).workouts.map((w: any) => w.workoutId);
+    /** Put a plan of `n` uploaded workouts in the store; the ids are the ones Garmin gave them. */
+    const uploaded = async (logical: string, n: number, names = (i: number) => `Workout ${i}`) => {
+      const workouts: any[] = [];
+      for (let i = 0; i < n; i++) workouts.push({ ...squat(), workoutName: names(i), workoutId: (await saveWorkout("TEST", { ...squat(), workoutName: names(i) })).workoutId });
+      getStore().put(logical, planDoc(workouts), { source: "web" });
+      return workouts.map((w) => Number(w.workoutId));
+    };
+    const savedGap = process.env.GARMIN_DETAIL_GAP_MS;
+    beforeAll(() => { process.env.GARMIN_DETAIL_GAP_MS = "0"; });
+    afterAll(() => { if (savedGap === undefined) delete process.env.GARMIN_DETAIL_GAP_MS; else process.env.GARMIN_DETAIL_GAP_MS = savedGap; });
+
+    it("deletes the plan's workouts from Garmin, unlinks them and keeps the plan, marked archived", async () => {
+      const ids = await uploaded("workout-plans/arch1.json", 3);
+      const before = getStore().head("workout-plans/arch1.json")!;
+      const result = await archivePlan("TEST", "workout-plans/arch1.json");
+
+      expect(result).toMatchObject({ path: "workout-plans/arch1.json", archived: true, alreadyGone: [], keptOnGarmin: [] });
+      expect(result.removedFromGarmin.map((w) => w.workoutId)).toEqual(ids);
+      expect(mockGarmin.library.size).toBe(0);
+      expect((await listLibraryWorkouts("TEST")).length).toBe(0);
+
+      const after = getStore().head("workout-plans/arch1.json")!;
+      expect(after.archivedAt).toEqual(expect.any(Number));
+      expect(after.version).toBeGreaterThan(before.version);
+      expect(idsIn("workout-plans/arch1.json")).toEqual([undefined, undefined, undefined]);
+      const doc = JSON.parse(getStore().get("workout-plans/arch1.json")!.text);
+      expect(doc).toMatchObject({ notes: "base block", weekStart: "2026-10-12" });
+      expect(doc.workouts.map((w: any) => w.workoutName)).toEqual(["Workout 0", "Workout 1", "Workout 2"]);
+      expect(doc.workouts[0].steps).toHaveLength(2); // the workouts themselves are untouched
+    });
+
+    it("needs no Garmin for a plan with nothing on it, and is the same when asked twice", async () => {
+      getStore().put("workout-plans/arch2.json", planDoc([squat()]));
+      const result = await archivePlan(undefined, "workout-plans/arch2.json");
+      expect(result).toMatchObject({ archived: true, removedFromGarmin: [], alreadyGone: [], keptOnGarmin: [] });
+      expect(result.note).toMatch(/Nothing was on Garmin/);
+      const first = getStore().head("workout-plans/arch2.json")!.archivedAt;
+      await archivePlan(undefined, "workout-plans/arch2.json");
+      expect(getStore().head("workout-plans/arch2.json")!.archivedAt).toBe(first);
+    });
+
+    it("lets go of a workout Garmin no longer has, and says so", async () => {
+      const [a, b] = await uploaded("workout-plans/arch3.json", 2);
+      mockGarmin.library.delete(a); // removed in the Garmin app
+      const result = await archivePlan("TEST", "workout-plans/arch3.json");
+      expect(result.alreadyGone.map((w) => w.workoutId)).toEqual([a]);
+      expect(result.removedFromGarmin.map((w) => w.workoutId)).toEqual([b]);
+      expect(idsIn("workout-plans/arch3.json")).toEqual([undefined, undefined]);
+      expect(getStore().head("workout-plans/arch3.json")!.archivedAt).not.toBeNull();
+    });
+
+    it("leaves a workout on Garmin that another plan, not archived, still carries", async () => {
+      const [shared, own] = await uploaded("workout-plans/arch4.json", 2);
+      getStore().put("workout-plans/other.json", planDoc([{ ...squat(), workoutName: "Shared", workoutId: shared }]));
+      const result = await archivePlan("TEST", "workout-plans/arch4.json");
+      expect(result.keptOnGarmin).toEqual([expect.objectContaining({ workoutId: shared, usedBy: ["workout-plans/other.json"] })]);
+      expect(result.removedFromGarmin.map((w) => w.workoutId)).toEqual([own]);
+      expect([...mockGarmin.library.keys()]).toEqual([shared]);
+      expect(idsIn("workout-plans/other.json")).toEqual([shared]); // the other plan still points at a workout that exists
+      expect(idsIn("workout-plans/arch4.json")).toEqual([undefined, undefined]);
+    });
+
+    it("does not count another archived plan as a user of the workout", async () => {
+      const [id] = await uploaded("workout-plans/arch5.json", 1);
+      getStore().put("workout-plans/old.json", planDoc([{ ...squat(), workoutId: id }]));
+      getStore().setArchived("workout-plans/old.json", true);
+      const result = await archivePlan("TEST", "workout-plans/arch5.json");
+      expect(result.keptOnGarmin).toEqual([]);
+      expect(mockGarmin.library.size).toBe(0);
+    });
+
+    it("when a delete fails half way, unlinks only what was deleted, stays active, and finishes on the next try", async () => {
+      const [a, b, c] = await uploaded("workout-plans/arch6.json", 3);
+      mockGarmin.failDeleteId = b;
+      await expect(archivePlan("TEST", "workout-plans/arch6.json")).rejects.toThrow(/500/);
+      expect(getStore().head("workout-plans/arch6.json")!.archivedAt).toBeNull();
+      expect(idsIn("workout-plans/arch6.json")).toEqual([undefined, b, c].map((id) => id));
+      expect([...mockGarmin.library.keys()].sort()).toEqual([b, c]);
+      expect(a).toBeDefined();
+
+      mockGarmin.failDeleteId = null;
+      const result = await archivePlan("TEST", "workout-plans/arch6.json");
+      expect(result.removedFromGarmin.map((w) => w.workoutId)).toEqual([b, c]);
+      expect(mockGarmin.library.size).toBe(0);
+      expect(getStore().head("workout-plans/arch6.json")!.archivedAt).not.toBeNull();
+    });
+
+    it("keeps the plan archived when it is overwritten, and refuses to put an archived plan's workouts on Garmin", async () => {
+      await uploaded("workout-plans/arch7.json", 1);
+      await archivePlan("TEST", "workout-plans/arch7.json");
+      getStore().put("workout-plans/arch7.json", planDoc([squat()]), { source: "mcp" }); // write_plan, say
+      expect(getStore().head("workout-plans/arch7.json")!.archivedAt).not.toBeNull();
+
+      await expect(uploadPlan("TEST", "workout-plans/arch7.json")).rejects.toThrow(/archived/);
+      await expect(schedulePlan("TEST", "workout-plans/arch7.json")).rejects.toThrow(/archived/);
+      await expect(uploadAndSchedulePlan("TEST", "workout-plans/arch7.json")).rejects.toThrow(/archived/);
+      await expect(sendPlanToDevice("TEST", "workout-plans/arch7.json")).rejects.toThrow(/archived/);
+      expect((await uploadPlan("TEST", "workout-plans/arch7.json", true)).dryRun).toBe(true); // checking it sends nothing
+      expect(mockGarmin.library.size).toBe(0);
+
+      expect(unarchivePlan("workout-plans/arch7.json")).toMatchObject({ archived: false });
+      expect(getStore().head("workout-plans/arch7.json")!.archivedAt).toBeNull();
+      expect((await uploadPlan("TEST", "workout-plans/arch7.json")).status).toBe("ok");
+      expect(mockGarmin.library.size).toBe(1);
+    });
+
+    it("says so when the plan is not in the store or is not a plan", async () => {
+      await expect(archivePlan("TEST", "workout-plans/none.json")).rejects.toThrow(/File not found/);
+      expect(() => unarchivePlan("workout-plans/none.json")).toThrow(/File not found/);
+      getStore().put("data/TEST/training-plan.json", JSON.stringify({ goal: "10k" }));
+      await expect(archivePlan("TEST", "data/TEST/training-plan.json")).rejects.toThrow(/Expected a JSON array of workouts/);
+      expect(getStore().head("data/TEST/training-plan.json")!.archivedAt).toBeNull();
     });
   });
 

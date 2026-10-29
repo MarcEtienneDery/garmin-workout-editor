@@ -22,6 +22,10 @@
  * and creates / replaces / deletes workouts in the plan files and on Garmin together
  * (POST, PUT, DELETE /api/garmin/workout). Each write that touches Garmin needs confirm: true.
  *
+ * A plan can be archived (POST /api/plans/archive, POST /api/plans/unarchive): its workouts are deleted from Garmin (confirm: true when it has
+ * any), their workoutIds leave the plan, and the plan stays in the database, listed apart (archivedAt in GET /api/files) and left out of the
+ * Today, Calendar and Workouts views. An archived plan is refused by the Garmin actions until it is unarchived.
+ *
  * The Food view logs what was eaten per meal (GET /api/nutrition: a day's meals with their totals, the totals of a range next to
  * the calories Garmin says were burned, and the foods used lately; POST /api/nutrition adds, copies to today, changes or deletes entries). The log
  * is in the database only, Garmin has nowhere to keep food, so it needs no Garmin login and works with Garmin disabled.
@@ -84,6 +88,7 @@ import { syncStatus } from "../shared/activitySync";
 import type { ActivitySummary, StoredActivity } from "../shared/store";
 import { fetchChartNow, fetchDetailsNow, refreshActivities, startBackgroundSync } from "../mcp/tools/activities";
 import { diffPlanWorkout, extractWorkouts, validatePlanData } from "../mcp/tools/plans";
+import { MAX_SCAN_BYTES, activePlanDocs, isExportSnapshot } from "../shared/planDocs";
 import { refreshWellness, rereadWeighIns, startBackgroundWellness, wellnessSyncStatus } from "../mcp/tools/wellness";
 import { bodyRange, intensityWeek, readinessAt, wellnessRange } from "../shared/wellnessReport";
 import { SettingsError, createProfile, removeGarminLogin, removeRenpho, saveGarminLogin, saveRenpho, saveWebPassword, settingsView } from "../shared/accounts";
@@ -98,14 +103,17 @@ import { getGoals, goalProgress, kcalGoalOf, setGoals } from "../shared/nutritio
 import {
   LIBRARY_LIMIT,
   type LibraryWorkout,
+  archivePlan,
   checkWorkoutSync,
   deleteLibraryWorkout,
   getLibraryWorkout,
   listDevices,
   listLibraryWorkouts,
+  plannedOnGarmin,
   saveWorkout,
   schedulePlan,
   sendPlanToDevice,
+  unarchivePlan,
   uploadAndSchedulePlan,
   uploadPlan,
 } from "../mcp/tools/garmin";
@@ -253,6 +261,8 @@ interface FileInfo {
   owner: string | null;
   /** Who saved this version: web, mcp, cli, import. */
   source: string;
+  /** When the plan was archived; null for an active one. */
+  archivedAt: number | null;
   workoutCount?: number;
   weekStart?: string;
   weekEnd?: string;
@@ -265,6 +275,7 @@ const fileInfo = (m: DocMeta): FileInfo => ({
   updatedAt: m.updatedAt,
   owner: m.owner,
   source: m.source,
+  archivedAt: m.archivedAt,
   ...m.summary,
 });
 
@@ -418,6 +429,7 @@ async function garminAction(body: any, who: Principal): Promise<{ status: number
   const logical = scopedPath(who, body.path);
   const doc = store().get(logical);
   if (!doc) throw new HttpError(404, `File not found: ${logical}`);
+  if (doc.archivedAt !== null) throw new HttpError(409, `${logical} is archived: unarchive it before sending its workouts to Garmin.`);
   const profile = profileFor(who, logical, body.profile);
   requireConnected(profile);
 
@@ -451,10 +463,6 @@ async function garminAction(body: any, who: Principal): Promise<{ status: number
 
 // ── Workouts view: the Garmin library next to the plan entries that carry the same workouts ──
 
-const MAX_SCAN_BYTES = 5 * 1024 * 1024;
-// Library snapshots written by export_workouts: copies of Garmin's list, not plans to edit.
-const EXPORT_FILE = /^workouts(-raw)?\.json$/;
-
 interface PlanEntry {
   path: string;
   index: number;
@@ -462,7 +470,6 @@ interface PlanEntry {
   workout: any;
 }
 
-const isExportSnapshot = (logical: string): boolean => EXPORT_FILE.test(logical.slice(logical.lastIndexOf("/") + 1));
 const isWorkout = (w: any): boolean => !!w && typeof w === "object" && typeof w.workoutName === "string";
 
 /** A stored document as plan data: the parsed JSON and its workout list. null when it is not JSON or holds no list (the editor flags those). */
@@ -476,13 +483,10 @@ function readPlan(logical: string): { data: any; list: any[] } | null {
   }
 }
 
-/** Every workout in the plans a profile works with: the shared and its own in workout-plans/, and its data/<profile>/ files. */
+/** Every workout in the plans a profile works with (see activePlanDocs: archived plans are not among them). */
 function planEntriesFor(profile: string): PlanEntry[] {
   const entries: PlanEntry[] = [];
-  for (const meta of store().list()) {
-    const isPlan = meta.path.startsWith("workout-plans/") && (meta.owner === null || meta.owner === profile);
-    const isOwnData = meta.path.startsWith(`data/${profile}/`) && !isExportSnapshot(meta.path);
-    if ((!isPlan && !isOwnData) || meta.size > MAX_SCAN_BYTES) continue;
+  for (const meta of activePlanDocs(store(), profile)) {
     readPlan(meta.path)?.list.forEach((workout, index) => {
       if (isWorkout(workout)) entries.push({ path: meta.path, index, version: meta.version, workout });
     });
@@ -516,13 +520,13 @@ interface CalendarPlan {
   workouts: { index: number; workoutName: string; workoutType?: string; workoutId?: number | string; dates: string[] }[];
 }
 
-/** Every plan this login can reach with its dates: workout-plans/ and data/<profile>/ (export snapshots are copies of Garmin's list, not plans). */
+/** Every plan this login can reach with its dates: workout-plans/ and data/<profile>/ (export snapshots are copies of Garmin's list, not plans; archived plans are put away). */
 function calendarPlans(who: Principal): CalendarPlan[] {
   const plans: CalendarPlan[] = [];
   for (const meta of store().list()) {
     const inPlans = meta.path.startsWith("workout-plans/");
     if (!inPlans && (!meta.path.startsWith("data/") || isExportSnapshot(meta.path))) continue;
-    if (meta.size > MAX_SCAN_BYTES || !canReach(who, meta.path, meta.owner)) continue;
+    if (meta.archivedAt !== null || meta.size > MAX_SCAN_BYTES || !canReach(who, meta.path, meta.owner)) continue;
     const plan = readPlan(meta.path);
     if (!plan) continue;
     const workouts = plan.list.flatMap((w, index) =>
@@ -789,6 +793,7 @@ async function createWorkout(body: any, who: Principal): Promise<unknown> {
   if (upload) {
     requireGarmin(who);
     requireConfirm(body);
+    if (plan) assertNotArchived([plan]);
     const profile = profileFor(who, plan?.logical ?? "", body.profile);
     requireConnected(profile);
     const toUpload = { ...workout };
@@ -826,6 +831,7 @@ async function updateWorkout(body: any, who: Principal): Promise<unknown> {
   if (upload) {
     requireGarmin(who);
     requireConfirm(body);
+    assertNotArchived(files);
     const profile = profileFor(who, ownerHint(files), body.profile);
     requireConnected(profile);
     const toUpload = { ...workout };
@@ -872,6 +878,40 @@ async function deleteWorkout(body: any, who: Principal): Promise<unknown> {
   }
   files.forEach(savePlanFile);
   return { deleted: { garmin: fromGarmin, plans: fromPlans }, changed: changedFiles(files), log };
+}
+
+/** Archive a plan: its workouts leave Garmin, the plan stays in the database (see archivePlan). Garmin is only touched, and confirm only asked for, when the plan has workoutIds. */
+async function archiveFile(body: any, who: Principal): Promise<unknown> {
+  const logical = scopedPath(who, body.path);
+  const doc = store().get(logical);
+  if (!doc) throw new HttpError(404, `File not found: ${logical}`);
+  if (typeof body.version === "number" && doc.version !== body.version) {
+    throw new HttpError(409, `${logical} changed since you opened it. Reload and try again.`);
+  }
+  let planned: ReturnType<typeof plannedOnGarmin>;
+  try {
+    planned = plannedOnGarmin(parseOr400(doc.text));
+  } catch (error) {
+    if (error instanceof HttpError) throw error;
+    throw new HttpError(400, `${logical} is not a workout plan.`);
+  }
+
+  let profile: string | undefined;
+  if (planned.length) {
+    requireGarmin(who);
+    requireConfirm(body);
+    profile = profileFor(who, logical, body.profile);
+    requireConnected(profile);
+  }
+  const { value, log } = await viaGarmin(() => archivePlan(profile, logical));
+  return { ...value, version: store().head(logical)?.version, log };
+}
+
+/** A save that would put workouts on Garmin must not land in an archived plan: it would be listed there again with ids. */
+function assertNotArchived(files: PlanFile[]): void {
+  for (const file of files) {
+    if (store().head(file.logical)?.archivedAt != null) throw new HttpError(409, `${file.logical} is archived: unarchive it before sending its workouts to Garmin.`);
+  }
 }
 
 const MIME: Record<string, string> = {
@@ -1091,6 +1131,16 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
       const to = scoped(body.to);
       const meta = store().rename(from, to);
       return send(res, 200, { from, to, version: meta.version });
+    }
+
+    case "POST /api/plans/archive":
+      return send(res, 200, await archiveFile(await readBody(req), who));
+
+    case "POST /api/plans/unarchive": {
+      const body = await readBody(req);
+      const logical = scoped(body.path);
+      if (!store().head(logical)) throw new HttpError(404, `File not found: ${logical}`);
+      return send(res, 200, unarchivePlan(logical));
     }
 
     case "GET /api/history": {
