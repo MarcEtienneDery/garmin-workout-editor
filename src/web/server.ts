@@ -1023,8 +1023,8 @@ function todayView(profile: string) {
   const activities = store().activities.summaries(profile, 40).map(activityRow).filter((a) => a.date === today).sort((a, b) => a.time.localeCompare(b.time));
   const doneIds = new Set(activities.flatMap((a) => (hasId(a.workoutId) ? [String(a.workoutId)] : [])));
   const { readiness } = readinessAt(store(), profile, today);
-  const { meals, ...food } = nutritionDays(store(), profile, today, today, today)[0];
   const goals = getGoals(store(), profile);
+  const { meals, ...food } = nutritionDays(store(), profile, today, today, today)[0];
   return {
     profile,
     today,

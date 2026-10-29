@@ -111,8 +111,11 @@
     ];
   }
 
-  /** The food tiles: eaten, burned so far, the difference and the macros, worded as the Food view words them. */
-  const foodTiles = (view) => NM.figures({ today: view.today, day: view.food, progress: view.foodProgress }).map((tile) => ({ ...tile, go: "food" }));
+  /**
+   * Today's food in the shape the Food view's summary is made from (nutritionModel.js reads `date`, `today`, `day`, `goals`, `progress`
+   * and `burn`). Without the watch's data there is no burn to set the food against.
+   */
+  const foodView = (view) => ({ date: view.today, today: view.today, day: view.food, goals: view.goals || {}, progress: view.foodProgress || [], burn: !!view.health });
 
   // ── Workouts and what was done ──────────────────────────────────────────
 
@@ -130,7 +133,7 @@
       if (!days.has(w.date)) days.set(w.date, []);
       const m = (measure && w.workout && measure(w.workout)) || {}, seconds = m.seconds || w.seconds;
       const meta = join([typeLabel(w.type), m.meters > 0 && AM.distance(+(m.meters / 1000).toFixed(1)), seconds > 0 && `${m.assumed ? "~" : ""}${AM.duration(seconds)}`]);
-      days.get(w.date).push({ name: w.name, meta, done: !!w.done, path: w.path, index: w.index });
+      days.get(w.date).push({ name: w.name, meta, done: !!w.done, path: w.path, index: w.index, workout: w.workout });
     }
     return [...days].sort(([a], [b]) => a.localeCompare(b)).map(([date, items]) => ({ date, label: dayName(date, view.today), today: date === view.today, items, done: items.filter((i) => i.done).length }));
   }
@@ -148,5 +151,5 @@
     return { label: info.label, cls: info.cls, score: readiness.score, text: readiness.suggestion };
   }
 
-  return { STALE_MS, WATCH_STALE_MS, ago, freshness, watchHint, percent, progressTiles, foodTiles, typeLabel, dayName, workoutDays, activityLine, readinessLine };
+  return { STALE_MS, WATCH_STALE_MS, ago, freshness, watchHint, percent, progressTiles, foodView, typeLabel, dayName, workoutDays, activityLine, readinessLine };
 });

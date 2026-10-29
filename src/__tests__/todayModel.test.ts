@@ -1,6 +1,8 @@
 export {};
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const TM = require("../web/public/todayModel.js");
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const NM = require("../web/public/nutritionModel.js");
 
 const TODAY = "2026-10-18"; // a Sunday
 const NOW = Date.parse("2026-10-18T15:00:00Z");
@@ -12,6 +14,7 @@ const view = (over: Record<string, unknown> = {}) => ({
   progress: { fetchedAt: NOW - 12 * 60_000, stepGoal: 6230, intensityGoal: 150, distanceMeters: 3444, bodyBatteryNow: 31, watchSyncedAt: NOW - 3 * 3_600_000 },
   week: { start: "2026-10-12", minutes: 95, daysStored: 7, days: 7 },
   readiness: { band: "as-planned", score: 54, confidence: "high", suggestion: "A normal day: train as planned." },
+  health: true,
   workouts: [],
   activities: [],
   food: { day: TODAY, kcal: 1500, proteinG: 90, carbsG: 150, fatG: 50, entries: 4, burnedKcal: 1209, burnedSoFar: true, netKcal: 291, meals: undefined },
@@ -113,23 +116,33 @@ describe("the progress tiles", () => {
   });
 });
 
-describe("the food tiles", () => {
-  it("are the Food view's: eaten, burned so far, the difference and the macros", () => {
-    const tiles = TM.foodTiles(view());
-    expect(tiles.map((t: any) => t.label)).toEqual(["Eaten", "Burned", "Eaten − burned", "Macros"]);
-    expect(tiles.every((t: any) => t.go === "food")).toBe(true);
-    expect(tiles[0].value).toBe(`${n(1500)} kcal`);
-    expect(tiles[1].note).toBe("so far today, by Garmin");
+describe("the food view", () => {
+  const progress = [{ key: "kcal", label: "Calories", unit: "kcal", kind: "target", goal: 2000, amount: 1500, partial: false, pct: 75, state: "short", left: 500 }];
+
+  it("is today's food in the shape the Food view's summary reads", () => {
+    const v = TM.foodView(view({ goals: { kcal: 2000 }, foodProgress: progress }));
+    expect(v).toMatchObject({ date: TODAY, today: TODAY, goals: { kcal: 2000 }, progress, burn: true });
+    expect(v.day.kcal).toBe(1500);
   });
 
-  it("say where the day stands against the calorie goal when there is one", () => {
-    const tiles = TM.foodTiles(view({ goals: { kcal: 2000 }, foodProgress: [{ key: "kcal", label: "Calories", unit: "kcal", kind: "target", goal: 2000, amount: 1500, partial: false, pct: 75, state: "short", left: 500 }] }));
-    expect(tiles[0].note).toBe(`of ${n(2000)} · ${n(500)} kcal to go`);
+  it("is drawn by the Food view's own words: the calories against the goal, the burn, the macros", () => {
+    const v = TM.foodView(view({ goals: { kcal: 2000, proteinG: 120 }, foodProgress: [...progress, { key: "proteinG", label: "Protein", unit: "g", kind: "min", goal: 120, amount: 90, partial: false, pct: 75, state: "short", left: 30 }] }));
+    expect(NM.headline(v)).toMatchObject({ value: n(1500), unit: "kcal eaten", state: "short" });
+    expect(NM.calorieBar(v.day, NM.calorieGoal(v)).tick).toBeNull(); // 1,500 of 2,000: the goal is the end of the track
+    expect(NM.burnLine(v)).toBe(`Burned ${n(1209)} kcal so far by Garmin · eaten − burned +${n(291)} kcal`);
+    expect(NM.macroRows(v).map((r: any) => [r.key, r.state])).toEqual([["proteinG", "short"], ["carbsG", "none"], ["fatG", "none"]]);
   });
 
-  it("say nothing is logged rather than zero", () => {
-    const tiles = TM.foodTiles(view({ food: { day: TODAY, kcal: 0, proteinG: 0, carbsG: 0, fatG: 0, entries: 0, burnedKcal: 1209, burnedSoFar: true, netKcal: null } }));
-    expect(tiles[0]).toMatchObject({ value: "–", note: "nothing logged" });
+  it("has no goals and no burn when the answer has none of them or the watch's data", () => {
+    const v = TM.foodView(view({ health: false, goals: undefined, foodProgress: undefined }));
+    expect(v).toMatchObject({ goals: {}, progress: [], burn: false });
+    expect(NM.burnLine(v)).toBe("");
+  });
+
+  it("says nothing is logged rather than zero", () => {
+    const v = TM.foodView(view({ goals: { kcal: 2000 }, foodProgress: progress.map((p) => ({ ...p, amount: null, pct: null, state: "unknown" })), food: { day: TODAY, kcal: 0, proteinG: 0, carbsG: 0, fatG: 0, entries: 0, burnedKcal: 1209, burnedSoFar: true, netKcal: null } }));
+    expect(NM.headline(v)).toMatchObject({ value: "–", note: `goal ${n(2000)} kcal · nothing logged` });
+    expect(NM.calorieBar(v.day, NM.calorieGoal(v))).toBeNull();
   });
 });
 
@@ -148,6 +161,12 @@ describe("the workouts", () => {
     const today = TM.workoutDays(view({ workouts: [w({ done: true }), w({ index: 1, name: "Core" })] }))[0];
     expect(today.items.map((i: any) => i.done)).toEqual([true, false]);
     expect(today.done).toBe(1);
+  });
+
+  it("hands the page the whole workout, so it can draw its profile small", () => {
+    const steps = [{ type: "interval", stepType: "warmup" }];
+    const item = TM.workoutDays(view({ workouts: [w({ workout: { workoutName: "Upper A", steps } })] }))[0].items[0];
+    expect(item.workout).toEqual({ workoutName: "Upper A", steps });
   });
 
   it("totals a workout from its steps when it is asked to, and marks a time that rests on an assumed pace", () => {

@@ -255,6 +255,7 @@
   .tsug { margin:6px 0 2px; color:var(--dim); line-height:1.45; }
   .twk { display:grid; grid-template-columns:18px minmax(0,1fr) auto; gap:0 10px; align-items:center; padding:8px 4px; border-top:1px solid var(--line); cursor:pointer; } .twk:hover { background:#2d2d2e; }
   .twk .tk { text-align:center; color:var(--dim); } .twk.done .tk { color:var(--ok); }
+  .twk .wv-chart { grid-area:auto; grid-column:2 / -1; margin-top:4px; }
   .twk .tn { min-width:0; font-weight:600; overflow-wrap:anywhere; } .twk .tm { grid-column:2; color:var(--dim); font-size:12px; } .twk .chip { grid-row:1 / span 2; grid-column:3; }
   .tcard .tch + .twk, .tcard .tch + .tnone, .tcard .tch + .tsug { margin-top:8px; }
   .tnone { margin:0; color:var(--dim); }
@@ -262,6 +263,7 @@
   .tdone .ta { display:flex; gap:4px 10px; flex-wrap:wrap; padding:3px 0; } .tdone .ta b { font-weight:600; } .tdone .ta span { color:var(--dim); }
   .tday { margin:10px 0 0; font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--dim); }
   .tgo { margin-top:8px; }
+  .fsum.tfsum { margin-top:0; }
   /* ── Food view: a block per meal with its foods and a form to add one ── */
   .fmeal { margin-top:12px; padding:8px 12px 10px; background:var(--panel); border:1px solid var(--line); border-radius:4px; }
   .fmh { display:flex; gap:4px 10px; align-items:baseline; flex-wrap:wrap; } .fmh b { font-size:14px; } .fmh span { color:var(--dim); font-size:12px; }
@@ -4372,8 +4374,7 @@ function renderToday() {
   if (hint) box.append(mk("div", "msg warn thint", hint));
   box.append(todayWorkouts(d));
   if (d.health) box.append(todayTiles(TM.progressTiles(d)));
-  box.append(mk("h3", "", "Food"));
-  box.append(todayTiles(TM.foodTiles(d)));
+  box.append(mk("h3", "", "Food"), todayFood(d));
   const ahead = TM.workoutDays(d, measureWorkout).filter((day) => !day.today && day.items.length);
   if (ahead.length) {
     const card = mk("section", "tcard"), head = mk("div", "tch");
@@ -4382,8 +4383,20 @@ function renderToday() {
     for (const day of ahead) { card.append(mk("div", "tday", day.label)); for (const w of day.items) card.append(todayWorkout(w)); }
     box.append(mk("h3", "", "Next days"), card);
   }
-  box.append(mk("div", "rfoot", (d.health ? "Steps, Body Battery and sleep are Garmin's, as of the watch's last sync with the phone: the age above says how old. The intensity minutes are the week from Monday (a vigorous minute counts twice) against Garmin's weekly goal. " : "") + "The workouts are the ones the plan files schedule (their scheduledDate)" + (d.health ? ", not Garmin's own calendar" : "") + "; one counts as done when an activity today was started from it. The food is what was logged." + (d.health ? " " + syncRule(true) : "")));
+  box.append(mk("div", "rfoot", (d.health ? "Steps, Body Battery and sleep are Garmin's, as of the watch's last sync with the phone: the age above says how old. The intensity minutes are the week from Monday (a vigorous minute counts twice) against Garmin's weekly goal. " : "") + "The workouts are the ones the plan files schedule (their scheduledDate)" + (d.health ? ", not Garmin's own calendar" : "") + "; one counts as done when an activity today was started from it. The food is what was logged, against the daily goals set in Settings (a day with nothing logged is not a day of zero)." + (d.health ? " " + syncRule(true) : "")));
   $("tscroll").scrollTop = keep;
+}
+
+/**
+ * Today's food as the Food view draws it (foodSummary): the calories as a bar split into protein, carbs and fat against the goal, and a bar per
+ * macro against its goal. The button opens the Food view on today.
+ */
+function todayFood(d) {
+  const card = foodSummary(TM.foodView(d)), go = mk("button", "tgo", "Open the Food view");
+  go.type = "button"; go.onclick = () => { F.profile = d.profile; F.date = null; setView("food"); };
+  card.classList.add("tfsum");
+  card.append(go);
+  return card;
 }
 
 /** Tiles in the Recovery view's style, with a bar for a goal, and a click that opens the view they come from. */
@@ -4413,6 +4426,8 @@ function todayWorkout(w) {
   row.append(mk("span", "tk", w.done ? "✓" : "○"), mk("span", "tn", w.name));
   if (w.done) row.append(mk("span", "chip ok", "Done"));
   if (w.meta) row.append(mk("span", "tm", w.meta));
+  const graph = w.workout && profileEl(WM.analyze(w.workout, { pacer: pacerFor(T.profile) }), { mini: true }); // the workout's profile, small (null for a lifting workout, which is drawn as muscles when opened)
+  if (graph) row.append(graph);
   row.onclick = () => openPlan(w.path);
   return row;
 }
