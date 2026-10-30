@@ -284,7 +284,7 @@
   .fe .ft { flex:1 1 0; min-width:0; } .fe .fn { overflow-wrap:anywhere; } .fe .fm { color:var(--dim); font-size:12px; } .fe .fk { white-space:nowrap; }
   .fe .fk::after { content:"▸"; display:inline-block; margin-left:6px; color:var(--dim); font-size:11px; transition:transform .15s; } .fe.open .fk::after { transform:rotate(90deg); }
   .fe:not(.open) .fmore-e { display:none; } .fmore-e { padding:0 0 8px; }
-  .fea { display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; } .fea button { padding:2px 10px; }
+  .fea { display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; } .fea button { padding:2px 10px; } .fea select { padding:2px 6px; }
   .fr.frec { display:grid; grid-template-columns:minmax(0,1fr) auto; column-gap:10px; } .frec .frt, .frec .frm { grid-column:1; min-width:0; overflow-wrap:anywhere; }
   .frec .fplus { grid-column:2; grid-row:1 / span 2; align-self:center; font-size:20px; line-height:1; color:var(--accent); }
   .fall { justify-self:start; padding:2px 10px; color:var(--accent); }
@@ -296,7 +296,7 @@
   .fform .fname { flex:3 1 12em; } .fform .fnum { flex:1 1 4.2em; width:4.2em; }
   @media (max-width:700px) {
     .fform .fname { flex-basis:100%; } .fform input, .fpq input, .fpq select { min-height:40px; font-size:16px; } #scandlg, #photodlg { width:94vw; }
-    .fe .fhead { min-height:48px; } .fea button { flex:1 1 auto; min-height:40px; padding:6px 10px; white-space:nowrap; } .frec { min-height:48px; }
+    .fe .fhead { min-height:48px; } .fea button, .fea select { flex:1 1 auto; min-height:40px; padding:6px 10px; white-space:nowrap; } .fea select { font-size:16px; } .frec { min-height:48px; }
     .fmeal { padding:8px 10px 10px; } .fmh .fcopy, .fday .fcopy { min-height:36px; white-space:nowrap; }
     /* the totals go under the meal's name, so its button fits beside them */
     .fmh { display:grid; grid-template-columns:minmax(0,1fr) auto; column-gap:8px; align-items:center; } .fmh b, .fmh span { grid-column:1; } .fmh .fcopy { grid-column:2; grid-row:1 / span 2; }
@@ -3975,7 +3975,17 @@ function changeByHand(e, meal) {
   renderFood(); focusFoodName(meal);
 }
 
-/** A food of the meal: its name, macros and calories; a tap shows its nutrients and what can be done with it (change, copy or add again, delete). */
+/** Move a food to another meal of its day: only the meal changes (the server keeps the numbers and the product), and Undo moves it back. */
+async function moveFood(e, from, to) {
+  if (changingId() === e.id) stopChanging(); // its form belongs to the meal it leaves
+  if (!(await foodAction({ action: "update", id: e.id, meal: to }))) return renderFood(); // refused: the list puts the choice back
+  renderFood();
+  toastUndo(`Moved ${e.name} to ${NM.mealLabel(to)}.`, async () => {
+    if (await foodAction({ action: "update", id: e.id, meal: from })) renderFood();
+  });
+}
+
+/** A food of the meal: its name, macros and calories; a tap shows its nutrients and what can be done with it (change, move to another meal, copy or add again, delete). */
 function foodEntry(e, meal) {
   const row = mk("div", "fe" + (changingId() === e.id ? " editing" : "") + (F.open.has(e.id) ? " open" : ""));
   const head = mk("button", "fhead"), label = mk("div", "ft");
@@ -4011,7 +4021,12 @@ function foodEntry(e, meal) {
     });
     acts.append(twice);
   }
-  acts.append(edit, del);
+  const move = mk("select", "fmove");
+  move.setAttribute("aria-label", `Move ${e.name} to another meal`);
+  move.append(new Option("Move to…", ""));
+  for (const m of Object.keys(NM.MEAL_LABELS)) if (m !== meal) move.add(new Option(NM.mealLabel(m), m));
+  move.onchange = guard(() => moveFood(e, meal, move.value));
+  acts.append(edit, move, del);
   more.append(acts);
   row.append(head, more);
   return row;
