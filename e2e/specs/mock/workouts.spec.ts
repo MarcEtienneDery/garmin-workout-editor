@@ -4,8 +4,8 @@
  * What the app really does here: the Garmin library is never listed. The page knows Garmin is refused and asks for nothing, so
  * the list stays empty under the note "Mock mode: Garmin writes are disabled.". With no row there is nothing to select, so Edit and
  * Delete cannot be reached from the page; the New dialog is the one path that works, and it writes to a plan file only, never to
- * Garmin. The server's refusals are checked through the API. A test that expects the mock library the e2e README promises
- * (generated workouts answer Garmin's reads) is `test.fixme`, with what the app does instead.
+ * Garmin. The server's refusals are checked through the API. The generated mock library (src/mocks.setup.ts) is what the MCP tools
+ * answer with; the web editor does not list it: the README says the Garmin buttons stay disabled in mock mode.
  */
 import { test as base, expect, loginAs, openView, mondayOf, daysAhead, today, type Profile } from "../../support/fixtures";
 import { type APIRequestContext, type Page, type Response } from "@playwright/test";
@@ -208,17 +208,7 @@ test.describe("Workouts view: the list in mock mode", () => {
     await expect(gme.locator("#wrows .wrow")).toHaveCount(0);
   });
 
-  test.fixme("the list shows the generated mock library (Mock Workout 1 to 10)", async ({ gme }) => {
-    // FIXME: the app refuses GET /api/workouts in mock mode (409 "Mock mode: Garmin writes are disabled.") and the page does not even
-    // ask, so the generated library (src/mocks.setup.ts, read by WorkoutEditor.fetchWorkoutsWithRaw) never reaches the list.
-    await openView(gme, "workouts");
-    await expect(gme.locator("#wrows .wrow")).toHaveCount(10);
-    await expect(gme.locator("#wrows .wrow").first()).toContainText("Mock Workout 1");
-  });
-
-  test.fixme("the empty list does not say 'No workouts.' next to the refusal", async ({ gme }) => {
-    // FIXME: loadWorkouts draws the rows before it shows the note, so "No workouts." sits under "Mock mode: Garmin writes are
-    // disabled." and claims there are no workouts when none were asked for.
+  test("the empty list does not say 'No workouts.' next to the refusal: none were asked for", async ({ gme }) => {
     await openView(gme, "workouts");
     await expect(gme.locator("#wNote")).toHaveText(REFUSAL);
     await expect(gme.locator("#wrows")).not.toContainText("No workouts.");

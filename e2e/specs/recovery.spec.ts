@@ -289,11 +289,8 @@ test.describe("Recovery view, alice (45 days stored, no Garmin login)", () => {
     await expect(card(alice)).toContainText("(today)");
   });
 
-  // Known app defect (verified with the first answer held for 1.5 s): ◀ and ▶ step from the day the view last drew (`R.data.date`),
-  // which only changes when the answer comes back. A second press made before that asks for the same day as the first press,
-  // so two quick presses leave the view one day back. Two presses spaced by a drawn day step two days (covered above).
-  test.fixme("two quick presses of ◀ step back two days, even while the first day is still loading", async ({ alice, admin }) => {
-    // Actual: the view ends on yesterday after two quick presses, not two days back; both presses asked for yesterday.
+  // ◀ and ▶ step from the day asked for, not the day drawn, which trails while an answer is awaited (the first answer is held for 1.5 s here).
+  test("two quick presses of ◀ step back two days, even while the first day is still loading", async ({ alice, admin }) => {
     const data = await wellness(admin, "days=30");
     await openRecovery(alice);
     let slowed = false;

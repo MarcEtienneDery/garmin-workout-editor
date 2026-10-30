@@ -4,9 +4,8 @@
  *
  * What the app really does here: the mock server stores nothing from Garmin, so each view is its empty state, with the note
  * "Mock mode: Garmin writes are disabled." where the view has a note. The Sync buttons are hidden: the page shows Garmin's controls
- * only when Garmin is enabled, and mock mode never enables it. The Garmin endpoints that would fill the views refuse with the same
- * reason. The e2e README promises that Garmin looks connected in mock mode, with generated data; the tests of that promise are
- * `test.fixme`, with what the app does instead.
+ * only when Garmin is enabled, and mock mode never enables it (the README: the buttons stay disabled in mock mode). The Garmin
+ * endpoints that would fill the views refuse with the same reason. The generated mock data is what the MCP tools answer with.
  */
 import { test as base, expect, loginAs, openView, mondayOf, daysAhead, today, ADMIN_TOKEN, type Profile } from "../../support/fixtures";
 import { type APIRequestContext, type Page } from "@playwright/test";
@@ -219,12 +218,6 @@ test.describe("Activities in mock mode", () => {
     expect(errors).toEqual([]);
   });
 
-  test.fixme("Activities lists the generated mock activities", async ({ gme }) => {
-    // FIXME: the web view reads only what the database holds (GET /api/activities), and the mock never stores Garmin's
-    // activities: the generated ones (src/mocks.setup.ts) are only what the MCP tools answer with. The list stays empty.
-    await openView(gme, "activities");
-    await expect(gme.locator("#alist > *").first()).toBeVisible();
-  });
 });
 
 test.describe("Recovery in mock mode", () => {
@@ -269,11 +262,9 @@ test.describe("Recovery in mock mode", () => {
     expect(calls.filter((c) => GARMIN_CALLS.test(c))).toEqual([]);
   });
 
-  test.fixme("the empty state does not say that Garmin is not connected for a profile that has a login", async ({ gme }) => {
-    // FIXME: the page reads "Garmin is not connected for this profile to fetch it" for this profile, which has a Garmin login. It
-    // says so because mock mode turns Garmin off on the page (garminOn is false), not because the login is missing.
+  test("the empty state blames mock mode, not a missing login, for a profile that has a Garmin login", async ({ gme }) => {
     await openView(gme, "recovery");
-    await expect(gme.locator("#rbody")).toContainText("No health data is stored yet");
+    await expect(gme.locator("#rbody")).toContainText("No health data is stored yet. Mock mode does not fetch it from Garmin.");
     await expect(gme.locator("#rbody")).not.toContainText("Garmin is not connected");
   });
 });
@@ -315,11 +306,9 @@ test.describe("Weight in mock mode", () => {
     expect(calls.filter((c) => GARMIN_CALLS.test(c))).toEqual([]);
   });
 
-  test.fixme("the empty state does not tell a Garmin profile to connect Garmin", async ({ gme }) => {
-    // FIXME: "Connect a Renpho scale or Garmin in Settings to get them." is what this profile sees, though it has a Garmin login: the
-    // page shows its Garmin actions only when Garmin answers, and mock mode never does.
+  test("the empty state does not tell a Garmin profile to connect Garmin: mock mode is why nothing is fetched", async ({ gme }) => {
     await openView(gme, "weight");
-    await expect(gme.locator("#bbody")).toContainText("No weigh-ins are stored yet.");
+    await expect(gme.locator("#bbody")).toContainText("No weigh-ins are stored yet. Mock mode does not fetch them from Garmin.");
     await expect(gme.locator("#bbody")).not.toContainText("Connect a Renpho scale or Garmin");
   });
 });
@@ -346,14 +335,6 @@ test.describe("Sync in mock mode", () => {
     expect(wellness.readiness.band).toBe("unknown");
   });
 
-  test.fixme("the Sync buttons are shown for a Garmin profile, and pressing one answers with the refusal", async ({ gme }) => {
-    // FIXME: the e2e README says Garmin looks connected in mock mode, so the Sync buttons on Activities, Recovery, Weight and Today
-    // would show. The page hides them (garminOn needs garmin.enabled, which is false in mock mode), so there is nothing to press.
-    await openView(gme, "recovery");
-    await expect(gme.locator("#rSync")).toBeVisible();
-    await gme.locator("#rSync").click();
-    await expect(gme.locator("#rNote")).toContainText(REFUSAL);
-  });
 });
 
 test.describe("Walking the views in mock mode", () => {

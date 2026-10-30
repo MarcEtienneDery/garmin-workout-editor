@@ -555,10 +555,8 @@ test.describe("photos", () => {
     expect(asked[0].images).toHaveLength(1);
   });
 
-  // The app: when the photo is ready the whole box is drawn again, its words box included, so the focus leaves it. Words typed while
-  // "Preparing photo…" is shown are then cut short: the box keeps only the start of them (three runs in three kept two to four letters).
-  // Expected: every word typed is kept. Un-fixme when the words box keeps its focus and its text across the redraw.
-  test.fixme("words typed while a photo is being prepared are all kept", async ({ me }) => {
+  // The box is drawn again when the photo is ready: the words box keeps the focus and the caret, so nothing typed meanwhile is lost.
+  test("words typed while a photo is being prepared are all kept", async ({ me }) => {
     await enableAi(me);
     await stubAi(me);
     await openView(me, "food");

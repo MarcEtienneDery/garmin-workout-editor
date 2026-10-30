@@ -181,6 +181,22 @@ test.describe("Food log: days", () => {
     await expect(alice.locator("#fNext")).toBeDisabled();
   });
 
+  test("two quick presses of ◀ step back two days, even while the first day is still loading", async ({ alice }) => {
+    await openFood(alice);
+    let slowed = false;
+    await alice.route(/\/api\/nutrition\?/, async (route) => {
+      if (!slowed && route.request().url().includes("date=")) {
+        slowed = true;
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+      }
+      await route.continue();
+    });
+    await alice.locator("#fPrev").click();
+    await alice.locator("#fPrev").click();
+    await expect(alice.locator("#fDate")).toHaveValue(daysAgo(2));
+    await expect(alice).toHaveURL(new RegExp(`#food/${daysAgo(2)}$`));
+  });
+
   test("the date picker goes to the day picked", async ({ alice }) => {
     await openFood(alice);
     await alice.locator("#fDate").fill(daysAgo(4));
@@ -245,14 +261,52 @@ test.describe("Food log: days", () => {
     await expect(meal(me, "lunch").locator(".fn", { hasText: "Reload soup" })).toBeVisible();
   });
 
-  test.fixme("a reload keeps the day shown", async ({ alice }) => {
-    // The app: after ◀ and a reload the Food view shows today again, not the day that was shown. The day is kept in the page's
-    // memory only; the address stays `#food`, with no date in it. Expected: the day shown stays after a reload.
+  test("the address holds the day shown when it is not today, and a reload keeps it", async ({ alice }) => {
     await openFood(alice);
+    await expect(alice).toHaveURL(/#food$/);
     await alice.locator("#fPrev").click();
     await expect(alice.locator("#fDate")).toHaveValue(daysAgo(1));
+    await expect(alice).toHaveURL(new RegExp(`#food/${daysAgo(1)}$`));
     await alice.reload();
     await expect(alice.locator("#fDate")).toHaveValue(daysAgo(1));
+    await expect(alice.locator("#fbody .fsum small")).toHaveText(labelOf(daysAgo(1)));
+    await expect(alice.locator("#fbody .fhero b")).toHaveText("1,695");
+  });
+
+  test("the address follows ▶, the date picker and Today, and is #food again on today", async ({ alice }) => {
+    await openFood(alice);
+    await alice.locator("#fDate").fill(daysAgo(3));
+    await expect(alice).toHaveURL(new RegExp(`#food/${daysAgo(3)}$`));
+    await alice.locator("#fNext").click();
+    await expect(alice).toHaveURL(new RegExp(`#food/${daysAgo(2)}$`));
+    await alice.locator("#fToday").click();
+    await expect(alice.locator("#fDate")).toHaveValue(today());
+    await expect(alice).toHaveURL(/#food$/);
+  });
+
+  test("a day in the address opens that day, with the AI box too: #food/<day>/ai", async ({ alice }) => {
+    await alice.goto(`/#food/${daysAgo(2)}/ai`);
+    await expect(alice.locator("#fDate")).toHaveValue(daysAgo(2));
+    await expect(alice.locator("#fbody .faihead")).toHaveAttribute("aria-expanded", "true");
+    await alice.locator("#fPrev").click();
+    await expect(alice).toHaveURL(new RegExp(`#food/${daysAgo(3)}/ai$`));
+  });
+
+  test("an address with today, a day to come or something that is no day shows today", async ({ alice }) => {
+    for (const bad of [today(), daysAhead(5), "2026-13-45", "yesterday"]) {
+      await alice.goto(`/#food/${bad}`);
+      await expect(alice.locator("#fbody .fsum")).toBeVisible();
+      await expect(alice.locator("#fDate")).toHaveValue(today());
+      await expect(alice.locator("#fNext")).toBeDisabled();
+      await expect(alice).toHaveURL(/#food$/);
+    }
+  });
+
+  test("a day typed into the address of the open Food view shows that day", async ({ alice }) => {
+    await openFood(alice);
+    await alice.evaluate((day) => { location.hash = `#food/${day}`; }, daysAgo(4));
+    await expect(alice.locator("#fDate")).toHaveValue(daysAgo(4));
+    await expect(alice.locator("#fbody .fhero b")).toHaveText("1,695");
   });
 });
 
@@ -658,17 +712,36 @@ test.describe("Food log: changing and deleting an entry", () => {
     expect(left.map((e) => e.name)).toEqual(["Stays"]);
   });
 
-  test.fixme("Delete offers an Undo that brings the food back", async ({ me, profile }) => {
-    // The app: after OK in the confirm dialog the food is removed at once and the toast stays empty: there is no Undo button (the
-    // README offers Undo for recent foods, copies and the AI log only). Expected: a toast with Undo brings the food back.
-    await addFoods(profile.api, today(), "snack", [{ name: "Undo me", kcal: 80 }]);
+  test("Delete offers an Undo that brings the food back, with its numbers and nutrients, in its meal and day", async ({ me, profile }) => {
+    await addFoods(profile.api, today(), "snack", [{ name: "Undo me", kcal: 80, proteinG: 3, carbsG: 10, fatG: 2, nutrients: { fiberG: 4 } }, { name: "Stays", kcal: 120 }]);
     await openFood(me);
     await openRow(me, "snack", "Undo me");
     await rowOf(me, "snack", "Undo me").locator('button[aria-label="Delete Undo me"]').click();
     await me.locator("#dlgOk").click();
-    await expect(toast(me).locator("button", { hasText: "Undo" })).toBeVisible();
+    await expect(toast(me)).toContainText("Deleted Undo me.");
+    await expect(rowOf(me, "snack", "Undo me")).toHaveCount(0);
     await toast(me).locator("button", { hasText: "Undo" }).click();
     await expect(rowOf(me, "snack", "Undo me")).toBeVisible();
+    await expect(me.locator("#fbody .fsum .fhero b")).toHaveText("200");
+    expect(entriesOf(await dayOf(profile.api, today())).find((e) => e.name === "Undo me")).toMatchObject({ meal: "snack", day: today(), kcal: 80, proteinG: 3, carbsG: 10, fatG: 2, nutrients: { fiberG: 4 } });
+    expect(entriesOf(await dayOf(profile.api, today()))).toHaveLength(2);
+  });
+
+  test("Cancel in the Delete question offers no Undo, and a deleted food of a past day comes back to that day", async ({ me, profile }) => {
+    await addFoods(profile.api, daysAgo(1), "dinner", [{ name: "Old stew", kcal: 500 }]);
+    await openFood(me);
+    await me.locator("#fPrev").click();
+    await expect(me.locator("#fDate")).toHaveValue(daysAgo(1));
+    await openRow(me, "dinner", "Old stew");
+    await rowOf(me, "dinner", "Old stew").locator('button[aria-label="Delete Old stew"]').click();
+    await me.locator("#dlgCancel").click();
+    await expect(toast(me).locator("button", { hasText: "Undo" })).toHaveCount(0);
+    await rowOf(me, "dinner", "Old stew").locator('button[aria-label="Delete Old stew"]').click();
+    await me.locator("#dlgOk").click();
+    await toast(me).locator("button", { hasText: "Undo" }).click();
+    await expect(rowOf(me, "dinner", "Old stew")).toBeVisible();
+    expect(entriesOf(await dayOf(profile.api, daysAgo(1)))[0]).toMatchObject({ name: "Old stew", meal: "dinner", day: daysAgo(1) });
+    expect((await dayOf(profile.api, today())).day.entries).toBe(0);
   });
 });
 

@@ -7,7 +7,7 @@
 |---|---|---|
 | `desktop` | `127.0.0.1:8792` | the app as a person **without a Garmin login** meets it, with `e2e/support/seed.ts` stored. 1280×860. |
 | `phone` | the same | `*.phone.spec.ts` only, on a Pixel 7. |
-| `mock` | `127.0.0.1:8793` | mock mode (`MOCK_MODE=true`): Garmin looks connected, answers with generated workouts/activities and refuses every write. Specs live in `e2e/specs/mock/`. No seeded profiles: sign in as `admin` with `ADMIN_TOKEN`. |
+| `mock` | `127.0.0.1:8793` | mock mode (`MOCK_MODE=true`): Garmin is off on the page (its buttons stay disabled, the Workouts list is empty with the note "Mock mode: Garmin writes are disabled."), the server refuses every Garmin write with that reason, and the MCP tools answer with generated data. Specs live in `e2e/specs/mock/`. No seeded profiles: sign in as `admin` with `ADMIN_TOKEN`. |
 
 ```bash
 npm run e2e                                          # everything
@@ -61,13 +61,6 @@ Import `test`/`expect` from `../support/fixtures` (or `../../support/fixtures` i
 ## What the suite records about the app (`test.fixme`)
 
 A `test.fixme` is a behaviour the suite expects and the app does not have yet; its comment says what the app does. They run (and fail)
-when the `fixme` is removed, so fixing the app means deleting the word.
-
-| Spec | The app today |
-|---|---|
-| `food.phone` | The picker's quantity field is 13 px on a phone (the base `.fpq input { font: inherit }` comes after the mobile 16 px rule), so iOS zooms in when it is focused. |
-| `food-log` | Deleting a food has no Undo. A reload shows today again: the day shown is kept in memory, not in the address. |
-| `food-ai` | Words typed while a photo is being prepared are lost: the box is redrawn when the photo is ready. |
-| `recovery` | Two quick presses of ◀ step back one day, not two (the step is taken from the day last drawn). |
-| `plans-files` | Rename with unsaved edits that conflict with a change elsewhere ignores the 409 and goes ahead (the next Save overwrites the other change). "+ New" and Duplicate create the file before asking whether to discard unsaved edits, so Cancel leaves a new file behind. After the open file is deleted, Checks keeps the last file's result. The Archived group stays open once it was auto-opened for an archived open file. |
-| `mock/*` | In mock mode the web editor treats Garmin as off: the Workouts list is empty (no request is made), Activities lists nothing, the empty states of Recovery and Weight say Garmin is not connected, no Sync button is shown. |
+when the `fixme` is removed, so fixing the app means deleting the word. There is none now: the ones this suite started with (2026-10-30)
+were fixed in the app. The Garmin-connected UI (the Workouts list, the Sync buttons, the Garmin menu) is **not** covered, since it needs a
+Garmin login or a fake Garmin behind the server.

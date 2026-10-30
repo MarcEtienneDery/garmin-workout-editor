@@ -363,6 +363,8 @@
   .faires { margin-top:10px; } .fair { padding:6px 0; border-top:1px solid var(--line); }
   .fairt { display:flex; gap:8px; align-items:flex-start; } .fain { flex:1 1 0; min-width:0; overflow-wrap:anywhere; } .fain span { display:block; color:var(--dim); font-size:12px; } .fairm { padding:2px 8px; }
   .fair .fpq { margin-top:4px; } .fair .fpq select { background:#333; color:var(--fg); border:1px solid var(--line); border-radius:3px; padding:4px 6px; font:inherit; } .fair .fpq .fairk { flex:1 1 auto; text-align:right; font-weight:600; white-space:nowrap; }
+  /* after the base rules above, which set `font:inherit`: a field under 16px makes iOS zoom the page in when it is focused */
+  @media (max-width:700px) { .fpq input, .fpq select, .fair .fpq select, .faitext { font-size:16px; } }
   .faires .fpa button { white-space:nowrap; }
   #scandlg .scanwrap, #photodlg .scanwrap { position:relative; } :is(#scandlg, #photodlg) video { display:block; width:100%; max-height:60vh; background:#000; border-radius:4px; }
   #photoNote { margin-top:8px; } #photoNote.err { color:var(--err); }
@@ -1064,14 +1066,19 @@ const navState = () => ({ view: document.body.dataset.view, tab: document.body.d
 // The desktop layout shows every pane at once, so only the view is worth a history entry there.
 const navKey = (s) => s.view + (mobileQuery.matches && s.view !== "calendar" ? "/" + (s.view === "plans" ? s.tab : s.wpane) : "");
 // The open view is in the address (#recovery; Today, the landing view, has none), so a refresh or a bookmark comes back to it.
-// The Food view's AI box adds a part of its own: #food/ai is the Food view with the box open, the address to bookmark to log by AI.
+// The Food view adds parts of its own: #food/ai is the Food view with the AI box open, the address to bookmark to log by AI; #food/2026-10-29 is
+// the day shown when it is not today, so a reload stays on it (the two can go together: #food/2026-10-29/ai).
 const VIEWS = ["today", "plans", "workouts", "calendar", "activities", "recovery", "weight", "food", "settings"];
 const hashParts = () => { try { return decodeURIComponent(location.hash.slice(1)).split("/"); } catch { return []; } };
 const viewInUrl = () => (VIEWS.includes(hashParts()[0]) ? hashParts()[0] : null);
-const subInUrl = () => hashParts()[1] || null;
+const aiInUrl = () => hashParts().slice(1).includes("ai");
+const dayInUrl = () => {
+  const day = hashParts().slice(1).find((part) => /^\d{4}-\d{2}-\d{2}$/.test(part)), ms = day ? Date.parse(`${day}T00:00:00Z`) : NaN;
+  return !Number.isNaN(ms) && new Date(ms).toISOString().slice(0, 10) === day ? day : null; // a day that is on the calendar
+};
 const startView = viewInUrl(); // read at once: the first navSync() rewrites the address
-const startSub = startView === "food" ? subInUrl() : null;
-const urlOfView = (view) => (view === "today" ? location.pathname + location.search : "#" + view + (view === "food" && F.ai.open ? "/ai" : ""));
+const startFood = startView === "food" ? { ai: aiInUrl(), day: dayInUrl() } : { ai: false, day: null };
+const urlOfView = (view) => (view === "today" ? location.pathname + location.search : "#" + view + (view === "food" ? (F.date ? "/" + F.date : "") + (F.ai.open ? "/ai" : "") : ""));
 function navSync() {
   if (navRestoring) return;
   const s = navState(), key = navKey(s);
@@ -1109,7 +1116,9 @@ window.addEventListener("popstate", (e) => {
       navKeyNow = navKey(navState());
       history.replaceState({ ...navState(), prev: null }, "", urlOfView(document.body.dataset.view)); // the address follows when the view asked for is not offered
     }
-    if (view === "food" && F.ai.open !== (subInUrl() === "ai")) showAi(!F.ai.open); // #food/ai opens the AI box, #food closes it
+    if (view === "food" && F.ai.open !== aiInUrl()) showAi(!F.ai.open); // #food/ai opens the AI box, #food closes it
+    if (view === "food" && F.date !== dayInUrl()) { F.date = dayInUrl(); stopChanging(); F.pick = null; guard(loadFood)(); } // #food/<day> shows that day
+    if (view === "food") foodUrl(); // what was typed after #food that is not understood goes
     return;
   }
   navRestoring = true;
@@ -1277,7 +1286,7 @@ function renderFiles() {
     const box = document.createElement("details"), head = document.createElement("summary");
     box.className = "shelved"; head.textContent = `Archived (${shelved.length})`; box.append(head);
     box.open = showArchived || (current && shelved.some((f) => f.path === current.path));
-    box.ontoggle = () => { showArchived = box.open; };
+    head.onclick = () => { showArchived = !box.open; }; // only the person's own choice is kept: opening it for the open file is not one (a click comes before the toggle)
     addFileGroups(box, shelved);
     el.append(box);
   }
@@ -1347,8 +1356,8 @@ async function garminFile(path, action) {
   await garminRun(action);
 }
 
-async function openFile(p) {
-  if (current && current.path !== p && isDirty() && !(await confirmDiscard())) return;
+async function openFile(p, discarded = false) { // `discarded`: the person was asked already and said yes
+  if (!discarded && current && current.path !== p && isDirty() && !(await confirmDiscard())) return;
   const f = await api("GET", fileUrl(p));
   current = { path: f.path, version: f.version };
   savedText = f.text;
@@ -1400,8 +1409,9 @@ const newFile = guard(async () => {
   if (!name.endsWith(".json")) name += ".json";
   const today = new Date().toISOString().slice(0, 10);
   const text = JSON.stringify({ generatedAt: new Date().toISOString(), weekStart: today, weekEnd: today, notes: "", workouts: [newWorkout("New workout")] }, null, 2) + "\n";
+  if (isDirty() && !(await confirmDiscard())) return; // asked before the file is made: Cancel leaves nothing behind
   await api("PUT", fileUrl(name), { text, create: true });
-  await openFile(name);
+  await openFile(name, true);
 });
 
 const duplicate = guard(async (path = current.path) => {
@@ -1417,14 +1427,18 @@ const duplicate = guard(async (path = current.path) => {
   });
   if (!answer) return;
   if (answer.strip) { list.forEach((w) => w && delete w.workoutId); text = JSON.stringify(data, null, 2) + "\n"; }
+  if (isDirty() && !(await confirmDiscard())) return; // asked before the copy is made: Cancel leaves nothing behind
   await api("PUT", fileUrl(answer.input), { text, create: true });
-  await openFile(answer.input);
+  await openFile(answer.input, true);
 });
 
 const rename = guard(async () => {
   const to = await promptDialog({ title: "Rename file", text: current.path, input: { label: "New path", value: current.path }, ok: "Rename" });
   if (!to || to === current.path) return;
-  if (isDirty()) await save();
+  if (isDirty()) {
+    await save();
+    if (isDirty()) return; // the save was refused (the file changed elsewhere, say): it says why, and nothing is renamed
+  }
   const r = await api("POST", "/api/rename", { from: current.path, to });
   current.path = r.to; current.version = r.version; setButtons(); refreshFiles();
 });
@@ -1432,7 +1446,7 @@ const rename = guard(async () => {
 const remove = guard(async (path = current.path) => {
   if (!(await confirmDialog({ title: `Delete ${path}?`, text: "Its last version stays in the database history; ask for it to be restored from the command line.", ok: "Delete", danger: true }))) return;
   await api("DELETE", fileUrl(path));
-  if (current && current.path === path) { current = null; savedText = ""; editor.setValue(""); setButtons(); renderOutline(); showValidation(null); setTab("files"); }
+  if (current && current.path === path) { current = null; savedText = ""; editor.setValue(""); setButtons(); renderOutline(); clearValidation(); setTab("files"); }
   refreshFiles();
   toast("Deleted");
 });
@@ -1655,6 +1669,14 @@ const ICONS = {
   archive: '<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="5" rx="1"/><path d="M5 9v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9M10 13h4"/></svg>',
   unarchive: '<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="5" rx="1"/><path d="M5 9v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9M12 18v-6M9 15l3-3 3 3"/></svg>',
 };
+
+/** No file is open: the Checks say there is nothing to report, as on a fresh page. */
+function clearValidation() {
+  const none = document.createElement("div");
+  none.className = "empty"; none.textContent = "Nothing to report.";
+  $("problems").replaceChildren(none);
+  $("badge").textContent = ""; $("badge").classList.remove("err");
+}
 
 function showValidation(v, parseError) {
   const el = $("problems"); el.innerHTML = "";
@@ -1921,15 +1943,16 @@ async function loadWorkouts(refresh = false) {
   sel.value = W.profile || "";
   note.hidden = true;
   if (!garminOn(W.profile)) {
-    W.rows = []; renderRows();
+    W.rows = [];
     note.textContent = garminWhy(W.profile) || garmin.reason || "Garmin is not available."; note.hidden = false;
+    renderRows(); // after the note, so the list does not claim there are no workouts when none were asked for
     return;
   }
   if (!W.rows.length) $("wrows").innerHTML = '<div class="empty">Loading from Garmin…</div>';
   const q = new URLSearchParams({ profile: W.profile }); if (refresh) q.set("refresh", "1");
   let r;
   try { r = await api("GET", "/api/workouts?" + q); }
-  catch (e) { if (run === W.run) { W.rows = []; renderRows(); note.textContent = e.message; note.hidden = false; } return; }
+  catch (e) { if (run === W.run) { W.rows = []; note.textContent = e.message; note.hidden = false; renderRows(); } return; }
   if (run !== W.run) return;
   W.rows = r.rows; W.truncated = r.truncated;
   renderRows();
@@ -3245,7 +3268,13 @@ async function loadWellness(V) {
   $(V.p + "Sync").hidden = !garminOn(V.profile);
   let d;
   try { d = await api("GET", `${V.path}?${wellnessQuery(V)}`); }
-  catch (e) { if (run === V.run) { V.error = e.message; V.loaded = true; V.render(); } return; }
+  catch (e) {
+    if (run === V.run) {
+      if (V.data && V.data.date) V.date = V.data.date === V.data.today ? null : V.data.date; // the screen still shows that day, and ◀ ▶ step from it
+      V.error = e.message; V.loaded = true; V.render();
+    }
+    return;
+  }
   if (run !== V.run) return;
   V.data = d; V.error = ""; V.loaded = true;
   setCooldown(V, d.sync);
@@ -3318,7 +3347,7 @@ function renderRecovery() {
   if (R.error && !d) { box.append(mk("div", "msg err", R.error)); return; }
   if (!d || !d.profile) { box.append(mk("div", "empty", "No Garmin profile is configured.")); return; }
   if (!d.sync || !d.sync.days) {
-    box.append(mk("div", "empty", garminOn(R.profile) ? "No health data is stored yet." : "No health data is stored yet, and Garmin is not connected for this profile to fetch it."));
+    box.append(mk("div", "empty", garminOn(R.profile) ? "No health data is stored yet." : garmin.mock ? "No health data is stored yet. Mock mode does not fetch it from Garmin." : "No health data is stored yet, and Garmin is not connected for this profile to fetch it."));
     if (garminOn(R.profile)) { const b = mk("button", "primary", "Fetch the last 60 days from Garmin"); b.onclick = guard(() => syncWellness(R, false)); box.append(b); }
     return;
   }
@@ -3418,8 +3447,8 @@ function renderRawResponses(V, d, kinds) {
 function bindRecoveryView() {
   $("vRecovery").onclick = () => setView("recovery");
   const go = (date) => { R.date = date && R.data && date >= R.data.today ? null : date; return guard(loadRecovery)(); };
-  $("rPrev").onclick = () => R.data && go(RM.addDays(R.data.date, -1));
-  $("rNext").onclick = () => R.data && go(RM.addDays(R.data.date, 1));
+  $("rPrev").onclick = () => R.data && go(RM.addDays(R.date || R.data.today, -1)); // from the day asked for, which the drawn one trails while an answer is awaited
+  $("rNext").onclick = () => R.data && go(RM.addDays(R.date || R.data.today, 1)); // from the day asked for, which the drawn one trails while an answer is awaited
   $("rToday").onclick = () => go(null);
   $("rDate").onchange = (e) => e.target.value && go(e.target.value);
   $("rRange").onchange = (e) => { R.range = Number(e.target.value); guard(loadRecovery)(); };
@@ -3446,7 +3475,7 @@ function renderWeight() {
   const garminRows = !!(d.sync && d.sync.days), scaleOnly = !garminRows && d.days.length > 0;
   if (!garminRows && !scaleOnly) {
     const info = garmin.profileInfo[B.profile] || {};
-    box.append(mk("div", "empty", garminOn(B.profile) ? "No weigh-ins are stored yet." : info.renpho ? "No weigh-ins are stored yet. The scale's arrive when the Renpho sync runs: check it in Settings." : "No weigh-ins are stored yet. Connect a Renpho scale or Garmin in Settings to get them."));
+    box.append(mk("div", "empty", garminOn(B.profile) ? "No weigh-ins are stored yet." : info.renpho ? "No weigh-ins are stored yet. The scale's arrive when the Renpho sync runs: check it in Settings." : garmin.mock ? "No weigh-ins are stored yet. Mock mode does not fetch them from Garmin." : "No weigh-ins are stored yet. Connect a Renpho scale or Garmin in Settings to get them."));
     if (garminOn(B.profile)) { const b = mk("button", "primary", "Fetch the last 60 days from Garmin"); b.onclick = guard(() => syncWellness(B, false)); box.append(b); }
     return;
   }
@@ -3493,11 +3522,18 @@ const NM = NutritionModel;
 // editing: the food changed by hand (the by-hand form), pick.editing: by quantity (the picker), replacing: by another food (the search)
 // ai: the AI box. open: shown (and #food/ai is the address); focus: put the cursor in it at the next draw; text and photos ({ id, url, mediaType, data }): what is
 // to be estimated; result: { rows, note } of the last estimate, the rows being checked before they are logged; busy: what is under way ("Estimating…"); error: why it failed
-const F = { profile: null, date: null, range: 30, data: null, error: "", run: 0, loaded: false, busy: false, drafts: new Map(), editing: null, finds: new Map(), pick: null, hand: new Set(), open: new Set(), copied: new Set(), replacing: null, ai: { open: startSub === "ai", focus: startSub === "ai", text: "", photos: [], result: null, busy: "", error: "", run: 0 } };
+const F = { profile: null, date: startFood.day, range: 30, data: null, error: "", run: 0, loaded: false, busy: false, drafts: new Map(), editing: null, finds: new Map(), pick: null, hand: new Set(), open: new Set(), copied: new Set(), replacing: null, ai: { open: startFood.ai, focus: startFood.ai, text: "", photos: [], result: null, busy: "", error: "", run: 0 } };
 const RECENT_SHOWN = 8;
 const foodQuery = () => `${F.profile ? `profile=${encodeURIComponent(F.profile)}&` : ""}${F.date ? `date=${F.date}&` : ""}days=${F.range}`;
 
+/** The address follows the day shown (and the AI box) on the history entry the page is on, so Back is not asked to undo it. */
+function foodUrl() {
+  if (document.body.dataset.view !== "food") return;
+  try { history.replaceState(history.state, "", urlOfView("food")); } catch { /* the address stays as it was */ }
+}
+
 async function loadFood() {
+  foodUrl();
   await garminReady;
   const run = ++F.run, sel = $("fProfile");
   fillProfiles(sel);
@@ -3506,9 +3542,17 @@ async function loadFood() {
   sel.value = F.profile || "";
   let d;
   try { d = await api("GET", `/api/nutrition?${foodQuery()}`); }
-  catch (e) { if (run === F.run) { F.error = e.message; F.loaded = true; renderFood(); } return; }
+  catch (e) {
+    if (run === F.run) {
+      if (F.data && F.data.date) { F.date = F.data.date === F.data.today ? null : F.data.date; foodUrl(); } // the screen still shows that day, and ◀ ▶ step from it
+      F.error = e.message; F.loaded = true; renderFood();
+    }
+    return;
+  }
   if (run !== F.run) return;
+  if (F.date && d.today && F.date >= d.today) { F.date = null; return loadFood(); } // an address with today or a day to come: today is shown
   F.data = d; F.error = ""; F.loaded = true;
+  foodUrl(); // the view may not have been the open one when the load began
   renderFood();
 }
 
@@ -3671,6 +3715,9 @@ function renderFood() {
   $("fNext").disabled = !(d && d.date && d.date < d.today);
   note.className = "empty err"; note.textContent = F.error; note.hidden = !F.error;
   const keep = $("fscroll").scrollTop;
+  // the words box is drawn again with the rest (a photo is ready, an estimate is back): a person still typing in it keeps the focus and the caret
+  const typing = document.activeElement && document.activeElement.classList.contains("faitext") ? document.activeElement : null;
+  const caret = typing && [typing.selectionStart, typing.selectionEnd];
   box.replaceChildren();
   if (!F.loaded) { box.append(mk("div", "empty", "Loading…")); return; }
   if (F.error && !d) { box.append(mk("div", "msg err", F.error)); return; }
@@ -3705,6 +3752,10 @@ function renderFood() {
   box.append(mk("div", "rfoot", "The calories and macros are what you typed in or an assistant estimated from your description, so they are estimates. A day with nothing logged is not a day of zero. Fiber, sodium and the other nutrients are only what a food states: a total that counts fewer foods than the day has reads “≥”, because the foods that do not state it are unknown, not zero. Foods found by search or barcode come from Open Food Facts, a community-made database: check the numbers against the package when they matter. Foods estimated by AI (the box above the meals) are Claude's estimates from your words or photos, which are sent to Anthropic to be read; this app keeps neither. " + (NM.hasBurn(d) ? "What Garmin says the day burned comes from the watch: today's is only what has burned so far. The food is kept here; Garmin has no place to store it." : "The food is kept here.")));
   $("fscroll").scrollTop = keep;
   if (F.ai.focus) { F.ai.focus = false; focusAi(); }
+  else if (caret) {
+    const t = document.querySelector("#fbody .faitext");
+    if (t) { t.focus({ preventScroll: true }); t.setSelectionRange(caret[0], caret[1]); }
+  }
 }
 
 // ── The AI box ───────────────────────────────────────────────────────────
@@ -3717,7 +3768,7 @@ let photoSeq = 0;
 /** Open or close the box. The address follows (#food/ai while it is open) on the history entry the page is on, so Back is not asked to undo it. */
 function showAi(open) {
   F.ai.open = open; F.ai.focus = open;
-  try { history.replaceState(history.state, "", urlOfView("food")); } catch { /* the address stays as it was */ }
+  foodUrl();
   renderFood();
 }
 
@@ -3985,7 +4036,7 @@ async function moveFood(e, from, to) {
   });
 }
 
-/** A food of the meal: its name, macros and calories; a tap shows its nutrients and what can be done with it (change, move to another meal, copy or add again, delete). */
+/** A food of the meal: its name, macros and calories; a tap shows its nutrients and what can be done with it (change, move to another meal, copy or add again, delete with Undo). */
 function foodEntry(e, meal) {
   const row = mk("div", "fe" + (changingId() === e.id ? " editing" : "") + (F.open.has(e.id) ? " open" : ""));
   const head = mk("button", "fhead"), label = mk("div", "ft");
@@ -4006,7 +4057,14 @@ function foodEntry(e, meal) {
   edit.onclick = () => changeFood(e, meal);
   del.onclick = guard(async () => {
     if (!(await confirmDialog({ title: "Delete this food?", text: `${e.name} · ${NM.kcal(e.kcal)}`, ok: "Delete", danger: true }))) return;
-    if (await foodAction({ action: "delete", id: e.id })) { if (changingId() === e.id) stopChanging(); F.open.delete(e.id); renderFood(); }
+    const day = F.data.date;
+    if (!(await foodAction({ action: "delete", id: e.id }))) return;
+    if (changingId() === e.id) stopChanging();
+    F.open.delete(e.id); renderFood();
+    // Undo logs it again as it was (a new entry, at the end of its meal)
+    toastUndo(`Deleted ${e.name}.`, async () => {
+      if (await foodAction({ action: "add", day, meal, items: [NM.again(e)] })) renderFood();
+    });
   });
   // on a past day the food is copied to today; on today it is added again (a second coffee), which can be done any number of times
   if (F.data.date < F.data.today) acts.append(copyButton([e.id], () => `${e.name} (${NM.mealLabel(meal)})`));
@@ -4372,8 +4430,8 @@ function pickFoodDay(day) {
 function bindFoodView() {
   $("vFood").onclick = () => setView("food");
   const go = (date) => { F.date = date && F.data && date >= F.data.today ? null : date; stopChanging(); F.pick = null; return guard(loadFood)(); };
-  $("fPrev").onclick = () => F.data && go(RM.addDays(F.data.date, -1));
-  $("fNext").onclick = () => F.data && go(RM.addDays(F.data.date, 1));
+  $("fPrev").onclick = () => F.data && go(RM.addDays(F.date || F.data.today, -1)); // from the day asked for, which the drawn one trails while an answer is awaited
+  $("fNext").onclick = () => F.data && go(RM.addDays(F.date || F.data.today, 1)); // from the day asked for, which the drawn one trails while an answer is awaited
   $("fToday").onclick = () => go(null);
   $("fDate").onchange = (e) => e.target.value && go(e.target.value);
   $("fProfile").onchange = (e) => { Object.assign(F, { profile: e.target.value, date: null, data: null, loaded: false, error: "", editing: null, pick: null, replacing: null }); F.drafts.clear(); F.finds.clear(); F.open.clear(); F.copied.clear(); Object.assign(F.ai, { result: null, busy: "", error: "", run: F.ai.run + 1 }); guard(loadFood)(); };

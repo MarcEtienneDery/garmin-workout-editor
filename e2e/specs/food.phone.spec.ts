@@ -306,11 +306,7 @@ test.describe("searching by name (answers faked)", () => {
     await expect(lunch.locator(".frec").first()).toBeVisible();
   });
 
-  test.fixme("the quantity field is 16 px, so the phone does not zoom in when it is focused", async ({ me, profile }) => {
-    // App behaviour: on a 412 px phone the picker's quantity input (`.fpq input`) computes to 13px, not 16px. The mobile rule
-    // `.fpq input { font-size:16px }` sits inside @media (max-width:700px) and comes before the base rule `.fpq input { font:inherit }`
-    // in index.html, which has the same specificity and comes later, so the base rule wins. iOS zooms the page in when a field under
-    // 16px is focused. Fix: give the base rule no font shorthand, or put the 16px after it.
+  test("the quantity field is 16 px, so the phone does not zoom in when it is focused", async ({ me, profile }) => {
     await me.route("**/api/foods/search*", (route) => route.fulfill({ status: 200, contentType: "application/json", body: searchAnswer([oats]) }));
     await openFood(me);
     const lunch = meal(me, "lunch");

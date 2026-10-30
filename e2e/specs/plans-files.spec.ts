@@ -275,8 +275,7 @@ test.describe("Plans: New", () => {
     await expect(me.locator("#problems")).toContainText("Valid");
   });
 
-  // newFile() creates the file, then opens it, and only then asks about the unsaved edits: Cancel leaves the new file behind.
-  test.fixme("with unsaved edits in the open file, Cancel on the discard question after New leaves no new file behind", async ({ me, profile }) => {
+  test("with unsaved edits in the open file, Cancel on the discard question after New leaves no new file behind", async ({ me, profile }) => {
     await makeFile(profile.api, `workout-plans/${profile.name}-newcancel.json`, planJson({ notes: "saved" }));
     await openPlans(me);
     await openPlan(me, `${profile.name}-newcancel.json`);
@@ -505,10 +504,7 @@ test.describe("Plans: Rename", () => {
     expect((await readFile(profile.api, path)).version).toBeGreaterThan(0);
   });
 
-  // The page saves the open file before a rename, and ignores the save's failure: the rename goes ahead with the other
-  // change, and the editor keeps the unsaved edits under the new name with the other change's version. The next Save then
-  // overwrites what someone else saved.
-  test.fixme("renaming a plan with unsaved edits that conflict with a change elsewhere does not rename it", async ({ me, profile }) => {
+  test("renaming a plan with unsaved edits that conflict with a change elsewhere does not rename it", async ({ me, profile }) => {
     const path = `workout-plans/${profile.name}-rconf.json`;
     await makeFile(profile.api, path, planJson({ notes: "start" }));
     await openPlans(me);
@@ -554,9 +550,7 @@ test.describe("Plans: Delete", () => {
     expect(await fileGone(profile.api, path)).toBeTruthy();
   });
 
-  // remove() hands showValidation(null), which prints the "Valid JSON (not a workout file...)" line; with no file open the
-  // pane should say "Nothing to report." as it does on a fresh page, but keeps that line.
-  test.fixme("after the open file is deleted, Checks says nothing instead of the last file's result", async ({ me, profile }) => {
+  test("after the open file is deleted, Checks says nothing instead of the last file's result", async ({ me, profile }) => {
     await makeFile(profile.api, `workout-plans/${profile.name}-stale.json`, planJson());
     await openPlans(me);
     await openPlan(me, `${profile.name}-stale.json`);
@@ -792,9 +786,8 @@ test.describe("Plans: Archive", () => {
     await expect(me.locator("#cLegend")).toContainText(name);
   });
 
-  // The group opens itself when the open file is archived, and that programmatic open fires its toggle handler, which
-  // records it as the user's choice (showArchived). So the group stays open after the open file moves out of it.
-  test.fixme("the Archived group is closed unless the open file is in it", async ({ me, profile }) => {
+  // The group opens itself when the open file is archived; that is not the person's choice, so it closes again once the open file is out of it.
+  test("the Archived group is closed unless the open file is in it", async ({ me, profile }) => {
     await makeFile(profile.api, `workout-plans/${profile.name}-grp-a.json`, planJson({ notes: "a" }));
     await makeFile(profile.api, `workout-plans/${profile.name}-grp-b.json`, planJson({ notes: "b" }));
     await openPlans(me);
@@ -805,6 +798,25 @@ test.describe("Plans: Archive", () => {
     await openPlan(me, `${profile.name}-grp-b.json`);
     await expect(me.locator("#filelist details.shelved")).not.toHaveAttribute("open", "");
     await expect(me.locator("#filelist details.shelved summary")).toHaveText("Archived (1)");
+  });
+
+  test("a group the person opened stays open while another file is opened, and closes when they close it", async ({ me, profile }) => {
+    await makeFile(profile.api, `workout-plans/${profile.name}-own-a.json`, planJson({ notes: "a" }));
+    await makeFile(profile.api, `workout-plans/${profile.name}-own-b.json`, planJson({ notes: "b" }));
+    await openPlans(me);
+    await openPlan(me, `${profile.name}-own-a.json`);
+    await fileMenu(me, "archive");
+    await me.locator("#dlgOk").click();
+    await openPlan(me, `${profile.name}-own-b.json`);
+    const group = me.locator("#filelist details.shelved");
+    await expect(group).not.toHaveAttribute("open", "");
+    await group.locator("summary").click();
+    await expect(group).toHaveAttribute("open", "");
+    await openPlan(me, `${profile.name}-own-b.json`);
+    await rowOf(me, `${profile.name}-own-b.json`).click();
+    await expect(group).toHaveAttribute("open", "");
+    await group.locator("summary").click();
+    await expect(group).not.toHaveAttribute("open", "");
   });
 
 });
