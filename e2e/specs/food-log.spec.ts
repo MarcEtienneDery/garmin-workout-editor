@@ -672,6 +672,108 @@ test.describe("Food log: changing and deleting an entry", () => {
   });
 });
 
+test.describe("Food log: moving a food to another meal", () => {
+  /** The "Move … to another meal" choice in a food's open row. */
+  const mover = (row: Locator): Locator => row.locator("select.fmove");
+
+  test("an open food offers the other three meals, and not its own", async ({ me, profile }) => {
+    await addFoods(profile.api, today(), "lunch", [{ name: "Wrap", kcal: 350 }]);
+    await openFood(me);
+    const move = mover(await openRow(me, "lunch", "Wrap"));
+    await expect(move).toHaveAttribute("aria-label", "Move Wrap to another meal");
+    await expect(move).toHaveValue("");
+    await expect(move.locator("option")).toHaveText(["Move to…", "Breakfast", "Dinner", "Snacks"]);
+  });
+
+  test("the meal chosen takes the food, with its numbers, and the totals of both meals follow", async ({ me, profile }) => {
+    await addFoods(profile.api, today(), "lunch", [{ name: "Wrap", kcal: 350, proteinG: 20, carbsG: 40, fatG: 12 }, { name: "Apple", kcal: 80, proteinG: 0, carbsG: 20, fatG: 0 }]);
+    await addFoods(profile.api, today(), "dinner", [{ name: "Soup", kcal: 150, proteinG: 5, carbsG: 20, fatG: 4 }]);
+    await openFood(me);
+    await mover(await openRow(me, "lunch", "Wrap")).selectOption("dinner");
+    await expect(toast(me)).toContainText("Moved Wrap to Dinner.");
+    await expect(meal(me, "lunch").locator(".fe .fn")).toHaveText(["Apple"]);
+    await expect(meal(me, "dinner").locator(".fe .fn")).toHaveText(["Wrap", "Soup"]); // a meal lists its foods in the order they were logged, so the moved one keeps its place
+    await expect(meal(me, "lunch").locator(".fmh > span")).toHaveText("80 kcal · P 0 · C 20 · F 0");
+    await expect(meal(me, "dinner").locator(".fmh > span")).toHaveText("500 kcal · P 25 · C 60 · F 16");
+    await expect(me.locator("#fbody .fsum .fhero b")).toHaveText("580"); // the day's total does not change
+    const log = entriesOf(await dayOf(profile.api, today()));
+    expect(log.find((e) => e.name === "Wrap")).toMatchObject({ meal: "dinner", day: today(), kcal: 350, proteinG: 20, carbsG: 40, fatG: 12 });
+    expect(log).toHaveLength(3);
+  });
+
+  test("a move keeps the food's own entry: same id, same nutrients", async ({ me, profile }) => {
+    await addFoods(profile.api, today(), "breakfast", [{ name: "Granola", kcal: 220, proteinG: 6, carbsG: 35, fatG: 7, nutrients: { fiberG: 4, sodiumMg: 90 } }]);
+    const before = entriesOf(await dayOf(profile.api, today()))[0];
+    await openFood(me);
+    await mover(await openRow(me, "breakfast", "Granola")).selectOption("snack");
+    await expect(meal(me, "snack").locator(".fe .fn")).toHaveText(["Granola"]);
+    const after = entriesOf(await dayOf(profile.api, today()))[0];
+    expect(after).toMatchObject({ id: before.id, meal: "snack", nutrients: before.nutrients, kcal: 220 });
+    expect(entriesOf(await dayOf(profile.api, today()))).toHaveLength(1);
+  });
+
+  test("Undo moves the food back to its meal, and the log says so", async ({ me, profile }) => {
+    await addFoods(profile.api, today(), "lunch", [{ name: "Wrap", kcal: 350 }]);
+    await openFood(me);
+    await mover(await openRow(me, "lunch", "Wrap")).selectOption("snack");
+    await expect(meal(me, "snack").locator(".fe .fn")).toHaveText(["Wrap"]);
+    await toast(me).locator("button", { hasText: "Undo" }).click();
+    await expect(meal(me, "lunch").locator(".fe .fn")).toHaveText(["Wrap"]);
+    await expect(meal(me, "snack").locator(".fe")).toHaveCount(0);
+    expect(entriesOf(await dayOf(profile.api, today()))[0]).toMatchObject({ meal: "lunch", name: "Wrap" });
+  });
+
+  test("a food of a past day moves within that day, and today stays empty", async ({ me, profile }) => {
+    await addFoods(profile.api, daysAgo(1), "lunch", [{ name: "Leftovers", kcal: 400 }]);
+    await openFood(me);
+    await me.locator("#fPrev").click();
+    await expect(me.locator("#fDate")).toHaveValue(daysAgo(1));
+    await mover(await openRow(me, "lunch", "Leftovers")).selectOption("dinner");
+    await expect(meal(me, "dinner").locator(".fe .fn")).toHaveText(["Leftovers"]);
+    await expect(me.locator("#fDate")).toHaveValue(daysAgo(1));
+    expect(entriesOf(await dayOf(profile.api, daysAgo(1)))[0]).toMatchObject({ meal: "dinner", day: daysAgo(1) });
+    expect((await dayOf(profile.api, today())).day.entries).toBe(0);
+  });
+
+  test("a food being changed closes its form when it is moved, and the form is not left in the old meal", async ({ me, profile }) => {
+    await addFoods(profile.api, today(), "lunch", [{ name: "Wrap", kcal: 350 }]);
+    await openFood(me);
+    const row = await openRow(me, "lunch", "Wrap");
+    await row.locator('button[aria-label="Change Wrap"]').click();
+    await expect(meal(me, "lunch").locator("details.fhand summary").first()).toHaveText("Change the food");
+    await mover(row).selectOption("dinner");
+    await expect(meal(me, "dinner").locator(".fe .fn")).toHaveText(["Wrap"]);
+    await expect(meal(me, "lunch").locator("details.fhand summary").first()).toHaveText("Enter by hand");
+    await expect(meal(me, "dinner").locator("details.fhand summary").first()).toHaveText("Enter by hand");
+    await expect(me.locator("#fbody .fe.editing")).toHaveCount(0);
+  });
+
+  test("a move the server refuses says why, and the food stays in its meal", async ({ me, profile }) => {
+    await addFoods(profile.api, today(), "lunch", [{ name: "Wrap", kcal: 350 }]);
+    await openFood(me);
+    const move = mover(await openRow(me, "lunch", "Wrap"));
+    const id = entriesOf(await dayOf(profile.api, today()))[0].id;
+    const gone = await profile.api.post("/api/nutrition", { data: { action: "delete", ids: [id], date: today() } }); // deleted on another screen
+    expect(gone.ok()).toBeTruthy();
+    await move.selectOption("dinner");
+    await expect(toast(me)).toContainText(`There is no food entry ${id}.`);
+    await expect(meal(me, "lunch").locator(".fe .fn")).toHaveText(["Wrap"]);
+    await expect(mover(rowOf(me, "lunch", "Wrap"))).toHaveValue(""); // the list puts the choice back
+    await expect(meal(me, "dinner").locator(".fe")).toHaveCount(0);
+  });
+
+  test("the API moves a food with a meal alone, and refuses a meal it does not know", async ({ profile }) => {
+    await addFoods(profile.api, today(), "lunch", [{ name: "Wrap", kcal: 350, proteinG: 20 }]);
+    const id = entriesOf(await dayOf(profile.api, today()))[0].id;
+    const bad = await profile.api.post("/api/nutrition", { data: { action: "update", id, meal: "brunch" } });
+    expect(bad.status()).toBe(400);
+    expect(entriesOf(await dayOf(profile.api, today()))[0].meal).toBe("lunch");
+    const ok = await profile.api.post("/api/nutrition", { data: { action: "update", id, meal: "snack" } });
+    expect(ok.ok()).toBeTruthy();
+    expect(entriesOf(await dayOf(profile.api, today()))[0]).toMatchObject({ id, meal: "snack", name: "Wrap", kcal: 350, proteinG: 20 });
+  });
+});
+
 test.describe("Food log: undo after adding", () => {
   test("+ Add again on today adds a second copy, and Undo takes that copy back", async ({ me, profile }) => {
     await addFoods(profile.api, today(), "breakfast", [{ name: "Latte", kcal: 120, proteinG: 6, carbsG: 9, fatG: 6 }]);

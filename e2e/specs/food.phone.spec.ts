@@ -232,6 +232,20 @@ test.describe("adding a food by tap", () => {
     for (const h of await actions.evaluateAll((els) => els.map((el) => el.getBoundingClientRect().height))) expect(h).toBeGreaterThanOrEqual(40);
   });
 
+  test("Move to… is as tall as the buttons beside it, 16 px so the phone does not zoom, and moves the food", async ({ me, profile }) => {
+    await logFoods(profile, "lunch", [{ name: "Apple", kcal: 95 }]);
+    await openFood(me);
+    await meal(me, "lunch").locator(".fe .fhead").first().tap();
+    const move = meal(me, "lunch").locator(".fea select.fmove");
+    await expect(move).toBeVisible();
+    expect((await move.boundingBox())!.height).toBeGreaterThanOrEqual(40);
+    expect(await move.evaluate((el) => parseFloat(getComputedStyle(el).fontSize))).toBeGreaterThanOrEqual(16);
+    expect(await stickingOut(me)).toEqual([]);
+    await move.selectOption("snack");
+    await expect(meal(me, "snack").locator(".fe .fn")).toHaveText(["Apple"]);
+    await expect(meal(me, "lunch").locator(".fe")).toHaveCount(0);
+  });
+
   test("Delete asks first, in a dialog that fits the phone, and Cancel keeps the food", async ({ me, profile }) => {
     await logFoods(profile, "lunch", [{ name: "Apple", kcal: 95 }]);
     await openFood(me);
