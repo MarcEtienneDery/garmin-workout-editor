@@ -4027,9 +4027,13 @@ function focusAmount(meal) {
   if (amount) { amount.focus(); amount.select(); }
 }
 
+// set while the page itself puts the focus in a search box, so that does not open the foods used lately the way a tap does
+let focusedByCode = false;
 function focusSearch(meal) {
   const q = document.querySelector(`#fbody [data-meal="${meal}"] .fq`);
-  if (q) q.focus();
+  if (!q) return;
+  focusedByCode = true;
+  try { q.focus(); } finally { focusedByCode = false; }
 }
 
 // Finding a food: by name (Open Food Facts, through the server) or by scanning its barcode with the camera. A food found has its
@@ -4048,8 +4052,9 @@ function foodFinder(meal) {
   // what was logged before matches at once, while Open Food Facts is asked after a pause in typing
   q.oninput = () => { st.q = q.value; paintFind(meal); clearTimeout(st.timer); st.timer = setTimeout(guard(() => runFind(meal)), 450); };
   q.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); clearTimeout(st.timer); guard(() => runFind(meal))(); } };
-  // a tap in the box opens the foods used lately; on a phone the box goes to the top, so the list is above the keyboard
+  // a tap in the box opens the foods used lately (not a focus the page gives it, see focusSearch); on a phone the box goes to the top, so the list is above the keyboard
   q.onfocus = () => {
+    if (focusedByCode) return;
     if (!st.recent) { st.recent = true; st.mineFor = null; paintFind(meal); recentBtn.setAttribute("aria-pressed", "true"); }
     if (mobileQuery.matches) setTimeout(() => box.scrollIntoView({ block: "start", behavior: "smooth" }), 300);
   };
