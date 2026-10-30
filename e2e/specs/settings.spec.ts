@@ -248,13 +248,25 @@ test.describe("nutrition goals", () => {
     slow((await settingsOf(profile.api)).goals.values).toEqual({ proteinG: 150.5 });
   });
 
-  // The page reads a comma as a decimal point, so a calorie goal typed with a thousands separator becomes 2 kcal.
-  test.fixme("a calorie goal typed as 2,000 is saved as 2,000 kcal (the app saves 2 kcal, and says 'Goals saved.')", async ({ me, profile }) => {
+  test("a calorie goal typed with a thousands comma or space is saved whole: 2,000 and 2 500 are 2000 and 2500 kcal", async ({ me, profile }) => {
     await openSettings(me);
     await goalField(me, "kcal").fill("2,000");
     await goalsCard(me).getByRole("button", { name: "Save goals" }).click();
     await slow(okLine(goalsCard(me))).toHaveText("Goals saved.");
     slow((await settingsOf(profile.api)).goals.values).toEqual({ kcal: 2000 });
+    await goalField(me, "kcal").fill("2 500");
+    await goalsCard(me).getByRole("button", { name: "Save goals" }).click();
+    await slow(okLine(goalsCard(me))).toHaveText("Goals saved.");
+    slow((await settingsOf(profile.api)).goals.values).toEqual({ kcal: 2500 });
+  });
+
+  test("the line under the goals reads a thousands comma in the calorie goal too", async ({ me }) => {
+    await openSettings(me);
+    await goalField(me, "proteinG").fill("130");
+    await goalField(me, "carbsG").fill("250");
+    await goalField(me, "fatG").fill("70");
+    await goalField(me, "kcal").fill("2,000");
+    await slow(goalsCard(me).locator(".sline.dim:visible")).toHaveText("Protein, carbs and fat add up to 2,150 kcal, 8 % above the calorie goal of 2,000.");
   });
 
   test("the line under the goals adds protein, carbs and fat in calories and compares them with the calorie goal, as you type", async ({ me }) => {

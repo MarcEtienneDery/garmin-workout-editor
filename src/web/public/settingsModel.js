@@ -68,6 +68,21 @@
   }
 
   /**
+   * The number typed in a goal field, NaN when it is not one. A comma is a thousands separator when three digits follow it and the figure
+   * does not start with 0 ("2,000" is 2000, "1,234,567" too), else a decimal comma ("150,5"); with a comma and a point, the last of the two is
+   * the decimal one ("1.234,5", "1,234.5"); spaces and apostrophes between digits group them ("2 000", "2'000").
+   */
+  function goalNumber(text) {
+    let t = String(text == null ? "" : text).trim().replace(/[\s\u00a0\u202f']/g, "");
+    if (t.includes(",") && t.includes(".")) {
+      const comma = t.lastIndexOf(",") > t.lastIndexOf(".");
+      t = comma ? t.replace(/\./g, "").replace(",", ".") : t.replace(/,/g, "");
+    } else if (/^[1-9]\d{0,2}(,\d{3})+$/.test(t)) t = t.replace(/,/g, "");
+    else t = t.replace(",", ".");
+    return t === "" ? NaN : Number(t);
+  }
+
+  /**
    * The patch to send for the goals form: `texts` holds what is typed in each field (by key), `fields` is what GET /api/settings lists, `current`
    * the goals now set. A field with a number sets that goal, an empty one removes the goal if there is one (null), else it is left out. Or
    * what is wrong ({ error }). The server checks the same and the upper limits.
@@ -75,23 +90,23 @@
   function goalsPatch(texts, fields, current) {
     const goals = {};
     for (const f of fields) {
-      const text = String(texts[f.key] == null ? "" : texts[f.key]).trim().replace(",", ".");
+      const text = String(texts[f.key] == null ? "" : texts[f.key]).trim();
       if (!text) {
         if (current[f.key] !== undefined) goals[f.key] = null;
         continue;
       }
-      const n = Number(text);
+      const n = goalNumber(text);
       if (!Number.isFinite(n) || n <= 0) return { error: `${f.label} must be a number above 0, or empty for no goal.` };
       goals[f.key] = n;
     }
-    if (typeof goals.kcalBurnPct === "number" && !(Number(String(texts.kcal == null ? "" : texts.kcal).trim().replace(",", ".")) > 0)) return { error: "Set a calorie goal to add the burned calories to." };
+    if (typeof goals.kcalBurnPct === "number" && !(goalNumber(texts.kcal) > 0)) return { error: "Set a calorie goal to add the burned calories to." };
     if (typeof goals.kcalBurnPct === "number" && goals.kcalBurnPct > 100) return { error: "The share of the active calories added to the calorie goal is at most 100 %." };
     return { goals };
   }
 
   /** What the typed protein, carbs and fat goals add up to in calories (4, 4 and 9 a gram), against the calorie goal; "" until all three are typed. */
   function macroGoalsNote(texts) {
-    const n = (key) => { const v = Number(String(texts[key] == null ? "" : texts[key]).trim().replace(",", ".")); return Number.isFinite(v) && v > 0 ? v : null; };
+    const n = (key) => { const v = goalNumber(texts[key]); return Number.isFinite(v) && v > 0 ? v : null; };
     const [p, c, f, k] = [n("proteinG"), n("carbsG"), n("fatG"), n("kcal")];
     if (p === null || c === null || f === null) return "";
     const sum = Math.round(4 * p + 4 * c + 9 * f), base = `Protein, carbs and fat add up to ${sum.toLocaleString()} kcal`;
@@ -100,5 +115,5 @@
     return off <= 5 ? `${base}, in line with the calorie goal.` : `${base}, ${off} % ${sum > k ? "above" : "below"} the calorie goal of ${k.toLocaleString()}.`;
   }
 
-  return { goalsPatch, macroGoalsNote, ago, until, renphoStatus, uploadState, FIELDS, cell, stamp, MIN_PASSWORD, passwordProblem, profileProblem };
+  return { goalsPatch, goalNumber, macroGoalsNote, ago, until, renphoStatus, uploadState, FIELDS, cell, stamp, MIN_PASSWORD, passwordProblem, profileProblem };
 });

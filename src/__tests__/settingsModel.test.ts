@@ -87,6 +87,22 @@ describe("the goals form", () => {
     expect(SM.goalsPatch({ kcal: "2200", proteinG: " 140,5 ", sodiumMg: "" }, fields, { kcal: 2000, sodiumMg: 2300 })).toEqual({ goals: { kcal: 2200, proteinG: 140.5, sodiumMg: null } });
   });
 
+  it.each([
+    ["2000", 2000], ["2,000", 2000], ["12,345", 12345], ["1,234,567", 1234567], ["2 000", 2000], ["2\u00a0000", 2000], ["2'000", 2000],
+    ["150,5", 150.5], ["1,5", 1.5], ["0,500", 0.5], ["1.234,5", 1234.5], ["1,234.5", 1234.5], ["150.5", 150.5], [" 70 ", 70],
+  ])("reads %s as %d: a comma before three digits groups thousands, else it is a decimal comma", (text, n) => {
+    expect(SM.goalNumber(text)).toBe(n);
+  });
+
+  it.each([[""], ["abc"], ["2,00,0x"], ["1e999"]])("does not read %j as a number", (text) => {
+    expect(Number.isFinite(SM.goalNumber(text))).toBe(false);
+  });
+
+  it("saves a calorie goal typed with a thousands comma as that many calories, and compares the macros against it", () => {
+    expect(SM.goalsPatch({ kcal: "2,000", proteinG: "150,5" }, fields, {})).toEqual({ goals: { kcal: 2000, proteinG: 150.5 } });
+    expect(SM.macroGoalsNote({ proteinG: "130", carbsG: "250", fatG: "70", kcal: "2,000" })).toBe(`Protein, carbs and fat add up to ${(2150).toLocaleString()} kcal, 8 % above the calorie goal of ${(2000).toLocaleString()}.`);
+  });
+
   it("leaves out an empty field that has no goal: nothing to remove", () => {
     expect(SM.goalsPatch({ kcal: "", proteinG: "", sodiumMg: "" }, fields, {})).toEqual({ goals: {} });
     expect(SM.goalsPatch({}, fields, { kcal: 2000 })).toEqual({ goals: { kcal: null } });

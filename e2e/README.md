@@ -65,7 +65,6 @@ when the `fixme` is removed, so fixing the app means deleting the word.
 
 | Spec | The app today |
 |---|---|
-| `settings` | A calorie goal typed as `2,000` is saved as 2 kcal and the page says "Goals saved." (the comma is read as a decimal point). |
 | `food.phone` | The picker's quantity field is 13 px on a phone (the base `.fpq input { font: inherit }` comes after the mobile 16 px rule), so iOS zooms in when it is focused. |
 | `food-log` | Deleting a food has no Undo. A reload shows today again: the day shown is kept in memory, not in the address. |
 | `food-ai` | Words typed while a photo is being prepared are lost: the box is redrawn when the photo is ready. |
