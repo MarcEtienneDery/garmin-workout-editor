@@ -89,6 +89,13 @@ const nutrient = (page: Page, label: string): Locator => nutrientCard(page).loca
 const macro = (page: Page, key: "protein" | "carbs" | "fat"): Locator => card(page).locator(`.fmr.${key}`);
 /** The trend chart whose title starts with `title`. */
 const chart = (page: Page, title: string): Locator => page.locator(".rcharts .rc").filter({ hasText: title }).first();
+const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+/** The label the charts give a day: "Thu 29 Oct". */
+const labelOf = (day: string): string => {
+  const d = new Date(`${day}T00:00:00Z`);
+  return `${DOW[d.getUTCDay()]} ${d.getUTCDate()} ${MON[d.getUTCMonth()]}`;
+};
 
 /** The widths (in percent of the track) of the segments of a bar, as the page set them. */
 async function widthsOf(locator: Locator): Promise<number[]> {
@@ -401,7 +408,7 @@ test.describe("Food goals: the trend charts", () => {
     await openFood(alice);
     await alice.locator("#fPrev").click();
     await expect(alice.locator("#fDate")).toHaveValue(daysAgo(1));
-    await expect(chart(alice, "Protein (g)").locator(".rcr")).toHaveText(/Thu 29 Oct: 103 g · 79 % of the goal/);
+    await expect(chart(alice, "Protein (g)").locator(".rcr")).toHaveText(`${labelOf(daysAgo(1))}: 103 g · 79 % of the goal`);
   });
 });
 

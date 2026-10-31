@@ -5,7 +5,7 @@
  * view of one cover the states alice does not have.
  */
 import type { APIRequestContext, Locator, Page } from "@playwright/test";
-import { test, expect, openView, loginAs, ADMIN_TOKEN } from "../support/fixtures";
+import { test, expect, openView, loginAs, ADMIN_TOKEN, daysAgo } from "../support/fixtures";
 
 // ── oracle: GET /api/weight as stored (weights in kilograms, the trend fitted through the weigh-ins) ──
 
@@ -331,7 +331,7 @@ test.describe("Weight view, alice (45 days stored, a weigh-in every third day)",
   });
 
   test("a click on a weigh-in day picks it, marks its row and lists its Garmin responses", async ({ alice, admin }) => {
-    const day = "2026-10-27";
+    const day = daysAgo(3); // the seed weighs alice in every third day back from today: 82,000 g less 40 g a day
     const oracle = await admin.get(`/api/wellness/raw?profile=alice&date=${day}&kind=weight`);
     expect(oracle.ok()).toBeTruthy();
     const stored = (await oracle.json()) as { data: unknown };
