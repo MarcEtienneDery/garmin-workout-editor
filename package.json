@@ -12,6 +12,8 @@
     "mcp": "tsx src/mcp/server.ts",
     "mcp:http": "tsx src/mcp/server.ts --http",
     "web": "tsx src/web/server.ts",
+    "demo": "tsx scripts/demo/server.ts",
+    "demo:record": "tsx scripts/demo/record.ts",
     "store": "tsx src/storeCli.ts",
     "e2e": "playwright test",
     "e2e:ui": "playwright test --ui",

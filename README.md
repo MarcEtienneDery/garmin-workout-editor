@@ -2,17 +2,77 @@
 
 Edit your workout plans in a web editor or through Claude (MCP), log what you eat, and, if you have them, keep your Garmin activities and health data in a database and push workouts to Garmin. **Garmin is optional, and so is a Renpho scale**: a profile with neither still has the plan editor, the calendar and the food log.
 
+![The Today page: today's workout and readiness, steps, intensity minutes, Body Battery, sleep, the food of the day and the week ahead](docs/media/today.webp)
+
+Every recording below runs on the demo database (`npm run demo`, see [Try it with demo data](#try-it-with-demo-data)), so none of it is anyone's data.
+
 ## Features
 
-- Store your Garmin activities (the whole history, with details) in a database, fetched once
-- Export workouts from Garmin to JSON
-- Generate a temporary next-week workout plan file for manual edits
-- Copy a workout plan to next week (shift dates by 7 days)
-- Start a new training plan cycle (reset training progression + clear schedule dates)
-- Schedule a workout plan to Garmin calendar
-- Comprehensive test suite with unit and integration tests
-- Mock mode for testing without real Garmin credentials
-- Garmin and Renpho are optional, per profile
+- [Today](#today) · [Plans](#plans-a-json-editor-that-draws-the-workout) · [Calendar](#calendar) · [Activities](#activities-graphs-map-and-laps) · [Strength and lifetime stats](#strength-and-lifetime-stats) · [Recovery](#recovery-and-readiness) · [Weight](#weight) · [Food logging](#food-logging) · [Logging a meal with AI](#logging-a-meal-with-ai) · [On a phone](#on-a-phone) · [With Claude](#with-claude-mcp)
+
+### Today
+
+The page that opens first: the workout the plans schedule for today, drawn as its steps, with a ✓ once an activity was started from it; the day's readiness and what to do with it; steps, intensity minutes, Body Battery and last night's sleep against their goals; what you ate against your goals; and the workouts of the next 7 days with their distance and time. It always says how old the numbers are, and when the watch has not synced for a while.
+
+### Plans: a JSON editor that draws the workout
+
+![Opening a plan, the picture of an interval workout, a typo caught by the validation as it is typed, then the muscles a strength workout trains](docs/media/plans.webp)
+
+Plans are JSON documents, edited in Monaco with the workout schema's autocompletion and the same checks as an upload, run as you type. The outline beside it lists the plan's workouts, each with a small profile; a name opens its picture (one block per step, height for effort, estimated time and distance from your own recent runs) and, for a strength workout, the muscles it trains, darker the more sets. Every save keeps the version it replaces. With a Garmin login, the *Garmin* menu uploads, schedules and sends a plan to the watch, and each workout shows whether Garmin's copy matches.
+
+### Calendar
+
+![The calendar in its three modes, the next month, a day's plans and workouts, and a workout chip opening its plan](docs/media/calendar.webp)
+
+A month of what the plans schedule: *Both* draws each plan as a bar holding its workouts of the week, *Plans* only the bars (which weeks each plan covers, where they overlap), *Workouts* only the workouts, coloured by type. A day lists its plans and workouts; a chip opens the workout's picture.
+
+### Activities: graphs, map and laps
+
+![An interval run: its numbers, heart-rate zones, graphs with one cursor, the route on a map coloured by pace, its laps and the planned workout it came from](docs/media/activity.webp)
+
+Your Garmin history is stored once and read from the database. A run gets its heart rate (with the zones), pace, elevation and cadence graphs sharing one cursor, its route on an OpenStreetMap map coloured by pace or heart rate (hovering one moves the other), the watch's laps and kilometer splits, and the plan workout it was started from, compared with what was done.
+
+### Strength and lifetime stats
+
+![A gym session's muscles and sets, the activity calendar with the planned workouts done and missed, and the lifetime stats](docs/media/activities.webp)
+
+A strength session shows the muscles it worked, each exercise with its sets (`3 × 5 @ 215 lb`) and each set as a share of your estimated one-rep max. The calendar can show the planned workouts beside the activities, done (✓) or missed. *Stats* adds everything up: best efforts over 1 km to 10 km, records, the biggest week and month, and every lift with its estimated 1RM.
+
+### Recovery and readiness
+
+![The readiness of the day with its signals, the trend charts sharing one cursor, and a click on a day of the charts showing its readiness](docs/media/recovery.webp)
+
+A band for the day's workout, **go-harder**, **as-planned** or **back-off**, with a score and the signals behind it: HRV against Garmin's baseline, resting heart rate and sleep against your own normal, Body Battery, stress and recent training load. Below, seven charts over 14 to 90 days share one cursor; a click on a day shows its readiness. These are heuristics from watch data, not medical advice.
+
+### Weight
+
+![The weight view: last weigh-in, trend, the weight, body fat, muscle and calories charts, then a longer range in kilograms](docs/media/weight.webp)
+
+The weigh-ins from Garmin or a Renpho scale (with or without Garmin): the trend a week, weight, body fat and muscle mass charts, and the calories burned at rest and active.
+
+### Food logging
+
+![Logging food: one tap on a recent food, a food found on Open Food Facts at its quantity, and a food typed by hand whose calories follow the macros](docs/media/food.webp)
+
+Each meal of the day has a search box, a barcode scanner and *Recent*. A search asks Open Food Facts (products sold in Canada first) and a quantity picker scales it; *Recent* logs a food again in one tap; a food typed by hand gets its calories from its macros. The day's calories, macros and nine Nutrition Facts nutrients are shown against your goals, with the calories Garmin says you burned when there is a Garmin login. The log is kept here, never sent to Garmin.
+
+### Logging a meal with AI
+
+![Describing a meal in words, Claude's estimate food by food with each amount, and logging it in one go](docs/media/food-ai.webp)
+
+Describe what you ate, or photograph the plate or a Nutrition Facts label, and Claude estimates each food with its amount and meal; correct what is wrong and log them all at once. It needs `FOOD_AI_BACKEND` set up on the server (see [Food log](#food-log)). The estimate in this recording is a canned answer: the recorder does not call Claude.
+
+### On a phone
+
+<img src="docs/media/phone.webp" width="320" alt="The editor on a phone: the Today page, the calendar with a day's plans, and the food log">
+
+Below 900 px wide every view is one pane at a time, the header's views scroll sideways, and a tap on a calendar day lists it below the grid. Add it to the home screen for its icon.
+
+### With Claude (MCP)
+
+The MCP server gives Claude the same data and actions: last week's activities, the plans, readiness, the food log. Ask it to *"review last week and adjust this week's plan"*, *"how recovered am I, should I still do the intervals?"* or *"log lunch: a chicken burrito bowl and a coffee"*. It edits the plan files, validates them, and touches Garmin only after you confirm. See [MCP Server](#mcp-server-claudeai--claude-desktop).
+
+Not shown above: the *Workouts* view (your Garmin workout library beside the plans) and the *Garmin* menu, which need a Garmin login.
 
 ## Setup
 
@@ -23,6 +83,16 @@ Edit your workout plans in a web editor or through Claude (MCP), log what you ea
 5. Garmin-less profiles need a time zone for "today" (`TZ`, or `GARMIN_TZ`), as there are no activities to read it from.
 
 **Upgrading from `.env.<profile>` files.** They are not read any more. Every profile that already has data (activities, food, plans, a saved login) stays, and one that has no web sign-in password yet is asked to set one (a notice on its Today page, and *Settings → Web sign-in* says "password required"). To bring in a login or a web password that lived only in a file, run once `npm run store -- import-env <dir of the files>` (Docker: `docker exec garmin-mcp node dist/storeCli.js import-env /config`, with the old `./config` mounted for that one run). It registers each file's profile, saves its `GARMIN_EMAIL`/`GARMIN_PASSWORD`, and keeps `WEB_PASSWORD` as a hash; what the database already holds is never replaced.
+
+## Try it with demo data
+
+```bash
+npm run demo        # http://127.0.0.1:8790, sign in as Sam / demo-password
+```
+
+The editor on a throwaway database (`scripts/demo/seed.ts`): Sam, a runner halfway through a half-marathon block, with four plans, ten weeks of runs, rides and gym sessions, 70 days of health data and weigh-ins, and three weeks of food. The dates follow the day you run it. It has no Garmin login, so nothing reaches Garmin; the database is deleted when the server stops. `DEMO_PORT` sets another port.
+
+`npm run demo:record` records the animations of this README again from it (`docs/media/*.webp`; `-- food plans` for some, `-- --gif` for GIFs). It needs ffmpeg with libwebp, and a color emoji font for the emoji (or `FONTCONFIG_FILE` pointing at a `fonts.conf` that adds one).
 
 ## Usage
 
@@ -199,8 +269,15 @@ npm test
 
 ### Run tests in watch mode
 ```bash
-npm test:watch
+npm run test:watch
 ```
+
+### Run the browser suite
+```bash
+npm run e2e
+```
+
+Playwright, against servers it starts on databases of its own; see [e2e/README.md](e2e/README.md).
 
 ### Generate coverage report
 ```bash
@@ -230,6 +307,9 @@ src/
 ├── mcp/                    # MCP server and its tools
 ├── web/                    # Plan editor (server and page)
 └── __tests__/
+e2e/                        # Playwright browser suite
+scripts/demo/               # Demo database, `npm run demo`, and the recorder of docs/media
+docs/media/                 # The animations of this README
 ```
 
 ## Real Garmin API Endpoints
