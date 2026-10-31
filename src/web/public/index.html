@@ -294,6 +294,7 @@
   .fform { display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin-top:8px; }
   .fform input { min-width:0; box-sizing:border-box; background:#333; color:var(--fg); border:1px solid var(--line); border-radius:3px; padding:4px 6px; font:inherit; }
   .fform .fname { flex:3 1 12em; } .fform .fnum { flex:1 1 4.2em; width:4.2em; }
+  .fform input[readonly] { background:transparent; color:var(--dim); border-style:dashed; } /* the calories, when the macros give them */
   @media (max-width:700px) {
     .fform .fname { flex-basis:100%; } .fform input, .fpq input, .fpq select { min-height:40px; font-size:16px; } #scandlg, #photodlg { width:94vw; }
     .fe .fhead { min-height:48px; } .fea button, .fea select { flex:1 1 auto; min-height:40px; padding:6px 10px; white-space:nowrap; } .fea select { font-size:16px; } .frec { min-height:48px; }
@@ -4377,11 +4378,17 @@ function foodForm(meal) {
     const i = mk("input", cls);
     Object.assign(i, attrs);
     i.setAttribute("aria-label", label); i.placeholder = label; i.value = draft[key]; inputs[key] = i;
-    i.oninput = () => { draft[key] = i.value; if (key !== "kcal") hint(); };
+    i.oninput = () => { draft[key] = i.value; if (key === "proteinG" || key === "carbsG" || key === "fatG") { NM.followMacros(draft); calories(); } };
     return i;
   };
-  // while the calories are empty the placeholder says what the macros add up to, which is what is kept
-  const hint = () => { const k = NM.kcalOf(draft); inputs.kcal.placeholder = k === null ? "kcal" : `≈ ${k} kcal`; };
+  // once a macro is typed the calories are the macros' sum, shown and not typed (NM.followMacros), so the two cannot disagree. Until then they
+  // are typed (a coffee has no macros, a food being changed keeps its own), and while they are empty the placeholder says what the macros add up to
+  const calories = () => {
+    const i = inputs.kcal, k = NM.kcalOf(draft);
+    i.readOnly = !!draft.fromMacros; i.value = draft.kcal;
+    i.title = draft.fromMacros ? "The sum of the macros: 4 kcal a gram of protein and carbs, 9 of fat" : "";
+    i.placeholder = k === null ? "kcal" : `≈ ${k} kcal`;
+  };
   const numAttrs = { type: "number", min: "0", step: "any", inputMode: "decimal" };
   // the nutrients beyond the macros: left empty they are unknown (never saved as zero); the section opens by itself when one is filled in
   const more = mk("details", "fmore"), nutrientGrid = mk("div", "fnl-grid");
@@ -4397,7 +4404,7 @@ function foodForm(meal) {
     field("kcal", "kcal", "fnum", numAttrs), field("proteinG", "P g", "fnum", numAttrs), field("carbsG", "C g", "fnum", numAttrs), field("fatG", "F g", "fnum", numAttrs)
   );
   inputs.name.setAttribute("list", "fRecent");
-  hint();
+  calories();
   // a food used lately fills the numbers in, unless some are typed already
   inputs.name.onchange = () => {
     const r = NM.recentMatch(F.data.recent, inputs.name.value);
@@ -4405,7 +4412,7 @@ function foodForm(meal) {
     Object.assign(draft, NM.draftOf(r));
     for (const key of Object.keys(inputs)) inputs[key].value = draft[key];
     more.open = more.open || NM.hasNutrients(draft);
-    hint();
+    calories();
   };
   const save = mk("button", "primary", editing ? "Save" : "Add");
   save.type = "submit";

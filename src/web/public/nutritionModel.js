@@ -299,16 +299,27 @@
   }
 
   /**
+   * A macro was typed in the form: from then on the calories are the macros' sum (`fromMacros`), shown in their field and not typed, so the
+   * two cannot disagree. Once every macro is empty again the calories are free, and empty. Changes the draft and gives it back.
+   */
+  function followMacros(draft) {
+    draft.fromMacros = ["proteinG", "carbsG", "fatG"].some((key) => String(draft[key] == null ? "" : draft[key]).trim() !== "");
+    const k = draft.fromMacros ? kcalOf(draft) : null;
+    draft.kcal = k === null ? "" : String(k);
+    return draft;
+  }
+
+  /**
    * What the form holds as the fields of a food to send ({ item }), or what is wrong with it ({ error }). A field left empty
    * is left out, so the server works the calories out from the macros; with `full` (changing a food) every field is sent:
-   * an empty macro is 0 and empty calories are the macros' sum.
+   * an empty macro is 0 and empty calories are the macros' sum. Calories that follow the macros (followMacros) count as empty.
    */
   function parseDraft(draft, full = false) {
     const name = String(draft.name || "").trim();
     if (!name) return { error: "Give the food a name." };
     const item = { name };
     for (const [key, label] of [["kcal", "Calories"], ["proteinG", "Protein"], ["carbsG", "Carbs"], ["fatG", "Fat"]]) {
-      const v = amount(draft[key]);
+      const v = key === "kcal" && draft.fromMacros ? null : amount(draft[key]);
       if (v === undefined) return { error: `${label} must be a number from 0.` };
       if (v !== null) item[key] = v;
     }
@@ -556,5 +567,5 @@
     return { items };
   }
 
-  return { AI_LIMITS, mealForHour, canEstimate, aiFood, aiRows, aiRowValue, aiGroups, aiTotals, approx, aiItems, gtinOk, expandUpcE, normalizeBarcode, MAX_AMOUNT, parseAmount, amountGrams, scale, brandOf, entryName, portion, productOf, pickOf, allNutrients, per100Line, foodTitle, MEAL_LABELS, mealLabel, kcal, grams, signed, macros, shares, hasBurn, figures, averageNote, bare, qty, goalValue, goalNote, goalMeter, calorieBar, headline, calorieGoal, goalLine, burnLine, macroRows, sharesLine, mealBars, nutrientRows, kindLabel, GROUPS, groupsFor, cell, chartDays, charts, kcalOf, parseDraft, draftOf, EMPTY_DRAFT, hasNumbers, hasNutrients, recentMatch, recentFor, again, foods, NUTRIENTS, nutrientLine, nutrientTiles, scaleNutrients };
+  return { AI_LIMITS, mealForHour, canEstimate, aiFood, aiRows, aiRowValue, aiGroups, aiTotals, approx, aiItems, gtinOk, expandUpcE, normalizeBarcode, MAX_AMOUNT, parseAmount, amountGrams, scale, brandOf, entryName, portion, productOf, pickOf, allNutrients, per100Line, foodTitle, MEAL_LABELS, mealLabel, kcal, grams, signed, macros, shares, hasBurn, figures, averageNote, bare, qty, goalValue, goalNote, goalMeter, calorieBar, headline, calorieGoal, goalLine, burnLine, macroRows, sharesLine, mealBars, nutrientRows, kindLabel, GROUPS, groupsFor, cell, chartDays, charts, kcalOf, followMacros, parseDraft, draftOf, EMPTY_DRAFT, hasNumbers, hasNutrients, recentMatch, recentFor, again, foods, NUTRIENTS, nutrientLine, nutrientTiles, scaleNutrients };
 });

@@ -223,6 +223,23 @@ test.describe("adding a food by tap", () => {
     await expect(dinner.locator(".fe .fk")).toContainText("250");
   });
 
+  test("Enter by hand: once a macro is typed the calories are its sum, and a tap in their box types nothing", async ({ me }) => {
+    await openFood(me);
+    const dinner = meal(me, "dinner");
+    await dinner.getByText("Enter by hand").tap();
+    const kcal = dinner.locator('form.fform input[aria-label="kcal"]');
+    await dinner.locator("form.fform input.fname").fill("Omelette");
+    await dinner.locator('form.fform input[aria-label="P g"]').fill("12");
+    await dinner.locator('form.fform input[aria-label="F g"]').fill("10");
+    await expect(kcal).toHaveValue("138");
+    await kcal.tap();
+    await me.keyboard.type("9");
+    await expect(kcal).toHaveValue("138");
+    await expect(kcal).not.toBeEditable();
+    await dinner.locator("form.fform").getByRole("button", { name: "Add" }).tap();
+    await expect(dinner.locator(".fe .fk")).toHaveText(["138 kcal"]);
+  });
+
   test("a logged food opens to Add again, Change and Delete, each at least 40 px tall", async ({ me, profile }) => {
     await logFoods(profile, "lunch", [{ name: "Apple", kcal: 95 }]);
     await openFood(me);

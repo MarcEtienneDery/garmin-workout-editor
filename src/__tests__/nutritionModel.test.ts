@@ -116,6 +116,24 @@ describe("the form", () => {
     expect(NM.parseDraft({ name: "Oats", kcal: "300", proteinG: "", carbsG: "", fatG: "" }, true)).toMatchObject({ item: { name: "Oats", kcal: 300, proteinG: 0, carbsG: 0, fatG: 0 } });
   });
 
+  it("once a macro is typed, makes the calories the macros' sum, whatever was typed in them before", () => {
+    expect(NM.followMacros({ name: "Drink", kcal: "150", proteinG: "", carbsG: "35", fatG: "" })).toMatchObject({ fromMacros: true, kcal: "140" });
+    expect(NM.followMacros({ name: "Cheese", kcal: "", proteinG: "10.5", carbsG: "0,3", fatG: "2.2" })).toMatchObject({ fromMacros: true, kcal: "63" });
+    expect(NM.followMacros({ name: "Water", kcal: "5", proteinG: "0", carbsG: "", fatG: "" })).toMatchObject({ fromMacros: true, kcal: "0" });
+  });
+
+  it("frees the calories, empty, once every macro is empty again, and leaves them empty while a macro is not a number", () => {
+    expect(NM.followMacros({ name: "Oats", kcal: "40", proteinG: " ", carbsG: "", fatG: "" })).toMatchObject({ fromMacros: false, kcal: "" });
+    expect(NM.followMacros({ name: "Oats", kcal: "40", proteinG: "10", carbsG: "-1", fatG: "" })).toMatchObject({ fromMacros: true, kcal: "" });
+  });
+
+  it("sends calories that follow the macros as empty calories: left out of a new food, the sum when changing one", () => {
+    const draft = NM.followMacros({ name: "Oats", kcal: "300", proteinG: "10", carbsG: "50", fatG: "5" });
+    expect(NM.parseDraft(draft)).toEqual({ item: { name: "Oats", proteinG: 10, carbsG: 50, fatG: 5 } });
+    expect(NM.parseDraft(draft, true)).toMatchObject({ item: { name: "Oats", kcal: 285, proteinG: 10, carbsG: 50, fatG: 5 } });
+    expect(NM.parseDraft(NM.followMacros({ name: "Oats", kcal: "", proteinG: "10", carbsG: "-1", fatG: "" }))).toEqual({ error: "Carbs must be a number from 0." });
+  });
+
   it("leaves the nutrients out of a new food unless they are filled in, and sends a number as a number", () => {
     expect(NM.parseDraft({ name: "Oats", kcal: "300", fiberG: "", sodiumMg: "" }).item).toEqual({ name: "Oats", kcal: 300 });
     expect(NM.parseDraft({ name: "Oats", kcal: "300", fiberG: "8,5", sodiumMg: "0", ironMg: " 2 " }).item).toEqual({ name: "Oats", kcal: 300, nutrients: { fiberG: 8.5, sodiumMg: 0, ironMg: 2 } });
