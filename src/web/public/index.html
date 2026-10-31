@@ -547,6 +547,12 @@
   /* a plan whose span comes from weekStart / weekEnd alone: nothing in it has a scheduledDate */
   .cbar.window { background:transparent; border-style:dashed; border-color:var(--cl); color:var(--fg); }
   .cbar.window:hover:not(:disabled) { background:rgba(255,255,255,.07); filter:none; }
+  /* Both mode: a plan's bar reaches down around its workouts of the week; the cells under it still take the clicks */
+  .cband { z-index:1; min-width:0; margin:1px 2px; background:color-mix(in srgb, var(--c) 30%, transparent); border:1px solid var(--c); border-radius:3px; pointer-events:none; }
+  .cband.cont-l { margin-left:0; border-top-left-radius:0; border-bottom-left-radius:0; }
+  .cband.cont-r { margin-right:0; border-top-right-radius:0; border-bottom-right-radius:0; }
+  .cbar.top { border-bottom-left-radius:0; border-bottom-right-radius:0; }
+  .cbar.wk.inband { margin:1px 5px; }
   #cside h2:not(:first-child) { margin-top:6px; }
   .cblock { padding:0 10px 10px; }
   .clabel { padding:8px 0 2px; color:var(--dim); font-size:11px; text-transform:uppercase; letter-spacing:.06em; }
@@ -687,6 +693,7 @@
     /* the cells are small: bars and chips only colour them, and a tap selects the day, whose details are listed below the grid */
     .cbar, .cbar.act, .cbar.plan, .cbar.more { pointer-events:none; }
     .cbar.wk { height:8px; margin:6px 3px; padding:0; font-size:0; }
+    .cbar.wk.inband { margin:6px 5px; }
     .cday { padding:2px 3px; }
     #cdow span { padding:4px 0; font-size:10px; letter-spacing:0; }
     .citem button { min-height:32px; }
@@ -833,7 +840,8 @@
       <button id="cNext" title="Next month" aria-label="Next month">▶</button>
       <b id="cTitle" aria-live="polite"></b>
       <div class="seg" id="cModes" role="group" aria-label="What the calendar shows">
-        <button data-mode="plans" aria-pressed="true" title="Where each plan is scheduled">Plans</button>
+        <button data-mode="both" aria-pressed="true" title="Each plan across its span, with its workouts on their days">Both</button>
+        <button data-mode="plans" aria-pressed="false" title="Where each plan is scheduled">Plans</button>
         <button data-mode="workouts" aria-pressed="false" title="Which workout is scheduled when">Workouts</button>
       </div>
       <button id="cRefresh" title="Reload the plans">↻</button>
@@ -849,6 +857,8 @@
     <div class="cblock" id="cDay"></div>
     <h2 id="cLegendTitle">Plans</h2>
     <div class="cblock" id="cLegend"></div>
+    <h2 id="cTypesTitle">Workout types</h2>
+    <div class="cblock" id="cTypes"></div>
   </aside>
 </section>
 <section id="aview">
@@ -2388,7 +2398,7 @@ const cloneRow = async (d) => {
 // /api/calendar gives each plan's span (weekStart / weekEnd widened by every scheduledDate) and the dates of its workouts.
 // This is what the files say, not what Garmin's own calendar holds. Dates are YYYY-MM-DD strings and double as day keys;
 // the grid is built with UTC arithmetic so a date never slips a day, and weeks run Monday to Sunday.
-const C = { mode: "plans", month: null, selected: null, plans: [], byDate: new Map(), loaded: false, error: "", run: 0 };
+const C = { mode: "both", month: null, selected: null, plans: [], byDate: new Map(), loaded: false, error: "", run: 0 };
 const DAY_MS = 864e5;
 const TYPE_COLORS = { running: "#2a7d63", strength_training: "#3a68b0", cycling: "#8f6d27", swimming: "#23808f", cardio: "#9a4a73", other: "#666666" };
 const typeColor = (t) => TYPE_COLORS[t] || TYPE_COLORS.other;
@@ -2453,15 +2463,21 @@ function renderCalendar() {
   if (!$("cdow").children.length) for (let d = 0; d < 7; d++) { // 2024-01-01 was a Monday
     const span = document.createElement("span"); span.textContent = utcFormat({ weekday: "short" }).format(Date.UTC(2024, 0, 1 + d)); $("cdow").append(span);
   }
-  const lanes = C.mode === "plans" ? assignLanes(C.plans.filter((p) => p.start && p.start <= last && p.end >= first)) : null;
+  const lanes = C.mode !== "workouts" ? assignLanes(C.plans.filter((p) => p.start && p.start <= last && p.end >= first)) : null;
   const grid = $("cgrid"); grid.replaceChildren();
   for (const days of weeks) {
     const week = document.createElement("div"); week.className = "cweek";
-    const bars = C.mode === "plans" ? planBars(days, lanes) : workoutChips(days);
-    // row 1 carries the day numbers; every lane in use gets a row of its own, and at least two so an empty week still has room
-    week.style.gridTemplateRows = `24px repeat(${Math.max(2, ...bars.map((b) => b.lane + 1))}, 20px) 4px`;
+    let nodes, rows;
+    if (C.mode === "both") ({ nodes, rows } = planBands(days, lanes));
+    else {
+      const bars = C.mode === "plans" ? planBars(days, lanes) : workoutChips(days);
+      nodes = bars.map((b) => b.node); rows = Array(Math.max(0, ...bars.map((b) => b.lane + 1))).fill("20px");
+    }
+    // row 1 carries the day numbers, then the rows of the bars and chips, at least two so an empty week still has room
+    while (rows.length < 2) rows.push("20px");
+    week.style.gridTemplateRows = `24px ${rows.join(" ")} 4px`;
     days.forEach((iso, col) => week.append(dayCell(iso, col, today)));
-    for (const b of bars) week.append(b.node);
+    week.append(...nodes);
     grid.append(week);
   }
   renderNote(first, last);
@@ -2494,36 +2510,78 @@ function dayCell(iso, col, today) {
 const spanText = (p) => `${fmtDate(p.start, { day: "numeric", month: "short" })} – ${fmtDate(p.end)}`;
 const planNote = (p) => p.dated ? `${p.dated} of ${p.workouts.length} workouts dated` : p.workouts.length ? "no workout has a scheduledDate: the span is the plan's weekStart / weekEnd" : "no workouts";
 
+const inWeek = (p, days) => p.start <= days[6] && p.end >= days[0];
+/** The columns of a plan's span in a week (grid-column), and its classes for running on from the week before or into the next. */
+const weekSpan = (p, days) => ({
+  column: `${p.start > days[0] ? days.indexOf(p.start) + 1 : 1} / ${p.end < days[6] ? days.indexOf(p.end) + 2 : 8}`,
+  cont: (p.start < days[0] ? " cont-l" : "") + (p.end > days[6] ? " cont-r" : ""),
+});
+
+/** A plan's bar in a week, named, on grid row `row`. */
+function planBar(p, days, row) {
+  const { column, cont } = weekSpan(p, days), node = document.createElement("button");
+  node.className = "cbar" + cont + (p.dated ? "" : " window");
+  node.style.cssText = `--c:${p.color}; --cl:${p.light}; grid-column:${column}; grid-row:${row}`;
+  node.textContent = p.name;
+  node.title = [p.path + (p.owner ? ` (${p.owner})` : ""), spanText(p), planNote(p)].join("\n");
+  node.onclick = () => openPlan(p.path);
+  return node;
+}
+
+/** A workout's chip on its day (column `col`, 0 for Monday), on grid row `row`. */
+function workoutChip(plan, w, col, row) {
+  const node = document.createElement("button");
+  node.className = "cbar wk";
+  node.style.cssText = `--c:${typeColor(w.workoutType)}; grid-column:${col + 1}; grid-row:${row}`;
+  node.textContent = w.workoutName;
+  node.title = [w.workoutName, `${prettyName(w.workoutType || "other")} · ${plan.name}`].join("\n");
+  node.onclick = () => openPlanAt(plan.path, w);
+  return node;
+}
+
 /** Plan mode: one bar per plan and week across the days of its span. */
 function planBars(days, lanes) {
-  const bars = [];
-  for (const p of C.plans) {
-    if (!lanes.has(p.path) || p.start > days[6] || p.end < days[0]) continue;
-    const from = p.start > days[0] ? days.indexOf(p.start) : 0, to = p.end < days[6] ? days.indexOf(p.end) : 6;
-    const node = document.createElement("button");
-    node.className = "cbar" + (p.start < days[0] ? " cont-l" : "") + (p.end > days[6] ? " cont-r" : "") + (p.dated ? "" : " window");
-    node.style.cssText = `--c:${p.color}; --cl:${p.light}; grid-column:${from + 1} / ${to + 2}; grid-row:${lanes.get(p.path) + 2}`;
-    node.textContent = p.name;
-    node.title = [p.path + (p.owner ? ` (${p.owner})` : ""), spanText(p), planNote(p)].join("\n");
-    node.onclick = () => openPlan(p.path);
-    bars.push({ node, lane: lanes.get(p.path) });
-  }
-  return bars;
+  return C.plans.filter((p) => lanes.has(p.path) && inWeek(p, days)).map((p) => ({ node: planBar(p, days, lanes.get(p.path) + 2), lane: lanes.get(p.path) }));
 }
 
 /** Workout mode: one chip per scheduled workout, stacked in its day. */
 function workoutChips(days) {
   const bars = [];
-  days.forEach((iso, col) => (C.byDate.get(iso) || []).forEach(({ plan, w }, lane) => {
-    const node = document.createElement("button");
-    node.className = "cbar wk";
-    node.style.cssText = `--c:${typeColor(w.workoutType)}; grid-column:${col + 1}; grid-row:${lane + 2}`;
-    node.textContent = w.workoutName;
-    node.title = [w.workoutName, `${prettyName(w.workoutType || "other")} · ${plan.name}`].join("\n");
-    node.onclick = () => openPlanAt(plan.path, w);
-    bars.push({ node, lane });
-  }));
+  days.forEach((iso, col) => (C.byDate.get(iso) || []).forEach(({ plan, w }, lane) => bars.push({ node: workoutChip(plan, w, col, lane + 2), lane })));
   return bars;
+}
+
+/**
+ * Both mode: each plan's bar with its workouts of the week inside it, stacked under its name in their days. The lanes keep
+ * their order from week to week, but each is as tall as its busiest day this week, so a plan with nothing scheduled in a week
+ * is a plain bar there. Returns the nodes and the heights of the rows after the day numbers.
+ */
+function planBands(days, lanes) {
+  const nodes = [], rows = [], byLane = new Map();
+  for (const p of C.plans) if (lanes.has(p.path) && inWeek(p, days)) byLane.set(lanes.get(p.path), [...(byLane.get(lanes.get(p.path)) || []), p]);
+  for (const lane of [...byLane.keys()].sort((a, b) => a - b)) {
+    const plans = byLane.get(lane), head = rows.length + 2; // grid row of the names (row 1 is the day numbers)
+    const stacks = plans.map((p) => days.map((iso) => (C.byDate.get(iso) || []).filter((e) => e.plan === p)));
+    const depth = Math.max(0, ...stacks.flat().map((list) => list.length));
+    rows.push("20px", ...Array(depth).fill("20px"), ...(depth ? ["4px"] : [])); // the names, the chips, a little room under them
+    plans.forEach((p, i) => {
+      const bar = planBar(p, days, head);
+      if (stacks[i].some((list) => list.length)) {
+        const { column, cont } = weekSpan(p, days), band = document.createElement("div");
+        band.className = "cband" + cont; band.dataset.path = p.path; band.setAttribute("aria-hidden", "true");
+        band.style.cssText = `--c:${p.color}; grid-column:${column}; grid-row:${head} / ${head + depth + 2}`;
+        bar.classList.add("top");
+        nodes.push(band); // before the bar and the chips, which are drawn over it
+      }
+      nodes.push(bar);
+      stacks[i].forEach((list, col) => list.forEach(({ w }, k) => {
+        const chip = workoutChip(p, w, col, head + 1 + k);
+        chip.classList.add("inband");
+        nodes.push(chip);
+      }));
+    });
+  }
+  return { nodes, rows };
 }
 
 /** Above the grid: loading / failure, or a way to the nearest month that has something when this one is empty. */
@@ -2532,14 +2590,16 @@ function renderNote(first, last) {
   note.hidden = false;
   if (C.error) { note.textContent = C.error; return; }
   if (!C.loaded) { note.textContent = "Loading…"; return; }
-  const spans = C.mode === "plans" ? C.plans.filter((p) => p.start).map((p) => [p.start, p.end]) : [...C.byDate.keys()].map((d) => [d, d]);
+  // a plan's span holds every date of its workouts, so with the plans drawn their spans say where there is something
+  const workouts = C.mode === "workouts";
+  const spans = workouts ? [...C.byDate.keys()].map((d) => [d, d]) : C.plans.filter((p) => p.start).map((p) => [p.start, p.end]);
   note.hidden = spans.some(([start, end]) => start <= last && end >= first);
   if (note.hidden) return;
-  const what = C.mode === "plans" ? "planned" : "scheduled";
+  const what = workouts ? "scheduled" : "planned";
   if (!spans.length) {
-    note.textContent = C.mode === "plans"
-      ? "No plan has dates yet. A plan's weekStart / weekEnd, or a workout's scheduledDate (YYYY-MM-DD), puts it on the calendar."
-      : "No workout has a scheduledDate yet (YYYY-MM-DD).";
+    note.textContent = workouts
+      ? "No workout has a scheduledDate yet (YYYY-MM-DD)."
+      : "No plan has dates yet. A plan's weekStart / weekEnd, or a workout's scheduledDate (YYYY-MM-DD), puts it on the calendar.";
     return;
   }
   note.append(`Nothing ${what} in ${monthName(C.month)}.`);
@@ -2553,7 +2613,7 @@ function renderNote(first, last) {
   }
 }
 
-/** The side panel: what the selected day holds, then the legend for the colours. */
+/** The side panel: what the selected day holds, then the legends for the colours (plans, workout types, or both). */
 function renderSide() {
   const day = $("cDay"); day.replaceChildren();
   const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
@@ -2579,20 +2639,19 @@ function renderSide() {
   for (const [label, rows] of sections) if (rows.length) day.append(el("div", "clabel", label), ...rows);
   if (!inPlans.length && !works.length) day.append(el("div", "empty", C.loaded ? "Nothing on this day." : ""));
 
-  const legend = $("cLegend"); legend.replaceChildren();
-  $("cLegendTitle").textContent = C.mode === "plans" ? "Plans" : "Workout types";
-  if (C.mode === "plans") {
-    for (const p of C.plans) {
-      const jump = p.start ? () => gotoMonth(p.start.slice(0, 7)) : () => openPlan(p.path);
-      legend.append(item({ color: p.color, light: p.light, window: !p.dated, title: p.name, detail: p.start ? `${spanText(p)} · ${planNote(p)}` : "No dates yet", run: jump, button: { label: "Open", run: () => openPlan(p.path) } }));
-    }
-    if (!C.plans.length) legend.append(el("div", "empty", C.loaded ? "No plans." : ""));
-  } else {
-    const counts = new Map();
-    for (const list of C.byDate.values()) for (const { w } of list) counts.set(w.workoutType || "other", (counts.get(w.workoutType || "other") || 0) + 1);
-    for (const [type, n] of [...counts].sort((a, b) => b[1] - a[1])) legend.append(item({ color: typeColor(type), title: prettyName(type), detail: `${n} scheduled` }));
-    if (!counts.size) legend.append(el("div", "empty", C.loaded ? "No scheduled workouts." : ""));
+  const legend = $("cLegend"), types = $("cTypes");
+  legend.replaceChildren(); types.replaceChildren();
+  $("cLegendTitle").hidden = legend.hidden = C.mode === "workouts";
+  $("cTypesTitle").hidden = types.hidden = C.mode === "plans";
+  for (const p of C.plans) {
+    const jump = p.start ? () => gotoMonth(p.start.slice(0, 7)) : () => openPlan(p.path);
+    legend.append(item({ color: p.color, light: p.light, window: !p.dated, title: p.name, detail: p.start ? `${spanText(p)} · ${planNote(p)}` : "No dates yet", run: jump, button: { label: "Open", run: () => openPlan(p.path) } }));
   }
+  if (!C.plans.length) legend.append(el("div", "empty", C.loaded ? "No plans." : ""));
+  const counts = new Map();
+  for (const list of C.byDate.values()) for (const { w } of list) counts.set(w.workoutType || "other", (counts.get(w.workoutType || "other") || 0) + 1);
+  for (const [type, n] of [...counts].sort((a, b) => b[1] - a[1])) types.append(item({ color: typeColor(type), title: prettyName(type), detail: `${n} scheduled` }));
+  if (!counts.size) types.append(el("div", "empty", C.loaded ? "No scheduled workouts." : ""));
 }
 
 // ── Activities view: the stored activities as a list and as a calendar ──

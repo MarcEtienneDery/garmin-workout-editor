@@ -1,6 +1,6 @@
 /**
- * The Calendar view: where the plan files put their workouts, as a month grid in two modes (Plans: a bar per plan across its span;
- * Workouts: a chip per scheduled workout). Alice's plans are read-only and seeded relative to today; the fresh profiles made here
+ * The Calendar view: where the plan files put their workouts, as a month grid in three modes (Plans: a bar per plan across its span;
+ * Workouts: a chip per scheduled workout; Both, the default: each plan's bar with its workouts of the week inside it). Alice's plans are read-only and seeded relative to today; the fresh profiles made here
  * use dates in 2031, so no other spec's data lands on their months.
  */
 import type { APIRequestContext, Locator, Page } from "@playwright/test";
@@ -48,15 +48,18 @@ async function expectSpans(bar: Locator, from: Locator, to: Locator) {
   expect(Math.abs(b.x + b.width - (z.x + z.width))).toBeLessThanOrEqual(3);
 }
 
-/** Open the Calendar view and wait until the plans have arrived (the page's own "Loading…" note has gone). */
-async function openCalendar(page: Page): Promise<void> {
+/** Open the Calendar view and wait until the plans have arrived (the page's own "Loading…" note has gone); `mode` is then pressed. */
+async function openCalendar(page: Page, mode?: "both" | "plans" | "workouts"): Promise<void> {
   await openView(page, "calendar");
   for (let attempt = 0; attempt < 3; attempt++) {
     await expect(page.locator("#cNote")).not.toContainText("Loading", { timeout: 20_000 });
-    if (!(await page.locator("#cNote").evaluate((e) => e.classList.contains("err")))) return;
+    if (!(await page.locator("#cNote").evaluate((e) => e.classList.contains("err")))) break;
     // the page shows "Failed to fetch" when a load is dropped and does not ask again: press its reload button, as a person would
     await page.locator("#cRefresh").click();
   }
+  if (!mode) return;
+  await page.locator(`#cModes button[data-mode=${mode}]`).click();
+  await expect(page.locator(`#cModes button[data-mode=${mode}]`)).toHaveAttribute("aria-pressed", "true");
 }
 
 /** Show the month of a day: Today first (which also selects today), then the arrows for the months between. */
@@ -110,10 +113,11 @@ const GREY = "rgb(102, 102, 102)"; // anything else (walking)
 // ── the month grid ───────────────────────────────────────────────────────
 
 test.describe("month grid", () => {
-  test("opens on the current month in Plans mode", async ({ alice }) => {
+  test("opens on the current month in Both mode", async ({ alice }) => {
     await openCalendar(alice);
     await expect(alice.locator("#cTitle")).toHaveText(monthTitle(today()));
-    await expect(alice.locator("#cModes button[data-mode=plans]")).toHaveAttribute("aria-pressed", "true");
+    await expect(alice.locator("#cModes button[data-mode=both]")).toHaveAttribute("aria-pressed", "true");
+    await expect(alice.locator("#cModes button[data-mode=plans]")).toHaveAttribute("aria-pressed", "false");
     await expect(alice.locator("#cModes button[data-mode=workouts]")).toHaveAttribute("aria-pressed", "false");
   });
 
@@ -224,7 +228,7 @@ test.describe("month grid", () => {
 
 test.describe("Plans mode", () => {
   test("a plan is one bar across the week it covers, and alice's run block spans the whole current week", async ({ alice }) => {
-    await openCalendar(alice);
+    await openCalendar(alice, "plans");
     const week = weekOf(alice, today());
     const bar = week.getByRole("button", { name: RUN_BLOCK, exact: true });
     await expect(bar).toHaveCount(1);
@@ -235,7 +239,7 @@ test.describe("Plans mode", () => {
   });
 
   test("two plans that overlap are drawn on separate rows", async ({ alice }) => {
-    await openCalendar(alice);
+    await openCalendar(alice, "plans");
     const week = weekOf(alice, today());
     const run = await box(week.getByRole("button", { name: RUN_BLOCK, exact: true }));
     const shared = await box(week.getByRole("button", { name: SHARED, exact: true }));
@@ -243,14 +247,14 @@ test.describe("Plans mode", () => {
   });
 
   test("each plan's bar is named and its tooltip gives its file and owner", async ({ alice }) => {
-    await openCalendar(alice);
+    await openCalendar(alice, "plans");
     const bar = weekOf(alice, today()).getByRole("button", { name: RUN_BLOCK, exact: true });
     await expect(bar).toHaveAttribute("title", /workout-plans\/alice-run-block\.json \(alice\)/);
     await expect(bar).toHaveAttribute("title", /4 of 4 workouts dated/);
   });
 
   test("a plan with no dated workout is drawn dashed, and the legend says why", async ({ alice }) => {
-    await openCalendar(alice);
+    await openCalendar(alice, "plans");
     await legendRow(alice, SOMEDAY).click();
     await expect(alice.locator("#cTitle")).toHaveText(monthTitle("2026-01-01"));
     const bar = alice.getByRole("button", { name: SOMEDAY, exact: true }).first();
@@ -260,20 +264,20 @@ test.describe("Plans mode", () => {
   });
 
   test("a plan whose workouts are dated is drawn solid", async ({ alice }) => {
-    await openCalendar(alice);
+    await openCalendar(alice, "plans");
     const bar = weekOf(alice, today()).getByRole("button", { name: RUN_BLOCK, exact: true });
     await expect(bar).toHaveCSS("border-top-style", "solid");
   });
 
   test("clicking a plan bar opens that plan in the Plans view", async ({ alice }) => {
-    await openCalendar(alice);
+    await openCalendar(alice, "plans");
     await weekOf(alice, today()).getByRole("button", { name: RUN_BLOCK, exact: true }).click();
     await expect(alice.locator("body")).toHaveAttribute("data-view", "plans");
     await expect(alice.locator("#current")).toContainText("alice-run-block.json");
   });
 
   test("the legend lists alice's plans with their spans and the undated plan's window", async ({ alice }) => {
-    await openCalendar(alice);
+    await openCalendar(alice, "plans");
     await expect(alice.locator("#cLegend .citem .n", { hasText: RUN_BLOCK })).toHaveCount(1);
     await expect(alice.locator("#cLegend .citem .n", { hasText: SHARED })).toHaveCount(1);
     await expect(alice.locator("#cLegend .citem .n", { hasText: SOMEDAY })).toHaveCount(1);
@@ -282,14 +286,14 @@ test.describe("Plans mode", () => {
   });
 
   test("the legend's Open button opens the plan in the Plans view", async ({ alice }) => {
-    await openCalendar(alice);
+    await openCalendar(alice, "plans");
     await legendRow(alice, SOMEDAY).getByRole("button", { name: "Open", exact: true }).click();
     await expect(alice.locator("body")).toHaveAttribute("data-view", "plans");
     await expect(alice.locator("#current")).toContainText("alice-someday.json");
   });
 
   test("clicking a legend row jumps to the plan's first month", async ({ alice }) => {
-    await openCalendar(alice);
+    await openCalendar(alice, "plans");
     await legendRow(alice, SOMEDAY).click();
     await expect(alice.locator("#cTitle")).toHaveText(monthTitle("2026-01-01"));
     await expect(alice.locator("#cModes button[data-mode=plans]")).toHaveAttribute("aria-pressed", "true");
@@ -297,7 +301,7 @@ test.describe("Plans mode", () => {
   });
 
   test("the side panel lists the plans a day falls in, with their span", async ({ alice }) => {
-    await openCalendar(alice);
+    await openCalendar(alice, "plans");
     await cellOf(alice, today()).click({ position: { x: 6, y: 6 } });
     await expect(alice.locator("#cDay .clabel").first()).toHaveText(/^In plans?$/);
     await expect(alice.locator("#cDay")).toContainText(RUN_BLOCK);
@@ -310,7 +314,7 @@ test.describe("Plans mode", () => {
       weekEnd: "2031-03-09",
       workouts: [{ workoutName: "Far run", workoutType: "running", scheduledDate: "2031-03-19" }],
     });
-    await openCalendar(me);
+    await openCalendar(me, "plans");
     await legendRow(me, `${profile.name}-far`).click();
     await expect(me.locator("#cTitle")).toHaveText(monthTitle("2031-03-01"));
     const week = weekOf(me, "2031-03-17");
@@ -385,10 +389,13 @@ test.describe("Workouts mode", () => {
   test("the legend lists the workout types scheduled, with how many dates each has", async ({ alice }) => {
     await openCalendar(alice);
     await alice.locator("#cModes button[data-mode=workouts]").click();
-    await expect(alice.locator("#cLegendTitle")).toHaveText("Workout types");
-    await expect(alice.locator("#cLegend .citem", { hasText: "Strength Training" })).toContainText("scheduled");
-    await expect(alice.locator("#cLegend .citem", { hasText: "Running" })).toContainText("scheduled");
-    await expect(alice.locator("#cLegend .citem", { hasText: "Walking" })).toContainText("1 scheduled");
+    await expect(alice.locator("#cTypesTitle")).toHaveText("Workout types");
+    await expect(alice.locator("#cTypes .citem", { hasText: "Strength Training" })).toContainText("scheduled");
+    await expect(alice.locator("#cTypes .citem", { hasText: "Running" })).toContainText("scheduled");
+    await expect(alice.locator("#cTypes .citem", { hasText: "Walking" })).toContainText("1 scheduled");
+    // the plans' legend is not shown in this mode
+    await expect(alice.locator("#cLegendTitle")).toBeHidden();
+    await expect(alice.locator("#cLegend")).toBeHidden();
   });
 
   test("a month with scheduled workouts elsewhere says so, with a button to the nearest of them", async ({ alice }) => {
@@ -400,6 +407,161 @@ test.describe("Workouts mode", () => {
     const label = (await next.textContent())!.replace(/\s*→$/, "");
     await next.click();
     await expect(alice.locator("#cTitle")).toHaveText(label);
+  });
+});
+
+// ── Both mode (the default) ──────────────────────────────────────────────
+
+/** A plan's band in a week: the part of its bar that reaches down around its workouts (Both mode). */
+const bandOf = (page: Page, day: string, path: string) => weekOf(page, day).locator(`.cband[data-path="${path}"]`);
+
+/** `inner` lies within `outer` (1 px of slack for borders). */
+function expectInside(inner: { x: number; y: number; width: number; height: number }, outer: typeof inner) {
+  expect(inner.x).toBeGreaterThanOrEqual(outer.x - 1);
+  expect(inner.y).toBeGreaterThanOrEqual(outer.y - 1);
+  expect(inner.x + inner.width).toBeLessThanOrEqual(outer.x + outer.width + 1);
+  expect(inner.y + inner.height).toBeLessThanOrEqual(outer.y + outer.height + 1);
+}
+
+test.describe("Both mode", () => {
+  test("a workout sits inside its plan's bar, under the plan's name, on its day", async ({ alice }) => {
+    await openCalendar(alice);
+    const week = weekOf(alice, today());
+    await expect.poll(() => chipsOnDay(alice, today(), "Tempo intervals")).toBe(1);
+    const [bar, band, chip] = await Promise.all([
+      box(week.getByRole("button", { name: RUN_BLOCK, exact: true })),
+      box(bandOf(alice, today(), "workout-plans/alice-run-block.json")),
+      box(week.getByRole("button", { name: "Tempo intervals", exact: true })),
+    ]);
+    expectInside(chip, band);
+    expectInside(bar, band);
+    expect(chip.y).toBeGreaterThanOrEqual(bar.y + bar.height - 1);
+    // and a workout of the shared plan is inside the shared plan's bar, not the run block's
+    const day = daysAhead(2);
+    await goToMonthOf(alice, day);
+    const walk = await box(weekOf(alice, day).getByRole("button", { name: "Shared walk", exact: true }));
+    expectInside(walk, await box(bandOf(alice, day, "workout-plans/shared-base.json")));
+    const runBand = await box(bandOf(alice, day, "workout-plans/alice-run-block.json"));
+    expect(walk.y >= runBand.y + runBand.height - 1 || walk.y + walk.height <= runBand.y + 1).toBeTruthy();
+  });
+
+  test("the month has the chips of Workouts mode and the bars of Plans mode", async ({ alice }) => {
+    await openCalendar(alice);
+    const chips = alice.locator("#cgrid .cbar.wk"), bars = alice.locator("#cgrid .cbar:not(.wk)");
+    await expect(chips.first()).toBeVisible();
+    await expect(bars.first()).toBeVisible();
+    const both = { chips: await chips.allTextContents(), bars: await bars.allTextContents() };
+    await alice.locator("#cModes button[data-mode=workouts]").click();
+    await expect(bars).toHaveCount(0);
+    await expect(chips).toHaveText(both.chips);
+    await alice.locator("#cModes button[data-mode=plans]").click();
+    await expect(chips).toHaveCount(0);
+    await expect(bars).toHaveText(both.bars);
+    await alice.locator("#cModes button[data-mode=both]").click();
+    await expect(chips).toHaveText(both.chips);
+    await expect(bars).toHaveText(both.bars);
+  });
+
+  test("the bar is drawn in its plan's colour around the workouts, which keep their type's colour", async ({ alice }) => {
+    await openCalendar(alice);
+    const week = weekOf(alice, today());
+    const bar = week.getByRole("button", { name: RUN_BLOCK, exact: true });
+    const colour = await bar.evaluate((e) => getComputedStyle(e).backgroundColor);
+    await expect(bandOf(alice, today(), "workout-plans/alice-run-block.json")).toHaveCSS("border-top-color", colour);
+    await expect(week.getByRole("button", { name: "Tempo intervals", exact: true })).toHaveCSS("background-color", GREEN);
+    // the other modes draw no band
+    await alice.locator("#cModes button[data-mode=plans]").click();
+    await expect(alice.locator("#cgrid .cband")).toHaveCount(0);
+    await alice.locator("#cModes button[data-mode=workouts]").click();
+    await expect(alice.locator("#cgrid .cband")).toHaveCount(0);
+  });
+
+  test("clicking a chip opens the plan in the Plans view with the workout's picture open", async ({ alice }) => {
+    await openCalendar(alice);
+    await weekOf(alice, today()).getByRole("button", { name: "Tempo intervals", exact: true }).click();
+    await expect(alice.locator("body")).toHaveAttribute("data-view", "plans");
+    await expect(alice.locator("#current")).toContainText("alice-run-block.json");
+    await expect(alice.locator("#outline .row[data-name='Tempo intervals'] .wv-host")).toBeVisible();
+  });
+
+  test("the side panel lists the day's plans, then its workouts", async ({ alice }) => {
+    await openCalendar(alice);
+    await cellOf(alice, today()).click({ position: { x: 6, y: 6 } });
+    await expect(alice.locator("#cDay .clabel")).toHaveText(["In plans", "Workout"]);
+    await expect(alice.locator("#cDay")).toContainText(RUN_BLOCK);
+    await expect(alice.locator("#cDay .citem", { hasText: "Tempo intervals" })).toContainText("Running · alice-run-block");
+  });
+
+  test("the side panel has both legends, and each other mode keeps its own", async ({ alice }) => {
+    await openCalendar(alice);
+    await expect(alice.locator("#cLegendTitle")).toHaveText("Plans");
+    await expect(legendRow(alice, RUN_BLOCK)).toContainText("4 of 4 workouts dated");
+    await expect(alice.locator("#cTypesTitle")).toHaveText("Workout types");
+    await expect(alice.locator("#cTypes .citem", { hasText: "Walking" })).toContainText("1 scheduled");
+    await alice.locator("#cModes button[data-mode=plans]").click();
+    await expect(alice.locator("#cLegend")).toBeVisible();
+    await expect(alice.locator("#cTypesTitle")).toBeHidden();
+    await expect(alice.locator("#cTypes")).toBeHidden();
+    await alice.locator("#cModes button[data-mode=workouts]").click();
+    await expect(alice.locator("#cTypes")).toBeVisible();
+    await expect(alice.locator("#cLegendTitle")).toBeHidden();
+    await expect(alice.locator("#cLegend")).toBeHidden();
+  });
+
+  test("a day's two workouts stack inside the plan's bar, and a click beside them selects the day", async ({ me, profile }) => {
+    const name = `${profile.name}-stack`;
+    await addPlan(profile.api, name, {
+      weekStart: "2031-09-01",
+      weekEnd: "2031-09-07",
+      workouts: [
+        { workoutName: "Morning run", workoutType: "running", scheduledDate: "2031-09-03" },
+        { workoutName: "Evening lift", workoutType: "strength_training", scheduledDate: "2031-09-03" },
+      ],
+    });
+    await openCalendar(me);
+    await legendRow(me, name).click();
+    await expect(me.locator("#cTitle")).toHaveText(monthTitle("2031-09-01"));
+    const week = weekOf(me, "2031-09-03");
+    const [bar, band, first, second, row] = await Promise.all([
+      box(week.getByRole("button", { name, exact: true })),
+      box(week.locator(".cband")),
+      box(week.getByRole("button", { name: "Morning run", exact: true })),
+      box(week.getByRole("button", { name: "Evening lift", exact: true })),
+      box(week),
+    ]);
+    expect(first.y).toBeGreaterThanOrEqual(bar.y + bar.height - 1);
+    expect(second.y).toBeGreaterThanOrEqual(first.y + first.height - 1);
+    expectInside(first, band);
+    expectInside(second, band);
+    expectInside(band, row);
+    // the bar's empty part, on Friday at the height of the chips, belongs to the day under it
+    const friday = await box(cellOf(me, "2031-09-05"));
+    await me.mouse.click(friday.x + friday.width / 2, first.y + first.height / 2);
+    await expect(me.locator("#cDayTitle")).toHaveText(longLabel("2031-09-05"));
+  });
+
+  test("a plan with no workout in a week is a plain bar that week", async ({ me, profile }) => {
+    const name = `${profile.name}-late`;
+    await addPlan(profile.api, name, {
+      weekStart: "2031-10-06",
+      weekEnd: "2031-10-12",
+      workouts: [{ workoutName: "Late run", workoutType: "running", scheduledDate: "2031-10-22" }],
+    });
+    await openCalendar(me);
+    await legendRow(me, name).click();
+    await expect(me.locator("#cTitle")).toHaveText(monthTitle("2031-10-01"));
+    for (const day of ["2031-10-06", "2031-10-13"]) {
+      await expect(weekOf(me, day).getByRole("button", { name, exact: true })).toHaveCount(1);
+      await expect(weekOf(me, day).locator(".cband")).toHaveCount(0);
+    }
+    await expect(weekOf(me, "2031-10-20").locator(".cband")).toHaveCount(1);
+    await expect.poll(() => chipsOnDay(me, "2031-10-22", "Late run")).toBe(1);
+  });
+
+  test("a month with plans elsewhere says nothing is planned, as Plans mode does", async ({ alice }) => {
+    await openCalendar(alice);
+    await goToMonthOf(alice, "2025-06-16");
+    await expect(alice.locator("#cNote")).toContainText("Nothing planned in June 2025.");
   });
 });
 
@@ -487,7 +649,7 @@ test.describe("a profile's own plans", () => {
     await legendRow(me, name).click();
     await me.locator("#cModes button[data-mode=workouts]").click();
     await expect(me.locator("#cgrid .cbar.wk", { hasText: "Bogus date run" })).toHaveCount(0);
-    await expect(me.locator("#cLegend .citem", { hasText: "Running" })).toHaveCount(0);
+    await expect(me.locator("#cTypes .citem", { hasText: "Running" })).toHaveCount(0);
   });
 
   test("a month with plans elsewhere says so and offers the nearest month that has one", async ({ me, profile }) => {
@@ -569,7 +731,7 @@ test.describe("empty states", () => {
   test("with no plans at all, the Plans mode says so and the legend has nothing", async ({ page }) => {
     await page.route("**/api/calendar", (route) => route.fulfill({ json: NO_PLANS }));
     await loginAs(page, "bob", PASSWORD);
-    await openCalendar(page);
+    await openCalendar(page, "plans");
     await expect(page.locator("#cNote")).toHaveText("No plan has dates yet. A plan's weekStart / weekEnd, or a workout's scheduledDate (YYYY-MM-DD), puts it on the calendar.");
     await expect(page.locator("#cLegend")).toHaveText("No plans.");
     await expect(page.locator("#cDay")).toHaveText("Nothing on this day.");
@@ -581,7 +743,16 @@ test.describe("empty states", () => {
     await openCalendar(page);
     await page.locator("#cModes button[data-mode=workouts]").click();
     await expect(page.locator("#cNote")).toHaveText("No workout has a scheduledDate yet (YYYY-MM-DD).");
-    await expect(page.locator("#cLegend")).toHaveText("No scheduled workouts.");
+    await expect(page.locator("#cTypes")).toHaveText("No scheduled workouts.");
+  });
+
+  test("with no plans at all, the Both mode says no plan has dates, and both legends have nothing", async ({ page }) => {
+    await page.route("**/api/calendar", (route) => route.fulfill({ json: NO_PLANS }));
+    await loginAs(page, "bob", PASSWORD);
+    await openCalendar(page);
+    await expect(page.locator("#cNote")).toHaveText("No plan has dates yet. A plan's weekStart / weekEnd, or a workout's scheduledDate (YYYY-MM-DD), puts it on the calendar.");
+    await expect(page.locator("#cLegend")).toHaveText("No plans.");
+    await expect(page.locator("#cTypes")).toHaveText("No scheduled workouts.");
   });
 
   test("the grid still draws the month when there is nothing to show in it", async ({ page }) => {

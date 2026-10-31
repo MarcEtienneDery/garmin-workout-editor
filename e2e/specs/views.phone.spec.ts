@@ -96,6 +96,19 @@ test.describe("the Calendar on a phone", () => {
     await expect(alice.locator("#cDayTitle")).toContainText(weekday);
   });
 
+  test("opens on Both: the workouts are dots inside their plan's bar, under its name", async ({ alice }) => {
+    await openView(alice, "calendar");
+    await expect(alice.locator("#cModes button[data-mode=both]")).toHaveAttribute("aria-pressed", "true");
+    const week = alice.locator("#cgrid .cweek").filter({ has: alice.locator(".cday.today") });
+    const bar = week.locator(".cbar.top").first(), dot = week.locator(".cbar.wk").first(), band = week.locator(".cband").first();
+    await expect(dot).toBeVisible();
+    const [b, d, n] = await Promise.all([bar.boundingBox(), dot.boundingBox(), band.boundingBox()]);
+    expect(d!.y).toBeGreaterThanOrEqual(b!.y + b!.height - 1);
+    expect(d!.y + d!.height).toBeLessThanOrEqual(n!.y + n!.height);
+    expect(d!.height).toBeLessThanOrEqual(10);
+    await expect.poll(() => stickingOut(alice)).toEqual([]);
+  });
+
   test("a day with nothing planned says so", async ({ alice }) => {
     await openView(alice, "calendar");
     // two months ahead, where no plan reaches
