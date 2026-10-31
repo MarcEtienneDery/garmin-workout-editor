@@ -1,13 +1,14 @@
 /**
- * foodAi.ts — estimating a meal from words and photos with Claude, for the Food view's "Describe or photograph what you ate" box.
- * The server asks, never the browser, and the words and photos are sent to Anthropic and nowhere else. Nothing is kept: a photo
- * lives in memory for the request, and nothing is logged until the person has seen the estimate and the page sends the foods it
- * keeps to the food log (POST /api/nutrition).
+ * foodAi.ts — estimating a meal from words and photos with Claude (or Gemini), for the Food view's "Describe or photograph what you ate" box.
+ * The server asks, never the browser, and the words and photos are sent to the one AI the server is set up for (Anthropic, or Google for
+ * Gemini) and nowhere else. Nothing is kept: a photo lives in memory for the request, and nothing is logged until the person has seen the
+ * estimate and the page sends the foods it keeps to the food log (POST /api/nutrition).
  *
- * There are two ways to ask, `FOOD_AI_BACKEND`: `api` (the Anthropic API with ANTHROPIC_API_KEY, paid per call from API credit) and
- * `cli` (Claude Code's `claude -p`, signed in with a Claude plan: foodAiCli.ts, no API credit). Unset, it is `api` when there is a key,
- * else `cli` when there is a CLAUDE_CODE_OAUTH_TOKEN, else the box says it is not set up. Both are given the same system prompt and the
- * same JSON Schema, and what they answer is checked the same way.
+ * There are three ways to ask, `FOOD_AI_BACKEND`: `api` (the Anthropic API with ANTHROPIC_API_KEY, paid per call from API credit),
+ * `cli` (Claude Code's `claude -p`, signed in with a Claude plan: foodAiCli.ts, no API credit) and `gemini` (Google's Gemini API with
+ * GEMINI_API_KEY, which has a free tier: foodAiGemini.ts). Unset, it is `api` when there is an Anthropic key, else `cli` when there is a
+ * CLAUDE_CODE_OAUTH_TOKEN, else `gemini` when there is a Gemini key, else the box says it is not set up. All are given the same system
+ * prompt and the same JSON Schema, and what they answer is checked the same way.
  *
  * Claude answers with JSON that follows a schema (structured outputs; Sonnet 5.5 and Opus 5.5 reject a forced tool call). Every food
  * is then checked by the food log's own rules (shared/nutrition.ts parseFood), so an estimate can hold nothing the log would refuse.
@@ -17,6 +18,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { type CliRunner, askCli } from "./foodAiCli";
 import { FoodAiError, type FoodAiErrorKind, REFUSED, TRUNCATED, UNREADABLE } from "./foodAiError";
+import { DEFAULT_GEMINI_MODELS, type GeminiFetch, askGemini } from "./foodAiGemini";
 import { NUTRIENTS, type Nutrients } from "./nutrients";
 import { MAX_GRAMS, MEALS, type Meal, NutritionError, parseFood } from "./nutrition";
 import { addDays } from "./wellnessSync";
@@ -85,22 +87,34 @@ export interface FoodAiDeps {
   client?: FoodAiClient;
   /** Starts `claude` (the `cli` backend). */
   run?: CliRunner;
+  /** Sends the request to Google (the `gemini` backend). */
+  fetch?: GeminiFetch;
   env?: NodeJS.ProcessEnv;
 }
 
 // ── Settings ─────────────────────────────────────────────────────────────
 
-export type Backend = "api" | "cli";
+export type Backend = "api" | "cli" | "gemini";
 
 const apiKey = (env: NodeJS.ProcessEnv): string => (env.ANTHROPIC_API_KEY ?? "").trim();
+const geminiKey = (env: NodeJS.ProcessEnv): string => (env.GEMINI_API_KEY ?? "").trim();
+/** FOOD_AI_MODEL, else Claude's default model. */
 const modelOf = (env: NodeJS.ProcessEnv): string => (env.FOOD_AI_MODEL ?? "").trim() || DEFAULT_MODEL;
+/** Gemini's models, asked in turn: FOOD_AI_MODEL (comma-separated), else DEFAULT_GEMINI_MODELS. */
+const geminiModelsOf = (env: NodeJS.ProcessEnv): string[] => {
+  const listed = (env.FOOD_AI_MODEL ?? "").split(",").map((m) => m.trim()).filter(Boolean);
+  return listed.length ? listed : DEFAULT_GEMINI_MODELS;
+};
+/** The key a backend cannot ask without; Claude Code has its login instead, so it needs none here. */
+const keyOf = (env: NodeJS.ProcessEnv, backend: Backend): string | null => (backend === "api" ? apiKey(env) : backend === "gemini" ? geminiKey(env) : null);
 
-/** How Claude is asked: FOOD_AI_BACKEND when it says `api` or `cli`, else `api` with an API key, else `cli` with a plan login token, else no way (null). */
+/** How the AI is asked: FOOD_AI_BACKEND when it says `api`, `cli` or `gemini`, else `api` with an API key, else `cli` with a plan login token, else `gemini` with a Gemini key, else no way (null). */
 export function backendOf(env: NodeJS.ProcessEnv): Backend | null {
   const asked = (env.FOOD_AI_BACKEND ?? "").trim().toLowerCase();
-  if (asked === "api" || asked === "cli") return asked;
+  if (asked === "api" || asked === "cli" || asked === "gemini") return asked;
   if (apiKey(env)) return "api";
-  return (env.CLAUDE_CODE_OAUTH_TOKEN ?? "").trim() ? "cli" : null;
+  if ((env.CLAUDE_CODE_OAUTH_TOKEN ?? "").trim()) return "cli";
+  return geminiKey(env) ? "gemini" : null;
 }
 
 /** The estimates a profile may ask for in a day: FOOD_AI_DAILY_LIMIT, else DEFAULT_DAILY_LIMIT. It guards the bill (or the plan's allowance), not the person. */
@@ -122,7 +136,7 @@ export function forgetFoodAiUsage(): void {
 }
 
 export interface FoodAiStatus {
-  /** False when there is no way to ask Claude: the page says how to set it up. */
+  /** False when there is no way to ask an AI: the page says how to set it up. */
   enabled: boolean;
   remaining: number;
   limit: number;
@@ -131,7 +145,7 @@ export interface FoodAiStatus {
 
 export function foodAiStatus(profile: string, today: string, env: NodeJS.ProcessEnv = process.env): FoodAiStatus {
   const limit = limitOf(env), backend = backendOf(env);
-  return { enabled: backend === "cli" || (backend === "api" && apiKey(env) !== ""), remaining: Math.max(0, limit - (used.get(usageKey(profile, today)) ?? 0)), limit, backend };
+  return { enabled: backend !== null && keyOf(env, backend) !== "", remaining: Math.max(0, limit - (used.get(usageKey(profile, today)) ?? 0)), limit, backend };
 }
 
 // ── The question ─────────────────────────────────────────────────────────
@@ -235,7 +249,7 @@ export const ESTIMATE_SCHEMA = {
 
 // ── Asking ───────────────────────────────────────────────────────────────
 
-/** What either way of asking brings back from a call that was made: the answer, or why there is none. A call that could not be made throws a FoodAiError. */
+/** What each way of asking brings back from a call that was made: the answer, or why there is none. A call that could not be made throws a FoodAiError. */
 type Reply = { stop: "ok"; answer: unknown } | { stop: "refused" | "truncated" | "unreadable"; answer: null };
 
 let made: { key: string; client: Anthropic } | null = null;
@@ -279,7 +293,7 @@ async function askApi(client: FoodAiClient, model: string, content: Anthropic.Co
 
 const record = (v: unknown): Record<string, unknown> | null => (v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null);
 
-/** The foods of Claude's answer, each checked by the food log's rules; one that fails them refuses the whole estimate, so nothing is dropped unseen. */
+/** The foods of the AI's answer, each checked by the food log's rules; one that fails them refuses the whole estimate, so nothing is dropped unseen. */
 function foodsFrom(reply: Reply, fallbackMeal: Meal, today: string): { items: EstimatedFood[]; note: string } {
   if (reply.stop === "refused") throw new FoodAiError("refused", REFUSED);
   if (reply.stop === "truncated") throw new FoodAiError("upstream", TRUNCATED);
@@ -305,7 +319,7 @@ function foodsFrom(reply: Reply, fallbackMeal: Meal, today: string): { items: Es
   return { items, note: !items.length && !note ? "No food found in that." : note };
 }
 
-const UNCONFIGURED = "AI logging is not set up on this server: it needs ANTHROPIC_API_KEY, or FOOD_AI_BACKEND=cli with a Claude login for Claude Code (see the README).";
+const UNCONFIGURED = "AI logging is not set up on this server: it needs ANTHROPIC_API_KEY, or FOOD_AI_BACKEND=cli with a Claude login for Claude Code, or GEMINI_API_KEY (see the README).";
 
 /**
  * Estimate the foods of a meal from the person's words and photos. Counts against the profile's day (the cap) and allows one at a time
@@ -314,8 +328,8 @@ const UNCONFIGURED = "AI logging is not set up on this server: it needs ANTHROPI
 export async function estimateFoods(input: EstimateInput, deps: FoodAiDeps = {}): Promise<Estimate> {
   const env = deps.env ?? process.env;
   const photos = checkPhotos(input.images), text = checkText(input.text, photos.length > 0), meal = mealOf(input.defaultMeal, "snack");
-  const backend = backendOf(env), key = apiKey(env);
-  if (!backend || (backend === "api" && !key)) throw new FoodAiError("unconfigured", UNCONFIGURED);
+  const backend = backendOf(env), key = backend && keyOf(env, backend);
+  if (!backend || key === "") throw new FoodAiError("unconfigured", UNCONFIGURED);
   const limit = limitOf(env), slot = usageKey(input.profile, input.today);
   if (running.has(input.profile)) throw new FoodAiError("busy", "An estimate is already running. Wait for it to finish.");
   const before = used.get(slot) ?? 0;
@@ -325,14 +339,17 @@ export async function estimateFoods(input: EstimateInput, deps: FoodAiDeps = {})
   used.set(slot, before + 1);
   running.add(input.profile);
   try {
-    // image blocks first, then the words: the same message for both ways of asking
+    // the photos first, then the words: the same message for every way of asking
+    const words = `Default meal when the words do not say: ${meal}.\n\n${text || "Estimate the food in the photo."}`, model = modelOf(env);
     const content: Anthropic.ContentBlockParam[] = [
       ...photos.map((p): Anthropic.ImageBlockParam => ({ type: "image", source: { type: "base64", media_type: p.mediaType, data: p.data } })),
-      { type: "text", text: `Default meal when the words do not say: ${meal}.\n\n${text || "Estimate the food in the photo."}` },
+      { type: "text", text: words },
     ];
     let reply: Reply;
     try {
-      reply = backend === "cli" ? await askCli({ model: modelOf(env), system: SYSTEM_PROMPT, schema: ESTIMATE_SCHEMA, content }, env, deps.run) : await askApi(deps.client ?? clientFor(key), modelOf(env), content);
+      if (backend === "cli") reply = await askCli({ model, system: SYSTEM_PROMPT, schema: ESTIMATE_SCHEMA, content }, env, deps.run);
+      else if (backend === "gemini") reply = await askGemini({ models: geminiModelsOf(env), system: SYSTEM_PROMPT, schema: ESTIMATE_SCHEMA, photos, text: words, maxTokens: MAX_TOKENS }, key!, deps.fetch);
+      else reply = await askApi(deps.client ?? clientFor(key!), model, content);
     } catch (error) {
       used.set(slot, before); // a call that failed is not counted: no answer was made
       throw failure(error);

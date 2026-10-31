@@ -3818,7 +3818,7 @@ function renderFood() {
   box.append(TrendCharts.trends(NM.chartDays(d.days), NM.charts(d), { selected: d.date, onPick: pickFoodDay }));
   box.append(mk("h3", "", "Every day"));
   box.append(metricsTable(d.days, NM.groupsFor(d), NM.cell, d.date, pickFoodDay));
-  box.append(mk("div", "rfoot", "The calories and macros are what you typed in or an assistant estimated from your description, so they are estimates. A day with nothing logged is not a day of zero. Fiber, sodium and the other nutrients are only what a food states: a total that counts fewer foods than the day has reads “≥”, because the foods that do not state it are unknown, not zero. Foods found by search or barcode come from Open Food Facts, a community-made database: check the numbers against the package when they matter. Foods estimated by AI (the box above the meals) are Claude's estimates from your words or photos, which are sent to Anthropic to be read; this app keeps neither. " + (NM.hasBurn(d) ? "What Garmin says the day burned comes from the watch: today's is only what has burned so far. The food is kept here; Garmin has no place to store it." : "The food is kept here.")));
+  box.append(mk("div", "rfoot", "The calories and macros are what you typed in or an assistant estimated from your description, so they are estimates. A day with nothing logged is not a day of zero. Fiber, sodium and the other nutrients are only what a food states: a total that counts fewer foods than the day has reads “≥”, because the foods that do not state it are unknown, not zero. Foods found by search or barcode come from Open Food Facts, a community-made database: check the numbers against the package when they matter. Foods estimated by AI (the box above the meals) are " + aiWho(d.ai) + " this app keeps neither. " + (NM.hasBurn(d) ? "What Garmin says the day burned comes from the watch: today's is only what has burned so far. The food is kept here; Garmin has no place to store it." : "The food is kept here.")));
   $("fscroll").scrollTop = keep;
   if (F.ai.focus) { F.ai.focus = false; focusAi(); }
   else if (caret) {
@@ -3828,11 +3828,18 @@ function renderFood() {
 }
 
 // ── The AI box ───────────────────────────────────────────────────────────
-// The person's words and photos go to the server (POST /api/foods/ai), which has Claude estimate the foods. Nothing is logged then: the estimate
+// The person's words and photos go to the server (POST /api/foods/ai), which has Claude (or Gemini) estimate the foods. Nothing is logged then: the estimate
 // comes back as rows to check (the grams, the meal, a food to leave out), and Log sends the kept ones to the food log with the other foods.
 // A photo is shrunk and turned into a JPEG here first (foodPhoto.js), so what leaves the phone is a few hundred KB of pixels.
 
 let photoSeq = 0;
+
+/** Whose estimates they are and who reads the words and photos, for the way the server asks (the Food view's `ai.backend`). */
+function aiWho(status) {
+  return status && status.backend === "gemini"
+    ? "Gemini's estimates from your words or photos, which are sent to Google to be read (on Gemini's free tier, Google may keep them and use them to improve its products);"
+    : "Claude's estimates from your words or photos, which are sent to Anthropic to be read;";
+}
 
 /** Open or close the box. The address follows (#food/ai while it is open) on the history entry the page is on, so Back is not asked to undo it. */
 function showAi(open) {
@@ -3856,7 +3863,7 @@ function foodAi() {
   const body = mk("div", "faibody");
   card.append(body);
   if (!status.enabled) {
-    body.append(mk("div", "fnote err", "AI logging is not set up on this server: it needs ANTHROPIC_API_KEY, or FOOD_AI_BACKEND=cli with a Claude login for Claude Code, in the server's environment (see the README)."));
+    body.append(mk("div", "fnote err", "AI logging is not set up on this server: it needs ANTHROPIC_API_KEY, or FOOD_AI_BACKEND=cli with a Claude login for Claude Code, or GEMINI_API_KEY, in the server's environment (see the README)."));
     return card;
   }
 

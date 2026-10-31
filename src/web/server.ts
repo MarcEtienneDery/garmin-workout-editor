@@ -36,7 +36,7 @@
  * The daily food goals (calories, protein, carbs, fat and the nutrients) are set in Settings (POST /api/settings/goals; GET /api/settings has them) and
  * come back with the Food view (`goals` and `progress`, where the day shown stands against each) and the Today view (`goals`, `foodProgress`).
  *
- * The Food view's AI box estimates a meal from the person's words and photos with Claude (POST /api/foods/ai; needs ANTHROPIC_API_KEY):
+ * The Food view's AI box estimates a meal from the person's words and photos with Claude or Gemini (POST /api/foods/ai; set up by FOOD_AI_BACKEND):
  * it writes nothing, the page shows the estimate and logs what is kept with POST /api/nutrition.
  *
  * The Calendar view shows where the plan files put their workouts (GET /api/calendar): each plan's span
@@ -1239,7 +1239,7 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
     }
 
     case "POST /api/foods/ai": {
-      // Foods estimated from words and photos by Claude. Nothing is logged: the page shows the estimate and logs what is kept with POST /api/nutrition.
+      // Foods estimated from words and photos by Claude or Gemini. Nothing is logged: the page shows the estimate and logs what is kept with POST /api/nutrition.
       const body = await readBody(req);
       const profile = profileFor(who, "", body.profile);
       return send(res, 200, await foodAiCall(() => estimateFoods({ profile, text: body.text, images: body.images, defaultMeal: body.defaultMeal, today: localToday(store(), profile) })));

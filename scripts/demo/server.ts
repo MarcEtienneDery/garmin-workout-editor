@@ -1,7 +1,7 @@
 /**
  * The plan editor on a throwaway demo database: `npm run demo`, then sign in as Sam / demo-password.
  *
- * The database is made in a temporary directory and deleted when the server stops; nothing reaches Garmin, Renpho or Claude.
+ * The database is made in a temporary directory and deleted when the server stops; nothing reaches Garmin, Renpho or an AI.
  * Searching a food asks Open Food Facts and an activity's map asks OpenStreetMap for its tiles, as the real editor does.
  */
 import * as fs from "fs";
@@ -20,7 +20,7 @@ export async function startDemo(port: number): Promise<Demo> {
   process.env.GARMIN_STORE_PATH = path.join(dir, "garmin.db");
   process.env.TZ = "UTC";
   process.env.GARMIN_TZ = "UTC";
-  for (const name of ["GARMIN_PROFILE", "TRUST_PROXY", "ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "FOOD_AI_BACKEND", "MOCK_MODE"]) delete process.env[name];
+  for (const name of ["GARMIN_PROFILE", "TRUST_PROXY", "ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN", "FOOD_AI_BACKEND", "GEMINI_API_KEY", "MOCK_MODE"]) delete process.env[name];
 
   const { DEMO_ADMIN_TOKEN, seedDemo } = await import("./seed");
   const { startWebServer } = await import("../../src/web/server");

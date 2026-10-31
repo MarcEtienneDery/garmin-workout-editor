@@ -38,6 +38,8 @@ services:
       TRUST_PROXY: ${TRUST_PROXY:-}
       FOOD_AI_BACKEND: ${FOOD_AI_BACKEND:-}
       CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      FOOD_AI_MODEL: ${FOOD_AI_MODEL:-}
     ports:
       # Every interface (IPv4 and IPv6) unless DEV_WEB_BIND names one, like the live editor: reachable from the LAN.
       - "${DEV_WEB_BIND:+${DEV_WEB_BIND}:}${DEV_WEB_PORT:-8798}:8788"

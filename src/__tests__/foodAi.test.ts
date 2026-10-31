@@ -405,3 +405,110 @@ describe("estimating through Claude Code", () => {
     expect((await first).items).toHaveLength(2);
   });
 });
+
+describe("estimating through Gemini", () => {
+  /** A server set to Gemini, with keys for the other two it must not use. */
+  const geminiEnv = { FOOD_AI_BACKEND: "gemini", GEMINI_API_KEY: "AIza-test", ANTHROPIC_API_KEY: "sk-api-must-not-be-used", CLAUDE_CODE_OAUTH_TOKEN: "sk-ant-oat01-token" } as NodeJS.ProcessEnv;
+  /** What generateContent sends back: the JSON in the first candidate's text, after a thought. */
+  const answered = (answer: unknown, over: Record<string, unknown> = {}) => ({ candidates: [{ content: { role: "model", parts: [{ text: "Thinking about eggs", thought: true }, { text: typeof answer === "string" ? answer : JSON.stringify(answer) }] }, finishReason: "STOP", ...over }] });
+  const google = (next: () => unknown = () => ({ status: 200, body: answered({ items: [eggs, toast], note: "Assumed 2 large eggs." }) })) =>
+    jest.fn(async (_url: string, _init: { headers: Record<string, string>; body: string }) => {
+      const out = next();
+      if (out instanceof Error) throw out;
+      const { status, body } = out as { status: number; body: unknown };
+      return { status, json: async () => body };
+    });
+  const askGemini = (send: ReturnType<typeof google>, over: Partial<Parameters<typeof estimateFoods>[0]> = {}, settings: NodeJS.ProcessEnv = geminiEnv) =>
+    estimateFoods({ profile: "MED", text: "2 scrambled eggs", defaultMeal: "breakfast", today: TODAY, ...over }, { env: settings, fetch: send });
+  const failed = (status: number, code: string, message = "") => () => ({ status, body: { error: { code: status, status: code, message } } });
+  const ok = () => ({ status: 200, body: answered({ items: [eggs], note: "" }) });
+  /** Each call's answer in turn, the last for every call after. */
+  const inTurn = (...next: (() => unknown)[]) => {
+    let i = 0;
+    return () => next[Math.min(i++, next.length - 1)]();
+  };
+
+  it("gives the same foods as Claude would, checked by the same rules", async () => {
+    expect(await askGemini(google())).toEqual({
+      items: [
+        { name: "Scrambled eggs", portion: "2 large eggs", meal: "breakfast", amount: 100, unit: "g", kcal: 190, proteinG: 13.2, carbsG: 1.6, fatG: 14.4, nutrients: { cholesterolMg: 370, sodiumMg: 170 } },
+        { name: "Whole wheat toast", portion: "1 slice", meal: "breakfast", amount: 32, unit: "g", kcal: 80, proteinG: 4, carbsG: 14, fatG: 1, nutrients: {} },
+      ],
+      note: "Assumed 2 large eggs.",
+      remaining: DEFAULT_DAILY_LIMIT - 1,
+    });
+    await refusal(askGemini(google(() => ({ status: 200, body: answered({ items: [{ ...eggs, kcal: -5 }], note: "" }) }))), "upstream", /cannot hold/);
+  });
+
+  it("sends the food log's prompt and schema, the photos before the words, and the key in a header", async () => {
+    const send = google();
+    await askGemini(send, { text: "that was half of it", images: [jpeg], defaultMeal: "lunch" });
+    const [url, init] = send.mock.calls[0];
+    expect(url).toBe("https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent");
+    expect(init.headers["x-goog-api-key"]).toBe("AIza-test");
+    const body = JSON.parse(init.body);
+    expect(body.systemInstruction.parts[0].text).toBe(SYSTEM_PROMPT);
+    expect(body.generationConfig).toMatchObject({ responseMimeType: "application/json", responseJsonSchema: JSON.parse(JSON.stringify(ESTIMATE_SCHEMA)) });
+    expect(body.contents[0].parts).toEqual([{ inlineData: { mimeType: "image/jpeg", data: JPEG } }, { text: "Default meal when the words do not say: lunch.\n\nthat was half of it" }]);
+    expect(`${url} ${init.body}`).not.toMatch(/AIza-test|sk-api-must-not-be-used|sk-ant-oat01/);
+  });
+
+  it("asks the next model of a list when one is busy, over its limit, too slow or unknown, and counts the estimate once", async () => {
+    const twoModels = { ...geminiEnv, FOOD_AI_MODEL: "gemini-3.6-flash,gemini-3.5-flash-lite" };
+    const models = (send: ReturnType<typeof google>) => send.mock.calls.map(([url]) => /models\/(.+):generateContent$/.exec(url)![1]);
+    for (const first of [failed(503, "UNAVAILABLE"), failed(429, "RESOURCE_EXHAUSTED"), failed(404, "NOT_FOUND"), failed(500, "INTERNAL"), () => Object.assign(new Error("timeout"), { name: "TimeoutError" })]) {
+      const send = google(inTurn(first, ok));
+      expect((await askGemini(send, {}, twoModels)).items.map((i) => i.name)).toEqual(["Scrambled eggs"]);
+      expect(models(send)).toEqual(["gemini-3.6-flash", "gemini-3.5-flash-lite"]);
+    }
+    expect(foodAiStatus("MED", TODAY, geminiEnv).remaining).toBe(DEFAULT_DAILY_LIMIT - 5);
+    const answered1st = google();
+    await askGemini(answered1st, {}, twoModels);
+    expect(models(answered1st)).toEqual(["gemini-3.6-flash"]);
+    const declined = google(inTurn(() => ({ status: 200, body: answered("", { finishReason: "SAFETY" }) }), ok)); // an answer made is the answer
+    await refusal(askGemini(declined, {}, twoModels), "refused");
+    expect(models(declined)).toEqual(["gemini-3.6-flash"]);
+    for (const everyModel of [failed(400, "INVALID_ARGUMENT", "API key not valid."), failed(403, "PERMISSION_DENIED"), failed(400, "FAILED_PRECONDITION", "User location is not supported for the API use.")]) {
+      const send = google(everyModel);
+      await refusal(askGemini(send, {}, twoModels), "upstream");
+      expect(models(send)).toEqual(["gemini-3.6-flash"]);
+    }
+  });
+
+  it("uses the models the server is set to, in that order, and is chosen by its key alone when nothing else is set", async () => {
+    const one = google();
+    await askGemini(one, {}, { ...geminiEnv, FOOD_AI_MODEL: "gemini-3.5-flash-lite" });
+    expect(one.mock.calls.map(([url]) => url)).toEqual(["https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent"]);
+    const three = google(failed(503, "UNAVAILABLE"));
+    await refusal(askGemini(three, {}, { ...geminiEnv, FOOD_AI_MODEL: " models/gemini-a , gemini-b,,gemini-c " }), "upstream", /having trouble/);
+    expect(three.mock.calls.map(([url]) => url.replace(/.*models\/|:generateContent/g, ""))).toEqual(["gemini-a", "gemini-b", "gemini-c"]);
+    expect(backendOf({ GEMINI_API_KEY: "k" } as NodeJS.ProcessEnv)).toBe("gemini");
+    expect(backendOf({ GEMINI_API_KEY: "k", CLAUDE_CODE_OAUTH_TOKEN: "t" } as NodeJS.ProcessEnv)).toBe("cli");
+    expect(foodAiStatus("MED", TODAY, { FOOD_AI_BACKEND: "gemini" } as NodeJS.ProcessEnv)).toMatchObject({ enabled: false, backend: "gemini" });
+    expect(foodAiStatus("MED", TODAY, geminiEnv)).toMatchObject({ enabled: true, backend: "gemini" });
+  });
+
+  it("says how to set it up without a key, and asks nothing", async () => {
+    const send = google();
+    await refusal(askGemini(send, {}, { FOOD_AI_BACKEND: "gemini" } as NodeJS.ProcessEnv), "unconfigured", /GEMINI_API_KEY/);
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it("says why Google refused, in words of its own, and counts only an answer that was made", async () => {
+    const remaining = () => foodAiStatus("MED", TODAY, geminiEnv).remaining;
+    await refusal(askGemini(google(failed(400, "INVALID_ARGUMENT", "API key not valid. Please pass a valid API key."))), "upstream", /refused the Gemini API key/);
+    await refusal(askGemini(google(failed(429, "RESOURCE_EXHAUSTED", "Quota exceeded"))), "upstream", /limit is reached/);
+    await refusal(askGemini(google(failed(400, "FAILED_PRECONDITION", "User location is not supported for the API use."))), "upstream", /country/);
+    await refusal(askGemini(google(failed(404, "NOT_FOUND", "models/gemini-9 is not found"))), "unconfigured", /no model named gemini-3\.5-flash-lite/);
+    await refusal(askGemini(google(failed(503, "UNAVAILABLE", "The model is overloaded."))), "upstream", /having trouble/);
+    await refusal(askGemini(google(() => new TypeError("fetch failed"))), "upstream", /could not be reached/);
+    await refusal(askGemini(google(() => Object.assign(new Error("timeout"), { name: "TimeoutError" }))), "upstream", /in time/);
+    expect(remaining()).toBe(DEFAULT_DAILY_LIMIT);
+    await refusal(askGemini(google(() => ({ status: 200, body: answered("not json") }))), "upstream", /could not be read/);
+    await refusal(askGemini(google(() => ({ status: 200, body: answered("", { finishReason: "MAX_TOKENS" }) }))), "upstream", /ran out of room/);
+    await refusal(askGemini(google(() => ({ status: 200, body: answered("", { finishReason: "SAFETY" }) }))), "refused", /declined/);
+    await refusal(askGemini(google(() => ({ status: 200, body: { promptFeedback: { blockReason: "PROHIBITED_CONTENT" } } }))), "refused", /declined/);
+    expect(remaining()).toBe(DEFAULT_DAILY_LIMIT - 4);
+    expect(JSON.stringify(quiet.mock.calls)).not.toMatch(/API key not valid|overloaded|AIza/); // the log has the status and Google's code only
+  });
+});
