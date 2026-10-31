@@ -809,6 +809,7 @@ test.describe("foods used lately (Recent)", () => {
     await seed(profile.api, daysAgo(1), "breakfast", [OATMEAL, BANANA, WRAP]);
     await stubFoods(me);
     await openView(me, "food");
+    await searchBox(me).click(); // the tap that puts the cursor in the box, which opens the list
     await searchBox(me).fill("ban");
     await expect(recentRows(me)).toHaveCount(1);
     await me.getByRole("button", { name: "Add Banana to Breakfast" }).click();
@@ -880,9 +881,7 @@ test.describe("the focus the page puts in the search box does not open Recent", 
     await section(me, "breakfast").getByRole("button", { name: "Choose another food" }).click();
     await expect(searchBox(me)).toBeFocused();
     await expect(recentRows(me)).toHaveCount(0);
-    // the box has the focus already, so the click is what needs to bring it: leave it first
-    await searchBox(me).evaluate((el: HTMLElement) => el.blur());
-    await searchBox(me).click();
+    await searchBox(me).click(); // the box has the focus already: the click is what opens the list
     await expect(recentButton(me)).toHaveAttribute("aria-pressed", "true");
     await expect(recentRows(me).first()).toBeVisible();
     await expect(recentRows(me)).toContainText("Oatmeal");

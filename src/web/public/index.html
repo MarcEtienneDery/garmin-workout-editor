@@ -3551,9 +3551,18 @@ async function loadFood() {
   }
   if (run !== F.run) return;
   if (F.date && d.today && F.date >= d.today) { F.date = null; return loadFood(); } // an address with today or a day to come: today is shown
+  if (F.data && (F.data.date !== d.date || F.data.profile !== d.profile)) leaveDay();
   F.data = d; F.error = ""; F.loaded = true;
   foodUrl(); // the view may not have been the open one when the load began
   renderFood();
+}
+
+/** Another day (or profile) is drawn: what was open on the one left (a search, Recent, the picker, a form by hand, a food's details) does not follow it there. */
+function leaveDay() {
+  stopChanging();
+  F.pick = null; F.hand.clear(); F.open.clear();
+  for (const st of F.finds.values()) clearTimeout(st.timer);
+  F.finds.clear();
 }
 
 /**
@@ -3993,10 +4002,11 @@ function foodMeal(block) {
   sec.append(head);
   for (const e of block.entries) sec.append(foodEntry(e, block.meal));
   sec.append(F.pick && F.pick.meal === block.meal ? foodPicker(F.pick) : foodFinder(block.meal));
-  const hand = mk("details", "fhand"), editing = F.editing && F.editing.meal === block.meal;
-  hand.append(mk("summary", "", editing ? "Change the food" : "Enter by hand"), foodForm(block.meal));
+  const hand = mk("details", "fhand"), editing = F.editing && F.editing.meal === block.meal, summary = mk("summary", "", editing ? "Change the food" : "Enter by hand");
+  hand.append(summary, foodForm(block.meal));
   hand.open = editing || F.hand.has(block.meal);
-  hand.ontoggle = () => { if (hand.open) F.hand.add(block.meal); else F.hand.delete(block.meal); };
+  // only the person's own tap is remembered (a toggle event also comes for the open the page sets), so the form Change opened shuts once the change is saved or cancelled
+  summary.onclick = () => { if (hand.open) F.hand.delete(block.meal); else F.hand.add(block.meal); };
   sec.append(hand);
   return sec;
 }
@@ -4030,6 +4040,7 @@ function changeByHand(e, meal) {
 async function moveFood(e, from, to) {
   if (changingId() === e.id) stopChanging(); // its form belongs to the meal it leaves
   if (!(await foodAction({ action: "update", id: e.id, meal: to }))) return renderFood(); // refused: the list puts the choice back
+  F.open.delete(e.id); // it lands in the other meal shut, as the foods there are
   renderFood();
   toastUndo(`Moved ${e.name} to ${NM.mealLabel(to)}.`, async () => {
     if (await foodAction({ action: "update", id: e.id, meal: from })) renderFood();
@@ -4100,13 +4111,9 @@ function focusAmount(meal) {
   if (amount) { amount.focus(); amount.select(); }
 }
 
-// set while the page itself puts the focus in a search box, so that does not open the foods used lately the way a tap does
-let focusedByCode = false;
 function focusSearch(meal) {
   const q = document.querySelector(`#fbody [data-meal="${meal}"] .fq`);
-  if (!q) return;
-  focusedByCode = true;
-  try { q.focus(); } finally { focusedByCode = false; }
+  if (q) q.focus();
 }
 
 // Finding a food: by name (Open Food Facts, through the server) or by scanning its barcode with the camera. A food found has its
@@ -4125,12 +4132,17 @@ function foodFinder(meal) {
   // what was logged before matches at once, while Open Food Facts is asked after a pause in typing
   q.oninput = () => { st.q = q.value; paintFind(meal); clearTimeout(st.timer); st.timer = setTimeout(guard(() => runFind(meal)), 450); };
   q.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); clearTimeout(st.timer); guard(() => runFind(meal))(); } };
-  // a tap in the box opens the foods used lately (not a focus the page gives it, see focusSearch); on a phone the box goes to the top, so the list is above the keyboard
-  q.onfocus = () => {
-    if (focusedByCode) return;
+  // a tap in the box (or Tab into it) opens the foods used lately; a focus that comes otherwise does not: the one the page gives it after
+  // Add (focusSearch), or the one the browser gives back on a return to the window or the tab, or when a dialog shuts.
+  // On a phone a tap that brings the keyboard sends the box to the top, so the list is above the keyboard.
+  const openRecent = (entering) => {
     if (!st.recent) { st.recent = true; st.mineFor = null; paintFind(meal); recentBtn.setAttribute("aria-pressed", "true"); }
-    if (mobileQuery.matches) setTimeout(() => box.scrollIntoView({ block: "start", behavior: "smooth" }), 300);
+    if (entering && mobileQuery.matches) setTimeout(() => box.scrollIntoView({ block: "start", behavior: "smooth" }), 300);
   };
+  let entering = false;
+  q.onpointerdown = () => { entering = document.activeElement !== q; };
+  q.onclick = () => openRecent(entering);
+  q.onkeyup = (e) => { if (e.key === "Tab") openRecent(true); }; // the key goes down in the field left and comes up in this one
   const recentBtn = mk("button", "", "Recent");
   recentBtn.type = "button"; recentBtn.title = "The foods you logged lately, to add again in one tap"; recentBtn.setAttribute("aria-pressed", String(st.recent));
   recentBtn.onclick = () => { st.recent = !st.recent; st.all = false; st.mineFor = null; recentBtn.setAttribute("aria-pressed", String(st.recent)); paintFind(meal); };
@@ -4434,7 +4446,7 @@ function bindFoodView() {
   $("fNext").onclick = () => F.data && go(RM.addDays(F.date || F.data.today, 1)); // from the day asked for, which the drawn one trails while an answer is awaited
   $("fToday").onclick = () => go(null);
   $("fDate").onchange = (e) => e.target.value && go(e.target.value);
-  $("fProfile").onchange = (e) => { Object.assign(F, { profile: e.target.value, date: null, data: null, loaded: false, error: "", editing: null, pick: null, replacing: null }); F.drafts.clear(); F.finds.clear(); F.open.clear(); F.copied.clear(); Object.assign(F.ai, { result: null, busy: "", error: "", run: F.ai.run + 1 }); guard(loadFood)(); };
+  $("fProfile").onchange = (e) => { leaveDay(); Object.assign(F, { profile: e.target.value, date: null, data: null, loaded: false, error: "" }); F.drafts.clear(); F.copied.clear(); Object.assign(F.ai, { result: null, busy: "", error: "", run: F.ai.run + 1 }); guard(loadFood)(); };
   $("scanCancel").onclick = () => $("scandlg").close();
   $("photoCancel").onclick = () => $("photodlg").close();
   $("photoSnap").onclick = guard(aiSnap);

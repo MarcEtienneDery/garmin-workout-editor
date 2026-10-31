@@ -299,8 +299,7 @@ test.describe("searching by name (answers faked)", () => {
     await expect(lunch.locator(".fq")).toBeFocused();
     await expect(lunch.getByRole("button", { name: "Recent" })).toHaveAttribute("aria-pressed", "false");
     await expect(lunch.locator(".frec")).toHaveCount(0);
-    // a tap in the box still opens them (a box that has the focus gets no new focus from a tap, so it is let go first)
-    await lunch.locator(".fq").evaluate((el) => (el as HTMLElement).blur());
+    // a tap in the box still opens them, though the box has the focus already
     await lunch.locator(".fq").tap();
     await expect(lunch.getByRole("button", { name: "Recent" })).toHaveAttribute("aria-pressed", "true");
     await expect(lunch.locator(".frec").first()).toBeVisible();
@@ -314,6 +313,75 @@ test.describe("searching by name (answers faked)", () => {
     await lunch.locator(".fq").fill("oat");
     await lunch.locator(".fresults .fr", { hasText: "Rolled oats" }).tap();
     await expect(lunch.locator(".fpick .fpq input")).toHaveCSS("font-size", "16px");
+  });
+});
+
+test.describe("nothing opens that was not tapped open", () => {
+  /** What is open in the Food view: per meal its form by hand, its Recent list, its picker and the foods whose details are shown. */
+  const opened = (page: Page) =>
+    page.evaluate(() => {
+      const out: string[] = [];
+      for (const s of document.querySelectorAll<HTMLElement>("#fbody section.fmeal")) {
+        if (s.querySelector<HTMLDetailsElement>("details.fhand")!.open) out.push(`${s.dataset.meal}: by hand`);
+        if (s.querySelector('.ffrow button[aria-pressed="true"]')) out.push(`${s.dataset.meal}: recent`);
+        if (s.querySelector(".fpick")) out.push(`${s.dataset.meal}: picker`);
+        for (const name of s.querySelectorAll(".fe.open .fn")) out.push(`${s.dataset.meal}: ${name.textContent}`);
+      }
+      return out;
+    });
+
+  test("Save of a food changed by hand shuts the form Change opened", async ({ me, profile }) => {
+    await logFoods(profile, "breakfast", [{ name: "Toast", kcal: 90 }]);
+    await openFood(me);
+    await meal(me, "breakfast").locator(".fhead", { hasText: "Toast" }).tap();
+    await me.getByRole("button", { name: "Change Toast" }).tap();
+    await expect.poll(() => opened(me)).toEqual(["breakfast: by hand", "breakfast: Toast"]);
+    await meal(me, "breakfast").locator('form.fform input[aria-label="kcal"]').fill("120");
+    await meal(me, "breakfast").locator("form.fform button[type='submit']").tap();
+    await expect(meal(me, "breakfast").locator(".fe .fk")).toHaveText(["120 kcal"]);
+    await expect.poll(() => opened(me)).toEqual(["breakfast: Toast"]);
+  });
+
+  test("a food moved to another meal lands there shut", async ({ me, profile }) => {
+    await logFoods(profile, "breakfast", [{ name: "Toast", kcal: 90 }]);
+    await openFood(me);
+    await meal(me, "breakfast").locator(".fhead", { hasText: "Toast" }).tap();
+    await me.getByRole("combobox", { name: "Move Toast to another meal" }).selectOption("snack");
+    await expect(meal(me, "snack").locator(".fe .fn")).toHaveText(["Toast"]);
+    await expect.poll(() => opened(me)).toEqual([]);
+  });
+
+  test("coming back to the browser from another app does not open Recent in the box that had the cursor", async ({ me, profile }) => {
+    await me.route("**/api/foods/search*", (route) => route.fulfill({ status: 200, contentType: "application/json", body: searchAnswer([oats]) }));
+    await logFoods(profile, "lunch", [{ name: "Soup", kcal: 200 }], daysAgo(1));
+    await openFood(me);
+    const lunch = meal(me, "lunch");
+    await lunch.locator(".fq").tap();
+    await lunch.locator(".fq").fill("oat");
+    await lunch.locator(".fresults .fr", { hasText: "Rolled oats" }).tap();
+    await lunch.locator(".fpick").getByRole("button", { name: "Add" }).tap();
+    await expect(lunch.locator(".fq")).toBeFocused();
+    await expect.poll(() => opened(me)).toEqual([]);
+    // the page loses the focus with the window while the other app is in front, and gives it back to the box on the way back
+    await lunch.locator(".fq").evaluate((box: HTMLInputElement) => {
+      box.blur();
+      window.dispatchEvent(new FocusEvent("blur"));
+      window.dispatchEvent(new FocusEvent("focus"));
+      box.focus();
+    });
+    await expect(lunch.locator(".fq")).toBeFocused();
+    await expect.poll(() => opened(me)).toEqual([]);
+  });
+
+  test("the day before opens with nothing of today's open", async ({ alice }) => {
+    await openFood(alice);
+    await meal(alice, "snack").locator(".fq").tap();
+    await meal(alice, "dinner").locator("details.fhand > summary").tap();
+    await expect.poll(() => opened(alice)).toEqual(["dinner: by hand", "snack: recent"]);
+    await alice.locator("#fPrev").tap();
+    await expect(alice.locator("#fDate")).toHaveValue(daysAgo(1));
+    await expect(meal(alice, "breakfast").locator(".fe")).toHaveCount(2);
+    await expect.poll(() => opened(alice)).toEqual([]);
   });
 });
 
