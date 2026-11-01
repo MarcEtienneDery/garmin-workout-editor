@@ -48,8 +48,8 @@ class Stage {
     return this.page.waitForTimeout(ms);
   }
 
-  /** Glide the pointer to a point (to a fraction of a box: 0.5, 0.5 is its middle). */
-  async moveTo(target: Locator | { x: number; y: number }, fx = 0.5, fy = 0.5) {
+  /** Glide the pointer to a point (to a fraction of a box: 0.5, 0.5 is its middle), `stepMs` a step. */
+  async moveTo(target: Locator | { x: number; y: number }, fx = 0.5, fy = 0.5, stepMs = 12) {
     let x: number, y: number;
     if ("x" in target) ({ x, y } = target);
     else {
@@ -64,7 +64,7 @@ class Stage {
     for (let i = 1; i <= steps; i++) {
       const t = i / steps, ease = t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2;
       await this.page.mouse.move(this.x + (x - this.x) * ease, this.y + (y - this.y) * ease);
-      await this.page.waitForTimeout(12);
+      await this.page.waitForTimeout(stepMs);
     }
     this.x = x;
     this.y = y;
@@ -80,6 +80,18 @@ class Stage {
       await this.page.mouse.down();
       await this.page.mouse.up();
     }
+    await this.pause(wait);
+  }
+
+  /** Press on `from`, carry it slowly to `to` with the button held, hold it there a moment, and let go (a mouse drag). */
+  async drag(from: Locator, to: Locator, { hold = 450, wait = 450 } = {}) {
+    await this.moveTo(from);
+    await this.pause(250);
+    await this.page.mouse.down();
+    await this.pause(150);
+    await this.moveTo(to, 0.5, 0.5, 35);
+    await this.pause(hold);
+    await this.page.mouse.up();
     await this.pause(wait);
   }
 
@@ -160,6 +172,34 @@ const ESTIMATE = {
   remaining: 28,
 };
 
+/**
+ * The workout the Calendar scene drags, and the day it drops it on: an Easy run (else any workout) from today on, in the week after
+ * this one (else this week, else any), and the nearest free day of its week in this month, from today on. Marked data-demo="drag"
+ * and "drop"; true when found. A string: tsx would add its helpers to a function passed to the page.
+ */
+const MOVE_PICK = `(() => {
+  const today = new Date().toISOString().slice(0, 10), weeks = [...document.querySelectorAll("#cgrid .cweek")];
+  const at = weeks.findIndex((wk) => wk.querySelector(".cday.today"));
+  const col = (el) => parseInt(el.style.gridColumn, 10) - 1;
+  for (const wk of at < 0 ? weeks : [weeks[at + 1], weeks[at], ...weeks].filter(Boolean)) {
+    const days = [...wk.querySelectorAll(".cday")].sort((a, b) => col(a) - col(b));
+    const chips = [...wk.querySelectorAll(".cbar.wk")], busy = new Set(chips.map(col));
+    chips.sort((a, b) => (b.textContent === "Easy run") - (a.textContent === "Easy run"));
+    for (const chip of chips) {
+      const c = col(chip);
+      if (!days[c] || days[c].dataset.day < today) continue;
+      for (const off of [1, -1, 2, -2, 3, -3]) {
+        const d = days[c + off];
+        if (!d || busy.has(c + off) || d.classList.contains("out") || d.dataset.day < today) continue;
+        chip.dataset.demo = "drag";
+        d.dataset.demo = "drop";
+        return true;
+      }
+    }
+  }
+  return false;
+})()`;
+
 const SCENES: Scene[] = [
   {
     name: "today",
@@ -232,10 +272,17 @@ const SCENES: Scene[] = [
       await s.click(page.locator("#cModes button[data-mode=plans]"), { wait: 1500 });
       await s.click(page.locator("#cModes button[data-mode=workouts]"), { wait: 1500 });
       await s.click(page.locator("#cModes button[data-mode=both]"), { wait: 1000 });
+      // a workout dragged onto a free day (MOVE_PICK), the question the drop asks, and the toast once the plan is saved
+      if (!(await page.evaluate(MOVE_PICK))) throw new Error("calendar: no workout with a free day beside it to drag");
+      await s.drag(page.locator('#cgrid [data-demo="drag"]'), page.locator('#cgrid [data-demo="drop"]'));
+      await page.locator("#dlg").waitFor();
+      await s.pause(1800);
+      await s.click(page.locator("#dlgOk"), { wait: 300 });
+      await page.locator("#toast").filter({ hasText: "Moved" }).waitFor();
+      await s.pause(2600);
       // to the month beside this one that holds more of the plans (the seed dates them from 3 weeks before this week to 5 after), and back
       const [there, back] = new Date().getUTCDate() > 15 ? ["#cNext", "#cPrev"] : ["#cPrev", "#cNext"];
-      await s.click(page.locator(there), { wait: 1800 });
-      await s.click(page.locator("#cgrid .cday").filter({ hasText: /^\s*1?\d\b/ }).nth(5), { fx: 0.5, fy: 0.15, wait: 1500 });
+      await s.click(page.locator(there), { wait: 1600 });
       await s.click(page.locator(back), { wait: 1200 });
       await s.click(page.locator("#cgrid .inband").filter({ hasText: "Intervals" }).last(), { wait: 2000 });
       await s.pause(1500);

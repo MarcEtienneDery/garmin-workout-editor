@@ -400,9 +400,25 @@ test.describe("the Move menu of a workout's days in the Workouts view", () => {
     await expect(detail.getByRole("button", { name: `Move ${longLabel("2031-09-09")} to another day` })).toBeVisible();
   });
 
+  test("a drop does not speak of Garmin to a profile without a Garmin login, even for a workout with a workoutId", async ({ me, profile }) => {
+    const { path, name } = await addPlan(profile, "nologin", [{ workoutName: "Morning run", workoutType: "running", workoutId: 4242, scheduledDate: "2031-09-03" }]);
+    await openOnPlan(me, name, "2031-09-01");
+    const short = (day: string) => new Intl.DateTimeFormat("en-CA", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(`${day}T00:00:00Z`));
+    await dragTo(me, await chipOn(me, "2031-09-03", "Morning run"), cellOf(me, "2031-09-04"));
+    await expect(me.locator("#dlgText")).toHaveText(`From ${longLabel("2031-09-03")} to ${longLabel("2031-09-04")}.`);
+    await answerDrop(me);
+    await expect(toast(me)).toHaveText(`Moved Morning run to ${short("2031-09-04")}.Undo`);
+    expect(await savedDates(profile.api, path)).toEqual(["2031-09-04"]);
+  });
+
   test("says when Garmin's calendar moved too, or why it did not", async ({ me, profile }) => {
     const { path, name } = await addPlan(profile, "said", [{ workoutName: "Morning run", workoutType: "running", workoutId: 4242, scheduledDate: "2031-09-03" }]);
     const answers = [{ state: "moved" }, { state: "not-scheduled" }, { state: "failed", reason: "Garmin said 500" }];
+    // the suite has no Garmin: the page is told this profile has one, and Garmin's part of each answer is made up
+    await me.route("**/api/garmin", async (route) => {
+      const info = await (await route.fetch()).json();
+      await route.fulfill({ json: { ...info, enabled: true, connected: [profile.name], profileInfo: { [profile.name]: { ...info.profileInfo[profile.name], garmin: true } } } });
+    });
     await me.route("**/api/plans/move", async (route) => {
       const r = await (await route.fetch()).json();
       await route.fulfill({ json: { ...r, garmin: answers.shift() } });

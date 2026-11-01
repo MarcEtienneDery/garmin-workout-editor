@@ -24,7 +24,7 @@ Plans are JSON documents, edited in Monaco with the workout schema's autocomplet
 
 ### Calendar
 
-![The calendar in its three modes, the next month, a day's plans and workouts, and a workout chip opening its plan](docs/media/calendar.webp)
+![The calendar in its three modes, a workout dragged onto another day (the drop asks before it moves, and the toast offers Undo), another month, and a workout chip opening its plan](docs/media/calendar.webp)
 
 A month of what the plans schedule: *Both* draws each plan as a bar holding its workouts of the week, *Plans* only the bars (which weeks each plan covers, where they overlap), *Workouts* only the workouts, coloured by type. A day lists its plans and workouts; a chip opens the workout's picture. **Drag a workout onto another day to move it** (on a phone, hold it until it lifts), say *Move*, and the plan is saved; a workout on Garmin's calendar moves there too, and *Undo* moves it back.
 

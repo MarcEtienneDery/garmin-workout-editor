@@ -2956,11 +2956,14 @@ function openMoveMenu(anchor, from, pick) {
   $("mvNext").focus();
 }
 
+/** The profile a plan of the calendar belongs to (whose Garmin its workouts are on), or undefined for the signed-in one's. */
+const profileOfPlan = (plan) => ownerOfPath(plan.path) || plan.owner || undefined;
+
 /** Move a workout of the calendar (`it`: its day, plan and workout) to `to`: drawn there at once, then as the files say once they are saved. */
 async function moveCalendarItem({ date, plan, w }, to) {
   w.dates = [...new Set(w.dates.map((d) => (d === date ? to : d)))].sort();
   indexCalendar(); C.selected = to; renderCalendar();
-  await moveWorkout({ name: w.workoutName, plans: [{ path: plan.path, index: w.index }], from: date, to, workoutId: w.workoutId, profile: ownerOfPath(plan.path) || plan.owner || undefined });
+  await moveWorkout({ name: w.workoutName, plans: [{ path: plan.path, index: w.index }], from: date, to, workoutId: w.workoutId, profile: profileOfPlan(plan) });
 }
 
 // The drag: a chip is picked up by a mouse that drags it a few pixels, or by a finger held still on it for DRAG_HOLD_MS (on a phone,
@@ -3050,8 +3053,9 @@ function drop(e) {
 
 /** A workout dropped on another day moves once the person says so: a drag can end a day off, or start by mistake. */
 async function confirmDrop(it, to) {
-  const { date, w } = it;
-  const garmin = w.workoutId != null && w.workoutId !== "" ? [["meta", `If Garmin's calendar has it on ${longDay(date)}, it moves there too.`]] : [];
+  const { date, plan, w } = it;
+  const onGarmin = w.workoutId != null && w.workoutId !== "" && garminOn(profileOfPlan(plan)); // a profile without a Garmin login is not told about Garmin
+  const garmin = onGarmin ? [["meta", `If Garmin's calendar has it on ${longDay(date)}, it moves there too.`]] : [];
   if (await confirmDialog({ title: `Move ${w.workoutName}?`, text: `From ${longDay(date)} to ${longDay(to)}.`, lines: garmin, ok: "Move" })) await moveCalendarItem(it, to);
 }
 
