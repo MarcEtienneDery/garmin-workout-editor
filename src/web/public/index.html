@@ -648,6 +648,21 @@
   .citem .n { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .citem small { grid-column:2 / -1; color:var(--dim); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .citem button { padding:1px 8px; }
+  /* moving a workout: a chip is dragged to another day (the day under it lit), or a day of it picked in the Move menu */
+  #cgrid { -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; }
+  .cbar.wk { cursor:grab; }
+  .cbar.wk.lifted { opacity:.35; }
+  .cday.drop { background:color-mix(in srgb, var(--accent) 22%, transparent); outline:2px dashed var(--accent); outline-offset:-2px; }
+  body.cdragging, body.cdragging * { cursor:grabbing !important; }
+  .cghost { position:fixed; left:0; top:0; z-index:40; pointer-events:none; max-width:min(60vw, 260px); padding:3px 10px; background:var(--c); border-radius:4px; color:#fff; font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; box-shadow:0 6px 18px rgba(0,0,0,.55); }
+  #moveMenu { inset:auto; margin:0; width:max-content; max-width:calc(100vw - 16px); padding:10px; background:var(--panel); color:var(--fg); border:1px solid var(--line); border-radius:6px; box-shadow:0 8px 24px rgba(0,0,0,.5); }
+  #moveMenu:popover-open { display:grid; gap:8px; }
+  #moveMenu .mvdays { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  #mvAny { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:0; }
+  #mvAny label { color:var(--dim); }
+  #mvDate { background:#333; color:var(--fg); color-scheme:dark; border:1px solid var(--line); border-radius:3px; padding:4px 6px; font:inherit; }
+  .wv-days b { display:flex; flex-wrap:wrap; gap:4px; font-size:13px; }
+  .wv-day { padding:2px 8px; }
 
   dialog { background:var(--panel); color:var(--fg); border:1px solid var(--line); border-radius:6px; padding:0; width:min(900px, 96vw); box-shadow:0 12px 40px rgba(0,0,0,.6); }
   dialog::backdrop { background:rgba(0,0,0,.6); }
@@ -783,6 +798,10 @@
     .cday { padding:2px 3px; }
     #cdow span { padding:4px 0; font-size:10px; letter-spacing:0; }
     .citem button { min-height:32px; }
+    /* the Move menu is a sheet at the foot of the screen, where the thumb is */
+    #moveMenu { left:0; right:0; bottom:0; width:auto; max-width:none; padding:14px 14px calc(14px + env(safe-area-inset-bottom)); border-radius:12px 12px 0 0; }
+    #mvDate { flex:1; min-width:0; font-size:16px; }
+    .cghost { font-size:14px; padding:6px 12px; transform-origin:center; }
     @media (max-width:420px) { #accountName { display:none; } } /* the account shows its avatar alone, to leave the switcher the room */
 
     #tabbar { display:grid; grid-template-columns:repeat(4,1fr); background:var(--panel); border-top:1px solid var(--line); padding-bottom:env(safe-area-inset-bottom); }
@@ -1059,6 +1078,12 @@
   <button role="tab" data-tab="problems"><span>⚠</span>Checks<b class="badge" id="badge"></b></button>
 </nav>
 <div id="toast"></div>
+<div id="moveMenu" popover aria-labelledby="mvTitle">
+  <b id="mvTitle"></b>
+  <div class="mvdays"><button id="mvPrev" type="button"></button><button id="mvNext" type="button"></button></div>
+  <button id="mvWeek" type="button"></button>
+  <form id="mvAny"><label for="mvDate">Any day</label><input type="date" id="mvDate" required><button class="primary">Move</button></form>
+</div>
 
 <dialog id="wdlg">
   <div class="dhead"><b id="wdTitle">Workout</b><button id="wdClose" aria-label="Close">✕</button></div>
@@ -1974,7 +1999,7 @@ function renderOutline() {
       const host = mk("div", "wv-host");
       const flagged = st && st.differences.length && st.state === "modified" ? WM.changedSteps(st.differences) : new Set();
       if (flagged.size) host.append(flagNote(st.differences, "on Garmin"));
-      host.append(workoutVisual(w, { changed: flagged, profile: planProfile() }));
+      host.append(workoutVisual(w, { changed: flagged, profile: planProfile(), move: w && typeof w === "object" ? planMove(i, w) : undefined }));
       const edit = mk("button", "", "Edit in JSON"), actions = mk("div", "wv-actions");
       edit.onclick = () => revealWorkout(w);
       actions.append(edit); host.append(actions);
@@ -1993,6 +2018,19 @@ function renderOutline() {
   });
   el.append(add);
 }
+
+/** The Move menu of the open plan's workout `i`: moving saves the plan, so a plan with unsaved changes is saved first, once asked. */
+const planMove = (i, w) => ({
+  dates: [].concat(w.scheduledDate ?? []),
+  run: guard(async (from, to) => {
+    if (isDirty()) {
+      if (!(await confirmDialog({ title: "Save the plan first?", text: "Moving a workout saves the plan, with your other changes in it.", ok: "Save and move" }))) return;
+      await save();
+      if (isDirty()) return; // the save failed and said why
+    }
+    await moveWorkout({ name: w.workoutName, plans: [{ path: current.path, index: i }], from, to, workoutId: w.workoutId, profile: planProfile() });
+  }),
+});
 
 // ── Workouts view: the Garmin library next to the plan workouts, with create / edit / delete ──
 // Everything here goes through /api/workouts and /api/garmin/workout, which keep the plan files
@@ -2327,7 +2365,7 @@ function profileEl(a, { mini = false, changed = new Set() } = {}) {
   return chart;
 }
 
-function summaryEl(w, a, loading) {
+function summaryEl(w, a, loading, move) {
   const box = mk("div", "wv-sum"), approx = a.assumed || a.open ? "~" : "";
   const why = [`Estimated: ${a.pace.from === "runs" ? "a step with no pace target is timed from your recent runs" : `a step with no pace target counts at ${WM.clock(WM.ASSUMED_PACE)} /km`}`, `each rep counts ${WM.SECONDS_PER_REP} s`, a.open ? `${a.open} step${a.open > 1 ? "s" : ""} ending on the lap button ${a.open > 1 ? "are" : "is"} not counted` : ""].filter(Boolean).join("; ");
   const stat = (value, label, title) => { const d = mk("div", "wv-stat"), small = mk("small", "", label); d.append(mk("b", "", value), small); if (title) d.title = title; box.append(d); return small; };
@@ -2337,13 +2375,28 @@ function summaryEl(w, a, loading) {
   if (a.meters) estimate.push(stat(approx + WM.distance(a.meters), "Est. distance" + (a.seconds ? "" : open), approx ? why : ""));
   if (a.sets) stat(String(a.sets), `sets · ${a.exercises} exercise${a.exercises === 1 ? "" : "s"}`);
   else if (a.steps) stat(String(a.steps), a.steps === 1 ? "step" : "steps");
-  const dates = [].concat((w && w.scheduledDate) || []);
-  if (dates.length) stat(dates.join(", "), "Scheduled");
+  const dates = move ? move.dates : [].concat((w && w.scheduledDate) || []);
+  if (dates.length && move) box.append(movableDays(dates, move.run));
+  else if (dates.length) stat(dates.join(", "), "Scheduled");
   // how the steps with no pace were timed, behind an ⓘ on the estimate
   const basis = a.pace.from === "runs" ? `Steps with no pace target are timed from your last ${a.pace.runs} runs: at the pace you ran at that heart rate, or ${WM.clock(a.pace.easy)} /km with no heart-rate target.`
     : a.pace.from === "default" && !loading ? `Steps with no pace target count at ${WM.clock(WM.ASSUMED_PACE)} /km: no recent runs to learn your pace from.` : "";
   if (basis) { const [info, note] = help("pace", basis, "the estimate"); (estimate[0] || box).append(info); box.append(note); }
   if (w && w.description) box.append(mk("div", "wv-notes", w.description));
+  return box;
+}
+
+/** The days a workout is scheduled on, each a button that opens the Move menu of that day (`run(from, to)` moves it). */
+function movableDays(dates, run) {
+  const box = mk("div", "wv-stat wv-days"), list = mk("b");
+  for (const iso of dates) {
+    if (!isDay(iso)) { list.append(mk("span", "", iso)); continue; } // not a day of the calendar: shown as written
+    const b = mk("button", "wv-day", `${shortDay(iso)} ▾`);
+    b.type = "button"; b.title = `Move ${longDay(iso)} to another day`; b.setAttribute("aria-label", b.title);
+    b.onclick = (e) => { e.stopPropagation(); openMoveMenu(b, iso, (to) => run(iso, to)); };
+    list.append(b);
+  }
+  box.append(list, mk("small", "", "Scheduled"));
   return box;
 }
 
@@ -2417,9 +2470,10 @@ function linkVisual(root) {
   });
 }
 
-function workoutVisual(w, { changed = new Set(), profile } = {}) {
+/** `move`, for a picture of plan workouts: { dates, run(from, to) }, the days they are on, each with a Move menu. */
+function workoutVisual(w, { changed = new Set(), profile, move } = {}) {
   const a = WM.analyze(w, { pacer: pacerFor(profile) }), box = mk("div", "wvbox"), root = mk("div", "wv");
-  root.append(summaryEl(w, a, !RUNS.has(profile || "")));
+  root.append(summaryEl(w, a, !RUNS.has(profile || ""), move));
   if (a.hasSteps) root.append(profileEl(a, { changed }), stepListEl(a.tree, w, changed));
   else root.append(mk("div", "wv-empty", w && w.distanceMeters ? "No steps: Garmin builds its own for a distance-only run." : "No steps."));
   linkVisual(root);
@@ -2469,9 +2523,15 @@ function renderDetail() {
     ? [{ label: "Garmin", w: d.garmin }, ...(differing.length ? [{ label: `Plan: ${planName(differing[0].path)}`, w: differing[0].workout }] : [])]
     : [{ label: "Plan", w: w }];
   const host = mk("div", "wv-host"), switcher = mk("div", "seg");
+  // the days are the plans' (Garmin's copy has none): a day moves in every plan entry that has it
+  const daysOf = (p) => [].concat(p.workout.scheduledDate ?? []), names = new Set(d.plans.map((p) => p.workout.workoutName));
+  const move = d.plans.length ? {
+    dates: [...new Set(d.plans.flatMap(daysOf))].sort(),
+    run: guard((from, to) => moveWorkout({ name: w.workoutName, named: names.size === 1 ? [...names][0] : undefined, plans: d.plans.filter((p) => daysOf(p).includes(from)), from, to, workoutId: d.garmin ? d.garmin.workoutId : d.row.workoutId, profile: W.profile })),
+  } : undefined;
   const show = (i) => {
     [...switcher.children].forEach((b, j) => b.setAttribute("aria-pressed", String(i === j)));
-    host.replaceChildren(workoutVisual(versions[i].w, { changed: flagged, profile: W.profile }));
+    host.replaceChildren(workoutVisual(versions[i].w, { changed: flagged, profile: W.profile, move }));
   };
   versions.forEach((v, i) => { const b = mk("button", "", v.label); b.onclick = () => show(i); switcher.append(b); });
   add(section(versions.length > 1 ? "Workout" : d.garmin ? "Workout on Garmin" : "Workout in the plan", ...(versions.length > 1 ? [switcher, flagNote(differing[0].differences, "in the other copy")] : [])));
@@ -2592,17 +2652,29 @@ async function loadCalendar() {
   catch (e) { if (run === C.run) { C.error = e.message; C.loaded = false; renderCalendar(); } return; }
   if (run !== C.run) return;
   const order = r.plans.map((p) => p.path).sort(); // a plan keeps its colour whatever else is added
-  C.plans = r.plans.map((p) => {
-    const dated = p.workouts.filter((w) => w.dates.length).length;
-    return { ...p, name: planName(p.path), dated, ...planColors(order.indexOf(p.path)) };
-  });
+  C.plans = r.plans.map((p) => ({ ...p, name: planName(p.path), ...planColors(order.indexOf(p.path)) }));
+  indexCalendar();
+  C.loaded = true; C.error = "";
+  renderCalendar();
+}
+
+/**
+ * Each plan's span (weekStart / weekEnd widened by every date, as the server works it out) and how many of its workouts are
+ * dated, the plans in calendar order (the undated last), and the workouts of each day: after a load, and after a move that is
+ * drawn before the files say it.
+ */
+function indexCalendar() {
+  for (const p of C.plans) {
+    const days = [p.weekStart, p.weekEnd, ...p.workouts.flatMap((w) => w.dates)].filter(Boolean).sort();
+    p.start = days[0] || null; p.end = days[days.length - 1] || null;
+    p.dated = p.workouts.filter((w) => w.dates.length).length;
+  }
+  C.plans.sort((a, b) => Number(a.start === null) - Number(b.start === null) || (a.start || "").localeCompare(b.start || "") || a.path.localeCompare(b.path));
   C.byDate = new Map();
   for (const p of C.plans) for (const w of p.workouts) for (const date of w.dates) {
     if (!C.byDate.has(date)) C.byDate.set(date, []);
     C.byDate.get(date).push({ date, plan: p, w });
   }
-  C.loaded = true; C.error = "";
-  renderCalendar();
 }
 
 function gotoMonth(month) { C.month = month; renderCalendar(); }
@@ -2650,7 +2722,7 @@ function assignLanes(plans) {
 function dayCell(iso, col, today) {
   const d = document.createElement("div");
   d.className = "cday" + (iso.slice(0, 7) !== C.month ? " out" : "") + (iso === today ? " today" : "") + (iso === C.selected ? " sel" : "");
-  d.style.gridColumn = String(col + 1);
+  d.style.gridColumn = String(col + 1); d.dataset.day = iso;
   const num = document.createElement("span"); num.className = "dnum";
   num.textContent = iso.endsWith("-01") ? fmtDate(iso, { day: "numeric", month: "short" }) : String(Number(iso.slice(8)));
   d.append(num);
@@ -2680,10 +2752,11 @@ function planBar(p, days, row) {
   return node;
 }
 
-/** A workout's chip on its day (column `col`, 0 for Monday), on grid row `row`. */
-function workoutChip(plan, w, col, row) {
+/** A workout's chip on its day `date` (column `col`, 0 for Monday), on grid row `row`; it can be dragged to another day. */
+function workoutChip(plan, w, col, row, date) {
   const node = document.createElement("button");
-  node.className = "cbar wk";
+  node.className = "cbar wk" + (drag && drag.active && sameItem(drag.item, { date, plan, w }) ? " lifted" : "");
+  chipItems.set(node, { date, plan, w });
   node.style.cssText = `--c:${typeColor(w.workoutType)}; grid-column:${col + 1}; grid-row:${row}`;
   node.textContent = w.workoutName;
   node.title = [w.workoutName, `${prettyName(w.workoutType || "other")} · ${plan.name}`].join("\n");
@@ -2699,7 +2772,7 @@ function planBars(days, lanes) {
 /** Workout mode: one chip per scheduled workout, stacked in its day. */
 function workoutChips(days) {
   const bars = [];
-  days.forEach((iso, col) => (C.byDate.get(iso) || []).forEach(({ plan, w }, lane) => bars.push({ node: workoutChip(plan, w, col, lane + 2), lane })));
+  days.forEach((iso, col) => (C.byDate.get(iso) || []).forEach(({ plan, w }, lane) => bars.push({ node: workoutChip(plan, w, col, lane + 2, iso), lane })));
   return bars;
 }
 
@@ -2727,7 +2800,7 @@ function planBands(days, lanes) {
       }
       nodes.push(bar);
       stacks[i].forEach((list, col) => list.forEach(({ w }, k) => {
-        const chip = workoutChip(p, w, col, head + 1 + k);
+        const chip = workoutChip(p, w, col, head + 1 + k, days[col]);
         chip.classList.add("inband");
         nodes.push(chip);
       }));
@@ -2772,7 +2845,7 @@ function renderSide() {
   const item = ({ color, light, window, title, detail, run, button }) => {
     const row = el("div", "citem"), sw = el("span", "sw" + (window ? " window" : "")), n = el("span", "n", title);
     row.style.setProperty("--c", color); row.style.setProperty("--cl", light || color); row.append(sw, n);
-    if (button) { const b = el("button", "", button.label); b.onclick = (e) => { e.stopPropagation(); button.run(); }; row.append(b); } else row.append(el("span"));
+    if (button) { const b = el("button", "", button.label); b.onclick = (e) => { e.stopPropagation(); button.run(b); }; row.append(b); } else row.append(el("span"));
     if (detail) row.append(el("small", "", detail));
     if (run) clickable(row, run);
     return row;
@@ -2783,12 +2856,22 @@ function renderSide() {
   $("cDayTitle").textContent = iso ? fmtDate(iso, { weekday: "long", day: "numeric", month: "long", year: "numeric" }) : "Day";
   const inPlans = iso ? C.plans.filter((p) => p.start && p.start <= iso && p.end >= iso) : [];
   const works = iso ? C.byDate.get(iso) || [] : [];
+  const moveButton = (it) => ({ label: "Move…", run: (b) => openMoveMenu(b, it.date, (to) => guard(() => moveCalendarItem(it, to))()) });
   const sections = [
     [`In ${inPlans.length === 1 ? "plan" : "plans"}`, inPlans.map(rowFor)],
-    [works.length === 1 ? "Workout" : "Workouts", works.map(({ plan, w }) => item({ color: typeColor(w.workoutType), title: w.workoutName, detail: `${prettyName(w.workoutType || "other")} · ${plan.name}`, run: () => openPlanAt(plan.path, w) }))],
+    [works.length === 1 ? "Workout" : "Workouts", works.map((it) => item({ color: typeColor(it.w.workoutType), title: it.w.workoutName, detail: `${prettyName(it.w.workoutType || "other")} · ${it.plan.name}`, run: () => openPlanAt(it.plan.path, it.w), button: moveButton(it) })), true],
   ];
   if (C.mode === "workouts") sections.reverse();
-  for (const [label, rows] of sections) if (rows.length) day.append(el("div", "clabel", label), ...rows);
+  for (const [label, rows, moves] of sections) {
+    if (!rows.length) continue;
+    const head = el("div", "clabel", label);
+    day.append(head);
+    if (moves) {
+      const [info, note] = help("calendar-move", "Drag a workout onto another day to move it (on a phone, hold it until it lifts) and say Move, or use Move…. The plan is saved at once, and a workout on Garmin's calendar moves there too.", "moving a workout");
+      head.append(" ", info); day.append(note);
+    }
+    day.append(...rows);
+  }
   if (!inPlans.length && !works.length) day.append(el("div", "empty", C.loaded ? "Nothing on this day." : ""));
 
   const legend = $("cLegend"), types = $("cTypes");
@@ -2804,6 +2887,203 @@ function renderSide() {
   for (const list of C.byDate.values()) for (const { w } of list) counts.set(w.workoutType || "other", (counts.get(w.workoutType || "other") || 0) + 1);
   for (const [type, n] of [...counts].sort((a, b) => b[1] - a[1])) types.append(item({ color: typeColor(type), title: prettyName(type), detail: `${n} scheduled` }));
   if (!counts.size) types.append(el("div", "empty", C.loaded ? "No scheduled workouts." : ""));
+}
+
+// ── Moving a workout to another day ──
+// The Calendar's drag and drop, Move… in its day panel and the Move menu of a workout picture's days all move one day of a plan
+// workout through POST /api/plans/move: the plans are saved at once, and a workout on Garmin moves on Garmin's calendar too when
+// Garmin has it on that day. The toast says what moved, with Undo to move it back the same way.
+
+const shortDay = (iso) => fmtDate(iso, { weekday: "short", day: "numeric", month: "short" });
+const longDay = (iso) => fmtDate(iso, { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+/** A day that is on the calendar, written YYYY-MM-DD: the only kind of scheduledDate that can be moved. */
+const isDay = (v) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) && isoOf(msOf(v)) === v;
+
+/**
+ * Move the day `from` of the plan entries `plans` ([{ path, index }]) to `to`. `name` is the workout's, for the toast, and `named`
+ * what the plans must call it (the server refuses a plan that changed under the page); `workoutId` says it may be on Garmin, and
+ * `profile` whose Garmin it is when the plan does not say. Undo is offered unless this is the move back.
+ */
+async function moveWorkout({ name, named = name, plans, from, to, workoutId, profile }, back = false) {
+  const onGarmin = workoutId != null && workoutId !== "";
+  let r;
+  try {
+    r = await api("POST", "/api/plans/move", { plans: plans.map(({ path, index }) => ({ path, index })), workoutName: named, from, to, garmin: onGarmin, confirm: onGarmin, profile });
+  } finally {
+    if (document.body.dataset.view === "calendar") guard(loadCalendar)(); // what the files say now, whether the move was taken or not
+  }
+  const unsaved = await showMoved(r);
+  const g = r.garmin || {};
+  const onCalendar = g.state === "moved" ? ", on Garmin's calendar too" : g.state === "not-scheduled" ? `; Garmin's calendar did not have it on ${shortDay(from)}` : g.state === "failed" ? `, but not on Garmin's calendar: ${g.reason}` : "";
+  const text = `Moved ${name} ${back ? "back " : ""}to ${shortDay(to)}${onCalendar}.` + (unsaved ? " The plan open in Plans has unsaved changes: reload it there before saving." : "");
+  if (back) toast(text, 6000);
+  else toastUndo(text, () => moveWorkout({ name, named, plans, from: to, to: from, workoutId, profile }, true));
+  return r;
+}
+
+/** After a move: the plan open in the editor (unless it has unsaved changes, which is said) and the Workouts view show the plans as saved. */
+async function showMoved(r) {
+  const open = current && r.changed.find((c) => c.path === current.path), unsaved = !!open && isDirty();
+  if (open && !unsaved) await reloadFromDisk(open.version);
+  refreshFiles();
+  if (document.body.dataset.view === "workouts" && W.selected) {
+    const key = W.selected;
+    await loadWorkouts();
+    if (W.rows.some((x) => x.key === key)) await selectRow(key, document.body.dataset.wpane === "detail");
+  }
+  return unsaved;
+}
+
+/** The Move menu of one day of a workout, by `anchor`: the day before or after, a week later, or any day. `pick(to)` moves it there. */
+function openMoveMenu(anchor, from, pick) {
+  const menu = $("moveMenu"), day = (n) => isoOf(msOf(from) + n * DAY_MS);
+  const choose = (to) => { menu.hidePopover(); if (isDay(to) && to !== from) pick(to); };
+  $("mvTitle").textContent = `Move ${shortDay(from)} to…`;
+  for (const [id, n, label] of [["mvPrev", -1, (d) => `◀ ${d}`], ["mvNext", 1, (d) => `${d} ▶`], ["mvWeek", 7, (d) => `${d} (+1 week)`]]) {
+    $(id).textContent = label(shortDay(day(n))); $(id).onclick = () => choose(day(n));
+  }
+  $("mvDate").value = from;
+  $("mvAny").onsubmit = (e) => { e.preventDefault(); choose($("mvDate").value); };
+  if (menu.matches(":popover-open")) menu.hidePopover();
+  menu.ontoggle = (e) => { if (e.newState === "closed" && anchor.isConnected) anchor.focus(); };
+  menu.showPopover();
+  menu.style.left = menu.style.top = ""; // a phone shows it as a sheet at the foot of the screen
+  if (!mobileQuery.matches) { // under the button, or over it when there is no room below
+    const a = anchor.getBoundingClientRect(), m = menu.getBoundingClientRect();
+    menu.style.left = Math.max(8, Math.min(a.left, innerWidth - m.width - 8)) + "px";
+    menu.style.top = (a.bottom + 4 + m.height <= innerHeight - 8 ? a.bottom + 4 : Math.max(8, a.top - 4 - m.height)) + "px";
+  }
+  $("mvNext").focus();
+}
+
+/** Move a workout of the calendar (`it`: its day, plan and workout) to `to`: drawn there at once, then as the files say once they are saved. */
+async function moveCalendarItem({ date, plan, w }, to) {
+  w.dates = [...new Set(w.dates.map((d) => (d === date ? to : d)))].sort();
+  indexCalendar(); C.selected = to; renderCalendar();
+  await moveWorkout({ name: w.workoutName, plans: [{ path: plan.path, index: w.index }], from: date, to, workoutId: w.workoutId, profile: ownerOfPath(plan.path) || plan.owner || undefined });
+}
+
+// The drag: a chip is picked up by a mouse that drags it a few pixels, or by a finger held still on it for DRAG_HOLD_MS (on a phone,
+// where the chips are thin bars under the finger, on its day: the workout whose bar is nearest). The day under the pointer is lit, and
+// letting go there asks whether to move that day of the workout there; Escape, or letting go off the days, puts it back. Held over ◀ or
+// ▶, the month turns.
+const DRAG_HOLD_MS = 350, DRAG_SLOP = 6, DRAG_TURN_MS = 700, DRAG_EDGE = 48;
+const chipItems = new WeakMap(); // a chip -> the { date, plan, w } it draws
+let drag = null; // { item, chip, id, touch, x, y, active, ghost, over, hold, turnAt, turn, scroll }
+let dropClick = false; // the click a drag ends with is not a click on what it ends over
+const sameItem = (a, b) => a.date === b.date && a.plan.path === b.plan.path && a.w.index === b.w.index;
+
+function pickUp(e) {
+  if (e.button !== 0 || drag || C.mode === "plans") return;
+  const chip = e.target.closest(".cbar.wk") || (e.pointerType === "mouse" ? null : chipUnder(e)), item = chip && chipItems.get(chip);
+  if (!item) return;
+  drag = { item, chip, id: e.pointerId, touch: e.pointerType !== "mouse", x: e.clientX, y: e.clientY, active: false };
+  if (drag.touch) drag.hold = setTimeout(lift, DRAG_HOLD_MS);
+}
+
+/** The chip of the day under a finger that is nearest it: on a phone the chips are bars too thin to aim at, and the day takes the touch. */
+function chipUnder(e) {
+  const cell = e.target.closest(".cday");
+  if (!cell) return null;
+  const r = cell.getBoundingClientRect();
+  let best = null, gap = Infinity;
+  for (const chip of cell.parentElement.querySelectorAll(".cbar.wk")) {
+    const b = chip.getBoundingClientRect(), mid = b.left + b.width / 2, d = Math.abs(b.top + b.height / 2 - e.clientY);
+    if (mid >= r.left && mid <= r.right && d < gap) { best = chip; gap = d; }
+  }
+  return best;
+}
+
+function lift() {
+  const d = drag;
+  if (!d || d.active) return;
+  clearTimeout(d.hold);
+  d.active = true;
+  d.ghost = mk("div", "cghost", d.item.w.workoutName);
+  d.ghost.style.setProperty("--c", typeColor(d.item.w.workoutType));
+  document.body.append(d.ghost); document.body.classList.add("cdragging");
+  d.chip.classList.add("lifted");
+  try { $("cgrid").setPointerCapture(d.id); } catch {} // the grid outlives the redraws of a turned month: it keeps the pointer's events
+  if (d.touch && navigator.vibrate && navigator.userActivation?.hasBeenActive) navigator.vibrate(12); // a buzz under the finger (the browser allows it once the page was used)
+  dragTo(d.x, d.y);
+  d.scroll = requestAnimationFrame(edgeScroll);
+}
+
+function dragTo(x, y) {
+  const d = drag;
+  d.x = x; d.y = y;
+  d.ghost.style.transform = `translate(${x + 10}px, ${y - (d.touch ? 48 : 12)}px)`; // a finger would hide it
+  const under = document.elementsFromPoint(x, y), cell = under.find((el) => el.classList.contains("cday")) || null;
+  if (cell !== d.over) { if (d.over) d.over.classList.remove("drop"); d.over = cell; if (cell) cell.classList.add("drop"); }
+  const arrow = (under.find((el) => el.id === "cPrev" || el.id === "cNext") || {}).id;
+  if (arrow !== d.turnAt) { clearTimeout(d.turn); d.turnAt = arrow; if (arrow) d.turn = setTimeout(turnMonth, DRAG_TURN_MS); }
+}
+
+/** Held over ◀ or ▶, the month turns, and goes on turning while it is held there. */
+function turnMonth() {
+  const d = drag;
+  if (!d || !d.turnAt) return;
+  gotoMonth(addMonths(C.month, d.turnAt === "cPrev" ? -1 : 1));
+  d.over = null; // the days were drawn again
+  d.turn = setTimeout(turnMonth, DRAG_TURN_MS);
+}
+
+/** Near the top or the foot of the calendar's scrolling box, the box scrolls under the dragged workout. */
+function edgeScroll() {
+  const d = drag;
+  if (!d) return;
+  const box = mobileQuery.matches ? $("cview") : $("cscroll"), r = box.getBoundingClientRect(), before = box.scrollTop;
+  box.scrollTop += d.y < r.top + DRAG_EDGE ? -12 : d.y > r.bottom - DRAG_EDGE ? 12 : 0;
+  if (box.scrollTop !== before) dragTo(d.x, d.y);
+  d.scroll = requestAnimationFrame(edgeScroll);
+}
+
+function drop(e) {
+  const d = drag;
+  if (!d.active) return endDrag(); // a click or a tap: the chip's, or the day's, own handler does its job
+  dragTo(e.clientX, e.clientY);
+  const to = d.over && d.over.dataset.day;
+  endDrag();
+  dropClick = true; setTimeout(() => (dropClick = false));
+  if (to && to !== d.item.date) guard(() => confirmDrop(d.item, to))();
+}
+
+/** A workout dropped on another day moves once the person says so: a drag can end a day off, or start by mistake. */
+async function confirmDrop(it, to) {
+  const { date, w } = it;
+  const garmin = w.workoutId != null && w.workoutId !== "" ? [["meta", `If Garmin's calendar has it on ${longDay(date)}, it moves there too.`]] : [];
+  if (await confirmDialog({ title: `Move ${w.workoutName}?`, text: `From ${longDay(date)} to ${longDay(to)}.`, lines: garmin, ok: "Move" })) await moveCalendarItem(it, to);
+}
+
+function endDrag() {
+  const d = drag;
+  if (!d) return;
+  drag = null;
+  clearTimeout(d.hold); clearTimeout(d.turn); cancelAnimationFrame(d.scroll);
+  if (d.ghost) d.ghost.remove();
+  if (d.over) d.over.classList.remove("drop");
+  document.querySelectorAll("#cgrid .lifted").forEach((c) => c.classList.remove("lifted"));
+  document.body.classList.remove("cdragging");
+}
+
+function bindCalendarDrag() {
+  $("cgrid").addEventListener("pointerdown", pickUp);
+  addEventListener("pointermove", (e) => {
+    const d = drag;
+    if (!d || e.pointerId !== d.id) return;
+    if (!d.active) {
+      if (Math.hypot(e.clientX - d.x, e.clientY - d.y) <= DRAG_SLOP) return;
+      if (d.touch) return endDrag(); // a finger that moves before it is held is scrolling the page
+      lift();
+    }
+    dragTo(e.clientX, e.clientY);
+  });
+  addEventListener("pointerup", (e) => { if (drag && e.pointerId === drag.id) drop(e); });
+  addEventListener("pointercancel", (e) => { if (drag && e.pointerId === drag.id) endDrag(); });
+  addEventListener("keydown", (e) => { if (e.key === "Escape" && drag && drag.active) { e.preventDefault(); endDrag(); } });
+  addEventListener("touchmove", (e) => { if (drag && drag.active) e.preventDefault(); }, { passive: false }); // the page stays still under a held workout
+  addEventListener("contextmenu", (e) => { if (drag) e.preventDefault(); }); // and a held finger opens no menu
+  addEventListener("click", (e) => { if (dropClick) { dropClick = false; e.preventDefault(); e.stopPropagation(); } }, true);
 }
 
 // ── Activities view: the stored activities as a list and as a calendar ──
@@ -5461,6 +5741,7 @@ function bindCalendarView() {
   $("cToday").onclick = () => { C.selected = todayIso(); gotoMonth(C.selected.slice(0, 7)); };
   $("cRefresh").onclick = guard(loadCalendar);
   $("cModes").querySelectorAll("button").forEach((b) => (b.onclick = () => { C.mode = b.dataset.mode; renderCalendar(); }));
+  bindCalendarDrag();
 }
 
 // ── Dialogs ────────────────────────────────────────────────────────────

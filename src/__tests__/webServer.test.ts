@@ -33,6 +33,7 @@ jest.mock("../mcp/tools/garmin", () => ({
   checkWorkoutSync: jest.fn(async () => []),
   saveWorkout: jest.fn(async () => ({ workoutId: 999, previousWorkoutId: 5 })),
   deleteLibraryWorkout: jest.fn(async () => undefined),
+  moveScheduledWorkout: jest.fn(async () => ({ moved: true })),
   // archiving: what Garmin deletes is the MCP body's business (workoutLibrary.test.ts); here only the route is under test
   archivePlan: jest.fn(async (_profile: string | undefined, logical: string) => {
     jest.requireActual("../shared/store").getStore().setArchived(logical, true);
@@ -1889,6 +1890,99 @@ describe("web plan editor", () => {
       expect(g.saveWorkout).toHaveBeenLastCalledWith("MED", expect.anything(), false);
       expect((await med("DELETE", "/api/garmin/workout", { workoutId: 1, garmin: true, confirm: true, profile: "SAM" })).status).toBe(200);
       expect(g.deleteLibraryWorkout).toHaveBeenLastCalledWith("MED", 1);
+    });
+  });
+
+  describe("moving a workout to another day", () => {
+    const run = { workoutName: "Easy run", workoutType: "running", distanceMeters: 5000 };
+    const move = (body: object) => call("POST", "/api/plans/move", { plans: [{ path: "workout-plans/m.json", index: 0 }], workoutName: "Easy run", ...body });
+    const moved = () => JSON.parse(stored("workout-plans/m.json")!).workouts;
+
+    it("moves the one day asked for: a single date stays one date, a list keeps its other days in order", async () => {
+      seed("workout-plans/m.json", { workouts: [{ ...run, scheduledDate: "2031-09-03" }, { ...run, workoutName: "Long run", scheduledDate: ["2031-09-07", "2031-09-14", "2031-09-21"] }] });
+      const r = await move({ from: "2031-09-03", to: "2031-09-05" });
+      expect(r.status).toBe(200);
+      expect(r.json).toEqual({ from: "2031-09-03", to: "2031-09-05", changed: [{ path: "workout-plans/m.json", version: versionOf("workout-plans/m.json") }] });
+      expect(moved()[0].scheduledDate).toBe("2031-09-05");
+
+      await call("POST", "/api/plans/move", { plans: [{ path: "workout-plans/m.json", index: 1 }], from: "2031-09-07", to: "2031-09-16" });
+      expect(moved()[1].scheduledDate).toEqual(["2031-09-14", "2031-09-16", "2031-09-21"]);
+      // onto a day the list has already: the workout is on it once
+      await call("POST", "/api/plans/move", { plans: [{ path: "workout-plans/m.json", index: 1 }], from: "2031-09-21", to: "2031-09-14" });
+      expect(moved()[1].scheduledDate).toEqual(["2031-09-14", "2031-09-16"]);
+      expect(g.moveScheduledWorkout).not.toHaveBeenCalled();
+    });
+
+    it("moves the day in every plan entry it is given, and the calendar shows it there", async () => {
+      seed("workout-plans/m.json", { workouts: [{ ...run, scheduledDate: "2031-09-03" }] });
+      seed("workout-plans/n.json", { workouts: [{ ...run, scheduledDate: ["2031-09-03", "2031-09-10"] }] });
+      const r = await move({ plans: [{ path: "workout-plans/m.json", index: 0 }, { path: "workout-plans/n.json", index: 0 }], from: "2031-09-03", to: "2031-09-04" });
+      expect(r.json.changed.map((c: any) => c.path)).toEqual(["workout-plans/m.json", "workout-plans/n.json"]);
+      const days = (await call("GET", "/api/calendar")).json.plans.filter((p: any) => p.path !== "workout-plans/a.json").map((p: any) => [p.path, p.workouts[0].dates]);
+      expect(days).toEqual([["workout-plans/m.json", ["2031-09-04"]], ["workout-plans/n.json", ["2031-09-04", "2031-09-10"]]]);
+    });
+
+    it("refuses what is not a move, and a workout that is not on that day any more, writing nothing", async () => {
+      seed("workout-plans/m.json", { workouts: [{ ...run, scheduledDate: "2031-09-03" }] });
+      const before = stored("workout-plans/m.json");
+      for (const body of [{ from: "2031-09-03" }, { from: "2031-09-03", to: "2031-02-30" }, { from: "09/03/2031", to: "2031-09-04" }, { from: "2031-09-03", to: "2031-09-03" }, { from: "2031-09-03", to: "2031-09-04", plans: [] }]) {
+        expect([body, (await move(body)).status]).toEqual([body, 400]);
+      }
+      expect((await move({ from: "2031-09-02", to: "2031-09-04" })).json.error).toMatch(/is not on 2031-09-02 .* any more/);
+      expect((await move({ from: "2031-09-03", to: "2031-09-04", workoutName: "Renamed since" })).status).toBe(409);
+      expect((await move({ from: "2031-09-03", to: "2031-09-04", plans: [{ path: "workout-plans/m.json", index: 4 }] })).status).toBe(409);
+      expect((await move({ from: "2031-09-03", to: "2031-09-04", plans: [{ path: "workout-plans/none.json", index: 0 }] })).status).toBe(404);
+      expect(stored("workout-plans/m.json")).toBe(before);
+    });
+
+    it("moves the workout on Garmin's calendar too when asked and it is on Garmin, after the plan is saved", async () => {
+      addProfile("TEST");
+      seed("workout-plans/m.json", { workouts: [{ ...run, workoutId: 5, scheduledDate: "2031-09-03" }] });
+      expect((await move({ from: "2031-09-03", to: "2031-09-04", garmin: true })).status).toBe(400); // no confirmation: nothing is written
+      expect(moved()[0].scheduledDate).toBe("2031-09-03");
+
+      g.moveScheduledWorkout.mockImplementationOnce(async () => {
+        expect(moved()[0].scheduledDate).toBe("2031-09-04"); // the plan first
+        return { moved: true };
+      });
+      const r = await move({ from: "2031-09-03", to: "2031-09-04", garmin: true, confirm: true });
+      expect(r.json.garmin).toEqual(expect.objectContaining({ state: "moved" }));
+      expect(g.moveScheduledWorkout).toHaveBeenCalledWith("TEST", 5, "2031-09-03", "2031-09-04");
+
+      g.moveScheduledWorkout.mockResolvedValueOnce({ moved: false });
+      expect((await move({ from: "2031-09-04", to: "2031-09-05", garmin: true, confirm: true })).json.garmin.state).toBe("not-scheduled");
+
+      g.moveScheduledWorkout.mockRejectedValueOnce(new Error("Garmin said 500"));
+      const failed = await move({ from: "2031-09-05", to: "2031-09-06", garmin: true, confirm: true });
+      expect(failed.status).toBe(200);
+      expect(failed.json.garmin).toEqual(expect.objectContaining({ state: "failed", reason: "Garmin said 500" }));
+      expect(moved()[0].scheduledDate).toBe("2031-09-06"); // the plan keeps the move
+    });
+
+    it("leaves Garmin alone, and says why, when the workout is not on Garmin or the profile has no Garmin login", async () => {
+      seed("workout-plans/m.json", { workouts: [{ ...run, scheduledDate: "2031-09-03" }, { ...run, workoutName: "Uploaded", workoutId: 5, scheduledDate: "2031-09-03" }] });
+      expect((await move({ from: "2031-09-03", to: "2031-09-04", garmin: true })).json.garmin).toEqual({ state: "skipped", reason: "The workout is not on Garmin." });
+      const uploaded = { plans: [{ path: "workout-plans/m.json", index: 1 }], workoutName: "Uploaded", from: "2031-09-03", to: "2031-09-04", garmin: true };
+      expect((await move(uploaded)).json.garmin).toEqual({ state: "skipped", reason: expect.stringMatching(/Garmin is not connected/) });
+      addProfile("PLAIN", undefined, false);
+      addProfile("WITH");
+      expect((await move({ ...uploaded, from: "2031-09-04", to: "2031-09-05", profile: "PLAIN" })).json.garmin).toEqual({ state: "skipped", reason: 'Profile "PLAIN" has no Garmin login.' });
+      store().setArchived("workout-plans/m.json", true);
+      expect((await move({ ...uploaded, from: "2031-09-05", to: "2031-09-06", profile: "WITH", confirm: true })).json.garmin).toEqual({ state: "skipped", reason: "The plan is archived." });
+      expect(moved()[1].scheduledDate).toBe("2031-09-06");
+      expect(g.moveScheduledWorkout).not.toHaveBeenCalled();
+    });
+
+    it("keeps a profile login to its own plans and moves its own Garmin calendar", async () => {
+      addProfile("MED", "med-pw");
+      addProfile("SAM", "sam-pw");
+      for (const name of ["MED", "SAM"]) seed(`data/${name}/plan.json`, { workouts: [{ ...run, workoutId: 9, scheduledDate: "2031-09-03" }] });
+      const login = { Authorization: "Basic " + Buffer.from("MED:med-pw").toString("base64") };
+      const med = (body: object) => call("POST", "/api/plans/move", { workoutName: "Easy run", from: "2031-09-03", to: "2031-09-04", garmin: true, confirm: true, ...body }, { ...H, ...login });
+      expect((await med({ plans: [{ path: "data/SAM/plan.json", index: 0 }] })).status).toBe(403);
+      expect(JSON.parse(stored("data/SAM/plan.json")!).workouts[0].scheduledDate).toBe("2031-09-03");
+      expect((await med({ plans: [{ path: "data/MED/plan.json", index: 0 }], profile: "SAM" })).json.garmin.state).toBe("moved");
+      expect(g.moveScheduledWorkout).toHaveBeenCalledWith("MED", 9, "2031-09-03", "2031-09-04");
     });
   });
   describe("per-profile logins", () => {

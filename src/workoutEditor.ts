@@ -1732,6 +1732,45 @@ export class WorkoutEditor {
   }
 
   /**
+   * The workouts Garmin's calendar has on these days (YYYY-MM-DD), each month read once: the id of each entry, which
+   * unscheduleWorkout takes, the library workout it puts on the day, and the day.
+   */
+  async scheduledOn(days: string[]): Promise<{ scheduleId: number; workoutId: number | null; date: string }[]> {
+    const authenticated = await this.garminClient.ensureAuthenticated();
+    if (!authenticated) {
+      throw this.garminClient.authError();
+    }
+    const client = this.garminClient.getClientAny();
+    if (!client.getMonthCalendarEvents) {
+      throw new Error("getMonthCalendarEvents is not available on this Garmin client");
+    }
+    const entries: { scheduleId: number; workoutId: number | null; date: string }[] = [];
+    for (const month of new Set(days.map((day) => day.slice(0, 7)))) {
+      const [year, m] = month.split("-").map(Number);
+      const calendar = await client.getMonthCalendarEvents(year, m - 1); // Garmin counts the months from 0
+      for (const item of calendar?.calendarItems ?? []) {
+        if (item?.itemType === "workout" && days.includes(item.date)) entries.push({ scheduleId: item.id, workoutId: item.workoutId ?? null, date: item.date });
+      }
+    }
+    return entries;
+  }
+
+  /** Take one entry off Garmin's calendar (an id scheduledOn gives); the workout stays in the library. */
+  async unscheduleWorkout(scheduleId: number | string): Promise<void> {
+    const authenticated = await this.garminClient.ensureAuthenticated();
+    if (!authenticated) {
+      throw this.garminClient.authError();
+    }
+    const client = this.garminClient.getClientAny();
+    if (!client.client?.delete || !client.url?.SCHEDULE_WORKOUT) {
+      throw new Error("Removing a calendar entry is not available on this Garmin client");
+    }
+    // the client has no call for it: the URL that schedules a workout by its id removes an entry by the entry's id
+    await client.client.delete(client.url.SCHEDULE_WORKOUT(scheduleId));
+    console.log(`🗑️  Removed calendar entry ${scheduleId}`);
+  }
+
+  /**
    * Upload the workouts of a plan given as JSON text: `raw` is the JSON text, `save` receives the JSON text with the
    * new workoutIds written in, and `source` names where the workouts came from in the log.
    */

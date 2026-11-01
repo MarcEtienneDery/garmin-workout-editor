@@ -42,6 +42,9 @@
  * The Calendar view shows where the plan files put their workouts (GET /api/calendar): each plan's span
  * and the dates of its workouts. It reads the stored plans only, not Garmin's own calendar.
  *
+ * A workout is moved to another day (POST /api/plans/move: the Calendar's drag and drop, the Move menu of a workout's dates) in its plan
+ * files, and on Garmin's calendar too when the page asks (garmin: true, confirm: true) and Garmin has the workout on the day it leaves.
+ *
  * The Activities view lists and draws the profile's activities from the database (GET /api/activities,
  * GET /api/activity, GET /api/activities/stats for the lifetime totals and records); it never calls Garmin on a read. POST /api/activities/sync asks Garmin for what is new
  * (and, with history: true, starts the background fill of the whole history and the details), and POST
@@ -109,6 +112,7 @@ import {
   getLibraryWorkout,
   listDevices,
   listLibraryWorkouts,
+  moveScheduledWorkout,
   plannedOnGarmin,
   saveWorkout,
   schedulePlan,
@@ -506,6 +510,13 @@ const isoDate = (v: unknown): v is string => {
 /** The valid dates of a workout's scheduledDate (one date or a list), sorted and without repeats. */
 const scheduledDates = (w: any): string[] => [...new Set([w.scheduledDate].flat().filter(isoDate))].sort();
 
+/** A workout's scheduledDate once its day `from` is moved to `to`: one date stays one date, a list keeps its other days, in order, with `to` once. */
+const movedDates = (scheduledDate: unknown, from: string, to: string): string | unknown[] => {
+  if (!Array.isArray(scheduledDate)) return to;
+  const dates = [...new Set(scheduledDate.map((d) => (d === from ? to : d)))];
+  return dates.every((d) => typeof d === "string") ? dates.sort() : dates;
+};
+
 interface CalendarPlan {
   path: string;
   owner: string | null;
@@ -880,6 +891,59 @@ async function deleteWorkout(body: any, who: Principal): Promise<unknown> {
   return { deleted: { garmin: fromGarmin, plans: fromPlans }, changed: changedFiles(files), log };
 }
 
+/**
+ * Move a workout from one day to another: the day `from` of each plan entry in `plans` becomes `to` (a workout on several days
+ * moves on that one only). With garmin: true Garmin's calendar follows, when the workout is on Garmin and the plan's profile has
+ * a Garmin login (see moveScheduledWorkout). The plans are saved first, so a Garmin failure leaves them moved and is told in
+ * `garmin`, not thrown: moved, not-scheduled (Garmin's calendar does not have it on `from`), skipped (with why) or failed.
+ */
+async function moveWorkoutDay(body: any, who: Principal): Promise<unknown> {
+  const { from, to } = body;
+  if (!isoDate(from) || !isoDate(to)) throw new HttpError(400, "from and to must be days written YYYY-MM-DD.");
+  if (from === to) throw new HttpError(400, `The workout is on ${from} already.`);
+  if (!Array.isArray(body.plans) || !body.plans.length) throw new HttpError(400, "plans must list the plan entries to move.");
+  const { files, targets } = loadPlanTargets(who, body.plans);
+  for (const { file, index } of targets) {
+    const entry = file.workouts[index];
+    if (typeof body.workoutName === "string" && entry.workoutName !== body.workoutName) {
+      throw new HttpError(409, `${file.logical} workout #${index + 1} is not "${body.workoutName}" any more. Reload and try again.`);
+    }
+    if (!scheduledDates(entry).includes(from)) throw new HttpError(409, `"${entry.workoutName}" is not on ${from} in ${file.logical} any more. Reload and try again.`);
+  }
+
+  // Whether Garmin's calendar is asked is settled before anything is written, so a refusal (no confirm) changes nothing.
+  const workoutId = targets.map(({ file, index }) => file.workouts[index].workoutId).find(hasId);
+  const garminSide = body.garmin === true ? garminForMove(who, body, files, workoutId) : null;
+
+  for (const { file, index } of targets) file.workouts[index].scheduledDate = movedDates(file.workouts[index].scheduledDate, from, to);
+  files.forEach(savePlanFile);
+  let garmin: { state: string; reason?: string; log?: string } | undefined;
+  if (garminSide && "profile" in garminSide) {
+    const outcome = await runCaptured(() => moveScheduledWorkout(garminSide.profile, workoutId, from, to));
+    garmin = outcome.ok
+      ? { state: outcome.value.moved ? "moved" : "not-scheduled", log: outcome.log }
+      : { state: "failed", reason: outcome.error instanceof Error ? outcome.error.message : String(outcome.error), log: outcome.log };
+  } else if (garminSide) garmin = { state: "skipped", reason: garminSide.skipped };
+  return { from, to, changed: changedFiles(files), garmin };
+}
+
+/** The profile whose Garmin calendar a move changes, or why it changes none. Asks for confirm: true only when Garmin will be written to. */
+function garminForMove(who: Principal, body: any, files: PlanFile[], workoutId: unknown): { profile: string } | { skipped: string } {
+  if (!hasId(workoutId)) return { skipped: "The workout is not on Garmin." };
+  if (files.some((f) => store().head(f.logical)?.archivedAt != null)) return { skipped: "The plan is archived." };
+  const info = garminInfo(who);
+  if (!info.enabled) return { skipped: info.reason ?? "Garmin actions are disabled." };
+  let profile: string;
+  try {
+    profile = profileFor(who, ownerHint(files), body.profile);
+  } catch (error) {
+    return { skipped: (error as Error).message };
+  }
+  if (!garminConnected(profile)) return { skipped: `Profile "${profile}" has no Garmin login.` };
+  requireConfirm(body);
+  return { profile };
+}
+
 /** Archive a plan: its workouts leave Garmin, the plan stays in the database (see archivePlan). Garmin is only touched, and confirm only asked for, when the plan has workoutIds. */
 async function archiveFile(body: any, who: Principal): Promise<unknown> {
   const logical = scopedPath(who, body.path);
@@ -1135,6 +1199,9 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
 
     case "POST /api/plans/archive":
       return send(res, 200, await archiveFile(await readBody(req), who));
+
+    case "POST /api/plans/move":
+      return send(res, 200, await moveWorkoutDay(await readBody(req), who));
 
     case "POST /api/plans/unarchive": {
       const body = await readBody(req);

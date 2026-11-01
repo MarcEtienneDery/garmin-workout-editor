@@ -4,11 +4,17 @@ const mockGarmin = {
   nextId: 1000,
   clock: 0,
   scheduled: [] as { workoutId: number; date: string }[],
+  nextScheduleId: 1,
   failCreate: false,
   failSchedule: false,
+  failUnschedule: false,
   failDeleteId: null as number | null,
   calls: { getWorkouts: 0, getWorkoutDetail: 0 },
+  /** The months whose calendar was read, as YYYY-MM. */
+  calendarMonths: [] as string[],
 };
+/** Garmin's id of a calendar entry: kept off the entries' own fields, so the tests compare them by workout and day. */
+const scheduleIds = new WeakMap<object, number>();
 
 jest.mock("@flow-js/garmin-connect", () => ({
   GarminConnect: jest.fn().mockImplementation(function () {
@@ -44,8 +50,33 @@ jest.mock("@flow-js/garmin-connect", () => ({
       }),
       scheduleWorkout: jest.fn(async ({ workoutId }: { workoutId: number }, date: Date) => {
         if (mockGarmin.failSchedule) throw new Error("ERROR: (500), Internal Server Error, {}");
-        mockGarmin.scheduled.push({ workoutId: Number(workoutId), date: date.toISOString().slice(0, 10) });
+        const entry = { workoutId: Number(workoutId), date: date.toISOString().slice(0, 10) };
+        scheduleIds.set(entry, mockGarmin.nextScheduleId++);
+        mockGarmin.scheduled.push(entry);
       }),
+      // the calendar of a month (counted from 0, as Garmin does): its scheduled workouts next to something else on the same days
+      getMonthCalendarEvents: jest.fn(async (year: number, month: number) => {
+        const prefix = `${year}-${String(month + 1).padStart(2, "0")}-`;
+        mockGarmin.calendarMonths.push(prefix.slice(0, 7));
+        const days = mockGarmin.scheduled.filter((s) => s.date.startsWith(prefix));
+        return {
+          year, month,
+          calendarItems: [
+            ...days.map((s) => ({ id: 900 + scheduleIds.get(s)!, itemType: "activity", workoutId: null, date: s.date, title: "A run" })),
+            ...days.map((s) => ({ id: scheduleIds.get(s), itemType: "workout", workoutId: s.workoutId, date: s.date, title: "Planned" })),
+          ],
+        };
+      }),
+      url: { SCHEDULE_WORKOUT: (id: number | string) => `https://connectapi.garmin.com/workout-service/schedule/${id}` },
+      client: {
+        delete: jest.fn(async (url: string) => {
+          if (mockGarmin.failUnschedule) throw new Error("ERROR: (500), Internal Server Error, {}");
+          const id = Number(/\/workout-service\/schedule\/(\d+)$/.exec(url)?.[1]);
+          const at = mockGarmin.scheduled.findIndex((s) => scheduleIds.get(s) === id);
+          if (at < 0) throw new Error("ERROR: (404), Not Found, {}");
+          mockGarmin.scheduled.splice(at, 1);
+        }),
+      },
     };
   }),
 }));
@@ -56,7 +87,7 @@ import * as path from "path";
 import { compareWorkouts } from "../shared/workoutSync";
 import { configureMcp } from "../mcp/context";
 import { type NewWorkout, diffPlanWorkout } from "../mcp/tools/plans";
-import { archivePlan, checkWorkoutSync, createWorkout, deleteLibraryWorkout, sendPlanToDevice, schedulePlan, unarchivePlan, getLibraryWorkout, invalidateLibrary, listLibraryWorkouts, saveWorkout, scheduleWorkout, uploadAndSchedulePlan, uploadPlan } from "../mcp/tools/garmin";
+import { archivePlan, checkWorkoutSync, createWorkout, deleteLibraryWorkout, moveScheduledWorkout, sendPlanToDevice, schedulePlan, unarchivePlan, getLibraryWorkout, invalidateLibrary, listLibraryWorkouts, saveWorkout, scheduleWorkout, uploadAndSchedulePlan, uploadPlan } from "../mcp/tools/garmin";
 import { closeStore, getStore } from "../shared/store";
 import { seedProfile } from "./fixtures/profiles";
 
@@ -141,8 +172,10 @@ describe("workouts on Garmin", () => {
     mockGarmin.scheduled = [];
     mockGarmin.failCreate = false;
     mockGarmin.failSchedule = false;
+    mockGarmin.failUnschedule = false;
     mockGarmin.failDeleteId = null;
     mockGarmin.calls = { getWorkouts: 0, getWorkoutDetail: 0 };
+    mockGarmin.calendarMonths = [];
     invalidateLibrary("TEST");
   });
 
@@ -542,6 +575,61 @@ describe("workouts on Garmin", () => {
       await scheduleWorkout("TEST", workoutId!, "2026-11-05");
       expect(mockGarmin.scheduled).toEqual([{ workoutId, date: "2026-11-05" }]);
       expect(mockGarmin.library.size).toBe(1);
+    });
+
+    describe("moveScheduledWorkout", () => {
+      it("puts the workout on the new day and takes its entry off the old one, reading the month once", async () => {
+        const { workoutId } = await createWorkout("TEST", run());
+        await scheduleWorkout("TEST", workoutId!, "2026-11-04");
+        await scheduleWorkout("TEST", workoutId!, "2026-11-11");
+        expect(await moveScheduledWorkout("TEST", workoutId!, "2026-11-04", "2026-11-06")).toEqual({ moved: true });
+        expect(mockGarmin.scheduled).toEqual([{ workoutId, date: "2026-11-11" }, { workoutId, date: "2026-11-06" }]); // the other day stays
+        expect(mockGarmin.calendarMonths).toEqual(["2026-11"]);
+      });
+
+      it("reads both months when the day moves into another one", async () => {
+        const { workoutId } = await createWorkout("TEST", run());
+        await scheduleWorkout("TEST", workoutId!, "2026-11-30");
+        expect(await moveScheduledWorkout("TEST", String(workoutId), "2026-11-30", "2026-12-01")).toEqual({ moved: true });
+        expect(mockGarmin.scheduled).toEqual([{ workoutId, date: "2026-12-01" }]);
+        expect(mockGarmin.calendarMonths).toEqual(["2026-11", "2026-12"]);
+      });
+
+      it("leaves Garmin alone when its calendar does not have the workout on the old day", async () => {
+        const { workoutId } = await createWorkout("TEST", run());
+        const other = await createWorkout("TEST", { ...run(), workoutName: "Other" });
+        await scheduleWorkout("TEST", other.workoutId!, "2026-11-04"); // another workout on that day is not this one
+        await scheduleWorkout("TEST", workoutId!, "2026-11-05");
+        expect(await moveScheduledWorkout("TEST", workoutId!, "2026-11-04", "2026-11-06")).toEqual({ moved: false });
+        expect(mockGarmin.scheduled).toEqual([{ workoutId: other.workoutId, date: "2026-11-04" }, { workoutId, date: "2026-11-05" }]);
+      });
+
+      it("does not put the workout twice on a day that has it already", async () => {
+        const { workoutId } = await createWorkout("TEST", run());
+        await scheduleWorkout("TEST", workoutId!, "2026-11-04");
+        await scheduleWorkout("TEST", workoutId!, "2026-11-06");
+        expect(await moveScheduledWorkout("TEST", workoutId!, "2026-11-04", "2026-11-06")).toEqual({ moved: true });
+        expect(mockGarmin.scheduled).toEqual([{ workoutId, date: "2026-11-06" }]);
+      });
+
+      it("keeps the old day when the new one is refused, and has both when the old entry cannot be taken off", async () => {
+        const { workoutId } = await createWorkout("TEST", run());
+        await scheduleWorkout("TEST", workoutId!, "2026-11-04");
+        mockGarmin.failSchedule = true;
+        await expect(moveScheduledWorkout("TEST", workoutId!, "2026-11-04", "2026-11-06")).rejects.toThrow(/500/);
+        expect(mockGarmin.scheduled).toEqual([{ workoutId, date: "2026-11-04" }]);
+        mockGarmin.failSchedule = false;
+        mockGarmin.failUnschedule = true;
+        await expect(moveScheduledWorkout("TEST", workoutId!, "2026-11-04", "2026-11-06")).rejects.toThrow(/500/);
+        expect(mockGarmin.scheduled).toEqual([{ workoutId, date: "2026-11-04" }, { workoutId, date: "2026-11-06" }]);
+      });
+
+      it("refuses a day that does not exist and an id that is not one before it asks Garmin anything", async () => {
+        await expect(moveScheduledWorkout("TEST", 1000, "2026-02-30", "2026-03-01")).rejects.toThrow(/is not a day/);
+        await expect(moveScheduledWorkout("TEST", 1000, "2026-03-01", "soon")).rejects.toThrow(/is not a day/);
+        await expect(moveScheduledWorkout("TEST", "12ab", "2026-03-01", "2026-03-02")).rejects.toThrow(/workoutId must be the number of a workout/);
+        expect(mockGarmin.calendarMonths).toEqual([]);
+      });
     });
   });
 });

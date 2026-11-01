@@ -506,6 +506,26 @@ export async function scheduleWorkout(profile: string | undefined, workoutId: nu
   return { workoutId: Number(id), workoutName, date: day };
 }
 
+/**
+ * Move a workout of the Garmin calendar from one day to another, as a plan's workout is moved in the web editor: it is scheduled
+ * on `to` (unless it is there already), then its entry on `from` is removed, in that order so that a failure in between leaves it
+ * on both days rather than on neither. Garmin is left alone when its calendar does not have the workout on `from` (moved: false):
+ * the plan may never have been scheduled there.
+ */
+export async function moveScheduledWorkout(profile: string | undefined, workoutId: number | string, from: string, to: string): Promise<{ moved: boolean }> {
+  const id = libraryWorkoutId(workoutId);
+  const [day, target] = [calendarDay(from), calendarDay(to)];
+
+  const session = getSession(profile);
+  assertLive(session, "move_scheduled_workout");
+  const entries = (await session.editor.scheduledOn([day, target])).filter((e) => sameId(e.workoutId, id));
+  const entry = entries.find((e) => e.date === day);
+  if (!entry) return { moved: false };
+  if (!entries.some((e) => e.date === target)) await session.editor.scheduleWorkout(id, target);
+  await session.editor.unscheduleWorkout(entry.scheduleId);
+  return { moved: true };
+}
+
 export function registerGarminTools(server: McpServer): void {
   // ── Reads ─────────────────────────────────────────────────────────────────
 
