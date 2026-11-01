@@ -5,7 +5,7 @@
  * Files written by a test carry the profile's name: workout-plans/ is one namespace for every profile, so a bare name would
  * collide with another test's file. alice's plans are read only; bob sees only the shared plan.
  */
-import { test, expect as baseExpect, openView, loginAs, PASSWORD, daysAgo, daysAhead, today } from "../support/fixtures";
+import { test, expect as baseExpect, openView, loginAs, PASSWORD, daysAgo, daysAhead, mondayOf, today } from "../support/fixtures";
 import type { APIRequestContext, Page } from "@playwright/test";
 
 // The Monaco editor of the page: the top-level `editor` of the page's own script (window.editor is the #editor element).
@@ -100,7 +100,7 @@ test.describe("Plans: the file list", () => {
   test("each plan's row shows its workout count and its plan week", async ({ alice }) => {
     await openPlans(alice);
     await expect(rowOf(alice, "alice-run-block.json").locator("small")).toContainText("4 workouts");
-    await expect(rowOf(alice, "alice-run-block.json").locator("small")).toContainText("2026-10-26");
+    await expect(rowOf(alice, "alice-run-block.json").locator("small")).toContainText(mondayOf(today())); // the seed's plan starts this week
     await expect(rowOf(alice, "alice-someday.json").locator("small")).toContainText("1 workouts");
     await expect(rowOf(alice, "alice-someday.json").locator("small")).toContainText("2026-01-05");
     await expect(rowOf(alice, SHARED).locator("small")).toContainText("1 workouts");

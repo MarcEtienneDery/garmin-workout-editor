@@ -356,7 +356,7 @@ test.describe("Weight view, alice (45 days stored, a weigh-in every third day)",
 
   test("a day without a weigh-in lists its weigh-in as not stored", async ({ alice }) => {
     await openWeight(alice);
-    await rowOf(alice, "2026-10-26").click();
+    await rowOf(alice, daysAgo(1)).click(); // a weigh-in is stored every third day back from today: not yesterday
     await expect(alice.locator("#bbody details.rraw.none")).toHaveCount(1);
     await expect(alice.locator("#bbody details.rraw.none summary b")).toHaveText("Weigh-in");
     await expect(alice.locator("#bbody details.rraw.none summary small")).toHaveText("not stored for this day");
@@ -389,7 +389,7 @@ test.describe("Weight view, alice (45 days stored, a weigh-in every third day)",
       for (const range of ["14", "30", "60", "90"]) {
         await alice.locator("#bRange").selectOption(range);
         await expect(figure(alice, "Trend")).toBeVisible();
-        for (const pick of [null, "2026-10-27", "2026-10-26"] as const) {
+        for (const pick of [null, daysAgo(4), daysAgo(3)]) { // a day without a weigh-in, and one with
           if (pick) await rowOf(alice, pick).click();
           await expect(alice.locator("#bbody .rfig").first()).toBeVisible();
           const text = (await alice.locator("#bbody").textContent()) ?? "";

@@ -360,7 +360,10 @@ test.describe("Workouts mode", () => {
     await goToMonthOf(alice, today());
     await expect(weekOf(alice, today()).getByRole("button", { name: "Tempo intervals", exact: true })).toHaveCSS("background-color", GREEN);
     await goToMonthOf(alice, daysAhead(1));
-    await expect(weekOf(alice, daysAhead(1)).getByRole("button", { name: "Full body strength", exact: true })).toHaveCSS("background-color", BLUE);
+    // the strength workout is on in 1 and 5 days, which may be the same week: every chip of it is blue
+    const strength = weekOf(alice, daysAhead(1)).getByRole("button", { name: "Full body strength", exact: true });
+    await expect(strength.first()).toBeVisible();
+    for (const chip of await strength.all()) await expect(chip).toHaveCSS("background-color", BLUE);
     await goToMonthOf(alice, daysAhead(2));
     await expect(weekOf(alice, daysAhead(2)).getByRole("button", { name: "Shared walk", exact: true })).toHaveCSS("background-color", GREY);
   });
@@ -450,16 +453,18 @@ test.describe("Both mode", () => {
     const chips = alice.locator("#cgrid .cbar.wk"), bars = alice.locator("#cgrid .cbar:not(.wk)");
     await expect(chips.first()).toBeVisible();
     await expect(bars.first()).toBeVisible();
-    const both = { chips: await chips.allTextContents(), bars: await bars.allTextContents() };
+    // the same chips and bars, in whatever order each mode lays them out (in Both, a workout sits in its plan's bar)
+    const sorted = async (l: Locator) => (await l.allTextContents()).sort();
+    const both = { chips: await sorted(chips), bars: await sorted(bars) };
     await alice.locator("#cModes button[data-mode=workouts]").click();
     await expect(bars).toHaveCount(0);
-    await expect(chips).toHaveText(both.chips);
+    await expect.poll(() => sorted(chips)).toEqual(both.chips);
     await alice.locator("#cModes button[data-mode=plans]").click();
     await expect(chips).toHaveCount(0);
-    await expect(bars).toHaveText(both.bars);
+    await expect.poll(() => sorted(bars)).toEqual(both.bars);
     await alice.locator("#cModes button[data-mode=both]").click();
-    await expect(chips).toHaveText(both.chips);
-    await expect(bars).toHaveText(both.bars);
+    await expect.poll(() => sorted(chips)).toEqual(both.chips);
+    await expect.poll(() => sorted(bars)).toEqual(both.bars);
   });
 
   test("the bar is drawn in its plan's colour around the workouts, which keep their type's colour", async ({ alice }) => {
