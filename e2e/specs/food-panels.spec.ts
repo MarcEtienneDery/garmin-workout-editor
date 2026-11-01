@@ -1,12 +1,13 @@
 /**
  * The Food view opens nothing the person did not open. After an action (Save, Cancel, Move, Undo, Add) the only things open are those
- * the person had opened: no form by hand left open by a change, no food's details opened in the meal it was moved to, no Recent list
- * opened by a focus the person did not give (the page's own, or the one the browser gives back on a return to the tab or when a
- * dialog shuts), and nothing of one day (or profile) still open on another.
+ * the person had opened: no add sheet left open by a change once it is saved or cancelled, no food's details opened in the meal it was
+ * moved to, nothing opened by a tap that logs a food, and nothing of one day (or profile) still open on another. The sheet shuts the
+ * ways a dialog does (✕, Done, Back, Escape), and a dialog over it (the camera) shuts alone.
  *
  * Each test checks the whole view with `opened`, so a panel that opens anywhere else fails it too. Open Food Facts is never reached.
  */
 import { test, expect, openView, today, daysAgo, loginAs, ADMIN_TOKEN, type Page, type APIRequestContext } from "../support/fixtures";
+import { labelOf, nutrients, openSheet, sheetClose, sheetTab } from "../support/food";
 
 const OATMEAL = { name: "Oatmeal", kcal: 300, proteinG: 10, carbsG: 54, fatG: 5, nutrients: { fiberG: 4 } };
 const BANANA = { name: "Banana", kcal: 105, proteinG: 1, carbsG: 27, fatG: 0 };
@@ -16,14 +17,6 @@ const GRANOLA_PRODUCT = {
 };
 const GRANOLA = { name: "Granola bars (Nature Valley) · 2 × 40 g", kcal: 360, proteinG: 6.4, carbsG: 49.6, fatG: 13.6, nutrients: { fiberG: 3.2 }, product: GRANOLA_PRODUCT };
 const OATS_HIT = { code: null, name: "Rolled oats", brand: null, per100: { kcal: 380, proteinG: 13, carbsG: 60, fatG: 7 }, nutrients: {}, complete: false, unit: "g", canada: false, servingG: null, servingText: null };
-
-const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-/** The label the Food view gives a day: "Thu 29 Oct". */
-const labelOf = (day: string): string => {
-  const d = new Date(`${day}T00:00:00Z`);
-  return `${DOW[d.getUTCDay()]} ${d.getUTCDate()} ${MON[d.getUTCMonth()]}`;
-};
 
 /** Logs foods in a meal of a day through the API. */
 async function seed(api: APIRequestContext, day: string, meal: string, items: Record<string, unknown>[]): Promise<void> {
@@ -38,21 +31,19 @@ async function stubFoods(page: Page): Promise<void> {
 }
 
 /**
- * What is open in the Food view, in the order of the page: per meal its form by hand, its Recent list, its picker and the foods whose
- * details are shown ("breakfast: Oatmeal"); then the AI box and any dialog. Empty when nothing is.
+ * What is open in the Food view, in the order of the page: the add sheet and what it shows ("sheet: find", the search; "ai", "hand",
+ * "pick" the picker, "edit" a food changed by hand), the foods whose details are shown ("breakfast: Oatmeal"), the nutrients under the
+ * summary, then any other dialog. Empty when nothing is.
  */
 function opened(page: Page): Promise<string[]> {
   return page.evaluate(() => {
     const out: string[] = [];
-    if (document.querySelector('#fbody .faihead[aria-expanded="true"]')) out.push("AI box");
+    if ((document.getElementById("fsheet") as HTMLDialogElement).open) out.push(`sheet: ${document.getElementById("fsh")!.dataset.mode}`);
     for (const s of document.querySelectorAll<HTMLElement>("#fbody section.fmeal")) {
-      const meal = s.dataset.meal;
-      if (s.querySelector<HTMLDetailsElement>("details.fhand")!.open) out.push(`${meal}: by hand`);
-      if (s.querySelector('.ffrow button[aria-pressed="true"]')) out.push(`${meal}: recent`);
-      if (s.querySelector(".fpick")) out.push(`${meal}: picker`);
-      for (const name of s.querySelectorAll(".fe.open .fn")) out.push(`${meal}: ${name.textContent}`);
+      for (const name of s.querySelectorAll(".fe.open .fn")) out.push(`${s.dataset.meal}: ${name.textContent}`);
     }
-    for (const d of document.querySelectorAll("dialog[open]")) out.push(`dialog ${d.id}`);
+    if (document.querySelector("#fbody details.fnuts[open]")) out.push("nutrients");
+    for (const d of document.querySelectorAll("dialog[open]")) if (d.id !== "fsheet") out.push(`dialog ${d.id}`);
     return out;
   });
 }
@@ -62,9 +53,11 @@ const openIs = (page: Page, what: string[]) => expect.poll(() => opened(page)).t
 
 const section = (page: Page, meal: string) => page.locator(`#fbody section.fmeal[data-meal="${meal}"]`);
 const row = (page: Page, meal: string, name: string) => section(page, meal).locator(".fe", { has: page.locator(".fn", { hasText: name }) });
-const searchBox = (page: Page, meal = "breakfast") => section(page, meal).getByRole("searchbox", { name: "Search a food" });
-const recentButton = (page: Page, meal = "breakfast") => section(page, meal).getByRole("button", { name: "Recent", exact: true });
-const handSummary = (page: Page, meal: string) => section(page, meal).locator("details.fhand > summary");
+const searchBox = (page: Page) => page.locator("#fsh").getByRole("searchbox", { name: "Search a food" });
+const form = (page: Page) => page.locator("#fsh form.fform");
+const picker = (page: Page) => page.locator("#fsh .fpick");
+/** The quick-add strip's meal, and its card for a food. */
+const stripMeal = (page: Page) => page.locator("#fbody .fquick").getByRole("combobox", { name: "The meal a tap adds to" });
 
 /** Opens the Food view and waits until its day has loaded. */
 async function openFood(page: Page) {
@@ -78,67 +71,59 @@ async function openRow(page: Page, meal: string, name: string) {
   await expect(row(page, meal, name)).toHaveClass(/\bopen\b/);
 }
 
-/** Searches oats in a meal, picks Rolled oats and adds 100 g of it: the page then puts the cursor back in the search box. */
-async function addOatsFromPicker(page: Page, meal = "breakfast") {
-  await searchBox(page, meal).fill("oats");
-  await section(page, meal).locator("button.fr", { hasText: "Rolled oats" }).click();
-  await section(page, meal).locator(".fpick").getByRole("button", { name: "Add", exact: true }).click();
-  await expect(section(page, meal).locator(".fe .fn", { hasText: "Rolled oats · 100 g" })).toBeVisible();
-  await expect(searchBox(page, meal)).toBeFocused();
-}
-
-test.describe("Food: a change shuts the form it opened", () => {
-  test("Save of a food changed by hand shuts the form Change opened, and it stays shut on the next redraw", async ({ me, profile }) => {
+test.describe("Food: a change shuts the sheet it opened", () => {
+  test("Save of a food changed by hand shuts the sheet Change opened, and it stays shut on the next redraw", async ({ me, profile }) => {
     await seed(profile.api, today(), "breakfast", [OATMEAL, BANANA]);
     await openFood(me);
     await openRow(me, "breakfast", "Oatmeal");
     await me.getByRole("button", { name: "Change Oatmeal" }).click();
-    await expect(handSummary(me, "breakfast")).toHaveText("Change the food");
-    await openIs(me, ["breakfast: by hand", "breakfast: Oatmeal"]);
-    await section(me, "breakfast").locator("form.fform").locator('input[aria-label="kcal"]').fill("320");
-    await section(me, "breakfast").locator("form.fform button[type='submit']").click();
+    await openIs(me, ["sheet: edit", "breakfast: Oatmeal"]);
+    await form(me).locator('input[aria-label="kcal"]').fill("320");
+    await form(me).locator("button[type='submit']").click();
     await expect(row(me, "breakfast", "Oatmeal").locator(".fk")).toHaveText("320 kcal");
-    await expect(handSummary(me, "breakfast")).toHaveText("Enter by hand");
     await openIs(me, ["breakfast: Oatmeal"]);
-    // another action draws the view again: the form Change opened does not come back
+    // another action draws the view again: the sheet Change opened does not come back
     await row(me, "breakfast", "Oatmeal").getByRole("button", { name: "+ Add again" }).click();
     await expect(section(me, "breakfast").locator(".fe")).toHaveCount(3);
     await openIs(me, ["breakfast: Oatmeal"]);
   });
 
-  test("Cancel of a change by hand shuts the form too", async ({ me, profile }) => {
+  test("Cancel of a change by hand shuts the sheet too", async ({ me, profile }) => {
     await seed(profile.api, today(), "dinner", [OATMEAL]);
     await openFood(me);
     await openRow(me, "dinner", "Oatmeal");
     await me.getByRole("button", { name: "Change Oatmeal" }).click();
-    await openIs(me, ["dinner: by hand", "dinner: Oatmeal"]);
-    await section(me, "dinner").locator("form.fform").getByRole("button", { name: "Cancel" }).click();
-    await expect(handSummary(me, "dinner")).toHaveText("Enter by hand");
+    await openIs(me, ["sheet: edit", "dinner: Oatmeal"]);
+    await form(me).getByRole("button", { name: "Cancel" }).click();
     await openIs(me, ["dinner: Oatmeal"]);
   });
 
-  test("a form by hand the person had opened is still open once the change in its meal is done", async ({ me, profile }) => {
-    await seed(profile.api, today(), "breakfast", [OATMEAL]);
+  test("a change left with Escape changes nothing, and the next sheet opened is to add a food, on the search", async ({ me, profile }) => {
+    await seed(profile.api, today(), "dinner", [OATMEAL]);
     await openFood(me);
-    await handSummary(me, "breakfast").click();
-    await handSummary(me, "snack").click();
-    await openRow(me, "breakfast", "Oatmeal");
+    await openRow(me, "dinner", "Oatmeal");
     await me.getByRole("button", { name: "Change Oatmeal" }).click();
-    await expect(handSummary(me, "breakfast")).toHaveText("Change the food");
-    await section(me, "breakfast").locator("form.fform").getByRole("button", { name: "Cancel" }).click();
-    await expect(handSummary(me, "breakfast")).toHaveText("Enter by hand");
-    await openIs(me, ["breakfast: by hand", "breakfast: Oatmeal", "snack: by hand"]);
+    await form(me).locator('input[aria-label="kcal"]').fill("999");
+    await me.keyboard.press("Escape");
+    await openIs(me, ["dinner: Oatmeal"]);
+    await expect(row(me, "dinner", "Oatmeal").locator(".fk")).toHaveText("300 kcal");
+    await expect(section(me, "dinner").locator(".fe.editing")).toHaveCount(0);
+    await openSheet(me, "dinner");
+    await expect(me.locator("#fshTitle")).toHaveText("Add food");
+    await openIs(me, ["sheet: find", "dinner: Oatmeal"]);
+    await sheetTab(me, "By hand").click();
+    await expect(form(me).locator('input[aria-label="kcal"]')).toHaveValue(""); // nothing of the change is left in the form
   });
 
-  test("a form by hand the person shuts stays shut", async ({ me }) => {
+  test("Back during a change shuts the sheet and changes nothing", async ({ me, profile }) => {
+    await seed(profile.api, today(), "lunch", [BANANA]);
     await openFood(me);
-    await handSummary(me, "lunch").click();
-    await openIs(me, ["lunch: by hand"]);
-    await handSummary(me, "lunch").click();
-    await openIs(me, []);
-    await recentButton(me, "lunch").click(); // the Recent list draws the meal again
-    await recentButton(me, "lunch").click();
-    await openIs(me, []);
+    await openRow(me, "lunch", "Banana");
+    await me.getByRole("button", { name: "Change Banana" }).click();
+    await openIs(me, ["sheet: edit", "lunch: Banana"]);
+    await me.goBack();
+    await openIs(me, ["lunch: Banana"]);
+    await expect(me.locator("body")).toHaveAttribute("data-view", "food");
   });
 
   test("Edit the numbers of a food with a quantity, then Save, leaves neither the picker nor the form open", async ({ me, profile }) => {
@@ -147,11 +132,11 @@ test.describe("Food: a change shuts the form it opened", () => {
     await openFood(me);
     await openRow(me, "lunch", "Granola bars");
     await me.getByRole("button", { name: `Change ${GRANOLA.name}` }).click();
-    await openIs(me, ["lunch: picker", `lunch: ${GRANOLA.name}`]);
-    await section(me, "lunch").getByRole("button", { name: "Edit the numbers" }).click();
-    await openIs(me, ["lunch: by hand", `lunch: ${GRANOLA.name}`]);
-    await section(me, "lunch").locator("form.fform").locator('input[aria-label="kcal"]').fill("365");
-    await section(me, "lunch").locator("form.fform button[type='submit']").click();
+    await openIs(me, ["sheet: pick", `lunch: ${GRANOLA.name}`]);
+    await picker(me).getByRole("button", { name: "Edit the numbers" }).click();
+    await openIs(me, ["sheet: edit", `lunch: ${GRANOLA.name}`]);
+    await form(me).locator('input[aria-label="kcal"]').fill("365");
+    await form(me).locator("button[type='submit']").click();
     await expect(row(me, "lunch", "Granola bars").locator(".fk")).toHaveText("365 kcal");
     await openIs(me, [`lunch: ${GRANOLA.name}`]);
   });
@@ -162,8 +147,8 @@ test.describe("Food: a change shuts the form it opened", () => {
     await openFood(me);
     await openRow(me, "lunch", "Granola bars");
     await me.getByRole("button", { name: `Change ${GRANOLA.name}` }).click();
-    await section(me, "lunch").locator(".fpick").getByRole("spinbutton", { name: "Quantity" }).fill("3");
-    await section(me, "lunch").locator(".fpick").getByRole("button", { name: "Save" }).click();
+    await picker(me).getByRole("spinbutton", { name: "Quantity" }).fill("3");
+    await picker(me).getByRole("button", { name: "Save" }).click();
     await expect(section(me, "lunch").locator(".fe .fn")).toHaveText("Granola bars (Nature Valley) · 3 × 40 g");
     await openIs(me, ["lunch: Granola bars (Nature Valley) · 3 × 40 g"]);
   });
@@ -216,125 +201,133 @@ test.describe("Food: a food moved, deleted or added again does not open elsewher
   });
 });
 
-test.describe("Food: Recent opens on a tap or Tab into the search box, not on a focus that comes otherwise", () => {
-  test("a tap in the box opens Recent there only", async ({ alice }) => {
-    await openFood(alice);
-    await searchBox(alice, "lunch").click();
-    await openIs(alice, ["lunch: recent"]);
-  });
-
-  test("the cursor the page puts back in the box after Add opens nothing, and a tap in the box then opens Recent", async ({ me, profile }) => {
+test.describe("Food: the sheet opens when asked, and shuts as a dialog does", () => {
+  test("a tap on a quick-add card logs the food and opens nothing, and the nutrients the person opened stay open", async ({ me, profile }) => {
     await seed(profile.api, daysAgo(1), "breakfast", [OATMEAL]);
-    await stubFoods(me);
     await openFood(me);
-    await addOatsFromPicker(me);
-    await openIs(me, []);
-    // the box has the cursor already: the tap is what asks for the list
-    await searchBox(me).click();
-    await openIs(me, ["breakfast: recent"]);
-    await expect(section(me, "breakfast").locator(".frec", { hasText: "Oatmeal" })).toBeVisible();
+    await nutrients(me);
+    await stripMeal(me).selectOption("breakfast");
+    await me.locator("#fbody .fquick").getByRole("button", { name: "Add Oatmeal to Breakfast" }).click();
+    await expect(section(me, "breakfast").locator(".fe .fn")).toHaveText(["Oatmeal"]);
+    await openIs(me, ["nutrients"]);
   });
 
-  test("coming back to the tab or the window, which gives the box its focus back, does not open Recent", async ({ me, profile }) => {
-    await seed(profile.api, daysAgo(1), "breakfast", [OATMEAL]);
-    await stubFoods(me);
-    await openFood(me);
-    await addOatsFromPicker(me);
-    await openIs(me, []);
-    // what the browser does when the person leaves the tab and comes back: the box loses the focus with the window, and gets it back
-    await searchBox(me).evaluate((box: HTMLInputElement) => {
-      box.blur();
-      window.dispatchEvent(new FocusEvent("blur"));
-      window.dispatchEvent(new FocusEvent("focus"));
-      box.focus();
-    });
-    await expect(searchBox(me)).toBeFocused();
-    await openIs(me, []);
-  });
-
-  test("a dialog that shuts gives the box its focus back without opening Recent", async ({ alice }) => {
-    await alice.context().grantPermissions([]);
-    await openFood(alice);
-    await searchBox(alice).click();
-    await openIs(alice, ["breakfast: recent"]);
-    // a browser that leaves the focus in the box when a button is tapped (Safari): the box still has it when the camera opens
-    await recentButton(alice).evaluate((b: HTMLElement) => b.click());
-    await openIs(alice, []);
-    await section(alice, "breakfast").getByRole("button", { name: "📷 Scan" }).evaluate((b: HTMLElement) => b.click());
-    await expect(alice.locator("#scandlg")).toBeVisible();
-    await alice.keyboard.press("Escape");
-    await expect(alice.locator("#scandlg")).toBeHidden();
-    await expect(searchBox(alice)).toBeFocused();
-    await openIs(alice, []);
-  });
-
-  test("Tab into the box opens Recent, for the keyboard", async ({ alice }) => {
-    await openFood(alice);
-    await recentButton(alice, "snack").focus();
-    await alice.keyboard.press("Shift+Tab");
-    await expect(searchBox(alice, "snack")).toBeFocused();
-    await openIs(alice, ["snack: recent"]);
-  });
-
-  test("adding a recent food keeps that list open for the next one, and opens nothing else", async ({ me, profile }) => {
+  test("adding a recent food keeps the sheet on the search for the next one, and its Undo too", async ({ me, profile }) => {
     await seed(profile.api, daysAgo(1), "breakfast", [OATMEAL, BANANA]);
     await openFood(me);
-    await searchBox(me).click();
-    await me.getByRole("button", { name: "Add Oatmeal to Breakfast" }).click();
+    await openSheet(me, "breakfast");
+    await me.locator("#fsh").getByRole("button", { name: "Add Oatmeal to Breakfast" }).click();
     await expect(section(me, "breakfast").locator(".fe .fn")).toHaveText(["Oatmeal"]);
-    await openIs(me, ["breakfast: recent"]);
+    await openIs(me, ["sheet: find"]);
     await me.locator("#toast").getByRole("button", { name: "Undo" }).click();
     await expect(section(me, "breakfast").locator(".fe")).toHaveCount(0);
-    await openIs(me, ["breakfast: recent"]);
+    await openIs(me, ["sheet: find"]);
+  });
+
+  test("Done shuts the sheet, and the foods added wait in their meal, shut", async ({ me, profile }) => {
+    await seed(profile.api, daysAgo(1), "breakfast", [OATMEAL, BANANA]);
+    await openFood(me);
+    await openSheet(me, "breakfast");
+    await me.locator("#fsh").getByRole("button", { name: "Add Oatmeal to Breakfast" }).click();
+    await expect(section(me, "breakfast").locator(".fe .fn")).toHaveText(["Oatmeal"]);
+    await me.locator("#fsh .fsh-foot").getByRole("button", { name: "Done" }).click();
+    await openIs(me, []);
+  });
+
+  test("✕, Escape and Back each shut the sheet, and the view stays on the day", async ({ me }) => {
+    await openFood(me);
+    await me.locator("#fdSearch").click();
+    await openIs(me, ["sheet: find"]);
+    await sheetClose(me).click();
+    await openIs(me, []);
+    await me.locator("#fdSearch").click();
+    await openIs(me, ["sheet: find"]);
+    await me.keyboard.press("Escape");
+    await openIs(me, []);
+    await me.locator("#fdSearch").click();
+    await openIs(me, ["sheet: find"]);
+    await me.goBack();
+    await openIs(me, []);
+    await expect(me.locator("body")).toHaveAttribute("data-view", "food");
+    await expect(me).toHaveURL(/#food$/);
+  });
+
+  test("the camera over the sheet shuts alone and gives the sheet back, on the search", async ({ alice }) => {
+    await alice.context().grantPermissions([]);
+    await openFood(alice);
+    await openSheet(alice, "breakfast");
+    await sheetTab(alice, "Scan").click();
+    await expect(alice.locator("#scandlg")).toBeVisible();
+    await openIs(alice, ["sheet: find", "dialog scandlg"]);
+    await alice.keyboard.press("Escape");
+    await openIs(alice, ["sheet: find"]);
+    await expect(searchBox(alice)).toBeVisible();
+  });
+
+  test("a sheet shut on the search opens again on an empty search", async ({ me }) => {
+    await stubFoods(me);
+    await openFood(me);
+    await openSheet(me, "lunch");
+    await searchBox(me).fill("oats");
+    await expect(me.locator("#fsh .fresults button.fr", { hasText: "Rolled oats" })).toBeVisible();
+    await sheetClose(me).click();
+    await openSheet(me, "lunch");
+    await expect(searchBox(me)).toHaveValue("");
+    await expect(me.locator("#fsh .fresults button.fr", { hasText: "Rolled oats" })).toHaveCount(0);
   });
 });
 
 test.describe("Food: another day (or profile) starts with nothing open", () => {
-  test("Recent, a search, a form by hand and a food's details of today are shut on the day before, and on today again", async ({ me, profile }) => {
+  test("a food's details of today are shut on the day before, and on today again", async ({ me, profile }) => {
     await seed(profile.api, today(), "breakfast", [OATMEAL]);
     await seed(profile.api, daysAgo(1), "breakfast", [BANANA]);
-    await stubFoods(me);
     await openFood(me);
-    await searchBox(me, "lunch").click();
-    await searchBox(me, "snack").click();
-    await searchBox(me, "snack").fill("oats");
-    await expect(section(me, "snack").locator("button.fr", { hasText: "Rolled oats" })).toBeVisible();
-    await handSummary(me, "dinner").click();
     await openRow(me, "breakfast", "Oatmeal");
-    await openIs(me, ["breakfast: Oatmeal", "lunch: recent", "dinner: by hand", "snack: recent"]);
+    await openIs(me, ["breakfast: Oatmeal"]);
     await me.locator("#fPrev").click();
     await expect(me.locator("#fDate")).toHaveValue(daysAgo(1));
     await expect(section(me, "breakfast").locator(".fe .fn")).toHaveText(["Banana"]);
     await openIs(me, []);
-    await expect(searchBox(me, "snack")).toHaveValue("");
-    await expect(section(me, "snack").locator(".fresults > *")).toHaveCount(0);
     await me.locator("#fNext").click();
     await expect(me.locator("#fDate")).toHaveValue(today());
     await openIs(me, []);
   });
 
-  test("the picker of a food being added shuts when a day is picked in the Every day table", async ({ me, profile }) => {
+  test("a day picked in the Every day table opens with nothing open", async ({ me, profile }) => {
+    await seed(profile.api, today(), "breakfast", [OATMEAL]);
     await seed(profile.api, daysAgo(2), "lunch", [BANANA]);
-    await stubFoods(me);
     await openFood(me);
-    await searchBox(me).fill("oats");
-    await section(me, "breakfast").locator("button.fr", { hasText: "Rolled oats" }).click();
-    await openIs(me, ["breakfast: picker"]);
+    await openRow(me, "breakfast", "Oatmeal");
     await me.locator(".rmetrics tbody tr", { has: me.locator("td.day", { hasText: labelOf(daysAgo(2)) }) }).click();
     await expect(me.locator("#fDate")).toHaveValue(daysAgo(2));
     await expect(section(me, "lunch").locator(".fe .fn")).toHaveText(["Banana"]);
     await openIs(me, []);
   });
 
-  test("a day typed in the address opens with nothing open", async ({ alice }) => {
+  test("a day typed in the address while the sheet is open shuts it, and opens with nothing open", async ({ alice }) => {
+    await stubFoods(alice);
     await openFood(alice);
-    await searchBox(alice).click();
-    await handSummary(alice, "lunch").click();
-    await openIs(alice, ["breakfast: recent", "lunch: by hand"]);
+    await openSheet(alice, "breakfast");
+    await searchBox(alice).fill("oats");
+    await openIs(alice, ["sheet: find"]);
     await alice.evaluate((day) => { location.hash = `#food/${day}`; }, daysAgo(2));
     await expect(alice.locator("#fDate")).toHaveValue(daysAgo(2));
     await expect(section(alice, "breakfast").locator(".fe .fn")).toHaveText(["Oatmeal", "Banana"]);
     await openIs(alice, []);
+    await openSheet(alice, "breakfast");
+    await expect(searchBox(alice)).toHaveValue(""); // the search of the other day is not carried over
+  });
+
+  test("the meal chosen for adding is forgotten on another day: the bar goes back to the meal of the hour", async ({ me, profile }) => {
+    await me.clock.install({ time: new Date("2026-10-30T12:30:00Z") });
+    await seed(profile.api, daysAgo(1), "breakfast", [OATMEAL]);
+    await openFood(me);
+    await expect(me.locator("#fdLabel")).toHaveText("Add food to Lunch");
+    await stripMeal(me).selectOption("snack");
+    await expect(me.locator("#fdLabel")).toHaveText("Add food to Snacks");
+    await me.locator("#fPrev").click();
+    await expect(me.locator("#fDate")).toHaveValue(daysAgo(1));
+    await expect(me.locator("#fdLabel")).toHaveText("Add food to Lunch");
   });
 
   test("the admin's choice of another profile opens it with nothing of the first one's open", async ({ page, profile }) => {
@@ -342,12 +335,13 @@ test.describe("Food: another day (or profile) starts with nothing open", () => {
     await openFood(page);
     await page.locator("#fProfile").selectOption("alice");
     await expect(page.locator("#fProfile")).toHaveValue("alice");
-    await handSummary(page, "breakfast").click();
-    await recentButton(page, "lunch").click();
-    await openIs(page, ["breakfast: by hand", "lunch: recent"]);
+    await page.locator("#fPrev").click();
+    await expect(page.locator("#fDate")).toHaveValue(daysAgo(1));
+    await openRow(page, "breakfast", "Oatmeal");
+    await openIs(page, ["breakfast: Oatmeal"]);
     await page.locator("#fProfile").selectOption(profile.name);
     await expect(page.locator("#fProfile")).toHaveValue(profile.name);
-    await expect(section(page, "breakfast").locator(".fmh > b")).toHaveText("Breakfast");
+    await expect(section(page, "breakfast").locator(".fmt b")).toHaveText("Breakfast");
     await openIs(page, []);
   });
 });

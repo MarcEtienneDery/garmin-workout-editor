@@ -10,8 +10,9 @@
  * Needs ffmpeg with libwebp on the PATH. Emoji need a color emoji font: without one installed, point FONTCONFIG_FILE at a
  * fonts.conf that adds one.
  *
- * Nothing is reached but OpenStreetMap (the map tiles) and Open Food Facts (the food search). The AI box's answer is the
+ * Nothing is reached but OpenStreetMap (the map tiles) and Open Food Facts (the food search). The food AI's answer is the
  * recorder's own (ESTIMATE below), so no Claude login is needed: what the recording shows of it is the page, not a real estimate.
+ * The food scenes fix the page's clock at 18:40 UTC, so the meal the page suggests is dinner whatever the time of the recording.
  */
 import { chromium, devices, type Browser, type BrowserContext, type Locator, type Page } from "@playwright/test";
 import { execFileSync } from "child_process";
@@ -144,7 +145,10 @@ interface Scene {
 
 const meal = (page: Page, name: string) => page.locator(`#fbody section.fmeal[data-meal="${name}"]`);
 
-/** What the AI box is answered with (see the header). */
+/** Dinner time on the page's clock, today (see the header): the bar at the bottom and the quick-add strip add to Dinner. */
+const atDinner = (page: Page) => page.clock.setFixedTime(new Date(`${new Date().toISOString().slice(0, 10)}T18:40:00Z`));
+
+/** What the food AI is answered with (see the header). */
 const ESTIMATE = {
   items: [
     { name: "Grilled chicken breast", portion: "150 g", meal: "dinner", amount: 150, unit: "g", kcal: 248, proteinG: 46, carbsG: 0, fatG: 5, nutrients: { sodiumMg: 110, potassiumMg: 390 } },
@@ -312,53 +316,61 @@ const SCENES: Scene[] = [
       await s.pause(1000);
       await s.click(page.locator("#views button, #views a").filter({ hasText: "Calendar" }), { wait: 1500 });
       await s.click(page.locator("#cgrid .cday.today, #cgrid .cday.sel").first(), { wait: 1600 });
-      await s.click(page.locator("#views button, #views a").filter({ hasText: "Food" }), { wait: 1500 });
-      await s.scroll(page.locator("#fbody"), 500, 1000);
+      await s.click(page.locator("#views button, #views a").filter({ hasText: "Food" }), { wait: 1800 });
+      // the add sheet over the whole screen: a food logged lately, one tap
+      await s.click(meal(page, "snack").getByRole("button", { name: "Add a food to Snacks" }), { wait: 1200 });
+      await s.click(page.locator("#fsh .frec").filter({ hasText: "Protein shake" }).first(), { wait: 1500 });
+      await s.click(page.locator("#fsh .fsh-foot").getByRole("button", { name: "Done" }), { wait: 900 });
+      await s.scroll(page.locator("#fscroll"), 520, 1000);
       await s.pause(1500);
     },
   },
   {
     name: "food",
     start: "/#food",
+    before: atDinner,
     ready: (page) => meal(page, "dinner").waitFor(),
     run: async (s, page) => {
-      await s.pause(1000);
-      // one tap on a recent food
-      await s.scroll(page.locator("#fbody"), 330, 700);
-      await s.click(meal(page, "snack").getByRole("button", { name: "Recent", exact: true }), { wait: 1200 });
-      await s.click(meal(page, "snack").locator(".frec").filter({ hasText: "Protein shake" }).first(), { wait: 1500 });
-      // a food from Open Food Facts, by its quantity
-      const search = meal(page, "dinner").getByRole("searchbox", { name: "Search a food" });
-      await s.type(search, "skyr", 110);
-      const result = meal(page, "dinner").locator(".fresults button.fr").first();
+      await s.pause(1600);
+      // one tap on a food logged often
+      await s.click(page.locator("#fbody .fchip").filter({ hasText: "Salmon with rice" }), { wait: 1600 });
+      // a food from Open Food Facts, by its quantity, in the add sheet
+      await s.click(page.locator("#fdSearch"), { wait: 700 });
+      await page.keyboard.type("skyr", { delay: 110 });
+      const result = page.locator("#fsh .fresults button.fr:not(.frec)").first();
       await result.waitFor({ timeout: 20_000 });
       await s.pause(1200);
       await s.click(result, { wait: 1000 });
-      const picker = meal(page, "dinner").locator(".fpick");
+      const picker = page.locator("#fsh .fpick");
+      // Add waits for the product's own page (a string, not a function: tsx would add its helpers to a function's code)
+      await page.waitForFunction('!document.querySelector("#fsh .fpick button.primary").disabled', null, { timeout: 15_000 });
       const quantity = picker.getByRole("spinbutton", { name: "Quantity" });
       await s.click(quantity, { wait: 150 });
       await page.keyboard.press("Control+a");
       await page.keyboard.type("175", { delay: 140 });
       await s.pause(1200);
-      await s.click(picker.getByRole("button", { name: "Add", exact: true }), { wait: 1500 });
+      await s.click(picker.locator("button.primary"), { wait: 1500 });
       // by hand: the calories follow the macros
-      const hand = meal(page, "dinner").locator("details.fhand");
-      await s.click(hand.locator("summary").first(), { wait: 500 });
-      const form = hand.locator("form.fform");
+      await s.click(page.locator("#fsh").getByRole("tab", { name: "By hand" }), { wait: 600 });
+      const form = page.locator("#fsh form.fform");
       await s.type(form.locator(".fname"), "Rice cakes, 2", 60);
       await s.type(form.locator('input[aria-label="P g"]'), "2", 120);
       await s.type(form.locator('input[aria-label="C g"]'), "15", 120);
       await s.type(form.locator('input[aria-label="F g"]'), "1", 120);
       await s.pause(900);
-      await s.click(form.locator('button[type="submit"]'), { wait: 1200 });
-      await s.scroll(page.locator("#fbody"), -1200, 900);
-      await s.pause(2000);
+      await s.click(form.locator('button[type="submit"]'), { wait: 1500 });
+      await s.click(page.locator("#fsh .fsh-foot").getByRole("button", { name: "Done" }), { wait: 900 });
+      await s.reveal(meal(page, "dinner"));
+      await s.pause(1800);
+      await s.scroll(page.locator("#fscroll"), -1500, 900);
+      await s.pause(1500);
     },
   },
   {
     name: "food-ai",
     start: "/#food",
     before: async (page) => {
+      await atDinner(page);
       await page.route("**/api/foods/ai", (route) => setTimeout(() => route.fulfill({ json: ESTIMATE }), 1600));
       await page.route("**/api/nutrition*", async (route) => {
         const response = await route.fetch();
@@ -370,14 +382,16 @@ const SCENES: Scene[] = [
     ready: (page) => meal(page, "dinner").waitFor(),
     run: async (s, page) => {
       await s.pause(900);
-      await s.click(page.locator("#fbody .fai .faihead"), { wait: 600 });
-      await s.type(page.locator("#fbody .faitext"), "chicken breast with a roasted sweet potato and green beans, a bit of olive oil", 35);
+      await s.click(page.locator("#fdAi"), { wait: 600 });
+      await page.keyboard.type("chicken breast with a roasted sweet potato and green beans, a bit of olive oil", { delay: 35 });
       await s.pause(500);
-      await s.click(page.locator("#fbody .fai").getByRole("button", { name: "Estimate", exact: true }), { wait: 300 });
-      await page.locator("#fbody .faires .fair").first().waitFor();
+      await s.click(page.locator("#fsh .faibody").getByRole("button", { name: "Estimate", exact: true }), { wait: 300 });
+      await page.locator("#fsh .faires .fair").first().waitFor();
       await s.pause(2400);
-      await s.click(page.locator("#fbody .faires .fpa button.primary"), { wait: 1500 });
-      await s.scroll(page.locator("#fbody"), 700, 1200);
+      await s.scroll(page.locator("#fsh .faires"), 400, 900);
+      await s.pause(800);
+      await s.click(page.locator("#fsh .faires .fpa button.primary"), { wait: 1200 });
+      await s.reveal(meal(page, "dinner"));
       await s.pause(2200);
     },
   },

@@ -1,12 +1,16 @@
 /**
- * The Food view's log: the days, entering a food by hand and its checks, editing and deleting, undo, copying to today, the
- * totals of a meal and a day, the profiles that may see the log, and what the API keeps of it. Finding foods (search, barcode,
- * recent, AI) is food-find.spec.ts; the goals and their bars are food-goals.spec.ts.
+ * The Food view's log: the days, entering a food by hand (in the add sheet) and its checks, changing and deleting, undo, copying to
+ * today, the totals of a meal and a day, the profiles that may see the log, and what the API keeps of it. Finding foods (search,
+ * barcode, recent, quick add, AI) is food-find.spec.ts; the goals, the ring and the bars are food-goals.spec.ts.
  *
  * alice's log is read-only here (she has the past five days, nothing today): every test that writes makes a profile of its own.
  */
-import { type APIRequestContext, type Locator, type Page } from "@playwright/test";
+import { type APIRequestContext, type Locator } from "@playwright/test";
 import { type Profile, test as base, expect as baseExpect, today, daysAgo, daysAhead, loginAs, ADMIN_TOKEN, PASSWORD } from "../support/fixtures";
+import {
+  type Meal, byHandForm, dayButton, dayLine, enterByHand, fillForm, labelOf, meal, mealKcal, mealMacros, nutrientRow, nutrients, openFood, openRow, ringBig, ringSmall,
+  rowOf, sheet, sheetForm, sheetMeal, summary, toast,
+} from "../support/food";
 
 /**
  * The fixtures send the sign-ins and the profile's creation again when the connection was reset; the API calls a test makes itself are
@@ -42,14 +46,6 @@ const test = base.extend<{ admin: APIRequestContext; profile: Profile }>({
 });
 test.describe.configure({ timeout: 120_000 }); // a busy server can take a minute to answer a page of the log
 
-const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-/** The label the Food view gives a day: "Thu 29 Oct". */
-const labelOf = (day: string): string => {
-  const d = new Date(`${day}T00:00:00Z`);
-  return `${DOW[d.getUTCDay()]} ${d.getUTCDate()} ${MON[d.getUTCMonth()]}`;
-};
-
 interface Food {
   name: string;
   kcal?: number;
@@ -83,88 +79,26 @@ async function dayOf(api: APIRequestContext, day: string, profile?: string) {
 /** Every entry of a day, in the order of the meals. */
 const entriesOf = (json: any): Entry[] => json.day.meals.flatMap((m: any) => m.entries);
 
-/** One meal of the day on the page: its section. */
-const meal = (page: Page, m: string): Locator => page.locator(`#fbody section.fmeal[data-meal="${m}"]`);
-
-/** The row of a food in a meal, by its name (a row is one button and, when open, its actions). */
-const rowOf = (page: Page, m: string, name: string): Locator => meal(page, m).locator(".fe").filter({ hasText: name });
-
-/** Opens a food's row (its nutrients and actions), once: a tap on an open row closes it. */
-async function openRow(page: Page, m: string, name: string): Promise<Locator> {
-  const row = rowOf(page, m, name), head = row.locator("button.fhead");
-  await expect(head).toBeVisible();
-  if ((await head.getAttribute("aria-expanded")) !== "true") await head.click();
-  await expect(head).toHaveAttribute("aria-expanded", "true");
-  return row;
-}
-
-/** The by-hand form of a meal, with its "Enter by hand" section opened. */
-async function byHandForm(page: Page, m: string): Promise<Locator> {
-  const hand = meal(page, m).locator("details.fhand");
-  if (!(await hand.evaluate((el: HTMLDetailsElement) => el.open))) await hand.locator("summary").first().click();
-  return hand.locator("form.fform");
-}
-
-/** The field of the form for a key: "name", "kcal", "P", "C", "F", or a nutrient's own label such as "Fiber (g)". */
-function fieldOf(form: Locator, key: string): Locator {
-  if (key === "name") return form.locator(".fname");
-  return form.locator(`input[aria-label="${key === "P" ? "P g" : key === "C" ? "C g" : key === "F" ? "F g" : key}"]`);
-}
-
-/** Fills the form's fields given by key; an empty string leaves the field empty. Opens "More nutrients" when a nutrient is filled. */
-async function fillForm(form: Locator, draft: Record<string, string>): Promise<void> {
-  if (Object.keys(draft).some((key) => key.includes("("))) {
-    const more = form.locator("details.fmore");
-    if (!(await more.evaluate((el: HTMLDetailsElement) => el.open))) await more.locator("summary").first().click();
-  }
-  for (const [key, value] of Object.entries(draft)) await fieldOf(form, key).fill(value);
-}
-
-/**
- * Enters a food by hand in a meal with the given fields and presses Add. A food that is saved is waited for in its meal before the
- * function returns (the page drops a second add while one is being saved); `refused` for a food the page is meant to refuse.
- */
-async function enterByHand(page: Page, m: string, draft: Record<string, string>, { refused = false, shown }: { refused?: boolean; shown?: string } = {}): Promise<void> {
-  const form = await byHandForm(page, m);
-  await fillForm(form, draft);
-  await form.locator('button[type="submit"]').click();
-  if (refused) return;
-  const name = (shown ?? draft.name ?? "").trim().replace(/\s+/g, " ");
-  await expect(meal(page, m).locator(".fn", { hasText: name })).toBeVisible();
-}
-
-/** The toast: its message, and an Undo button when the action has one. */
-const toast = (page: Page): Locator => page.locator("#toast");
-
-/**
- * Opens the Food view and waits until its day is drawn: the day buttons do nothing before the first load. A load that lands on
- * another view (seen now and then on a busy server) is reloaded, as a person would.
- */
-async function openFood(page: Page): Promise<void> {
-  await page.goto("/#food", { waitUntil: "domcontentloaded" });
-  await expect(page.locator("#fbody .fsum")).toBeVisible({ timeout: 10_000 }).catch(() => page.reload({ waitUntil: "domcontentloaded" }));
-  await expect(page.locator("#fbody .fsum")).toBeVisible();
-}
-
 test.describe("Food log: days", () => {
   test("opens on today, which is the day after nothing and cannot be passed", async ({ me }) => {
     await openFood(me);
     await expect(me.locator("#fDate")).toHaveValue(today());
-    await expect(me.locator("#fbody .fsum small")).toHaveText("Today");
+    await expect(me.locator("#fDayLabel")).toHaveText(dayButton(today()));
     await expect(me.locator("#fNext")).toBeDisabled();
     await expect(me.locator("#fPrev")).toBeEnabled();
+    await expect(me.locator("#fToday")).toBeHidden(); // on today there is no today to go back to
   });
 
   test("◀ goes to the day before, shows its totals, and ▶ comes back to today", async ({ alice }) => {
     await openFood(alice);
     await alice.locator("#fPrev").click();
     await expect(alice.locator("#fDate")).toHaveValue(daysAgo(1));
-    await expect(alice.locator("#fbody .fsum small")).toHaveText(labelOf(daysAgo(1)));
-    await expect(alice.locator("#fbody .fhero b")).toHaveText("1,695");
+    await expect(alice.locator("#fDayLabel")).toHaveText(dayButton(daysAgo(1)));
+    await expect(dayLine(alice)).toHaveText("1,695 kcal eaten · goal 2,200 kcal");
     await expect(alice.locator("#fNext")).toBeEnabled();
     await alice.locator("#fNext").click();
     await expect(alice.locator("#fDate")).toHaveValue(today());
-    await expect(alice.locator("#fbody .fsum small")).toHaveText("Today");
+    await expect(alice.locator("#fDayLabel")).toHaveText(dayButton(today()));
     await expect(alice.locator("#fNext")).toBeDisabled();
   });
 
@@ -201,15 +135,15 @@ test.describe("Food log: days", () => {
     await openFood(alice);
     await alice.locator("#fDate").fill(daysAgo(4));
     await expect(alice.locator("#fDate")).toHaveValue(daysAgo(4));
-    await expect(alice.locator("#fbody .fsum small")).toHaveText(labelOf(daysAgo(4)));
-    await expect(alice.locator("#fbody .fhero b")).toHaveText("1,695");
+    await expect(alice.locator("#fDayLabel")).toHaveText(dayButton(daysAgo(4)));
+    await expect(dayLine(alice)).toHaveText("1,695 kcal eaten · goal 2,200 kcal");
   });
 
   test("a date after today is not shown: the picker goes to today", async ({ me }) => {
     await openFood(me);
     await me.locator("#fDate").fill(daysAhead(3));
     await expect(me.locator("#fDate")).toHaveValue(today());
-    await expect(me.locator("#fbody .fsum small")).toHaveText("Today");
+    await expect(me.locator("#fDayLabel")).toHaveText(dayButton(today()));
     await expect(me.locator("#fNext")).toBeDisabled();
   });
 
@@ -217,17 +151,18 @@ test.describe("Food log: days", () => {
     await openFood(alice);
     await alice.locator("#fPrev").click();
     await expect(alice.locator("#fDate")).toHaveValue(daysAgo(1));
+    await expect(alice.locator("#fToday")).toBeVisible();
     await alice.locator("#fToday").click();
     await expect(alice.locator("#fDate")).toHaveValue(today());
-    await expect(alice.locator("#fbody .fsum small")).toHaveText("Today");
+    await expect(alice.locator("#fDayLabel")).toHaveText(dayButton(today()));
   });
 
   test("a past day with nothing logged says so, shows no copy bar and has no foods", async ({ alice }) => {
     await openFood(alice);
     await alice.locator("#fDate").fill(daysAgo(20));
     await expect(alice.locator("#fDate")).toHaveValue(daysAgo(20));
-    await expect(alice.locator("#fbody .fhero .fhn")).toContainText("nothing logged");
-    await expect(alice.locator("#fbody .fhero b")).toHaveText("–");
+    await expect(dayLine(alice)).toContainText("Nothing logged");
+    await expect(ringBig(alice)).toHaveText("–");
     await expect(alice.locator("#fbody .fday")).toHaveCount(0);
     await expect(alice.locator("#fbody .fe")).toHaveCount(0);
     await expect(alice.locator("#fbody .fburn").first()).toContainText("Burned 2,600 kcal by Garmin");
@@ -238,7 +173,7 @@ test.describe("Food log: days", () => {
     const row = alice.locator(".rmetrics tbody tr", { has: alice.locator("td.day", { hasText: labelOf(daysAgo(4)) }) });
     await row.click();
     await expect(alice.locator("#fDate")).toHaveValue(daysAgo(4));
-    await expect(alice.locator("#fbody .fhero b")).toHaveText("1,695");
+    await expect(dayLine(alice)).toHaveText("1,695 kcal eaten · goal 2,200 kcal");
   });
 
   test("the range picker shows 30 days by default, and 14 or 90 when it is changed", async ({ alice }) => {
@@ -269,8 +204,8 @@ test.describe("Food log: days", () => {
     await expect(alice).toHaveURL(new RegExp(`#food/${daysAgo(1)}$`));
     await alice.reload();
     await expect(alice.locator("#fDate")).toHaveValue(daysAgo(1));
-    await expect(alice.locator("#fbody .fsum small")).toHaveText(labelOf(daysAgo(1)));
-    await expect(alice.locator("#fbody .fhero b")).toHaveText("1,695");
+    await expect(alice.locator("#fDayLabel")).toHaveText(dayButton(daysAgo(1)));
+    await expect(dayLine(alice)).toHaveText("1,695 kcal eaten · goal 2,200 kcal");
   });
 
   test("the address follows ▶, the date picker and Today, and is #food again on today", async ({ alice }) => {
@@ -284,12 +219,15 @@ test.describe("Food log: days", () => {
     await expect(alice).toHaveURL(/#food$/);
   });
 
-  test("a day in the address opens that day, with the AI box too: #food/<day>/ai", async ({ alice }) => {
+  test("a day in the address opens that day, with the add sheet on the AI too: #food/<day>/ai", async ({ alice }) => {
     await alice.goto(`/#food/${daysAgo(2)}/ai`);
     await expect(alice.locator("#fDate")).toHaveValue(daysAgo(2));
-    await expect(alice.locator("#fbody .faihead")).toHaveAttribute("aria-expanded", "true");
-    await alice.locator("#fPrev").click();
-    await expect(alice).toHaveURL(new RegExp(`#food/${daysAgo(3)}/ai$`));
+    await expect(sheet(alice)).toBeVisible();
+    await expect(alice.locator("#fsh .fsh-day")).toHaveText(labelOf(daysAgo(2)));
+    await expect(alice.locator("#fsh").getByRole("tab", { name: "AI" })).toHaveAttribute("aria-selected", "true");
+    await alice.locator("#fsh").getByRole("button", { name: "Close", exact: true }).click();
+    await expect(sheet(alice)).toBeHidden();
+    await expect(alice).toHaveURL(new RegExp(`#food/${daysAgo(2)}$`));
   });
 
   test("an address with today, a day to come or something that is no day shows today", async ({ alice }) => {
@@ -306,33 +244,35 @@ test.describe("Food log: days", () => {
     await openFood(alice);
     await alice.evaluate((day) => { location.hash = `#food/${day}`; }, daysAgo(4));
     await expect(alice.locator("#fDate")).toHaveValue(daysAgo(4));
-    await expect(alice.locator("#fbody .fhero b")).toHaveText("1,695");
+    await expect(dayLine(alice)).toHaveText("1,695 kcal eaten · goal 2,200 kcal");
   });
 });
 
 test.describe("Food log: today when nothing is logged", () => {
   test("alice's today has no foods, nothing logged and the burn so far", async ({ alice }) => {
     await openFood(alice);
-    await expect(alice.locator("#fbody .fhero .fhn")).toContainText("nothing logged");
+    await expect(dayLine(alice)).toContainText("Nothing logged");
     await expect(alice.locator("#fbody .fe")).toHaveCount(0);
     await expect(alice.locator("#fbody .fday")).toHaveCount(0);
     await expect(alice.locator("#fbody .fburn").first()).toHaveText("Burned 2,600 kcal so far by Garmin");
-    await expect(alice.locator("#fbody .fcard").nth(1)).toContainText("Nothing logged.");
+    await expect(await nutrients(alice)).toContainText("Nothing logged.");
   });
 
-  test("every meal of an empty day shows its search and the by-hand form, and no totals", async ({ me }) => {
+  test("every meal of an empty day says nothing is logged, has no calories, and a + to add to it", async ({ me }) => {
     await openFood(me);
-    for (const m of ["breakfast", "lunch", "dinner", "snack"]) {
-      await expect(meal(me, m).locator(".fmh span")).toHaveCount(0);
+    for (const [m, label] of [["breakfast", "Breakfast"], ["lunch", "Lunch"], ["dinner", "Dinner"], ["snack", "Snacks"]] as const) {
+      await expect(meal(me, m).locator(".fmt b")).toHaveText(label);
+      await expect(mealMacros(me, m)).toHaveText("Nothing logged");
+      await expect(mealKcal(me, m)).toHaveCount(0);
       await expect(meal(me, m).locator(".fe")).toHaveCount(0);
-      await expect(meal(me, m).locator("input.fq")).toBeVisible();
-      await expect(meal(me, m).locator("details.fhand > summary")).toHaveText("Enter by hand");
+      await expect(meal(me, m).getByRole("button", { name: `Add a food to ${label}`, exact: true })).toBeVisible();
     }
+    await expect(me.locator("#fbody .fquick")).toHaveCount(0); // nothing logged yet, so no food to add again in a tap
   });
 
   test("a new profile has no Garmin burn: no burn line, no Garmin column, and a hint to set goals", async ({ me }) => {
     await openFood(me);
-    await expect(me.locator("#fbody .fhero .fhn")).toContainText("nothing logged");
+    await expect(dayLine(me)).toContainText("Nothing logged");
     await expect(me.locator("#fbody .fburn")).toHaveCount(0);
     await expect(me.locator("#fbody .fgoalhint")).toContainText("Set daily goals to follow your progress through the day.");
     await expect(me.locator(".rmetrics th.g")).toHaveText(["Eaten", "Nutrients"]);
@@ -345,9 +285,54 @@ test.describe("Food log: entering a food by hand", () => {
     await enterByHand(me, "lunch", { name: "Test oats", P: "10", C: "50", F: "5" });
     await expect(rowOf(me, "lunch", "Test oats").locator(".fk")).toHaveText("285 kcal");
     await expect(rowOf(me, "lunch", "Test oats").locator(".ft > .fm")).toHaveText("P 10 · C 50 · F 5");
-    await expect(meal(me, "lunch").locator(".fmh > span")).toHaveText("285 kcal · P 10 · C 50 · F 5");
+    await expect(mealKcal(me, "lunch")).toHaveText("285 kcal");
+    await expect(mealMacros(me, "lunch")).toHaveText("P 10 · C 50 · F 5");
     const [entry] = entriesOf(await dayOf(profile.api, today()));
     expect(entry).toMatchObject({ name: "Test oats", kcal: 285, proteinG: 10, carbsG: 50, fatG: 5, meal: "lunch", day: today(), source: "web", nutrients: {} });
+  });
+
+  test("the sheet opens on the meal whose + was tapped, its Add says that meal, and Undo in the toast takes the food back", async ({ me, profile }) => {
+    await openFood(me);
+    const form = await byHandForm(me, "dinner");
+    await expect(sheetMeal(me, "dinner")).toHaveAttribute("aria-pressed", "true");
+    await expect(sheetMeal(me, "lunch")).toHaveAttribute("aria-pressed", "false");
+    await expect(form.locator('button[type="submit"]')).toHaveText("Add to Dinner");
+    await fillForm(form, { name: "Toast", kcal: "90" });
+    await form.locator('button[type="submit"]').click();
+    await expect(toast(me)).toContainText("Added Toast to Dinner.");
+    await expect(rowOf(me, "dinner", "Toast")).toBeVisible();
+    await expect(sheet(me)).toBeVisible(); // it stays open for the next food
+    await toast(me).getByRole("button", { name: "Undo" }).click();
+    await expect(toast(me)).toContainText("Removed 1 food.");
+    await expect(rowOf(me, "dinner", "Toast")).toHaveCount(0);
+    expect((await dayOf(profile.api, today())).day.entries).toBe(0);
+  });
+
+  test("a meal chosen at the top of the sheet is the one Add puts the food in", async ({ me, profile }) => {
+    await openFood(me);
+    const form = await byHandForm(me, "breakfast");
+    await fillForm(form, { name: "Apple", kcal: "95" });
+    await sheetMeal(me, "snack").click();
+    await expect(form.locator('button[type="submit"]')).toHaveText("Add to Snacks");
+    await expect(form.locator(".fname")).toHaveValue("Apple"); // what was typed stays
+    await form.locator('button[type="submit"]').click();
+    await expect(rowOf(me, "snack", "Apple")).toBeVisible();
+    expect(entriesOf(await dayOf(profile.api, today()))[0].meal).toBe("snack");
+  });
+
+  test("the sheet's foot says where the meal and the day stand, and follows each food added", async ({ me }) => {
+    await openFood(me);
+    const foot = me.locator("#fsh .fsh-foot");
+    await byHandForm(me, "lunch");
+    await expect(foot).toContainText("Lunch nothing yet");
+    await enterByHand(me, "lunch", { name: "Soup", kcal: "200" });
+    await expect(foot).toContainText("Lunch 200 kcal · 1 food");
+    await expect(foot).toContainText("200 kcal eaten");
+    await enterByHand(me, "lunch", { name: "Bread", kcal: "150" });
+    await expect(foot).toContainText("Lunch 350 kcal · 2 foods");
+    await enterByHand(me, "dinner", { name: "Pasta", kcal: "500" });
+    await expect(foot).toContainText("Dinner 500 kcal · 1 food");
+    await expect(foot).toContainText("850 kcal eaten");
   });
 
   test("a macro typed makes the calories the macros' sum (4 kcal a gram of protein and carbs, 9 of fat), shown and no longer typed", async ({ me, profile }) => {
@@ -418,8 +403,9 @@ test.describe("Food log: entering a food by hand", () => {
     const kcal = form.locator('input[aria-label="kcal"]');
     await fillForm(form, { name: "Bowl", P: "20", C: "30" });
     await expect(kcal).toHaveValue("200");
-    await me.locator("#fbody .faihead").click(); // the AI box opens: the whole view is drawn again
-    await expect(me.locator("#fbody .faibody")).toBeVisible();
+    await me.locator("#fsh").getByRole("tab", { name: "Search" }).click(); // to the search and back: the sheet is drawn again each time
+    await expect(me.locator("#fsh .fq")).toBeVisible();
+    await me.locator("#fsh").getByRole("tab", { name: "By hand" }).click();
     await expect(kcal).toHaveValue("200");
     await expect(kcal).not.toBeEditable();
     await form.locator('button[type="submit"]').click();
@@ -523,7 +509,8 @@ test.describe("Food log: entering a food by hand", () => {
     await openFood(me);
     await enterByHand(me, "dinner", { name: "Pasta", P: "20", C: "40", F: "10" });
     await enterByHand(me, "dinner", { name: "Sauce", P: "5", C: "20", F: "8" });
-    await expect(meal(me, "dinner").locator(".fmh > span")).toHaveText("502 kcal · P 25 · C 60 · F 18");
+    await expect(mealKcal(me, "dinner")).toHaveText("502 kcal");
+    await expect(mealMacros(me, "dinner")).toHaveText("P 25 · C 60 · F 18");
     await expect(meal(me, "dinner").locator(".fe .fn")).toHaveText(["Pasta", "Sauce"]);
   });
 
@@ -542,14 +529,14 @@ test.describe("Food log: entering a food by hand", () => {
     await openFood(me);
     await enterByHand(me, "lunch", { name: "Card A", P: "20", C: "40", F: "10" });
     await enterByHand(me, "dinner", { name: "Card B", P: "5", C: "20", F: "8" });
-    const card = me.locator("#fbody .fsum");
-    await expect(card.locator(".fhero b")).toHaveText("502");
-    await expect(card.locator(".fhero .fhu")).toHaveText("kcal eaten");
-    await expect(card.locator(".fhero .fhn")).toHaveText("2 foods");
-    await expect(card.locator(".fleg span")).toHaveText(["Protein 20 %", "Carbs 48 %", "Fat 32 %"]);
-    await expect(card.locator(".fmr.protein .fv")).toHaveText("25 g");
-    await expect(card.locator(".fmr.carbs .fv")).toHaveText("60 g");
-    await expect(card.locator(".fmr.fat .fv")).toHaveText("18 g");
+    await expect(ringBig(me)).toHaveText("502");
+    await expect(ringSmall(me)).toHaveText("kcal eaten");
+    await expect(dayLine(me)).toHaveText("2 foods");
+    await expect(summary(me).locator(".fmr.protein .fv")).toHaveText("25 g");
+    await expect(summary(me).locator(".fmr.carbs .fv")).toHaveText("60 g");
+    await expect(summary(me).locator(".fmr.fat .fv")).toHaveText("18 g");
+    // the shares of the macros' calories are under the meals, with the calories of each meal
+    await expect(me.locator("#fbody .fcard .fleg span")).toHaveText(["Protein 20 %", "Carbs 48 %", "Fat 32 %"]);
   });
 
   test("the form is empty again after a food is added", async ({ me }) => {
@@ -558,8 +545,8 @@ test.describe("Food log: entering a food by hand", () => {
     await fillForm(form, { name: "Closing", kcal: "50" });
     await form.locator('button[type="submit"]').click();
     await expect(meal(me, "lunch").locator(".fe .fn", { hasText: "Closing" })).toBeVisible();
-    await expect(meal(me, "lunch").locator(".fname")).toHaveValue("");
-    await expect(meal(me, "lunch").locator('input[aria-label="kcal"]')).toHaveValue("");
+    await expect(form.locator(".fname")).toHaveValue("");
+    await expect(form.locator('input[aria-label="kcal"]')).toHaveValue("");
   });
 
   test("a food named as one logged lately fills its numbers in the form", async ({ me, profile }) => {
@@ -597,7 +584,8 @@ test.describe("Food log: optional nutrients", () => {
     await expect(row.locator(".fmore-e > .fm").first()).toHaveText("Fiber 8 g · Sodium 410 mg");
     const [entry] = entriesOf(await dayOf(profile.api, today()));
     expect(entry.nutrients).toEqual({ fiberG: 8, sodiumMg: 410 });
-    const fiber = me.locator("#fbody .fcard").nth(1).locator(".fnrow").filter({ hasText: /^Fiber/ });
+    await nutrients(me);
+    const fiber = nutrientRow(me, "Fiber");
     await expect(fiber.locator(".fv")).toHaveText("8 g");
     await expect(fiber.locator(".fmn")).toHaveText("from the food");
   });
@@ -614,11 +602,11 @@ test.describe("Food log: optional nutrients", () => {
     await addFoods(profile.api, today(), "breakfast", [{ name: "Oats", kcal: 380, proteinG: 13, carbsG: 60, fatG: 7, nutrients: { fiberG: 8 } }]);
     await addFoods(profile.api, today(), "lunch", [{ name: "Burger", kcal: 1000, proteinG: 40, carbsG: 80, fatG: 58 }]);
     await openFood(me);
-    const card = me.locator("#fbody .fcard").nth(1);
-    const fiber = card.locator(".fnrow").filter({ hasText: /^Fiber/ });
+    await nutrients(me);
+    const fiber = nutrientRow(me, "Fiber");
     await expect(fiber.locator(".fv")).toHaveText("≥ 8 g");
     await expect(fiber.locator(".fmn")).toHaveText("from 1 of 2 foods");
-    const calcium = card.locator(".fnrow").filter({ hasText: /^Calcium/ });
+    const calcium = nutrientRow(me, "Calcium");
     await expect(calcium.locator(".fv")).toHaveText("–");
     await expect(calcium.locator(".fmn")).toHaveText("no food states it");
     await expect(me.locator(".rmetrics tbody tr").first().locator("td").nth(5)).toHaveText("≥ 8 g");
@@ -630,7 +618,8 @@ test.describe("Food log: optional nutrients", () => {
       { name: "Cheese", kcal: 110, proteinG: 7, carbsG: 1, fatG: 9, nutrients: { sodiumMg: 200 } },
     ]);
     await openFood(me);
-    const sodium = me.locator("#fbody .fcard").nth(1).locator(".fnrow").filter({ hasText: /^Sodium/ });
+    await nutrients(me);
+    const sodium = nutrientRow(me, "Sodium");
     await expect(sodium.locator(".fv")).toHaveText("300 mg");
     await expect(sodium.locator(".fmn")).toHaveText("from all 2 foods");
   });
@@ -640,7 +629,7 @@ test.describe("Food log: optional nutrients", () => {
     await openFood(me);
     await openRow(me, "dinner", "Beans");
     await rowOf(me, "dinner", "Beans").locator('button[aria-label="Change Beans"]').click();
-    const form = meal(me, "dinner").locator("form.fform");
+    const form = sheetForm(me);
     await fillForm(form, { "Fiber (g)": "" });
     await form.locator('button[type="submit"]').click();
     await expect(rowOf(me, "dinner", "Beans").locator(".fmore-e > .fm").first()).toHaveText("Iron 3.5 mg");
@@ -663,9 +652,10 @@ test.describe("Food log: changing and deleting an entry", () => {
     await openFood(me);
     await openRow(me, "breakfast", "Oats");
     await rowOf(me, "breakfast", "Oats").locator('button[aria-label="Change Oats"]').click();
-    const hand = meal(me, "breakfast").locator("details.fhand");
-    await expect(hand.locator("summary").first()).toHaveText("Change the food");
-    const form = hand.locator("form.fform");
+    await expect(me.locator("#fshTitle")).toHaveText("Change a food");
+    await expect(me.locator("#fsh .fsh-meals")).toHaveCount(0); // a change keeps the food's meal: no meal to choose, no other way in
+    await expect(me.locator("#fsh").getByRole("tab")).toHaveCount(0);
+    const form = sheetForm(me);
     await expect(form.locator(".fname")).toHaveValue("Oats");
     await expect(form.locator('input[aria-label="kcal"]')).toHaveValue("300");
     await expect(form.locator('input[aria-label="P g"]')).toHaveValue("10");
@@ -676,9 +666,12 @@ test.describe("Food log: changing and deleting an entry", () => {
     await expect(form.locator('input[aria-label="kcal"]')).toBeEditable();
     await fillForm(form, { name: "Oats (large)", kcal: "320" });
     await form.locator('button[type="submit"]').click();
+    await expect(sheet(me)).toBeHidden();
+    await expect(toast(me)).toContainText("Saved Oats (large).");
     await expect(meal(me, "breakfast").locator(".fe .fn")).toHaveText("Oats (large)");
     await expect(meal(me, "breakfast").locator(".fk")).toHaveText("320 kcal");
-    await expect(meal(me, "breakfast").locator(".fmh > span")).toHaveText("320 kcal · P 10 · C 50 · F 5");
+    await expect(mealKcal(me, "breakfast")).toHaveText("320 kcal");
+    await expect(mealMacros(me, "breakfast")).toHaveText("P 10 · C 50 · F 5");
     expect(entriesOf(await dayOf(profile.api, today()))[0]).toMatchObject({ id: expect.any(Number), name: "Oats (large)", kcal: 320, proteinG: 10, carbsG: 50, fatG: 5 });
   });
 
@@ -687,7 +680,7 @@ test.describe("Food log: changing and deleting an entry", () => {
     await openFood(me);
     await openRow(me, "lunch", "Rice bowl");
     await rowOf(me, "lunch", "Rice bowl").locator('button[aria-label="Change Rice bowl"]').click();
-    const form = meal(me, "lunch").locator("form.fform");
+    const form = sheetForm(me);
     await expect(form.locator('input[aria-label="kcal"]')).toHaveValue("500");
     await fillForm(form, { P: "30" });
     await expect(form.locator('input[aria-label="kcal"]')).toHaveValue("548");
@@ -703,7 +696,7 @@ test.describe("Food log: changing and deleting an entry", () => {
     await openFood(me);
     await openRow(me, "dinner", "Stew");
     await rowOf(me, "dinner", "Stew").locator('button[aria-label="Change Stew"]').click();
-    const form = meal(me, "dinner").locator("form.fform");
+    const form = sheetForm(me);
     await fillForm(form, { F: "20" });
     await expect(form.locator('input[aria-label="kcal"]')).not.toBeEditable();
     await form.locator("button", { hasText: "Cancel" }).click();
@@ -718,7 +711,7 @@ test.describe("Food log: changing and deleting an entry", () => {
     await openFood(me);
     await openRow(me, "lunch", "Wrap");
     await rowOf(me, "lunch", "Wrap").locator('button[aria-label="Change Wrap"]').click();
-    const form = meal(me, "lunch").locator("form.fform");
+    const form = sheetForm(me);
     await fillForm(form, { kcal: "" });
     await form.locator('button[type="submit"]').click();
     await expect(rowOf(me, "lunch", "Wrap").locator(".fk")).toHaveText("293 kcal");
@@ -730,8 +723,8 @@ test.describe("Food log: changing and deleting an entry", () => {
     await openFood(me);
     await openRow(me, "snack", "Pear");
     await rowOf(me, "snack", "Pear").locator('button[aria-label="Change Pear"]').click();
-    await fillForm(meal(me, "snack").locator("form.fform"), { "Fiber (g)": "" });
-    await meal(me, "snack").locator("form.fform button[type='submit']").click();
+    await fillForm(sheetForm(me), { "Fiber (g)": "" });
+    await sheetForm(me).locator("button[type='submit']").click();
     await expect(rowOf(me, "snack", "Pear").locator(".fmore-e > .fm").first()).toHaveText("States no fiber or other nutrients.");
     expect(entriesOf(await dayOf(profile.api, today()))[0].nutrients).toEqual({});
   });
@@ -741,11 +734,11 @@ test.describe("Food log: changing and deleting an entry", () => {
     await openFood(me);
     await openRow(me, "dinner", "Stew");
     await rowOf(me, "dinner", "Stew").locator('button[aria-label="Change Stew"]').click();
-    const form = meal(me, "dinner").locator("form.fform");
+    const form = sheetForm(me);
     await fillForm(form, { name: "Stew changed", kcal: "1" });
     await form.locator("button", { hasText: "Cancel" }).click();
+    await expect(sheet(me)).toBeHidden();
     await expect(rowOf(me, "dinner", "Stew").locator(".fn")).toHaveText("Stew");
-    await expect(meal(me, "dinner").locator("details.fhand > summary")).toHaveText("Enter by hand");
     expect(entriesOf(await dayOf(profile.api, today()))[0]).toMatchObject({ name: "Stew", kcal: 420 });
   });
 
@@ -754,10 +747,12 @@ test.describe("Food log: changing and deleting an entry", () => {
     await openFood(me);
     await openRow(me, "dinner", "Curry");
     await rowOf(me, "dinner", "Curry").locator('button[aria-label="Change Curry"]').click();
-    const form = meal(me, "dinner").locator("form.fform");
+    const form = sheetForm(me);
     await fillForm(form, { kcal: "20000" });
     await form.locator('button[type="submit"]').click();
     await expect(toast(me)).toContainText("Calories must be a number from 0 to 10000.");
+    await expect(me.locator("#fshTitle")).toHaveText("Change a food"); // the sheet stays on the change, to fix it
+    await expect(form.locator('input[aria-label="kcal"]')).toHaveValue("20000");
     expect(entriesOf(await dayOf(profile.api, today()))[0]).toMatchObject({ name: "Curry", kcal: 600 });
   });
 
@@ -781,8 +776,9 @@ test.describe("Food log: changing and deleting an entry", () => {
     await rowOf(me, "snack", "Gone soon").locator('button[aria-label="Delete Gone soon"]').click();
     await me.locator("#dlgOk").click();
     await expect(meal(me, "snack").locator(".fe .fn")).toHaveText(["Stays"]);
-    await expect(meal(me, "snack").locator(".fmh > span")).toHaveText("120 kcal · P 2 · C 20 · F 3");
-    await expect(me.locator("#fbody .fsum .fhero b")).toHaveText("120");
+    await expect(mealKcal(me, "snack")).toHaveText("120 kcal");
+    await expect(mealMacros(me, "snack")).toHaveText("P 2 · C 20 · F 3");
+    await expect(ringBig(me)).toHaveText("120");
     const left = entriesOf(await dayOf(profile.api, today()));
     expect(left.map((e) => e.name)).toEqual(["Stays"]);
   });
@@ -797,7 +793,7 @@ test.describe("Food log: changing and deleting an entry", () => {
     await expect(rowOf(me, "snack", "Undo me")).toHaveCount(0);
     await toast(me).locator("button", { hasText: "Undo" }).click();
     await expect(rowOf(me, "snack", "Undo me")).toBeVisible();
-    await expect(me.locator("#fbody .fsum .fhero b")).toHaveText("200");
+    await expect(ringBig(me)).toHaveText("200");
     expect(entriesOf(await dayOf(profile.api, today())).find((e) => e.name === "Undo me")).toMatchObject({ meal: "snack", day: today(), kcal: 80, proteinG: 3, carbsG: 10, fatG: 2, nutrients: { fiberG: 4 } });
     expect(entriesOf(await dayOf(profile.api, today()))).toHaveLength(2);
   });
@@ -841,9 +837,11 @@ test.describe("Food log: moving a food to another meal", () => {
     await expect(toast(me)).toContainText("Moved Wrap to Dinner.");
     await expect(meal(me, "lunch").locator(".fe .fn")).toHaveText(["Apple"]);
     await expect(meal(me, "dinner").locator(".fe .fn")).toHaveText(["Wrap", "Soup"]); // a meal lists its foods in the order they were logged, so the moved one keeps its place
-    await expect(meal(me, "lunch").locator(".fmh > span")).toHaveText("80 kcal · P 0 · C 20 · F 0");
-    await expect(meal(me, "dinner").locator(".fmh > span")).toHaveText("500 kcal · P 25 · C 60 · F 16");
-    await expect(me.locator("#fbody .fsum .fhero b")).toHaveText("580"); // the day's total does not change
+    await expect(mealKcal(me, "lunch")).toHaveText("80 kcal");
+    await expect(mealMacros(me, "lunch")).toHaveText("P 0 · C 20 · F 0");
+    await expect(mealKcal(me, "dinner")).toHaveText("500 kcal");
+    await expect(mealMacros(me, "dinner")).toHaveText("P 25 · C 60 · F 16");
+    await expect(ringBig(me)).toHaveText("580"); // the day's total does not change
     const log = entriesOf(await dayOf(profile.api, today()));
     expect(log.find((e) => e.name === "Wrap")).toMatchObject({ meal: "dinner", day: today(), kcal: 350, proteinG: 20, carbsG: 40, fatG: 12 });
     expect(log).toHaveLength(3);
@@ -883,17 +881,17 @@ test.describe("Food log: moving a food to another meal", () => {
     expect((await dayOf(profile.api, today())).day.entries).toBe(0);
   });
 
-  test("a food being changed closes its form when it is moved, and the form is not left in the old meal", async ({ me, profile }) => {
+  test("a food moved and then changed stays in the meal it was moved to", async ({ me, profile }) => {
     await addFoods(profile.api, today(), "lunch", [{ name: "Wrap", kcal: 350 }]);
     await openFood(me);
-    const row = await openRow(me, "lunch", "Wrap");
-    await row.locator('button[aria-label="Change Wrap"]').click();
-    await expect(meal(me, "lunch").locator("details.fhand summary").first()).toHaveText("Change the food");
-    await mover(row).selectOption("dinner");
+    await mover(await openRow(me, "lunch", "Wrap")).selectOption("dinner");
     await expect(meal(me, "dinner").locator(".fe .fn")).toHaveText(["Wrap"]);
-    await expect(meal(me, "lunch").locator("details.fhand summary").first()).toHaveText("Enter by hand");
-    await expect(meal(me, "dinner").locator("details.fhand summary").first()).toHaveText("Enter by hand");
-    await expect(me.locator("#fbody .fe.editing")).toHaveCount(0);
+    await (await openRow(me, "dinner", "Wrap")).locator('button[aria-label="Change Wrap"]').click();
+    await fillForm(sheetForm(me), { kcal: "400" });
+    await sheetForm(me).locator('button[type="submit"]').click();
+    await expect(rowOf(me, "dinner", "Wrap").locator(".fk")).toHaveText("400 kcal");
+    await expect(meal(me, "lunch").locator(".fe")).toHaveCount(0);
+    expect(entriesOf(await dayOf(profile.api, today()))[0]).toMatchObject({ meal: "dinner", kcal: 400 });
   });
 
   test("a move the server refuses says why, and the food stays in its meal", async ({ me, profile }) => {
@@ -1000,7 +998,7 @@ test.describe("Food log: copying a past day to today", () => {
     await openFood(me);
     await me.locator("#fPrev").click();
     await expect(me.locator("#fDate")).toHaveValue(daysAgo(1));
-    const dinnerButton = meal(me, "dinner").locator(".fmh button");
+    const dinnerButton = meal(me, "dinner").locator(".fmh button.fcopy");
     await dinnerButton.click();
     await expect(toast(me)).toContainText("Copied Dinner (1 food) to today.");
     await expect(dinnerButton).toHaveText("Copied ✓");
@@ -1035,8 +1033,8 @@ test.describe("Food log: copying a past day to today", () => {
     await expect(me.locator("#fDate")).toHaveValue(daysAgo(1));
     await me.locator("#fbody .fday button").click();
     await expect(me.locator("#fbody .fday button")).toHaveText("Copied ✓");
-    await expect(meal(me, "lunch").locator(".fmh button")).toHaveText("Copied ✓");
-    await expect(meal(me, "lunch").locator(".fmh button")).toBeDisabled();
+    await expect(meal(me, "lunch").locator(".fmh button.fcopy")).toHaveText("Copied ✓");
+    await expect(meal(me, "lunch").locator(".fmh button.fcopy")).toBeDisabled();
     expect(entriesOf(await dayOf(profile.api, today()))).toHaveLength(1);
   });
 
@@ -1064,14 +1062,15 @@ test.describe("Food log: the day's totals and alice's past days", () => {
     await openFood(alice);
     await alice.locator("#fPrev").click();
     await expect(alice.locator("#fDate")).toHaveValue(daysAgo(1));
-    const expected: [string, string, string[]][] = [
-      ["breakfast", "405 kcal · P 11 · C 81 · F 5", ["Oatmeal", "Banana"]],
-      ["lunch", "520 kcal · P 34 · C 48 · F 20", ["Chicken wrap"]],
-      ["dinner", "640 kcal · P 41 · C 62 · F 24", ["Salmon and rice"]],
-      ["snack", "130 kcal · P 17 · C 8 · F 3", ["Greek yogurt"]],
+    const expected: [Meal, string, string, string[]][] = [
+      ["breakfast", "405 kcal", "P 11 · C 81 · F 5", ["Oatmeal", "Banana"]],
+      ["lunch", "520 kcal", "P 34 · C 48 · F 20", ["Chicken wrap"]],
+      ["dinner", "640 kcal", "P 41 · C 62 · F 24", ["Salmon and rice"]],
+      ["snack", "130 kcal", "P 17 · C 8 · F 3", ["Greek yogurt"]],
     ];
-    for (const [m, totals, names] of expected) {
-      await expect(meal(alice, m).locator(".fmh > span")).toHaveText(totals);
+    for (const [m, kcal, macros, names] of expected) {
+      await expect(mealKcal(alice, m)).toHaveText(kcal);
+      await expect(mealMacros(alice, m)).toHaveText(macros);
       await expect(meal(alice, m).locator(".fe .fn")).toHaveText(names);
     }
     await expect(alice.locator("#fbody .fe .fk").first()).toHaveText("300 kcal");
@@ -1081,10 +1080,11 @@ test.describe("Food log: the day's totals and alice's past days", () => {
     await openFood(alice);
     await alice.locator("#fPrev").click();
     await expect(alice.locator("#fDate")).toHaveValue(daysAgo(1));
-    const card = alice.locator("#fbody .fsum");
-    await expect(card.locator(".fhero b")).toHaveText("1,695");
-    await expect(card.locator(".fhero .fhu")).toHaveText("kcal eaten");
-    await expect(card.locator(".fleg span")).toHaveText(["Protein 25 %", "Carbs 47 %", "Fat 28 %"]);
+    const card = summary(alice);
+    await expect(ringBig(alice)).toHaveText("505");
+    await expect(ringSmall(alice)).toHaveText("kcal left");
+    await expect(dayLine(alice)).toHaveText("1,695 kcal eaten · goal 2,200 kcal");
+    await expect(alice.locator("#fbody .fcard .fleg span")).toHaveText(["Protein 25 %", "Carbs 47 %", "Fat 28 %"]);
     await expect(card.locator(".fmr.protein .fv")).toHaveText("103 / 130 g");
     await expect(card.locator(".fmr.carbs .fv")).toHaveText("199 / 250 g");
     await expect(card.locator(".fmr.fat .fv")).toHaveText("52 / 70 g");
@@ -1096,7 +1096,7 @@ test.describe("Food log: the day's totals and alice's past days", () => {
     for (const back of [2, 5]) {
       await alice.locator("#fDate").fill(daysAgo(back));
       await expect(alice.locator("#fDate")).toHaveValue(daysAgo(back));
-      await expect(alice.locator("#fbody .fhero b")).toHaveText("1,695");
+      await expect(dayLine(alice)).toHaveText("1,695 kcal eaten · goal 2,200 kcal");
     }
     const row = alice.locator(".rmetrics tbody tr", { has: alice.locator("td.day", { hasText: labelOf(daysAgo(1)) }) });
     await expect(row.locator("td").nth(1)).toHaveText("1,695 kcal");
@@ -1129,7 +1129,7 @@ test.describe("Food log: profiles", () => {
     await expect(page.locator("#fProfile")).toHaveValue(profile.name);
     await page.locator("#fProfile").selectOption("alice");
     await expect(page.locator("#fbody .fn", { hasText: "Admin test soup" })).toHaveCount(0);
-    await expect(page.locator("#fbody .fhero .fhn")).toContainText("nothing logged");
+    await expect(dayLine(page)).toContainText("Nothing logged");
     await page.locator("#fPrev").click();
     await expect(page.locator("#fbody .fn", { hasText: "Oatmeal" })).toBeVisible();
   });
@@ -1141,7 +1141,7 @@ test.describe("Food log: profiles", () => {
     await page.locator("#fPrev").click();
     await expect(page.locator("#fDate")).toHaveValue(daysAgo(1));
     await expect(page.locator("#fbody .fe")).toHaveCount(0);
-    await expect(page.locator("#fbody .fhero .fhn")).toContainText("nothing logged");
+    await expect(dayLine(page)).toContainText("Nothing logged");
   });
 
   test("a profile asking for another profile's log is answered with its own", async ({ profile }) => {

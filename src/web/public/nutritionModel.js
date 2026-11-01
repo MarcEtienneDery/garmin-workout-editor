@@ -213,11 +213,17 @@
     return `Goal ${qty(kp.goal, "kcal")} = ${num(a.base)} set + ${num(a.added)} (${num(a.pct)} % of ${num(a.activeKcal)} active kcal burned${view.day.day === view.today ? " so far" : ""})`;
   }
 
-  /** The figure the summary leads with: what was eaten, and where it stands against the calorie goal. */
-  function headline(view) {
-    const d = view.day, kp = (view.progress || []).find((p) => p.key === "kcal");
-    if (!d.entries) return { value: "–", unit: "kcal", note: kp ? `goal ${qty(kp.goal, "kcal")} · nothing logged` : "nothing logged", state: "unknown" };
-    return { value: num(d.kcal), unit: "kcal eaten", note: kp ? `${goalNote(kp, d.entries)} · goal ${qty(kp.goal, "kcal")}` : foods(d.entries), state: kp ? kp.state : "none" };
+  /**
+   * The middle of the day's calorie ring and the line under it: what is left of the goal ("1,385", "kcal left") or past it ("120", "kcal over"),
+   * or without a goal what was eaten. `label` says it in words, for a screen reader; `short` is the add sheet's foot ("1,015 / 2,400 kcal · 1,385 left").
+   */
+  function ring(view) {
+    const d = view.day, kp = (view.progress || []).find((p) => p.key === "kcal"), goal = kp ? ` · goal ${qty(kp.goal, "kcal")}` : "";
+    if (!d.entries) return { big: "–", small: kp ? `of ${qty(kp.goal, "kcal")}` : "kcal", state: "unknown", line: `Nothing logged${goal}`, label: `Nothing logged${goal}`, short: `Nothing logged${goal}` };
+    const eaten = `${num(d.kcal)} kcal eaten`;
+    if (!kp || kp.left === null) return { big: num(d.kcal), small: "kcal eaten", state: "none", line: foods(d.entries), label: eaten, short: eaten };
+    const over = kp.left < 0, rest = `${num(Math.abs(kp.left))} kcal ${over ? "over" : "left"}`;
+    return { big: num(Math.abs(kp.left)), small: over ? "kcal over" : "kcal left", state: kp.state, line: `${eaten}${goal}`, label: `${eaten} · ${rest}${goal}`, short: `${num(d.kcal)} / ${qty(kp.goal, "kcal")} · ${num(Math.abs(kp.left))} ${over ? "over" : "left"}` };
   }
 
   /** The line under the calorie bar: the calories Garmin says were burned and the difference, when there is a burn. */
@@ -567,5 +573,5 @@
     return { items };
   }
 
-  return { AI_LIMITS, mealForHour, canEstimate, aiFood, aiRows, aiRowValue, aiGroups, aiTotals, approx, aiItems, gtinOk, expandUpcE, normalizeBarcode, MAX_AMOUNT, parseAmount, amountGrams, scale, brandOf, entryName, portion, productOf, pickOf, allNutrients, per100Line, foodTitle, MEAL_LABELS, mealLabel, kcal, grams, signed, macros, shares, hasBurn, figures, averageNote, bare, qty, goalValue, goalNote, goalMeter, calorieBar, headline, calorieGoal, goalLine, burnLine, macroRows, sharesLine, mealBars, nutrientRows, kindLabel, GROUPS, groupsFor, cell, chartDays, charts, kcalOf, followMacros, parseDraft, draftOf, EMPTY_DRAFT, hasNumbers, hasNutrients, recentMatch, recentFor, again, foods, NUTRIENTS, nutrientLine, nutrientTiles, scaleNutrients };
+  return { AI_LIMITS, mealForHour, canEstimate, aiFood, aiRows, aiRowValue, aiGroups, aiTotals, approx, aiItems, gtinOk, expandUpcE, normalizeBarcode, MAX_AMOUNT, parseAmount, amountGrams, scale, brandOf, entryName, portion, productOf, pickOf, allNutrients, per100Line, foodTitle, MEAL_LABELS, mealLabel, kcal, grams, signed, macros, shares, hasBurn, figures, averageNote, bare, qty, goalValue, goalNote, goalMeter, calorieBar, ring, calorieGoal, goalLine, burnLine, macroRows, sharesLine, mealBars, nutrientRows, kindLabel, GROUPS, groupsFor, cell, chartDays, charts, kcalOf, followMacros, parseDraft, draftOf, EMPTY_DRAFT, hasNumbers, hasNutrients, recentMatch, recentFor, again, foods, NUTRIENTS, nutrientLine, nutrientTiles, scaleNutrients };
 });

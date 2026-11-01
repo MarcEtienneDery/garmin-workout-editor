@@ -187,14 +187,14 @@ test.describe("alice's day", () => {
   test("the food section says nothing is logged today, against the goals", async ({ alice }) => {
     await openToday(alice);
     const food = alice.locator("#tbody .tfsum");
-    await expect(food.locator(".fhero")).toContainText("nothing logged");
-    await expect(food.locator(".fhero")).toContainText("goal 2,200 kcal");
-    await expect(food.locator(".fhero b")).toHaveText("–");
-    await expect(food.locator(".fmrows")).toContainText("Protein");
-    await expect(food.locator(".fmrows")).toContainText("– / 130 g");
-    await expect(food.locator(".fmrows")).toContainText("– / 250 g");
-    await expect(food.locator(".fmrows")).toContainText("– / 70 g");
+    await expect(food.locator(".fsumlines .fhn")).toHaveText("Nothing logged · goal 2,200 kcal");
+    await expect(food.locator(".fring .fctr b")).toHaveText("–");
+    await expect(food.locator(".fmacs")).toContainText("Protein");
+    await expect(food.locator(".fmacs")).toContainText("– / 130 g");
+    await expect(food.locator(".fmacs")).toContainText("– / 250 g");
+    await expect(food.locator(".fmacs")).toContainText("– / 70 g");
     await expect(food.locator(".fburn")).toContainText("Burned 2,600 kcal so far by Garmin");
+    await expect(food.locator(".fnuts")).toBeHidden(); // the nutrients are the Food view's
   });
 
   test("the food section shows goals, so it has no hint to set them", async ({ alice }) => {
@@ -247,7 +247,7 @@ test.describe("alice's day", () => {
     const data = await todayData(alice);
     await expect(tile(alice, "Steps").locator("b")).toHaveText(grouped(data.day.steps));
     await expect(card(alice).locator(".tsug")).toHaveText(data.readiness.suggestion);
-    await expect(alice.locator("#tbody .tfsum .fhero b")).toHaveText("–");
+    await expect(alice.locator("#tbody .tfsum .fring .fctr b")).toHaveText("–");
   });
 });
 
@@ -287,7 +287,7 @@ test.describe("a profile with nothing", () => {
 
   test("the food section says nothing is logged and offers to set goals in Settings", async ({ me }) => {
     await openToday(me);
-    await expect(me.locator("#tbody .tfsum .fhero")).toContainText("nothing logged");
+    await expect(me.locator("#tbody .tfsum .fsumlines .fhn")).toHaveText("Nothing logged");
     await expect(me.locator("#tbody .tfsum .fgoalhint")).toContainText("Set daily goals to follow your progress through the day.");
     await me.locator("#tbody .tfsum .fgoalhint button").click();
     await expect(me.locator("body")).toHaveAttribute("data-view", "settings");
@@ -306,14 +306,15 @@ test.describe("a profile with nothing", () => {
     expect(goals.ok()).toBeTruthy();
     await openToday(me);
     const food = me.locator("#tbody .tfsum");
-    await expect(food.locator(".fhero b")).toHaveText("500");
-    await expect(food.locator(".fhero")).toContainText("1,500 kcal to go · goal 2,000 kcal");
-    await expect(food.locator(".fmrows")).toContainText("20 / 100 g");
-    await expect(food.locator(".fmrows")).toContainText("80 g to go");
-    await expect(food.locator(".fmrows")).toContainText("60 / 250 g");
-    await expect(food.locator(".fmrows")).toContainText("190 g to go");
-    await expect(food.locator(".fmrows")).toContainText("15 / 70 g");
-    await expect(food.locator(".fmrows")).toContainText("55 g to go");
+    await expect(food.locator(".fring .fctr b")).toHaveText("1,500");
+    await expect(food.locator(".fring .fctr small")).toHaveText("kcal left");
+    await expect(food.locator(".fsumlines .fhn")).toHaveText("500 kcal eaten · goal 2,000 kcal");
+    await expect(food.locator(".fmacs")).toContainText("20 / 100 g");
+    await expect(food.locator(".fmacs")).toContainText("80 g to go");
+    await expect(food.locator(".fmacs")).toContainText("60 / 250 g");
+    await expect(food.locator(".fmacs")).toContainText("190 g to go");
+    await expect(food.locator(".fmacs")).toContainText("15 / 70 g");
+    await expect(food.locator(".fmacs")).toContainText("55 g to go");
     // no Garmin, so no burn to add to the goal
     await expect(food.locator(".fburn")).toHaveCount(0);
     await expect(food.locator(".fgoalhint")).toHaveCount(0);
@@ -323,8 +324,8 @@ test.describe("a profile with nothing", () => {
     const goals = await profile.api.post("/api/settings/goals", { data: { action: "save", profile: profile.name, goals: { kcal: 1800 } } });
     expect(goals.ok()).toBeTruthy();
     await openToday(me);
-    await expect(me.locator("#tbody .tfsum .fhero")).toContainText("goal 1,800 kcal · nothing logged");
-    await expect(me.locator("#tbody .tfsum .fhero b")).toHaveText("–");
+    await expect(me.locator("#tbody .tfsum .fsumlines .fhn")).toHaveText("Nothing logged · goal 1,800 kcal");
+    await expect(me.locator("#tbody .tfsum .fring .fctr b")).toHaveText("–");
   });
 
   test("a workout scheduled for today appears on today's card, and opens its plan", async ({ me, profile }) => {

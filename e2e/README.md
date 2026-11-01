@@ -29,7 +29,9 @@ server and the browsers, so `today()` from `support/dates.ts` is the page's "tod
 
 ## What is seeded
 
-Import `test`/`expect` from `../support/fixtures` (or `../../support/fixtures` in `specs/mock/`).
+Import `test`/`expect` from `../support/fixtures` (or `../../support/fixtures` in `specs/mock/`). The Food view's parts (the day, the
+summary's ring, the meals, the add sheet and its form by hand) are in `../support/food`: the sheet is a modal dialog, so its helpers shut it
+before they tap the page under it.
 
 * **alice** (password `PASSWORD`): no Garmin login, so Workouts is hidden; Today, Plans, Calendar, Activities, Recovery, Weight and
   Food are shown. She has
@@ -50,7 +52,7 @@ Import `test`/`expect` from `../support/fixtures` (or `../../support/fixtures` i
 ## Writing specs
 
 * One file per area under `e2e/specs/`; name it `<area>.spec.ts`. Group with `test.describe`, keep each test about one behaviour.
-* Prefer ids and roles the page has (`#vFood`, `getByRole("button", { name: "Recent" })`). Never `waitForTimeout`; wait for what the
+* Prefer ids and roles the page has (`#vFood`, `getByRole("tab", { name: "By hand" })`). Never `waitForTimeout`; wait for what the
   page will show with web-first assertions (`await expect(locator).toHaveText(...)`).
 * The page needs no network: foods (`/api/foods/search`, `/api/foods/barcode`, `/api/foods/ai`), OpenStreetMap tiles and the camera are
   answered with `page.route` / launch options by the spec that needs them. Block `**/tile.openstreetmap.org/**` in any spec that opens a map.

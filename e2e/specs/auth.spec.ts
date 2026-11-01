@@ -74,7 +74,7 @@ async function foodFor(page: Page, profile: string): Promise<void> {
   await openView(page, "food");
   await first;
   if ((await page.locator("#fProfile").inputValue()) !== profile) await pickFoodProfile(page, profile);
-  await expect(page.locator("#fbody")).toContainText("Today");
+  await expect(page.locator("#fDayLabel")).toContainText("Today");
 }
 
 /** Pick a profile in the Food view and wait until its day is in. */
@@ -82,7 +82,7 @@ async function pickFoodProfile(page: Page, profile: string): Promise<void> {
   const answered = page.waitForResponse(foodAnswer(profile, null));
   await page.locator("#fProfile").selectOption(profile);
   await answered;
-  await expect(page.locator("#fbody")).toContainText("Today");
+  await expect(page.locator("#fDayLabel")).toContainText("Today");
 }
 
 /** Step the Food view back one day for a profile, and wait until that day is in. */

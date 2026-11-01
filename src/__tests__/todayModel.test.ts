@@ -127,7 +127,7 @@ describe("the food view", () => {
 
   it("is drawn by the Food view's own words: the calories against the goal, the burn, the macros", () => {
     const v = TM.foodView(view({ goals: { kcal: 2000, proteinG: 120 }, foodProgress: [...progress, { key: "proteinG", label: "Protein", unit: "g", kind: "min", goal: 120, amount: 90, partial: false, pct: 75, state: "short", left: 30 }] }));
-    expect(NM.headline(v)).toMatchObject({ value: n(1500), unit: "kcal eaten", state: "short" });
+    expect(NM.ring(v)).toMatchObject({ big: "500", small: "kcal left", line: `${n(1500)} kcal eaten · goal ${n(2000)} kcal`, state: "short" });
     expect(NM.calorieBar(v.day, NM.calorieGoal(v)).tick).toBeNull(); // 1,500 of 2,000: the goal is the end of the track
     expect(NM.burnLine(v)).toBe(`Burned ${n(1209)} kcal so far by Garmin · eaten − burned +${n(291)} kcal`);
     expect(NM.macroRows(v).map((r: any) => [r.key, r.state])).toEqual([["proteinG", "short"], ["carbsG", "none"], ["fatG", "none"]]);
@@ -141,7 +141,7 @@ describe("the food view", () => {
 
   it("says nothing is logged rather than zero", () => {
     const v = TM.foodView(view({ goals: { kcal: 2000 }, foodProgress: progress.map((p) => ({ ...p, amount: null, pct: null, state: "unknown" })), food: { day: TODAY, kcal: 0, proteinG: 0, carbsG: 0, fatG: 0, entries: 0, burnedKcal: 1209, burnedSoFar: true, netKcal: null } }));
-    expect(NM.headline(v)).toMatchObject({ value: "–", note: `goal ${n(2000)} kcal · nothing logged` });
+    expect(NM.ring(v)).toMatchObject({ big: "–", line: `Nothing logged · goal ${n(2000)} kcal` });
     expect(NM.calorieBar(v.day, NM.calorieGoal(v))).toBeNull();
   });
 });

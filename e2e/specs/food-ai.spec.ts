@@ -1,9 +1,11 @@
 /**
- * The Food view's AI box: "Describe or photograph what you ate". The words and photos go to POST /api/foods/ai, which is answered
- * here by stubAi (Claude is never reached). The server of the suite has no Claude key, so the page's own answers from
- * /api/nutrition are made to say the box is set up (enableAi); logging goes to the real server, and the log is read back.
+ * The Food view's AI: "Describe or photograph what you ate", the AI way into the add sheet (✨ in the bar at the bottom, the sheet's AI
+ * tab, the address #food/ai). The words and photos go to POST /api/foods/ai, which is answered here by stubAi (Claude is never
+ * reached). The server of the suite has no Claude key, so the page's own answers from /api/nutrition are made to say the AI is set up
+ * (enableAi); logging goes to the real server, and the log is read back.
  */
 import { test, expect, openView, today, daysAgo, type Page, type APIRequestContext } from "../support/fixtures";
+import { labelOf, sheet, sheetClose, sheetMeal, sheetTab } from "../support/food";
 
 // Estimates as the server answers them: each food for the amount eaten, with that amount, the meal and the nutrients it can give.
 const EGGS = { name: "Scrambled eggs", portion: "2 large eggs", meal: "breakfast", amount: 120, unit: "g", kcal: 180, proteinG: 13, carbsG: 2, fatG: 13, nutrients: { sodiumMg: 300 } };
@@ -76,15 +78,23 @@ async function jpeg(page: Page): Promise<{ name: string; mimeType: string; buffe
   return { name: "meal.jpg", mimeType: "image/jpeg", buffer: Buffer.from(base64, "base64") };
 }
 
-const box = (page: Page) => page.locator("#fbody .fai");
-const words = (page: Page) => page.locator("#fbody .faitext");
-const estimateButton = (page: Page) => page.locator("#fbody .fai").getByRole("button", { name: "Estimate", exact: true });
-const rows = (page: Page) => page.locator("#fbody .faires .fair");
-const row = (page: Page, name: string) => page.locator("#fbody .faires .fair", { has: page.locator("b", { hasText: name }) });
-const logButton = (page: Page) => page.locator("#fbody .faires .fpa button.primary");
-const totals = (page: Page) => page.locator("#fbody .faires .fpv");
-const fileInput = (page: Page) => page.locator('#fbody .fai input[type="file"]:not([capture])');
+/** The sheet's AI: the photo buttons, the words, Estimate, then the estimate's rows to check and Log. */
+const box = (page: Page) => page.locator("#fsh .faibody");
+const words = (page: Page) => page.locator("#fsh .faitext");
+const estimateButton = (page: Page) => box(page).getByRole("button", { name: "Estimate", exact: true });
+const rows = (page: Page) => page.locator("#fsh .faires .fair");
+const row = (page: Page, name: string) => page.locator("#fsh .faires .fair", { has: page.locator("b", { hasText: name }) });
+const logButton = (page: Page) => page.locator("#fsh .faires .fpa button.primary");
+const totals = (page: Page) => page.locator("#fsh .faires .fpv");
+const fileInput = (page: Page) => box(page).locator('input[type="file"]:not([capture])');
 const section = (page: Page, meal: string) => page.locator(`#fbody section.fmeal[data-meal="${meal}"]`);
+
+/** Opens the Food view, then the sheet on the AI with ✨ in the bar at the bottom. */
+async function openAi(page: Page) {
+  await openView(page, "food");
+  await page.locator("#fdAi").click();
+  await expect(sheetTab(page, "AI")).toHaveAttribute("aria-selected", "true");
+}
 
 /** Types the words and presses Estimate, and returns once the server has answered (with rows or with an error). */
 async function ask(page: Page, text: string) {
@@ -92,63 +102,85 @@ async function ask(page: Page, text: string) {
   await Promise.all([page.waitForResponse((r) => r.url().endsWith("/api/foods/ai")), estimateButton(page).click()]);
 }
 
-test.describe("opening the box", () => {
-  test("the address #food/ai opens the box, with the words ready to type in", async ({ me }) => {
+test.describe("opening the AI", () => {
+  test("the address #food/ai opens the add sheet on the AI, with the words ready to type in", async ({ me }) => {
     await enableAi(me);
     await me.goto("/#food/ai");
     await expect(me.locator("body")).toHaveAttribute("data-view", "food");
+    await expect(sheet(me)).toBeVisible();
+    await expect(sheetTab(me, "AI")).toHaveAttribute("aria-selected", "true");
     await expect(words(me)).toBeFocused();
-    await expect(box(me).locator(".faihead")).toHaveAttribute("aria-expanded", "true");
     expect(me.url()).toMatch(/#food\/ai$/);
   });
 
-  test("on #food the box is shut, and its head opens it and puts #food/ai in the address", async ({ me }) => {
+  test("on #food the sheet is shut, and ✨ in the bar at the bottom opens it on the AI and puts #food/ai in the address", async ({ me }) => {
     await enableAi(me);
     await openView(me, "food");
-    await expect(box(me).locator(".faihead")).toHaveAttribute("aria-expanded", "false");
+    await expect(sheet(me)).toBeHidden();
     await expect(words(me)).toHaveCount(0);
-    await box(me).locator(".faihead").click();
+    await me.locator("#fdAi").click();
     await expect(words(me)).toBeVisible();
+    await expect(words(me)).toBeFocused();
     await expect(me).toHaveURL(/#food\/ai$/);
   });
 
-  test("its head shuts the box again, and the address goes back to #food", async ({ me }) => {
+  test("the sheet's AI tab opens the AI from the search, and the Search tab leaves it, with the address following", async ({ me }) => {
     await enableAi(me);
     await openView(me, "food");
-    await box(me).locator(".faihead").click();
+    await me.locator("#fdSearch").click();
+    await expect(me).toHaveURL(/#food$/);
+    await sheetTab(me, "AI").click();
     await expect(words(me)).toBeVisible();
-    await box(me).locator(".faihead").click();
+    await expect(me).toHaveURL(/#food\/ai$/);
+    await sheetTab(me, "Search").click();
     await expect(words(me)).toHaveCount(0);
     await expect(me).toHaveURL(/#food$/);
   });
 
+  test("✕ shuts the sheet, and the address goes back to #food", async ({ me }) => {
+    await enableAi(me);
+    await openAi(me);
+    await expect(words(me)).toBeVisible();
+    await sheetClose(me).click();
+    await expect(sheet(me)).toBeHidden();
+    await expect(me).toHaveURL(/#food$/);
+  });
+
+  test("Back shuts the sheet opened from #food/ai and stays on the Food view, which does not open it again", async ({ me }) => {
+    await enableAi(me);
+    await me.goto("/#food/ai");
+    await expect(words(me)).toBeVisible();
+    await me.goBack();
+    await expect(sheet(me)).toBeHidden();
+    await expect(me.locator("body")).toHaveAttribute("data-view", "food");
+    await expect(me).toHaveURL(/#food$/);
+    await expect(me.locator("#fbody .fsum")).toBeVisible();
+    await expect(sheet(me)).toBeHidden(); // still shut once the view has settled
+  });
+
   test("with no Claude set up on the server, the box says so and offers no words to estimate", async ({ me }) => {
-    await openView(me, "food");
-    await box(me).locator(".faihead").click();
+    await openAi(me);
     await expect(box(me).locator(".fnote.err")).toContainText("AI logging is not set up on this server");
     await expect(words(me)).toHaveCount(0);
   });
 
   test("the box says how many estimates are left today", async ({ me }) => {
     await enableAi(me, 4);
-    await openView(me, "food");
-    await box(me).locator(".faihead").click();
+    await openAi(me);
     await expect(box(me)).toContainText("Logs to today · 4 of 30 daily estimates left.");
   });
 
   test("the count of the estimate's answer replaces the one the box had", async ({ me }) => {
     await enableAi(me, 4);
     await stubAi(me, () => ({ json: { ...ESTIMATE, remaining: 3 } }));
-    await openView(me, "food");
-    await box(me).locator(".faihead").click();
+    await openAi(me);
     await ask(me, "2 eggs and toast, salmon for dinner");
     await expect(box(me)).toContainText("3 of 30 daily estimates left.");
   });
 
   test("the words box holds at most 1000 characters", async ({ me }) => {
     await enableAi(me);
-    await openView(me, "food");
-    await box(me).locator(".faihead").click();
+    await openAi(me);
     await expect(words(me)).toHaveAttribute("maxlength", "1000");
   });
 });
@@ -157,8 +189,7 @@ test.describe("asking", () => {
   test("Estimate is off until there are three characters, and on from three", async ({ me }) => {
     await enableAi(me);
     await stubAi(me);
-    await openView(me, "food");
-    await box(me).locator(".faihead").click();
+    await openAi(me);
     await expect(estimateButton(me)).toBeDisabled();
     await words(me).fill("ab");
     await expect(estimateButton(me)).toBeDisabled();
@@ -169,8 +200,7 @@ test.describe("asking", () => {
   test("the words are sent with the profile, and the meal of the hour", async ({ me, profile }) => {
     await enableAi(me);
     const asked = await stubAi(me);
-    await openView(me, "food");
-    await box(me).locator(".faihead").click();
+    await openAi(me);
     await ask(me, "2 eggs and toast for breakfast");
     expect(asked).toHaveLength(1);
     expect(asked[0]).toMatchObject({ profile: profile.name, text: "2 eggs and toast for breakfast", images: [] });
@@ -181,17 +211,25 @@ test.describe("asking", () => {
     await me.clock.install({ time: new Date("2026-10-30T19:30:00Z") });
     await enableAi(me);
     const asked = await stubAi(me);
-    await openView(me, "food");
-    await box(me).locator(".faihead").click();
+    await openAi(me);
     await ask(me, "a bowl of soup");
     expect(asked[0].defaultMeal).toBe("dinner");
+  });
+
+  test("the meal chosen at the top of the sheet is sent as the meal the foods go in", async ({ me }) => {
+    await enableAi(me);
+    const asked = await stubAi(me);
+    await openAi(me);
+    await sheetMeal(me, "lunch").click();
+    await expect(sheetMeal(me, "lunch")).toHaveAttribute("aria-pressed", "true");
+    await ask(me, "a bowl of soup");
+    expect(asked[0].defaultMeal).toBe("lunch");
   });
 
   test("Ctrl+Enter in the words asks for the estimate", async ({ me }) => {
     await enableAi(me);
     const asked = await stubAi(me);
-    await openView(me, "food");
-    await box(me).locator(".faihead").click();
+    await openAi(me);
     await words(me).fill("a bowl of oatmeal");
     await words(me).press("Control+Enter");
     await expect(rows(me).first()).toBeVisible();
@@ -201,10 +239,9 @@ test.describe("asking", () => {
   test("a question with no food in it gets the AI's reason and no rows to log", async ({ me, profile }) => {
     await enableAi(me);
     await stubAi(me, () => ({ json: { items: [], note: "There is no food in that: say what you ate.", remaining: 28 } }));
-    await openView(me, "food");
-    await box(me).locator(".faihead").click();
+    await openAi(me);
     await ask(me, "the weather is nice today");
-    await expect(me.locator("#fbody .faires")).toContainText("There is no food in that: say what you ate.");
+    await expect(me.locator("#fsh .faires")).toContainText("There is no food in that: say what you ate.");
     await expect(rows(me)).toHaveCount(0);
     await expect(logButton(me)).toHaveCount(0);
     expect(await logged(profile.api)).toHaveLength(0);
@@ -215,10 +252,9 @@ test.describe("checking the estimate", () => {
   test("the rows are grouped by meal, in the day's order", async ({ me }) => {
     await enableAi(me);
     await stubAi(me);
-    await openView(me, "food");
-    await box(me).locator(".faihead").click();
+    await openAi(me);
     await ask(me, "2 eggs and toast, salmon for dinner");
-    const headings = await me.locator("#fbody .faires .fgroup").allTextContents();
+    const headings = await me.locator("#fsh .faires .fgroup").allTextContents();
     expect(headings).toEqual(["Breakfast", "Dinner"]);
     await expect(row(me, "Scrambled eggs")).toBeVisible();
     await expect(row(me, "Whole wheat toast")).toBeVisible();
@@ -229,8 +265,7 @@ test.describe("checking the estimate", () => {
   test("each row shows its name with the assumption, its amount in grams, its calories and its nutrients", async ({ me }) => {
     await enableAi(me);
     await stubAi(me);
-    await openView(me, "food");
-    await box(me).locator(".faihead").click();
+    await openAi(me);
     await ask(me, "2 eggs and toast, salmon for dinner");
     const eggs = row(me, "Scrambled eggs");
     await expect(eggs.locator(".fain")).toContainText("assumed: 2 large eggs");
@@ -244,19 +279,17 @@ test.describe("checking the estimate", () => {
   test("the total of the rows and the AI's note are shown under them", async ({ me }) => {
     await enableAi(me);
     await stubAi(me);
-    await openView(me, "food");
-    await box(me).locator(".faihead").click();
+    await openAi(me);
     await ask(me, "2 eggs and toast, salmon for dinner");
     await expect(totals(me)).toHaveText("≈ 470 kcal · P 39 · C 17 · F 26");
-    await expect(me.locator("#fbody .faires")).toContainText("Assumed 1 cup of cooked rice.");
+    await expect(me.locator("#fsh .faires")).toContainText("Assumed 1 cup of cooked rice.");
     await expect(logButton(me)).toHaveText("Log 3 foods");
   });
 
   test("an amount typed rescales its row and the total", async ({ me }) => {
     await enableAi(me);
     await stubAi(me);
-    await openView(me, "food");
-    await box(me).locator(".faihead").click();
+    await openAi(me);
     await ask(me, "2 eggs and toast, salmon for dinner");
     await row(me, "Scrambled eggs").getByRole("spinbutton", { name: "Amount of Scrambled eggs in g" }).fill("60");
     await expect(row(me, "Scrambled eggs").locator(".fairk")).toHaveText("≈ 90 kcal");
@@ -267,8 +300,7 @@ test.describe("checking the estimate", () => {
   test("an amount of 0 says so on its row, and Log is off until it is fixed", async ({ me }) => {
     await enableAi(me);
     await stubAi(me);
-    await openView(me, "food");
-    await box(me).locator(".faihead").click();
+    await openAi(me);
     await ask(me, "2 eggs and toast, salmon for dinner");
     const eggs = row(me, "Scrambled eggs");
     await eggs.getByRole("spinbutton", { name: "Amount of Scrambled eggs in g" }).fill("0");
@@ -283,8 +315,7 @@ test.describe("checking the estimate", () => {
   test("a row left out with ✕ is not logged, and the total and the count follow", async ({ me }) => {
     await enableAi(me);
     await stubAi(me);
-    await openView(me, "food");
-    await box(me).locator(".faihead").click();
+    await openAi(me);
     await ask(me, "2 eggs and toast, salmon for dinner");
     await me.getByRole("button", { name: "Leave out Salmon" }).click();
     await expect(rows(me)).toHaveCount(2);
@@ -295,20 +326,31 @@ test.describe("checking the estimate", () => {
   test("a row's meal can be changed, and the row moves to that meal's group", async ({ me }) => {
     await enableAi(me);
     await stubAi(me);
-    await openView(me, "food");
-    await box(me).locator(".faihead").click();
+    await openAi(me);
     await ask(me, "2 eggs and toast, salmon for dinner");
     await row(me, "Scrambled eggs").getByRole("combobox", { name: "Meal of Scrambled eggs" }).selectOption("lunch");
-    await expect(me.locator("#fbody .faires .fgroup")).toHaveText(["Breakfast", "Lunch", "Dinner"]);
+    await expect(me.locator("#fsh .faires .fgroup")).toHaveText(["Breakfast", "Lunch", "Dinner"]);
     await expect(row(me, "Scrambled eggs").getByRole("combobox", { name: "Meal of Scrambled eggs" })).toHaveValue("lunch");
+  });
+
+  test("a meal chosen at the top of the sheet takes every row of the estimate", async ({ me, profile }) => {
+    await enableAi(me);
+    await stubAi(me);
+    await openAi(me);
+    await ask(me, "2 eggs and toast, salmon for dinner");
+    await sheetMeal(me, "snack").click();
+    await expect(me.locator("#fsh .faires .fgroup")).toHaveText(["Snacks"]);
+    for (const name of ["Scrambled eggs", "Whole wheat toast", "Salmon"]) await expect(row(me, name).getByRole("combobox", { name: `Meal of ${name}` })).toHaveValue("snack");
+    await logButton(me).click();
+    await expect(me.locator("#toast")).toContainText("Logged 3 foods.");
+    expect((await logged(profile.api)).map((e) => e.meal)).toEqual(["snack", "snack", "snack"]);
   });
 
   test("a food whose numbers cannot be per 100 g keeps its amount: no amount box, and it is still logged", async ({ me, profile }) => {
     await enableAi(me);
     const butter = { name: "Butter", portion: "1 tsp", meal: "snack", amount: 10, unit: "g", kcal: 72, proteinG: 0, carbsG: 0, fatG: 80, nutrients: {} };
     await stubAi(me, () => ({ json: { items: [butter], note: "", remaining: 27 } }));
-    await openView(me, "food");
-    await box(me).locator(".faihead").click();
+    await openAi(me);
     await ask(me, "a teaspoon of butter");
     const fixed = row(me, "Butter");
     await expect(fixed.getByRole("spinbutton")).toHaveCount(0);
@@ -320,15 +362,14 @@ test.describe("checking the estimate", () => {
     expect(entry).toMatchObject({ name: "Butter · 10 g", meal: "snack", kcal: 72, fatG: 80 });
   });
 
-  test("closing the box keeps the estimate for when it is opened again", async ({ me }) => {
+  test("closing the sheet keeps the estimate for when the AI is opened again", async ({ me }) => {
     await enableAi(me);
     await stubAi(me);
-    await openView(me, "food");
-    await box(me).locator(".faihead").click();
+    await openAi(me);
     await ask(me, "2 eggs and toast, salmon for dinner");
-    await box(me).locator(".faihead").click();
-    await expect(words(me)).toHaveCount(0);
-    await box(me).locator(".faihead").click();
+    await sheetClose(me).click();
+    await expect(sheet(me)).toBeHidden();
+    await me.locator("#fdAi").click();
     await expect(rows(me)).toHaveCount(3);
     await expect(words(me)).toHaveValue("2 eggs and toast, salmon for dinner");
   });
@@ -336,10 +377,9 @@ test.describe("checking the estimate", () => {
   test("Clear forgets the estimate and keeps the words", async ({ me }) => {
     await enableAi(me);
     await stubAi(me);
-    await openView(me, "food");
-    await box(me).locator(".faihead").click();
+    await openAi(me);
     await ask(me, "2 eggs and toast, salmon for dinner");
-    await me.locator("#fbody .faires").getByRole("button", { name: "Clear", exact: true }).click();
+    await me.locator("#fsh .faires").getByRole("button", { name: "Clear", exact: true }).click();
     await expect(rows(me)).toHaveCount(0);
     await expect(logButton(me)).toHaveCount(0);
     await expect(words(me)).toHaveValue("2 eggs and toast, salmon for dinner");
@@ -348,11 +388,10 @@ test.describe("checking the estimate", () => {
   test("Estimate again asks again, with the words as they are now", async ({ me }) => {
     await enableAi(me);
     const asked = await stubAi(me);
-    await openView(me, "food");
-    await box(me).locator(".faihead").click();
+    await openAi(me);
     await ask(me, "2 eggs and toast");
     await words(me).fill("2 eggs, toast and a banana");
-    await me.locator("#fbody .faires").getByRole("button", { name: "Estimate again" }).click();
+    await me.locator("#fsh .faires").getByRole("button", { name: "Estimate again" }).click();
     await expect.poll(() => asked.map((a) => a.text)).toEqual(["2 eggs and toast", "2 eggs, toast and a banana"]);
   });
 });
@@ -361,8 +400,7 @@ test.describe("logging the estimate", () => {
   test("Log sends the kept rows in one request, each with its own meal", async ({ me, profile }) => {
     const posts = await enableAi(me);
     await stubAi(me);
-    await openView(me, "food");
-    await box(me).locator(".faihead").click();
+    await openAi(me);
     await ask(me, "2 eggs and toast, salmon for dinner");
     await logButton(me).click();
     await expect(me.locator("#toast")).toContainText("Logged 3 foods.");
@@ -377,8 +415,7 @@ test.describe("logging the estimate", () => {
   test("a row whose meal was changed is logged in that meal", async ({ me, profile }) => {
     await enableAi(me);
     await stubAi(me);
-    await openView(me, "food");
-    await box(me).locator(".faihead").click();
+    await openAi(me);
     await ask(me, "2 eggs and toast, salmon for dinner");
     await row(me, "Scrambled eggs").getByRole("combobox", { name: "Meal of Scrambled eggs" }).selectOption("snack");
     await logButton(me).click();
@@ -391,8 +428,7 @@ test.describe("logging the estimate", () => {
   test("an amount changed before Log is logged with the new amount and its numbers", async ({ me, profile }) => {
     await enableAi(me);
     await stubAi(me);
-    await openView(me, "food");
-    await box(me).locator(".faihead").click();
+    await openAi(me);
     await ask(me, "2 eggs and toast, salmon for dinner");
     await row(me, "Scrambled eggs").getByRole("spinbutton", { name: "Amount of Scrambled eggs in g" }).fill("60");
     await logButton(me).click();
@@ -402,16 +438,18 @@ test.describe("logging the estimate", () => {
     expect(eggs?.proteinG).toBeCloseTo(6.5);
   });
 
-  test("after Log the box is cleared and the foods show in the log, each in its meal", async ({ me, profile }) => {
+  test("after Log the sheet shuts, the foods show in the log, each in its meal, and the AI opens empty again", async ({ me, profile }) => {
     await enableAi(me);
     await stubAi(me);
-    await openView(me, "food");
-    await box(me).locator(".faihead").click();
+    await openAi(me);
     await ask(me, "2 eggs and toast, salmon for dinner");
     await logButton(me).click();
+    await expect(sheet(me)).toBeHidden();
+    await expect(me).toHaveURL(/#food$/);
     await expect(section(me, "breakfast").locator(".fe .fn", { hasText: "Scrambled eggs · 120 g" })).toBeVisible();
     await expect(section(me, "breakfast").locator(".fe .fn", { hasText: "Whole wheat toast · 35 g" })).toBeVisible();
     await expect(section(me, "dinner").locator(".fe .fn", { hasText: "Salmon · 100 g" })).toBeVisible();
+    await me.locator("#fdAi").click();
     await expect(words(me)).toHaveValue("");
     await expect(rows(me)).toHaveCount(0);
     await expect(logButton(me)).toHaveCount(0);
@@ -421,8 +459,7 @@ test.describe("logging the estimate", () => {
   test("Undo in the toast takes all of the foods back", async ({ me, profile }) => {
     await enableAi(me);
     await stubAi(me);
-    await openView(me, "food");
-    await box(me).locator(".faihead").click();
+    await openAi(me);
     await ask(me, "2 eggs and toast, salmon for dinner");
     await logButton(me).click();
     await expect(me.locator("#toast")).toContainText("Logged 3 foods.");
@@ -434,16 +471,15 @@ test.describe("logging the estimate", () => {
 });
 
 test.describe("a past day", () => {
-  test("the box says which day it logs to, and the estimate is logged on that day", async ({ me, profile }) => {
+  test("the AI says which day it logs to, and the estimate is logged on that day", async ({ me, profile }) => {
     const posts = await enableAi(me);
     await stubAi(me);
     await openView(me, "food");
     await me.locator("#fPrev").click();
     await expect(me.locator("#fDate")).toHaveValue(daysAgo(1));
-    await box(me).locator(".faihead").click();
-    const day = new Date(`${daysAgo(1)}T00:00:00Z`);
-    const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"], MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-    await expect(box(me)).toContainText(`Logs to ${DOW[day.getUTCDay()]} ${day.getUTCDate()} ${MON[day.getUTCMonth()]} ·`);
+    await me.locator("#fdAi").click();
+    await expect(me.locator("#fsh .fsh-day")).toHaveText(labelOf(daysAgo(1)));
+    await expect(box(me)).toContainText(`Logs to ${labelOf(daysAgo(1))} ·`);
     await ask(me, "2 eggs and toast, salmon for dinner");
     await logButton(me).click();
     await expect(me.locator("#toast")).toContainText("Logged 3 foods.");
@@ -458,8 +494,7 @@ test.describe("errors, and the estimate under way", () => {
   test("a limit of the day (429) is shown in the box, and nothing is logged", async ({ me, profile }) => {
     const posts = await enableAi(me);
     await stubAi(me, () => ({ status: 429, json: { error: "That is today's limit of 30 AI estimates. It starts again tomorrow." } }));
-    await openView(me, "food");
-    await box(me).locator(".faihead").click();
+    await openAi(me);
     await ask(me, "2 eggs and toast");
     await expect(box(me).locator(".fnote.err")).toHaveText("That is today's limit of 30 AI estimates. It starts again tomorrow.");
     await expect(rows(me)).toHaveCount(0);
@@ -470,8 +505,7 @@ test.describe("errors, and the estimate under way", () => {
   test("a server error (500) is shown in the box, and nothing is logged", async ({ me, profile }) => {
     const posts = await enableAi(me);
     await stubAi(me, () => ({ status: 500, json: { error: "Claude is having trouble right now. Try again." } }));
-    await openView(me, "food");
-    await box(me).locator(".faihead").click();
+    await openAi(me);
     await words(me).fill("2 eggs and toast");
     await estimateButton(me).click();
     await expect(box(me).locator(".fnote.err")).toHaveText("Claude is having trouble right now. Try again.");
@@ -483,8 +517,7 @@ test.describe("errors, and the estimate under way", () => {
   test("a refusal from the AI (422) is shown in the box", async ({ me }) => {
     await enableAi(me);
     await stubAi(me, () => ({ status: 422, json: { error: "The AI declined to estimate this. Describe it another way, or enter it by hand." } }));
-    await openView(me, "food");
-    await box(me).locator(".faihead").click();
+    await openAi(me);
     await ask(me, "something it will not estimate");
     await expect(box(me).locator(".fnote.err")).toContainText("The AI declined to estimate this.");
   });
@@ -493,8 +526,7 @@ test.describe("errors, and the estimate under way", () => {
     await enableAi(me);
     let failing = true;
     const asked = await stubAi(me, () => (failing ? { status: 500, json: { error: "Claude could not make this estimate. Try again." } } : { json: ESTIMATE }));
-    await openView(me, "food");
-    await box(me).locator(".faihead").click();
+    await openAi(me);
     await ask(me, "2 eggs and toast");
     await expect(box(me).locator(".fnote.err")).toBeVisible();
     failing = false;
@@ -509,8 +541,7 @@ test.describe("errors, and the estimate under way", () => {
     let release!: () => void;
     const released = new Promise<void>((resolve) => (release = resolve));
     const asked = await stubAi(me, async () => { await released; return { json: ESTIMATE }; });
-    await openView(me, "food");
-    await box(me).locator(".faihead").click();
+    await openAi(me);
     await words(me).fill("2 eggs and toast, salmon for dinner");
     await estimateButton(me).click();
     await expect(box(me).locator(".fnote", { hasText: "Estimating…" })).toBeVisible();
@@ -527,8 +558,7 @@ test.describe("photos", () => {
   test("a photo is attached as a JPEG and sent with the estimate, and a photo alone can be estimated", async ({ me }) => {
     await enableAi(me);
     const asked = await stubAi(me);
-    await openView(me, "food");
-    await box(me).locator(".faihead").click();
+    await openAi(me);
     await expect(estimateButton(me)).toBeDisabled();
     await fileInput(me).setInputFiles(await jpeg(me));
     await expect(box(me).locator('img[alt="Photo 1"]')).toBeVisible();
@@ -546,8 +576,7 @@ test.describe("photos", () => {
   test("words and a photo are sent together", async ({ me }) => {
     await enableAi(me);
     const asked = await stubAi(me);
-    await openView(me, "food");
-    await box(me).locator(".faihead").click();
+    await openAi(me);
     await fileInput(me).setInputFiles(await jpeg(me));
     await expect(box(me).locator('img[alt="Photo 1"]')).toBeVisible(); // the photo is ready before the words are typed
     await ask(me, "half of this, and the sauce on the side");
@@ -559,8 +588,7 @@ test.describe("photos", () => {
   test("words typed while a photo is being prepared are all kept", async ({ me }) => {
     await enableAi(me);
     await stubAi(me);
-    await openView(me, "food");
-    await me.locator("#fbody .faihead").click();
+    await openAi(me);
     const big = await me.evaluate(() => {
       const canvas = document.createElement("canvas");
       canvas.width = 4000; canvas.height = 3000;
@@ -578,8 +606,7 @@ test.describe("photos", () => {
   test("at most three photos: a fourth is not added, and the photo buttons say so", async ({ me }) => {
     await enableAi(me);
     await stubAi(me);
-    await openView(me, "food");
-    await box(me).locator(".faihead").click();
+    await openAi(me);
     const photo = await jpeg(me);
     await fileInput(me).setInputFiles([photo, photo, photo, photo]);
     await expect(me.locator("#toast")).toContainText("At most 3 photos at a time.");
@@ -591,8 +618,7 @@ test.describe("photos", () => {
   test("a photo can be taken off again", async ({ me }) => {
     await enableAi(me);
     await stubAi(me);
-    await openView(me, "food");
-    await box(me).locator(".faihead").click();
+    await openAi(me);
     const photo = await jpeg(me);
     await fileInput(me).setInputFiles([photo, photo]);
     await expect(box(me).locator(".faithumb img")).toHaveCount(2);
@@ -607,8 +633,7 @@ test.describe("photos", () => {
   test("a file that is not a photo is refused in the box", async ({ me }) => {
     await enableAi(me);
     await stubAi(me);
-    await openView(me, "food");
-    await box(me).locator(".faihead").click();
+    await openAi(me);
     await fileInput(me).setInputFiles({ name: "notes.txt", mimeType: "text/plain", buffer: Buffer.from("not a photo") });
     await expect(box(me).locator(".fnote.err")).toHaveText("That is not a photo.");
     await expect(box(me).locator(".faithumb img")).toHaveCount(0);
@@ -617,8 +642,7 @@ test.describe("photos", () => {
   test("Take photo opens the camera dialog, which says when there is no camera", async ({ me }) => {
     await me.context().grantPermissions([]);
     await enableAi(me);
-    await openView(me, "food");
-    await box(me).locator(".faihead").click();
+    await openAi(me);
     await box(me).getByRole("button", { name: "📷 Take photo" }).click();
     await expect(me.locator("#photodlg")).toBeVisible();
     await expect(me.locator("#photoNote")).toHaveText(/No camera was found on this device|The camera was refused/);

@@ -554,12 +554,13 @@ describe("saying where a goal stands", () => {
 describe("the summary of the day", () => {
   const foods = [{ meal: "breakfast", kcal: 400, proteinG: 20, carbsG: 50, fatG: 13 }, { meal: "dinner", kcal: 600, proteinG: 40, carbsG: 40, fatG: 20 }];
 
-  it("leads with what was eaten and where it stands against the calorie goal", () => {
-    const v = goalView(foods, { kcal: 2000, proteinG: 150 });
-    expect(NM.headline(v)).toEqual({ value: (1000).toLocaleString(), unit: "kcal eaten", note: `${(1000).toLocaleString()} kcal to go · goal ${(2000).toLocaleString()} kcal`, state: "short" });
-    expect(NM.headline(goalView(foods, {}))).toMatchObject({ note: "2 foods", state: "none" });
-    expect(NM.headline(goalView([], { kcal: 2000 }))).toMatchObject({ value: "–", note: `goal ${(2000).toLocaleString()} kcal · nothing logged`, state: "unknown" });
-    expect(NM.headline(goalView([], {}))).toMatchObject({ value: "–", note: "nothing logged" });
+  it("puts what is left of the calorie goal in the ring's middle, or what is past it, or without a goal what was eaten", () => {
+    const n = (v: number) => v.toLocaleString();
+    expect(NM.ring(goalView(foods, { kcal: 2000 }))).toEqual({ big: n(1000), small: "kcal left", state: "short", line: `${n(1000)} kcal eaten · goal ${n(2000)} kcal`, label: `${n(1000)} kcal eaten · ${n(1000)} kcal left · goal ${n(2000)} kcal`, short: `${n(1000)} / ${n(2000)} kcal · ${n(1000)} left` });
+    expect(NM.ring(goalView(foods, { kcal: 800 }))).toMatchObject({ big: "200", small: "kcal over", state: "over", short: `${n(1000)} / 800 kcal · 200 over` });
+    expect(NM.ring(goalView(foods, {}))).toEqual({ big: n(1000), small: "kcal eaten", state: "none", line: "2 foods", label: `${n(1000)} kcal eaten`, short: `${n(1000)} kcal eaten` });
+    expect(NM.ring(goalView([], { kcal: 2000 }))).toMatchObject({ big: "–", small: `of ${n(2000)} kcal`, state: "unknown", line: `Nothing logged · goal ${n(2000)} kcal` });
+    expect(NM.ring(goalView([], {}))).toMatchObject({ big: "–", small: "kcal", line: "Nothing logged" });
   });
 
   it("splits the calorie bar into protein, carbs and fat, as long as the day is of the goal", () => {
@@ -664,7 +665,7 @@ describe("a calorie goal that follows the burn", () => {
   it("measures the day, draws the bar and splits the meals against the adjusted goal", () => {
     const v = follow(620);
     expect(NM.calorieGoal(v)).toBe(2510);
-    expect(NM.headline(v)).toMatchObject({ unit: "kcal eaten", note: `${(1510).toLocaleString()} kcal to go · goal ${(2510).toLocaleString()} kcal`, state: "short" });
+    expect(NM.ring(v)).toMatchObject({ big: (1510).toLocaleString(), small: "kcal left", line: `${(1000).toLocaleString()} kcal eaten · goal ${(2510).toLocaleString()} kcal`, state: "short" });
     expect(NM.mealBars(v)[1]).toMatchObject({ share: 40, shareOf: "of the goal" }); // 1000 of 2510
     expect(NM.figures(v)[0].note).toBe(`of ${(2510).toLocaleString()} (+310 burned) · ${(1510).toLocaleString()} kcal to go`);
   });
