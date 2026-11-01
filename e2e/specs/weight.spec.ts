@@ -362,10 +362,14 @@ test.describe("Weight view, alice (45 days stored, a weigh-in every third day)",
     await expect(alice.locator("#bbody details.rraw.none summary small")).toHaveText("not stored for this day");
   });
 
-  test("the footnote says the trend is a straight line, and the calories are Garmin's estimate", async ({ alice }) => {
+  test("About these numbers says the trend is a straight line, and the calories are Garmin's estimate", async ({ alice }) => {
     await openWeight(alice);
-    await expect(alice.locator("#bbody .rfoot")).toContainText("The trend is a straight line through the weigh-ins of the days shown");
-    await expect(alice.locator("#bbody .rfoot")).toContainText("The calories are Garmin's estimate from the watch: what the day burned, not what was eaten.");
+    const about = alice.locator("#bbody .rfoot .help");
+    await expect(about).toBeHidden();
+    await alice.locator("#bbody .rfoot").getByRole("button", { name: "About these numbers" }).click();
+    await expect(about).toBeVisible();
+    await expect(about).toContainText("The trend is a straight line through the weigh-ins shown");
+    await expect(about).toContainText("Calories burned are Garmin's estimate from the watch.");
   });
 
   test("the note says how many days are stored and their span", async ({ alice, admin }) => {

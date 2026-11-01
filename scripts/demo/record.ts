@@ -232,9 +232,11 @@ const SCENES: Scene[] = [
       await s.click(page.locator("#cModes button[data-mode=plans]"), { wait: 1500 });
       await s.click(page.locator("#cModes button[data-mode=workouts]"), { wait: 1500 });
       await s.click(page.locator("#cModes button[data-mode=both]"), { wait: 1000 });
-      await s.click(page.locator("#cNext"), { wait: 1800 });
+      // to the month beside this one that holds more of the plans (the seed dates them from 3 weeks before this week to 5 after), and back
+      const [there, back] = new Date().getUTCDate() > 15 ? ["#cNext", "#cPrev"] : ["#cPrev", "#cNext"];
+      await s.click(page.locator(there), { wait: 1800 });
       await s.click(page.locator("#cgrid .cday").filter({ hasText: /^\s*1?\d\b/ }).nth(5), { fx: 0.5, fy: 0.15, wait: 1500 });
-      await s.click(page.locator("#cPrev"), { wait: 1200 });
+      await s.click(page.locator(back), { wait: 1200 });
       await s.click(page.locator("#cgrid .inband").filter({ hasText: "Intervals" }).last(), { wait: 2000 });
       await s.pause(1500);
     },

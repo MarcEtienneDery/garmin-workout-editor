@@ -10,6 +10,8 @@ Every recording below runs on the demo database (`npm run demo`, see [Try it wit
 
 - [Today](#today) · [Plans](#plans-a-json-editor-that-draws-the-workout) · [Calendar](#calendar) · [Activities](#activities-graphs-map-and-laps) · [Strength and lifetime stats](#strength-and-lifetime-stats) · [Recovery](#recovery-and-readiness) · [Weight](#weight) · [Food logging](#food-logging) · [Logging a meal with AI](#logging-a-meal-with-ai) · [On a phone](#on-a-phone) · [With Claude](#with-claude-mcp)
 
+The views keep to the numbers: how one is made sits behind a small ⓘ (at a view's foot, *About these numbers*), and *Show explanations* in the account menu shows every note at once.
+
 ### Today
 
 The page that opens first: the workout the plans schedule for today, drawn as its steps, with a ✓ once an activity was started from it; the day's readiness and what to do with it; steps, intensity minutes, Body Battery and last night's sleep against their goals; what you ate against your goals; and the workouts of the next 7 days with their distance and time. It always says how old the numbers are, and when the watch has not synced for a while.

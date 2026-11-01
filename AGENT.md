@@ -48,6 +48,10 @@ Data flow for activities: Garmin to the `activities` table (sync), table to the 
 - `create_workout` and `schedule_workout` work on one workout with no plan file (`createWorkout` and `scheduleWorkout` in `src/mcp/tools/garmin.ts`; the workout schema is `newWorkoutSchema` in `plans.ts`, strict, so a plan-only field such as `scheduledDate` is refused rather than ignored). `create_workout` never replaces: it passes on only the name, type, description and steps, so no `workoutId` can reach the upload that would delete it. `schedule_workout` (`WorkoutEditor.scheduleWorkout`) throws for a workout Garmin does not have, where `schedule_plan` skips it, and checks the date against the calendar (`new Date("2026-02-30")` is March 2, so the plan flow's `isNaN` check does not catch it).
 - When adding or renaming a tool, update `src/__tests__/mcpServer.test.ts`, the server instructions in `src/mcp/createServer.ts` and the README table.
 
+## UI text
+
+The views show their numbers and controls, not paragraphs. An explanation (what a number means, how a setting works, where data goes) goes behind an ⓘ: `help(key, text, about)` in `index.html` returns the button and the note to place apart (in a heading, a card's title, a checkbox's row; the note under it), and `aboutFoot(key, text)` is a view's *About these numbers* line. A note opened stays open through redraws (by `key`); *Show explanations* in the account menu shows them all (`body.explain`, kept in `localStorage`). Warnings, errors and the reason a control is disabled stay in sight.
+
 ## Testing
 
 - Web UI changes are not covered by Jest (the page is plain script in `src/web/public/index.html`) but by the Playwright suite in `e2e/` (`npm run e2e`; `e2e/README.md` has the projects, the seeded data, the fixtures and what the `test.fixme` tests record about the app). It starts its own servers on databases made for the run, never reaches Garmin, Open Food Facts or Claude, and covers every view on a desktop and a phone viewport and mock mode. A UI change gets a spec there (or changes one); run the area (`npx playwright test e2e/specs/food`) and, before merging, the whole suite.

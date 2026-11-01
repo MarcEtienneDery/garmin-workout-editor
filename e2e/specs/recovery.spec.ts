@@ -520,10 +520,14 @@ test.describe("Recovery view, alice (45 days stored, no Garmin login)", () => {
     await expect(alice.locator("#rSync")).toBeHidden();
   });
 
-  test("the footnote says the band is a heuristic, and where its thresholds are", async ({ alice }) => {
+  test("About these numbers says the band is a heuristic, and where its thresholds are", async ({ alice }) => {
     await openRecovery(alice);
-    await expect(alice.locator("#rbody .rfoot")).toContainText("a heuristic from watch data for adjusting training, not medical advice");
-    await expect(alice.locator("#rbody .rfoot")).toContainText("src/shared/readiness.ts");
+    const about = alice.locator("#rbody .rfoot .help");
+    await expect(about).toBeHidden();
+    await alice.locator("#rbody .rfoot").getByRole("button", { name: "About these numbers" }).click();
+    await expect(about).toBeVisible();
+    await expect(about).toContainText("a heuristic from watch data to adjust training, not medical advice");
+    await expect(about).toContainText("src/shared/readiness.ts");
   });
 
   test("no NaN, undefined or null on the view, for any day, range or state", async ({ alice, admin }) => {

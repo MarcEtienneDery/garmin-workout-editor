@@ -86,6 +86,18 @@
   .menu .who { padding:6px 10px; display:grid; gap:2px; }
   .menu .who small { color:var(--dim); }
   .menu .who b { overflow-wrap:anywhere; }
+  #explainBtn { display:flex; align-items:center; justify-content:space-between; gap:14px; white-space:nowrap; }
+  #explainBtn::after { content:""; flex:none; width:26px; height:14px; border-radius:7px; background:#4a4a4a radial-gradient(circle at 7px 7px, #bbb 5px, transparent 5.5px); }
+  #explainBtn[aria-pressed="true"]::after { background:var(--accent) radial-gradient(circle at 19px 7px, #fff 5px, transparent 5.5px); }
+  /* ── Explanations: each behind an ⓘ that shows it in place, or all of them with Show explanations (body.explain) ── */
+  .help { display:none; margin:4px 0 8px; color:var(--dim); font-size:12px; font-weight:400; line-height:1.5; text-transform:none; letter-spacing:0; overflow-wrap:anywhere; }
+  .help.open, body.explain .help { display:block; }
+  button.infob { display:inline-flex; align-items:center; gap:6px; min-height:0; margin:-4px 0 -4px 2px; padding:4px; border:0; background:none; color:var(--dim); font:inherit; font-size:12px; font-weight:400; line-height:1; text-transform:none; letter-spacing:0; vertical-align:middle; }
+  button.infob:hover:not(:disabled) { background:none; color:var(--fg); }
+  .infob .ii { flex:none; display:grid; place-items:center; width:16px; height:16px; border:1px solid currentColor; border-radius:50%; font:italic 700 11px/1 Georgia,"Times New Roman",serif; } .infob .ii::before { content:"i"; }
+  button.infob[aria-expanded="true"] { color:var(--fg); } .infob[aria-expanded="true"] .ii { background:var(--accent); border-color:var(--accent); color:#fff; }
+  button.infob.about { margin:0 0 0 -4px; }
+  body.explain .infob { display:none; }
   /* ── Sign-in form: covers the page until there is a login ── */
   #login { position:fixed; inset:0; z-index:100; display:flex; align-items:center; justify-content:center; padding:16px; background:var(--bg); overflow:auto; }
   #loginForm { width:100%; max-width:340px; display:grid; gap:12px; padding:24px; background:var(--panel); border:1px solid var(--line); border-radius:6px; box-shadow:0 8px 24px rgba(0,0,0,.4); }
@@ -153,7 +165,7 @@
   .wv-sum { grid-area:sum; display:flex; flex-wrap:wrap; gap:6px 20px; align-items:flex-start; }
   .wv-stat b { display:block; font-size:20px; font-weight:400; line-height:1.2; }
   .wv-stat small { color:var(--dim); font-size:11px; }
-  .wv-basis { flex-basis:100%; color:var(--dim); font-size:11px; }
+  .wv-sum > .help { flex-basis:100%; margin:0; font-size:11px; }
   .wv-notes { flex-basis:100%; color:var(--dim); white-space:pre-wrap; overflow-wrap:anywhere; }
   .wv-chart { grid-area:chart; display:flex; align-items:flex-end; gap:1px; height:88px; border-bottom:1px solid var(--line); }
   .wv-chart.mini { height:18px; margin:2px 0; border-bottom:0; }
@@ -164,7 +176,7 @@
   .mm-list { margin:0; padding:0; list-style:none; display:grid; grid-template-columns:repeat(auto-fill,minmax(130px,1fr)); gap:3px 14px; }
   .mm-list li { display:flex; gap:6px; align-items:center; } .mm-list i { flex:none; width:10px; height:10px; border-radius:2px; } .mm-list span { flex:1; min-width:0; overflow-wrap:anywhere; } .mm-list b { font-weight:600; }
   .mm-key { display:flex; gap:6px; align-items:center; margin:8px 0 4px; color:var(--dim); font-size:11px; } .mm-key i { flex:0 1 90px; height:8px; border-radius:4px; }
-  .mm-note { color:var(--dim); font-size:11px; line-height:1.4; margin-top:2px; }
+  .mm-note, .mm-side > .help { color:var(--dim); font-size:11px; line-height:1.4; margin:2px 0 0; }
   .wv-seg, .wv-card { cursor:pointer; }
   .wv-seg { flex:1 1 0; min-width:3px; height:calc(var(--h) * 100%); background:var(--c); border-radius:2px 2px 0 0; transition:opacity .1s; }
   .wv-seg.k-rest { opacity:.55; }
@@ -250,7 +262,7 @@
   .rfig b { display:block; margin:2px 0; font-size:20px; font-weight:600; } .rfig span { color:var(--dim); font-size:12px; }
   .scard { background:var(--panel); border:1px solid var(--line); border-radius:4px; padding:12px 14px; margin-bottom:14px; }
   .scard h2 { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:0 0 2px; font-size:15px; }
-  .scard .sub { margin:0 0 10px; color:var(--dim); font-size:12px; line-height:1.5; }
+  .scard h2 + .help { margin:2px 0 10px; }
   /* ── Today view: the day so far (tiles with a bar), the workouts planned, what was done ── */
   #tTitle { flex:0 0 auto; font-size:14px; } #tAsOf { flex:1 1 12em; min-width:0; color:var(--dim); } #tAsOf.stale { color:var(--warn); }
   .thint { padding:8px 10px; border:1px solid #7a6a3d; border-left-width:3px; border-radius:4px; background:#2f2b1f; line-height:1.4; }
@@ -415,7 +427,7 @@
   .faibig { min-height:52px; border-radius:10px; font-size:14px; }
   .faitext { display:block; width:100%; min-height:4.5em; box-sizing:border-box; resize:vertical; background:#333; color:var(--fg); border:1px solid var(--line); border-radius:8px; padding:8px 10px; font:inherit; }
   .faiact { display:flex; gap:6px; flex-wrap:wrap; align-items:center; margin:8px 0; } .faiact .primary { min-width:120px; }
-  .faibody > .fnote:last-child { margin-top:10px; font-size:12px; }
+  .faibody > .failimit { margin-top:10px; font-size:12px; }
   .faithumbs { display:flex; gap:10px; flex-wrap:wrap; margin:0 0 10px; } .faithumb { position:relative; }
   .faithumb img { display:block; width:64px; height:64px; object-fit:cover; border-radius:4px; border:1px solid var(--line); }
   .faithumb button { position:absolute; top:-7px; right:-7px; width:22px; height:22px; padding:0; border-radius:50%; line-height:1; font-size:12px; }
@@ -450,6 +462,7 @@
   .sgl { grid-column:1 / -1; margin-top:6px; font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:var(--dim); }
   .sline { margin:6px 0; line-height:1.5; } .sline.warn { color:var(--warn); } .sline.ok { color:var(--ok); } .sline.err { color:var(--err); } .sline.dim { color:var(--dim); }
   .sform .stoggle { grid-column:1 / -1; } .stoggle { display:flex; gap:8px; align-items:flex-start; margin:10px 0 2px; } .stoggle input { margin-top:3px; flex:none; } .stoggle small { display:block; color:var(--dim); line-height:1.5; }
+  .stoggle label { cursor:pointer; } .stoggle .help { margin:2px 0 0; } .sbtns .infob { align-self:center; }
   .sgroup { margin-top:14px; padding-top:12px; border-top:1px solid var(--line); } .sgroup h4 { margin:0 0 6px; font-size:12px; text-transform:uppercase; letter-spacing:.05em; color:var(--dim); }
   .slog { max-height:280px; overflow:auto; padding:6px 10px; background:#1b1b1b; border:1px solid var(--line); border-radius:4px; font:12px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace; }
   .sok { color:var(--ok); } .serr { color:var(--err); }
@@ -676,6 +689,7 @@
     header h1 { display:none; }
     #views { flex:1; min-width:0; }
     button { min-height:40px; padding:6px 14px; font-size:14px; }
+    button.infob { min-width:32px; min-height:32px; justify-content:center; margin:-8px -4px; padding:4px; } button.infob.about { margin:0 0 0 -8px; }
     #current { font-size:14px; }
     #current .dir { display:none; }
     #accountName { max-width:80px; }
@@ -786,7 +800,7 @@
 <div id="login" hidden>
   <form id="loginForm" method="post" action="/api/login">
     <h2>Plan Editor</h2>
-    <p id="loginNote">Sign in with your profile name and its web password. For the admin login, use any name with the access token.</p>
+    <p id="loginNote">Your profile name and password (admin: any name and the access token).</p>
     <label>User name<input id="loginUser" name="username" type="text" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" required></label>
     <label>Password<input id="loginPass" name="password" type="password" autocomplete="current-password" required></label>
     <div id="loginError" role="alert" hidden></div>
@@ -810,6 +824,7 @@
     <div class="menu" id="accountMenu">
       <div class="who"><small>Signed in as</small><b id="accountWho"></b><small id="accountRole"></small></div>
       <button id="openSettings">Settings</button>
+      <button id="explainBtn" aria-pressed="false" title="Show every note on what the numbers mean and how things work, instead of each behind its ⓘ">Show explanations</button>
       <hr>
       <button id="logout">Sign out</button>
     </div>
@@ -982,7 +997,7 @@
     <select id="rRange" title="How many days the charts and the table show">
       <option value="14">14 days</option><option value="30" selected>30 days</option><option value="60">60 days</option><option value="90">90 days</option>
     </select>
-    <button id="rSync" title="Ask Garmin again for everything this page shows: every kind of health data for today, yesterday and the day before, the new activities (for the training load), and the days of the charts that are not stored yet. Today's is asked again a minute after the last time Garmin was asked, the two days before half an hour after." hidden>↻ Sync</button>
+    <button id="rSync" title="Fetch the latest from Garmin" hidden>↻ Sync</button>
   </div>
   <div id="rNote" class="empty" hidden></div>
   <div id="rscroll"><div id="rbody"><div class="empty">Loading…</div></div></div>
@@ -996,7 +1011,7 @@
     <div class="seg" id="bUnits" role="group" aria-label="Unit of weight">
       <button data-unit="lb" aria-pressed="true">lb</button><button data-unit="kg" aria-pressed="false">kg</button>
     </div>
-    <button id="bSync" title="Ask Garmin again for the weigh-ins and the last days' summaries (a weigh-in added or imported on Garmin since shows up) and everything else this page shows: every kind of health data for today, yesterday and the day before, and the days of the charts that are not stored yet. Today's is asked again a minute after the last time Garmin was asked, the two days before half an hour after." hidden>↻ Sync</button>
+    <button id="bSync" title="Fetch the latest from Garmin, new weigh-ins included" hidden>↻ Sync</button>
   </div>
   <div id="bNote" class="empty" hidden></div>
   <div id="bscroll"><div id="bbody"><div class="empty">Loading…</div></div></div>
@@ -1022,7 +1037,7 @@
     <select id="tProfile" title="Garmin profile" hidden></select>
     <b id="tTitle"></b>
     <span id="tAsOf"></span>
-    <button id="tSync" title="Ask Garmin again for everything this page shows: every kind of health data for today, yesterday and the day before, the days of the week not stored yet, and the new activities. Today's is asked again a minute after the last time Garmin was asked, the two days before half an hour after." hidden>↻ Sync</button>
+    <button id="tSync" title="Fetch the latest from Garmin" hidden>↻ Sync</button>
   </div>
   <div id="tNote" class="empty" hidden></div>
   <div id="tscroll"><div id="tbody"><div class="empty">Loading…</div></div></div>
@@ -1092,7 +1107,7 @@
 <dialog id="pdlg">
   <div class="dhead"><b>Add a profile</b></div>
   <div class="dbody">
-    <div class="dlg-line meta">A profile keeps its own plans, calendar and food log. It signs in to the editor with its name and the password below, typed twice. Garmin and a Renpho scale are optional and connected afterwards, in Settings.</div>
+    <div class="dlg-line meta">It signs in with its name and this password. Garmin and Renpho can be connected later, in Settings.</div>
     <label class="pfield"><span>Profile name</span><input id="pdlgName" type="text" autocomplete="off" autocapitalize="none" spellcheck="false"></label>
     <label class="pfield"><span>Password</span><input id="pdlgPass" type="password" autocomplete="new-password"></label>
     <label class="pfield"><span>Repeat the password</span><input id="pdlgPass2" type="password" autocomplete="new-password"></label>
@@ -2218,6 +2233,53 @@ function mk(tag, cls, text) {
   return e;
 }
 
+// ── Explanations ───────────────────────────────────────────────────────
+// What the numbers mean and how a setting works stay out of the way: each note sits behind a small ⓘ that shows it in place, and Show
+// explanations in the account menu shows them all (body.explain, remembered in this browser). A note opened stays open through the
+// redraws of its view (helpOpen, by key).
+const EXPLAIN_KEY = "planEditor.explain";
+const helpOpen = new Set();
+let helpSeq = 0;
+
+/** A note and the ⓘ button that shows or hides it, to place apart: the button in a heading or a row, the note under it. */
+function help(key, text, about) {
+  const note = mk("div", "help", text), btn = mk("button", "infob");
+  note.id = "help-" + ++helpSeq;
+  btn.type = "button"; btn.title = "About " + about; btn.setAttribute("aria-label", btn.title); btn.setAttribute("aria-controls", note.id);
+  const icon = mk("span", "ii"); icon.setAttribute("aria-hidden", "true"); btn.append(icon);
+  const show = (open) => { note.classList.toggle("open", open); btn.setAttribute("aria-expanded", String(open)); };
+  show(helpOpen.has(key));
+  btn.onclick = (e) => {
+    e.preventDefault(); e.stopPropagation(); // in a label it would tick the box, in a row that opens something it would open it
+    const open = !helpOpen.has(key);
+    if (open) helpOpen.add(key); else helpOpen.delete(key);
+    show(open);
+  };
+  return [btn, note];
+}
+
+/** A view's notes on its numbers, at its foot: one "About these numbers" line until it is opened. */
+function aboutFoot(key, text) {
+  const [btn, note] = help(key, text, "these numbers"), foot = mk("div", "rfoot");
+  btn.classList.add("about"); btn.append("About these numbers"); btn.removeAttribute("aria-label");
+  foot.append(btn, note);
+  return foot;
+}
+
+function showExplanations(on) {
+  document.body.classList.toggle("explain", on);
+  $("explainBtn").setAttribute("aria-pressed", String(on));
+}
+
+function bindExplanations() {
+  showExplanations((() => { try { return localStorage.getItem(EXPLAIN_KEY) === "1"; } catch { return false; } })());
+  $("explainBtn").onclick = () => {
+    const on = !document.body.classList.contains("explain");
+    showExplanations(on);
+    try { localStorage.setItem(EXPLAIN_KEY, on ? "1" : "0"); } catch {}
+  };
+}
+
 /**
  * The muscles a list of exercises ([{ name, sets }]) trains, drawn on a front and a back figure and listed with their sets. One colour, darker
  * the more sets: a set counts for a muscle the exercise works first, and half a set for one it helps. null when no exercise has known muscles.
@@ -2237,9 +2299,11 @@ function muscleEl(exercises) {
   }
   const key = mk("div", "mm-key"), bar = mk("i");
   bar.style.background = `linear-gradient(90deg, ${MuscleMap.fillOf(0.01, 1)}, ${MuscleMap.fillOf(1, 1)})`;
-  key.append("fewer sets", bar, "more");
+  const [info, note] = help("muscles", "A set counts once for each muscle the exercise works first, and half for each it helps.", "the sets per muscle");
+  key.append("fewer sets", bar, "more", info);
   const unknown = t.unknown.reduce((n, x) => n + x.sets, 0);
-  side.append(list, key, mk("div", "mm-note", `Sets per muscle: one for a muscle the exercise works first, half for one it helps.${unknown ? ` ${unknown} set${unknown === 1 ? "" : "s"} of ${[...new Set(t.unknown.map((x) => WM.prettyName(String(x.name).replace(/ /g, "_"))))].join(", ")} not counted: no muscles known.` : ""}`));
+  side.append(list, key, note);
+  if (unknown) side.append(mk("div", "mm-note", `${unknown} set${unknown === 1 ? "" : "s"} of ${[...new Set(t.unknown.map((x) => WM.prettyName(String(x.name).replace(/ /g, "_"))))].join(", ")} not counted: no muscles known.`));
   box.append(figs, side);
   return box;
 }
@@ -2266,16 +2330,19 @@ function profileEl(a, { mini = false, changed = new Set() } = {}) {
 function summaryEl(w, a, loading) {
   const box = mk("div", "wv-sum"), approx = a.assumed || a.open ? "~" : "";
   const why = [`Estimated: ${a.pace.from === "runs" ? "a step with no pace target is timed from your recent runs" : `a step with no pace target counts at ${WM.clock(WM.ASSUMED_PACE)} /km`}`, `each rep counts ${WM.SECONDS_PER_REP} s`, a.open ? `${a.open} step${a.open > 1 ? "s" : ""} ending on the lap button ${a.open > 1 ? "are" : "is"} not counted` : ""].filter(Boolean).join("; ");
-  const stat = (value, label, title) => { const d = mk("div", "wv-stat"); d.append(mk("b", "", value), mk("small", "", label)); if (title) d.title = title; box.append(d); };
+  const stat = (value, label, title) => { const d = mk("div", "wv-stat"), small = mk("small", "", label); d.append(mk("b", "", value), small); if (title) d.title = title; box.append(d); return small; };
   const open = a.open ? ` · ${a.open} open-ended step${a.open > 1 ? "s" : ""} not counted` : ""; // shown, not only in the tooltip: phones have none
-  if (a.seconds) stat(approx + WM.duration(a.seconds), "Est. time" + open, approx ? why : "");
-  if (a.meters) stat(approx + WM.distance(a.meters), "Est. distance" + (a.seconds ? "" : open), approx ? why : "");
+  const estimate = [];
+  if (a.seconds) estimate.push(stat(approx + WM.duration(a.seconds), "Est. time" + open, approx ? why : ""));
+  if (a.meters) estimate.push(stat(approx + WM.distance(a.meters), "Est. distance" + (a.seconds ? "" : open), approx ? why : ""));
   if (a.sets) stat(String(a.sets), `sets · ${a.exercises} exercise${a.exercises === 1 ? "" : "s"}`);
   else if (a.steps) stat(String(a.steps), a.steps === 1 ? "step" : "steps");
   const dates = [].concat((w && w.scheduledDate) || []);
   if (dates.length) stat(dates.join(", "), "Scheduled");
-  if (a.pace.from === "runs") box.append(mk("div", "wv-basis", `Steps with no pace target are timed from your last ${a.pace.runs} runs: at the pace you ran at that heart rate, or ${WM.clock(a.pace.easy)} /km with no heart-rate target.`));
-  else if (a.pace.from === "default" && !loading) box.append(mk("div", "wv-basis", `Steps with no pace target count at ${WM.clock(WM.ASSUMED_PACE)} /km: no recent runs to learn your pace from.`));
+  // how the steps with no pace were timed, behind an ⓘ on the estimate
+  const basis = a.pace.from === "runs" ? `Steps with no pace target are timed from your last ${a.pace.runs} runs: at the pace you ran at that heart rate, or ${WM.clock(a.pace.easy)} /km with no heart-rate target.`
+    : a.pace.from === "default" && !loading ? `Steps with no pace target count at ${WM.clock(WM.ASSUMED_PACE)} /km: no recent runs to learn your pace from.` : "";
+  if (basis) { const [info, note] = help("pace", basis, "the estimate"); (estimate[0] || box).append(info); box.append(note); }
   if (w && w.description) box.append(mk("div", "wv-notes", w.description));
   return box;
 }
@@ -2593,7 +2660,7 @@ function dayCell(iso, col, today) {
 }
 
 const spanText = (p) => `${fmtDate(p.start, { day: "numeric", month: "short" })} – ${fmtDate(p.end)}`;
-const planNote = (p) => p.dated ? `${p.dated} of ${p.workouts.length} workouts dated` : p.workouts.length ? "no workout has a scheduledDate: the span is the plan's weekStart / weekEnd" : "no workouts";
+const planNote = (p) => (p.workouts.length ? `${p.dated} of ${p.workouts.length} workouts dated` : "no workouts");
 
 const inWeek = (p, days) => p.start <= days[6] && p.end >= days[0];
 /** The columns of a plan's span in a week (grid-column), and its classes for running on from the week before or into the next. */
@@ -2684,7 +2751,7 @@ function renderNote(first, last) {
   if (!spans.length) {
     note.textContent = workouts
       ? "No workout has a scheduledDate yet (YYYY-MM-DD)."
-      : "No plan has dates yet. A plan's weekStart / weekEnd, or a workout's scheduledDate (YYYY-MM-DD), puts it on the calendar.";
+      : "No plan has dates yet: give it a weekStart / weekEnd, or its workouts a scheduledDate.";
     return;
   }
   note.append(`Nothing ${what} in ${monthName(C.month)}.`);
@@ -2898,7 +2965,9 @@ const fmtKm = (m) => `${(m / 1000).toLocaleString(undefined, { maximumFractionDi
 const fmtNum = (n) => Math.round(n).toLocaleString();
 const lb = (w) => `${+w.toFixed(1)} lb`;
 const fromNote = (b) => `from ${b.reps} @ ${lb(b.weight)} on ${b.date}`;
-const ONE_RM_NOTE = "est. 1RM: the best set you have done of the exercise, by the Epley formula, weight × (1 + reps ÷ 30), over sets of up to 12 counted reps. The Stats view and the % of 1RM section of an activity use the same numbers.";
+const ONE_RM_NOTE = "est. 1RM: your best set of the exercise by the Epley formula, weight × (1 + reps ÷ 30), over sets of up to 12 counted reps.";
+/** A list's heading with an ⓘ; the note opens at the top of the list. */
+const infoHeading = (text, list, [info, note]) => { const h = mk("h3", "", text); h.append(info); list.prepend(note); return h; };
 
 /** A table from header cells and rows of cells, each cell [text, class]. */
 function table(head, rows) {
@@ -2986,8 +3055,8 @@ function renderActivityStats() {
     ]));
     if (g.detailed < g.sessions) box.append(mk("div", "anote", `The exercise figures cover ${g.detailed} of ${g.sessions} sessions; the others have no details stored yet.`));
     if (g.exercises.length) {
-      heading("Exercises");
       const list = mk("div", "aexs"), shown = A.allLifts ? g.exercises : g.exercises.slice(0, 12);
+      box.append(infoHeading("Exercises", list, help("1rm", ONE_RM_NOTE, "est. 1RM")));
       for (const e of shown) {
         const chips = [
           e.best && [`est. 1RM ${lb(e.best.oneRm)}`], e.heaviest && [`heaviest ${lb(e.heaviest.weight)} × ${e.heaviest.reps || "–"}`],
@@ -3002,7 +3071,6 @@ function renderActivityStats() {
         more.onclick = () => { A.allLifts = !A.allLifts; renderActivityStats(); };
         box.append(more);
       }
-      box.append(mk("div", "anote", ONE_RM_NOTE));
     }
   }
 
@@ -3336,11 +3404,10 @@ function renderActivityDetail() {
     // each loaded exercise's sets as a share of its one-rep max
     const heavy = AM.intensity(lifts, d.oneRepMax);
     if (heavy.length) {
-      box.append(mk("h3", "", "% of 1RM"));
       const pcts = mk("div", "aexs");
+      box.append(infoHeading("% of 1RM", pcts, help("1rm", ONE_RM_NOTE, "est. 1RM")));
       for (const e of heavy) pcts.append(exerciseBlock(e.name, `est. 1RM ${lb(e.oneRm)}`, e.runs.map((r) => [`${r.count > 1 ? r.count + " × " : ""}${r.pct}% · ${lb(r.weight)}`, `b${r.band}`]), fromNote(e.from)));
       box.append(pcts);
-      box.append(mk("div", "anote", ONE_RM_NOTE));
     }
   }
   // the watch's laps say more than the intervals Garmin summarises, so the table is for activities without them
@@ -3377,7 +3444,7 @@ const RM = RecoveryModel, WtM = WeightModel;
  * (refreshMs in src/shared/wellnessSync.ts): today's for a minute when a button asks and five when a view opens, the two days before for
  * half an hour. The button waits out its minute (cooldownMs); nothing syncs by itself but the quicker look when a view opens.
  */
-const syncRule = (activities) => "Sync asks Garmin again for everything this page shows: every kind of health data for today, a minute after the last time Garmin was asked (the button shows the seconds left), and for yesterday and the day before when it is over half an hour old" + (activities ? ", the new activities" : "") + ", and the days shown that are not stored yet. Opening this view takes a quicker look, at the summary, sleep, HRV and weight, and today's only after five minutes.";
+const syncRule = (activities) => `Sync fetches today again (at most once a minute), the two days before when over half an hour old, ${activities ? "new activities and " : ""}the days shown that are missing.`;
 const wellnessView = (name, prefix, path, range, render, extra = {}) => ({ name, p: prefix, path, render, profile: null, date: null, range, data: null, error: "", run: 0, refreshed: false, polling: false, busy: false, lookingUp: false, coolUntil: 0, coolTimer: 0, syncTitle: "", note: "", raw: new Map(), open: new Set(), loaded: false, ...extra });
 /** How many days back from today a view shows (its day and range), so that its Sync fills in all of them. */
 const backFromToday = (d) => (d && d.today && d.date ? Math.max(0, Math.round((Date.parse(d.today) - Date.parse(d.date)) / 86_400_000)) : 0);
@@ -3504,7 +3571,7 @@ function renderRecovery() {
   box.append(metricsTable(d.days, RM.GROUPS, RM.cell, d.date, pickRecoveryDay));
   box.append(mk("h3", "", `Garmin's responses for ${RM.dayLabel(d.date)}`));
   box.append(renderRawResponses(R, d, RM.KINDS));
-  box.append(mk("div", "rfoot", "The band is a heuristic from watch data for adjusting training, not medical advice. A day's sleep and HRV are the night that ended that morning. Its thresholds are named constants in src/shared/readiness.ts. " + syncRule(true)));
+  box.append(aboutFoot("recovery", "The band is a heuristic from watch data to adjust training, not medical advice; its thresholds are in src/shared/readiness.ts. A day's sleep and HRV are the night before. " + syncRule(true)));
   $("rscroll").scrollTop = keep;
 }
 
@@ -3627,7 +3694,7 @@ function renderWeight() {
   const figs = mk("div", "rfigs");
   for (const f of WtM.figures(d, B.unit)) { const tile = mk("div", "rfig"); tile.append(mk("small", "", f.label), mk("b", "", f.value), mk("span", "", f.note)); figs.append(tile); }
   box.append(figs);
-  if (!d.body.weighIns) box.append(mk("div", "empty", garminOn(B.profile) ? "No weigh-in is stored for these days. Garmin Connect keeps the ones from a Garmin scale and the ones typed in by hand; press Sync after a new one." : "No weigh-in is stored for these days."));
+  if (!d.body.weighIns) box.append(mk("div", "empty", garminOn(B.profile) ? "No weigh-in in these days. Press Sync after a new one." : "No weigh-in in these days."));
   box.append(mk("h3", "", `Trends, ${d.days.length} days`));
   box.append(TrendCharts.trends(d.days, WtM.charts(d.days, B.unit), { selected: d.date, onPick: pickWeightDay }));
   box.append(mk("h3", "", "Every stored number"));
@@ -3636,7 +3703,7 @@ function renderWeight() {
     box.append(mk("h3", "", `Garmin's responses for ${RM.dayLabel(d.date)}`));
     box.append(renderRawResponses(B, d, WtM.KINDS));
   }
-  box.append(mk("div", "rfoot", "The trend is a straight line through the weigh-ins of the days shown, as one weigh-in moves a kilo or more with water and meals." + (garminRows ? " The calories are Garmin's estimate from the watch: what the day burned, not what was eaten." : " They are the scale's own numbers, as Renpho sent them.") + " " + syncRule(false)));
+  box.append(aboutFoot("weight", "The trend is a straight line through the weigh-ins shown: one weigh-in moves a kilo or more with water and meals." + (garminRows ? " Calories burned are Garmin's estimate from the watch. " + syncRule(false) : " The numbers are the scale's, as Renpho sent them.")));
   $("bscroll").scrollTop = keep;
 }
 
@@ -4003,7 +4070,7 @@ function renderFood() {
   box.append(TrendCharts.trends(NM.chartDays(d.days), NM.charts(d), { selected: d.date, onPick: pickFoodDay }));
   box.append(mk("h3", "", "Every day"));
   box.append(metricsTable(d.days, NM.groupsFor(d), NM.cell, d.date, pickFoodDay));
-  box.append(mk("div", "rfoot", "The calories and macros are what you typed in or an assistant estimated from your description, so they are estimates. A day with nothing logged is not a day of zero. Fiber, sodium and the other nutrients are only what a food states: a total that counts fewer foods than the day has reads “≥”, because the foods that do not state it are unknown, not zero. Foods found by search or barcode come from Open Food Facts, a community-made database: check the numbers against the package when they matter. Foods estimated by AI (✨ in the bar at the bottom) are " + aiWho(d.ai) + " this app keeps neither. " + (NM.hasBurn(d) ? "What Garmin says the day burned comes from the watch: today's is only what has burned so far. The food is kept here; Garmin has no place to store it." : "The food is kept here.")));
+  box.append(aboutFoot("food", "Calories and macros are estimates. A day with nothing logged is unknown, not zero. A nutrient counts only the foods that state it: “≥” means some do not. Search and barcode foods come from Open Food Facts, made by its users: check the package when it matters. " + aiWho(d.ai) + (NM.hasBurn(d) ? " Burned is the watch's count: today's is so far. The food log stays here; Garmin cannot store it." : " The food log stays here.")));
   $("fscroll").scrollTop = keep;
   renderSheet(typing);
 }
@@ -4315,7 +4382,7 @@ function paintFind(out) {
     all.type = "button"; all.onclick = () => { st.all = true; paintFind(); };
     out.append(all);
   }
-  if (!text && !mine.length) out.append(mk("div", "fnote", choose ? "Search the food, or scan it." : "Nothing logged yet. What you add shows up here, to add again in one tap. Search a food above, scan its barcode, or describe it to the AI."));
+  if (!text && !mine.length) out.append(mk("div", "fnote", choose ? "Search the food, or scan it." : "Nothing logged yet: what you add shows up here."));
   if (text && st.foods.length) out.append(mk("div", "fnote fgroup", "Open Food Facts"));
   if (st.note) out.append(mk("div", "fnote" + (st.error ? " err" : ""), st.note));
   // the products sold in Canada come first; when others follow them (too few Canadian ones matched), a heading says where they end
@@ -4582,8 +4649,8 @@ let photoSeq = 0;
 /** Whose estimates they are and who reads the words and photos, for the way the server asks (the Food view's `ai.backend`). */
 function aiWho(status) {
   return status && status.backend === "gemini"
-    ? "Gemini's estimates from your words or photos, which are sent to Google to be read (on Gemini's free tier, Google may keep them and use them to improve its products);"
-    : "Claude's estimates from your words or photos, which are sent to Anthropic to be read;";
+    ? "✨ AI estimates are Gemini's: your words and photos go to Google, which may keep them on the free tier to improve its products; this app keeps neither."
+    : "✨ AI estimates are Claude's: your words and photos go to Anthropic; this app keeps neither.";
 }
 
 /** Open the sheet on the AI, or close it. The address follows (#food/ai while it is open). */
@@ -4595,7 +4662,7 @@ function showAi(open) {
 function aiPanel() {
   const ai = F.ai, d = F.data, status = d.ai || { enabled: false }, body = mk("div", "faibody");
   if (!status.enabled) {
-    body.append(mk("div", "fnote err", "AI logging is not set up on this server: it needs ANTHROPIC_API_KEY, or FOOD_AI_BACKEND=cli with a Claude login for Claude Code, or GEMINI_API_KEY, in the server's environment (see the README)."));
+    body.append(mk("div", "fnote err", "AI logging is not set up on this server: see Install in the README."));
     return body;
   }
 
@@ -4644,7 +4711,9 @@ function aiPanel() {
   if (ai.busy) body.append(mk("div", "fnote", ai.busy));
   if (ai.error) body.append(mk("div", "fnote err", ai.error));
   if (ai.result) body.append(aiPreview(ai.result));
-  body.append(mk("div", "fnote", `Logs to ${d.date < d.today ? RM.dayLabel(d.date) : "today"} · ${status.remaining} of ${status.limit} daily estimates left. Bookmark this page to open straight to the AI.`));
+  const [info, note] = help("ai", aiWho(status) + " Bookmark this page to open the AI straight away.", "the AI");
+  const left = mk("div", "fnote failimit", `${status.remaining} of ${status.limit} estimates left today`); left.append(info);
+  body.append(left, note);
   return body;
 }
 
@@ -4895,7 +4964,7 @@ function renderToday() {
   if (!ready) {
     const empty = mk("div", "empty");
     if (garmin.user && garmin.user.admin) {
-      empty.append("No profile yet. A profile keeps your plans and food log; Garmin and a Renpho scale are optional and connected in Settings. ");
+      empty.append("No profile yet. ");
       const b = mk("button", "primary", "Add a profile"); b.onclick = guard(addProfile); empty.append(b);
     } else empty.append("No profile.");
     box.append(empty);
@@ -4923,7 +4992,7 @@ function renderToday() {
     for (const day of ahead) { card.append(mk("div", "tday", day.label)); for (const w of day.items) card.append(todayWorkout(w)); }
     box.append(mk("h3", "", "Next days"), card);
   }
-  box.append(mk("div", "rfoot", (d.health ? "Steps, Body Battery and sleep are Garmin's, as of the watch's last sync with the phone: the age above says how old. The intensity minutes are the week from Monday (a vigorous minute counts twice) against Garmin's weekly goal. " : "") + "The workouts are the ones the plan files schedule (their scheduledDate)" + (d.health ? ", not Garmin's own calendar" : "") + "; one counts as done when an activity today was started from it. The food is what was logged, against the daily goals set in Settings (a day with nothing logged is not a day of zero)." + (d.health ? " " + syncRule(true) : "")));
+  box.append(aboutFoot("today", (d.health ? "Steps, Body Battery and sleep are as of the watch's last sync (the time at the top). Intensity minutes count from Monday, a vigorous minute twice. " : "") + "Workouts are the plans' scheduledDate" + (d.health ? ", not Garmin's calendar" : "") + "; one is done once an activity is started from it. Food is measured against the goals in Settings." + (d.health ? " " + syncRule(true) : "")));
   $("tscroll").scrollTop = keep;
 }
 
@@ -5092,21 +5161,27 @@ function sfield(form, label, key, { type = "text", value = "", placeholder = "",
   form.append(l, input);
   return input;
 }
-const stoggle = (checked, title, note, onchange) => {
-  const row = mk("label", "stoggle"), box = mk("input"), text = mk("span");
-  box.type = "checkbox"; box.checked = checked; box.disabled = !!S.busy; box.onchange = guard(() => onchange(box.checked, box));
-  text.append(mk("b", "", title), mk("small", "", note));
+/** A checkbox and its title. What it does is a note behind an ⓘ, or in sight when shown (why it cannot be ticked). */
+let toggleSeq = 0;
+const stoggle = (checked, title, note, onchange, { key, about, shown = false }) => {
+  const row = mk("div", "stoggle"), box = mk("input"), text = mk("span"), label = mk("label");
+  box.type = "checkbox"; box.id = "s-toggle-" + ++toggleSeq; box.checked = checked; box.disabled = !!S.busy; box.onchange = guard(() => onchange(box.checked, box));
+  label.htmlFor = box.id; label.append(mk("b", "", title));
+  text.append(label);
+  if (shown) text.append(mk("small", "", note));
+  else { const [info, more] = help(key, note, about); text.append(info, more); }
   row.append(box, text);
   return row;
 };
+/** A card's title, with its chip and the ⓘ of what the card is for; the note goes under the title. */
+const scardHead = (title, chip, [info, note]) => { const head = mk("h2", "", title); head.append(info, chip); return [head, note]; };
 const messageLine = (area) => { const m = S.msg[area]; return m ? sline(m.ok ? "ok" : "err", m.text) : null; };
 
 function garminCard(d) {
-  const g = d.garmin, card = mk("div", "scard"), head = mk("h2", "", "Garmin account");
-  head.append(mk("span", "chip " + (g.connected ? "ok" : ""), g.connected ? "connected" : "not connected (optional)"));
-  card.append(head, mk("p", "sub", g.connected
-    ? "The login the web editor and the MCP server sign in to Garmin Connect with, to sync activities and health data and to send workouts to the watch. A password is only sent to the server, never shown again; leave it empty to keep the saved one."
-    : "Garmin is optional. Without it you still have plans, the calendar, the food log and the weigh-ins of a Renpho scale. Connect it to sync activities and health data and to send workouts to the watch."));
+  const g = d.garmin, card = mk("div", "scard");
+  card.append(...scardHead("Garmin account", mk("span", "chip " + (g.connected ? "ok" : ""), g.connected ? "connected" : "not connected (optional)"), help("garmin", g.connected
+    ? "The login the editor and the MCP server use to sync activities and health data and to send workouts to the watch. A password goes to the server only and is never shown again."
+    : "Without Garmin you still have plans, the calendar, the food log and a Renpho scale's weigh-ins. Connect it to sync activities and health data and to send workouts to the watch.", "the Garmin account")));
   if (g.error) card.append(sline("err", g.error));
   const form = mk("div", "sform");
   sfield(form, "Email", "gEmail", { value: g.email || "" });
@@ -5132,9 +5207,8 @@ function garminCard(d) {
  * the field says which. They are what the Food view measures the day against and what an assistant sees through the MCP.
  */
 function goalsCard(d) {
-  const g = d.goals, card = mk("div", "scard"), head = mk("h2", "", "Nutrition goals"), count = Object.keys(g.values).filter((key) => key !== "kcalBurnPct").length;
-  head.append(mk("span", "chip " + (count ? "ok" : ""), count ? `${count} set` : "none set"));
-  card.append(head, mk("p", "sub", "What a day of food is measured against in the Food view, and what an assistant sees when it reads or logs your food through the MCP (it can set them too). One number a day; leave a field empty for no goal. Protein, fiber and the minerals are goals to reach, sodium, sugars and the fats are limits, calories, carbs and fat are an aim (within 10 %)."));
+  const g = d.goals, card = mk("div", "scard"), count = Object.keys(g.values).filter((key) => key !== "kcalBurnPct").length;
+  card.append(...scardHead("Nutrition goals", mk("span", "chip " + (count ? "ok" : ""), count ? `${count} set` : "none set"), help("goals", "What the Food view measures each day against; an assistant sees them through the MCP and can set them. One number a day: leave a field empty for no goal. Protein, fiber and the minerals are minimums, sodium, sugars and the fats maximums, and calories, carbs and fat targets (within 10 %).", "the nutrition goals")));
   const form = mk("div", "sform"), inputs = {};
   const group = (name) => { const h = mk("div", "sgl", name); form.append(h); };
   // adjusting the calorie goal to the burn is opt-in: off unless a share is saved, and turned on here
@@ -5143,7 +5217,7 @@ function goalsCard(d) {
     if (i === 0) group("Calories and macros");
     if (f.key === "fiberG") group("Nutrients");
     if (f.kind === "burn") {
-      form.append(stoggle(burnOn(), "Add the calories I burn to the calorie goal", "Off: the calorie goal is the same every day. On: a share of the day's active calories (what Garmin counts above resting) is added to it, so a day of training lets you eat more. It grows through the day as the watch counts, and stays the set number on a day Garmin has no burn for.", (on) => { S.draft.goal_burnOn = on; renderSettings(); }));
+      form.append(stoggle(burnOn(), "Add the calories I burn to the calorie goal", "Adds a share of the day's active calories (what Garmin counts above resting) to the calorie goal, so a training day lets you eat more. It grows as the watch counts, and stays as set on a day with no burn from Garmin.", (on) => { S.draft.goal_burnOn = on; renderSettings(); }, { key: "burn", about: "adding the calories burned" }));
       if (!burnOn()) return;
     }
     inputs[f.key] = sfield(form, `${f.label} (${f.unit})`, "goal_" + f.key, { value: g.values[f.key] === undefined ? (f.kind === "burn" ? "100" : "") : String(g.values[f.key]), placeholder: NM.kindLabel(f.kind) });
@@ -5170,9 +5244,8 @@ function goalsCard(d) {
 }
 
 function webCard(d) {
-  const w = d.web, card = mk("div", "scard"), head = mk("h2", "", "Web sign-in");
-  head.append(mk("span", "chip " + (w.hasPassword ? "ok" : "warn"), w.hasPassword ? "password set" : "password required"));
-  card.append(head, mk("p", "sub", "Every profile has a password of its own to sign in to the editor, with the profile name as user name. That login sees only this profile's data and the plans shared or its own. The admin token keeps access to everything. The password is kept as a hash, and typed twice so a typing mistake does not lock you out."));
+  const w = d.web, card = mk("div", "scard");
+  card.append(...scardHead("Web sign-in", mk("span", "chip " + (w.hasPassword ? "ok" : "warn"), w.hasPassword ? "password set" : "password required"), help("web", "The profile signs in with its name and this password and sees only its own data and the shared plans; the admin token sees everything. The password is kept as a hash.", "the web sign-in")));
   if (!w.hasPassword) card.append(sline("warn", "This profile has no password yet, so it cannot sign in on its own. Set one."));
   const form = mk("div", "sform");
   sfield(form, w.hasPassword ? "New password" : "Password", "wPass", { type: "password", placeholder: w.hasPassword ? "type a new one to change it" : `at least ${SetM.MIN_PASSWORD} characters` });
@@ -5196,17 +5269,17 @@ function webCard(d) {
 }
 
 function renphoCard(d) {
-  const r = d.renpho, s = r.settings, st = r.state, now = Date.now(), card = mk("div", "scard"), head = mk("h2", "", "Renpho scale");
+  const r = d.renpho, s = r.settings, st = r.state, now = Date.now(), card = mk("div", "scard");
   const status = SetM.renphoStatus(r, now);
-  head.append(mk("span", "chip " + status.cls, r.account ? status.label : "not connected (optional)"));
-  card.append(head, mk("p", "sub", "Optional. Brings the weigh-ins of your Renpho scale in, with their body composition (body fat, water, bone, muscle), to the Weight view and the MCP, with or without Garmin. With a Garmin login they can also be uploaded to Garmin Connect. Renpho has no public API: this follows what its app does, so it can stop working when Renpho changes the app. It only reads from Renpho."));
+  card.append(...scardHead("Renpho scale", mk("span", "chip " + status.cls, r.account ? status.label : "not connected (optional)"), help("renpho", "Brings the scale's weigh-ins and body composition to the Weight view and the MCP, with or without Garmin, and can upload them to Garmin Connect. It only reads from Renpho. Renpho has no public API, so this can stop working when its app changes.", "the Renpho scale")));
   if (r.accountError) card.append(sline("err", r.accountError));
 
   const form = mk("div", "sform");
   sfield(form, "Renpho email", "rEmail", { value: r.account ? r.account.email : "" });
   sfield(form, "Password", "rPass", { type: "password", placeholder: r.account ? "saved: leave empty to keep it" : "" });
   sfield(form, "Area code", "rArea", { value: s.areaCode, maxlength: 3, placeholder: "US" });
-  card.append(form, mk("div", "sline dim", "An account that signs in to Renpho with Google or Apple needs a password set in the Renpho app first."));
+  card.append(form);
+  if (!r.account) card.append(mk("div", "sline dim", "Signed in to Renpho with Google or Apple? Set a password in the Renpho app first."));
   const buttons = mk("div", "sbtns");
   buttons.append(
     sbtn(r.account ? "Save login" : "Connect Renpho", () => settingsPost("renpho", { action: "save", email: S.draft.rEmail ?? (r.account ? r.account.email : ""), password: S.draft.rPass ?? "", areaCode: S.draft.rArea ?? s.areaCode }, "Login saved."), { cls: "primary", key: "renpho:save" }),
@@ -5225,16 +5298,16 @@ function renphoCard(d) {
   const interval = mk("select"); interval.disabled = !!S.busy;
   for (const h of r.intervals) interval.add(new Option(`every ${h} hour${h === 1 ? "" : "s"}`, String(h)));
   interval.value = String(s.intervalHours); interval.onchange = guard(() => settingsPost("renpho", { action: "save", intervalHours: Number(interval.value) }));
-  const fetchRow = stoggle(s.fetchEnabled, "Fetch my weigh-ins from Renpho", "Reads the scale's data on a schedule; nothing is changed on Renpho or Garmin.", (on) => settingsPost("renpho", { action: "save", fetchEnabled: on }));
+  const fetchRow = stoggle(s.fetchEnabled, "Fetch my weigh-ins from Renpho", "Reads the scale's data on a schedule; nothing changes on Renpho or Garmin.", (on) => settingsPost("renpho", { action: "save", fetchEnabled: on }), { key: "rfetch", about: "fetching the weigh-ins" });
   fetchRow.querySelector("span").append(interval);
   sync.append(fetchRow);
 
-  const pushRow = stoggle(s.pushEnabled, "Upload new weigh-ins to Garmin", d.garmin.connected ? "Each weigh-in is sent once as a FIT file, like a Garmin scale's, through Garmin Connect's import. This changes your Garmin account. Try one file by hand first (below)." : "Connect Garmin first: the weigh-ins are uploaded to a Garmin account.", async (on, box) => {
+  const pushRow = stoggle(s.pushEnabled, "Upload new weigh-ins to Garmin", d.garmin.connected ? "Each weigh-in is sent once as a FIT file, like a Garmin scale's, through Garmin Connect's import. This changes your Garmin account: try one file by hand first (below)." : "Connect Garmin first: the weigh-ins are uploaded to a Garmin account.", async (on, box) => {
     if (!on) return settingsPost("renpho", { action: "save", pushEnabled: false });
     const ok = await confirmDialog({ title: "Upload your Renpho weigh-ins to Garmin?", lines: ["From now on every new weigh-in is added to your Garmin Connect account, by itself, on each run.", ["warn", "Weigh-ins Garmin already has (typed in, or from another sync) may appear twice. Try the FIT file by hand first."]], ok: "Switch on" });
     if (!ok) { box.checked = false; return; }
     await settingsPost("renpho", { action: "save", pushEnabled: true });
-  });
+  }, { key: "rpush", about: "uploading the weigh-ins", shown: !d.garmin.connected });
   if (!d.garmin.connected) pushRow.querySelector("input").disabled = true;
   const since = mk("input"); since.type = "date"; since.value = s.pushSince || ""; since.disabled = !!S.busy || !d.garmin.connected;
   since.onchange = guard(() => settingsPost("renpho", { action: "save", pushSince: since.value || null }));
@@ -5247,12 +5320,14 @@ function renphoCard(d) {
     sbtn("Sync now", () => settingsPost("renpho", { action: "sync" }), { cls: "primary", key: "renpho:sync" }),
     sbtn("Download the latest 3 as a FIT file", downloadFit, { disabled: !r.counts.total }),
   );
-  sync.append(actions, mk("div", "sline dim", "To try an import by hand: download the file, import it on connect.garmin.com (Import Data), then press Sync in the Weight view, which asks Garmin for the weigh-ins again, and look at those days."));
+  const [byHand, byHandNote] = help("rfit", "To try one by hand: import the file on connect.garmin.com (Import Data), then press Sync in the Weight view and look at those days.", "trying the file by hand");
+  actions.append(byHand);
+  sync.append(actions, byHandNote);
   card.append(sync);
 
   // ── the monitor ──
-  const monitor = mk("div", "sgroup");
-  monitor.append(mk("h4", "", "Monitor"));
+  const monitor = mk("div", "sgroup"), monitorHead = mk("h4", "", "Monitor");
+  monitor.append(monitorHead);
   const figs = mk("div", "rfigs");
   const tile = (label, value, note) => { const t = mk("div", "rfig"); t.append(mk("small", "", label), mk("b", "", value), mk("span", "", note)); figs.append(t); };
   tile("Last run", SetM.ago(st.lastRunAt, now), st.error ? "it failed" : st.lastRunAt ? "went through" : "none yet");
@@ -5275,7 +5350,9 @@ function renphoCard(d) {
       tr.append(last); body.append(tr);
     }
     table.append(body); wrap.append(table);
-    monitor.append(mk("div", "sline dim", "The latest weigh-ins with the numbers as Renpho sent them: check them against the Renpho app (the weight is read as kilograms, muscle as a percentage of the weight)."), wrap);
+    const [info, note] = help("rmonitor", "The table holds the latest weigh-ins as Renpho sent them (the weight read as kilograms, muscle as a percentage of it): check them against the Renpho app.", "the weigh-ins table");
+    monitorHead.append(info);
+    monitor.append(note, wrap);
   }
 
   const logHead = mk("div", "sbtns"); logHead.append(mk("b", "", "Log"), sbtn("Clear the log", () => settingsPost("renpho", { action: "clear-log" }), { disabled: !r.log.length }));
@@ -5302,12 +5379,10 @@ function renderSettings() {
   $("sNote").hidden = true;
   if (!S.loaded) box.append(mk("div", "empty", "Loading…"));
   else if (S.error && !d) box.append(mk("div", "msg err", S.error));
-  else if (!d || !d.profile) box.append(mk("div", "empty", garmin.user && garmin.user.admin ? "No profile yet: add one with + Add profile. Garmin and Renpho are optional." : "No profile."));
+  else if (!d || !d.profile) box.append(mk("div", "empty", garmin.user && garmin.user.admin ? "No profile yet: add one with + Add profile." : "No profile."));
   else {
     const enc = d.encryption;
-    box.append(enc.enabled && !enc.plain
-      ? sline("ok", "Saved passwords are encrypted in the database (CREDENTIALS_KEY).")
-      : sline("warn", enc.enabled ? `Saved passwords are encrypted, but ${enc.plain} older one${enc.plain === 1 ? "" : "s"} is still plain text: it is encrypted the next time it is used.` : "Saved passwords are stored as plain text in the database. Set CREDENTIALS_KEY (in the compose file, for both services) to encrypt them."));
+    if (!enc.enabled || enc.plain) box.append(sline("warn", enc.enabled ? `Saved passwords are encrypted, but ${enc.plain} older one${enc.plain === 1 ? "" : "s"} is still plain text: it is encrypted the next time it is used.` : "Saved passwords are stored as plain text in the database. Set CREDENTIALS_KEY (in the compose file, for both services) to encrypt them."));
     box.append(goalsCard(d), garminCard(d), renphoCard(d), webCard(d));
   }
   $("sscroll").scrollTop = keep;
@@ -5755,6 +5830,7 @@ require(["vs/editor/editor.main"], async (m) => {
 });
 setTab("files");
 bindMenus();
+bindExplanations();
 $("logout").onclick = guard(signOut);
 const garminReady = sessionReady.then(() => {
   guard(refreshFiles)();

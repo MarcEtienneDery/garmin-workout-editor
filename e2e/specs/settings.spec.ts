@@ -738,13 +738,13 @@ test.describe("the admin's profile controls", () => {
     await slow(adminPage.locator("#sProfile option", { hasText: "alice" })).toHaveCount(1);
   });
 
-  test("the add-profile dialog opens empty, says what a profile is for, and asks for the password twice", async ({ adminPage }) => {
+  test("the add-profile dialog opens empty, says Garmin and Renpho come later, and asks for the password twice", async ({ adminPage }) => {
     await openSettings(adminPage);
     await adminPage.locator("#sAddProfile").click();
     const dlg = adminPage.locator("#pdlg");
     await slow(dlg).toBeVisible();
     await slow(dlg.locator(".dhead")).toHaveText("Add a profile");
-    await slow(dlg).toContainText("A profile keeps its own plans, calendar and food log.");
+    await slow(dlg).toContainText("Garmin and Renpho can be connected later, in Settings.");
     await slow(adminPage.locator("#pdlgName")).toHaveValue("");
     await slow(adminPage.locator("#pdlgPass")).toHaveValue("");
     await slow(adminPage.locator("#pdlgPass2")).toHaveValue("");
@@ -964,11 +964,11 @@ test.describe("the Settings view", () => {
     await slow(me.locator("#sNote")).toBeHidden();
   });
 
-  test("the encryption note says what the server holds: plain text when CREDENTIALS_KEY is not set", async ({ me, profile }) => {
+  test("the encryption note warns of plain text when CREDENTIALS_KEY is not set, and says nothing when all is encrypted", async ({ me, profile }) => {
     const settings = await settingsOf(profile.api);
     await openSettings(me);
     const banner = me.locator("#sbody > .sline").first();
-    if (settings.encryption.enabled && settings.encryption.plain === 0) await slow(banner).toHaveText("Saved passwords are encrypted in the database (CREDENTIALS_KEY).");
+    if (settings.encryption.enabled && settings.encryption.plain === 0) await slow(me.locator("#sbody > .sline")).toHaveCount(0);
     else if (!settings.encryption.enabled) await slow(banner).toContainText("Saved passwords are stored as plain text in the database.");
     else await slow(banner).toContainText("is still plain text");
   });

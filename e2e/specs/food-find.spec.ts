@@ -795,7 +795,7 @@ test.describe("foods used lately (Recent)", () => {
 
   test("with nothing logged before the sheet says what will show there", async ({ me }) => {
     await openSearch(me);
-    await expect(results(me)).toContainText("Nothing logged yet. What you add shows up here, to add again in one tap.");
+    await expect(results(me)).toContainText("Nothing logged yet: what you add shows up here.");
     await expect(recentRows(me)).toHaveCount(0);
   });
 

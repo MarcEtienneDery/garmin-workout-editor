@@ -260,7 +260,7 @@ test.describe("Plans mode", () => {
     const bar = alice.getByRole("button", { name: SOMEDAY, exact: true }).first();
     await expect(bar).toHaveCSS("border-top-style", "dashed");
     await expect(bar).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
-    await expect(legendRow(alice, SOMEDAY)).toContainText("no workout has a scheduledDate");
+    await expect(legendRow(alice, SOMEDAY)).toContainText("0 of 1 workouts dated");
   });
 
   test("a plan whose workouts are dated is drawn solid", async ({ alice }) => {
@@ -600,7 +600,7 @@ test.describe("a profile's own plans", () => {
     const bar = me.getByRole("button", { name, exact: true });
     await expect(bar).toHaveCSS("border-top-style", "dashed");
     await expect(legendRow(me, name)).toContainText("May 5 – May 11, 2031");
-    await expect(legendRow(me, name)).toContainText("no workout has a scheduledDate");
+    await expect(legendRow(me, name)).toContainText("0 of 1 workouts dated");
   });
 
   test("a workout with several dates puts a chip on every date, and two workouts on one day stack", async ({ me, profile }) => {
@@ -737,7 +737,7 @@ test.describe("empty states", () => {
     await page.route("**/api/calendar", (route) => route.fulfill({ json: NO_PLANS }));
     await loginAs(page, "bob", PASSWORD);
     await openCalendar(page, "plans");
-    await expect(page.locator("#cNote")).toHaveText("No plan has dates yet. A plan's weekStart / weekEnd, or a workout's scheduledDate (YYYY-MM-DD), puts it on the calendar.");
+    await expect(page.locator("#cNote")).toHaveText("No plan has dates yet: give it a weekStart / weekEnd, or its workouts a scheduledDate.");
     await expect(page.locator("#cLegend")).toHaveText("No plans.");
     await expect(page.locator("#cDay")).toHaveText("Nothing on this day.");
   });
@@ -755,7 +755,7 @@ test.describe("empty states", () => {
     await page.route("**/api/calendar", (route) => route.fulfill({ json: NO_PLANS }));
     await loginAs(page, "bob", PASSWORD);
     await openCalendar(page);
-    await expect(page.locator("#cNote")).toHaveText("No plan has dates yet. A plan's weekStart / weekEnd, or a workout's scheduledDate (YYYY-MM-DD), puts it on the calendar.");
+    await expect(page.locator("#cNote")).toHaveText("No plan has dates yet: give it a weekStart / weekEnd, or its workouts a scheduledDate.");
     await expect(page.locator("#cLegend")).toHaveText("No plans.");
     await expect(page.locator("#cTypes")).toHaveText("No scheduled workouts.");
   });

@@ -782,7 +782,11 @@ test.describe("Activities stats", () => {
     await expect(lift.locator(".aext")).toHaveText("3 sessions");
     await expect(lift.locator(".aexchip")).toHaveText(["est. 1RM 117 lb", "heaviest 100 lb × 5", "12 sets · 60 reps", "6,000 lb"]);
     await expect(lift.locator(".aexnote")).toHaveText("from 5 @ 100 lb on 2026-10-01 · last 2026-10-20");
-    await expect(alice.locator("#astats .anote", { hasText: "est. 1RM" })).toContainText("Epley formula");
+    const oneRm = alice.locator("#astats .help", { hasText: "est. 1RM" });
+    await expect(oneRm).toBeHidden(); // behind the ⓘ of the Exercises heading until asked for
+    await alice.locator("#astats h3", { hasText: "Exercises" }).getByRole("button", { name: "About est. 1RM" }).click();
+    await expect(oneRm).toBeVisible();
+    await expect(oneRm).toContainText("Epley formula");
     await expect(alice.locator("#astats")).not.toHaveText(/NaN|undefined|null|Infinity/);
   });
 

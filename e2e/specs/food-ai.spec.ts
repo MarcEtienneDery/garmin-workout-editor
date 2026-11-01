@@ -164,10 +164,15 @@ test.describe("opening the AI", () => {
     await expect(words(me)).toHaveCount(0);
   });
 
-  test("the box says how many estimates are left today", async ({ me }) => {
+  test("the box says how many estimates are left today, and its ⓘ who reads the words and photos", async ({ me }) => {
     await enableAi(me, 4);
     await openAi(me);
-    await expect(box(me)).toContainText("Logs to today · 4 of 30 daily estimates left.");
+    await expect(box(me).locator(".failimit")).toHaveText("4 of 30 estimates left today");
+    const who = box(me).locator(".help");
+    await expect(who).toBeHidden();
+    await box(me).getByRole("button", { name: "About the AI" }).click();
+    await expect(who).toBeVisible();
+    await expect(who).toContainText("your words and photos go to Anthropic; this app keeps neither.");
   });
 
   test("the count of the estimate's answer replaces the one the box had", async ({ me }) => {
@@ -175,7 +180,7 @@ test.describe("opening the AI", () => {
     await stubAi(me, () => ({ json: { ...ESTIMATE, remaining: 3 } }));
     await openAi(me);
     await ask(me, "2 eggs and toast, salmon for dinner");
-    await expect(box(me)).toContainText("3 of 30 daily estimates left.");
+    await expect(box(me).locator(".failimit")).toHaveText("3 of 30 estimates left today");
   });
 
   test("the words box holds at most 1000 characters", async ({ me }) => {
@@ -479,7 +484,6 @@ test.describe("a past day", () => {
     await expect(me.locator("#fDate")).toHaveValue(daysAgo(1));
     await me.locator("#fdAi").click();
     await expect(me.locator("#fsh .fsh-day")).toHaveText(labelOf(daysAgo(1)));
-    await expect(box(me)).toContainText(`Logs to ${labelOf(daysAgo(1))} ·`);
     await ask(me, "2 eggs and toast, salmon for dinner");
     await logButton(me).click();
     await expect(me.locator("#toast")).toContainText("Logged 3 foods.");
