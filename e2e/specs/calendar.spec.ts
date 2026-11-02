@@ -368,13 +368,24 @@ test.describe("Workouts mode", () => {
     await expect(weekOf(alice, daysAhead(2)).getByRole("button", { name: "Shared walk", exact: true })).toHaveCSS("background-color", GREY);
   });
 
-  test("clicking a chip opens the plan in the Plans view with the workout's picture open", async ({ alice }) => {
+  test("clicking a chip opens the plan in the Plans view on that workout, in the form", async ({ alice }) => {
     await openCalendar(alice);
     await alice.locator("#cModes button[data-mode=workouts]").click();
     await goToMonthOf(alice, today());
     await weekOf(alice, today()).getByRole("button", { name: "Tempo intervals", exact: true }).click();
     await expect(alice.locator("body")).toHaveAttribute("data-view", "plans");
     await expect(alice.locator("#current")).toContainText("alice-run-block.json");
+    await expect(alice.locator("#pform .wf-name")).toHaveValue("Tempo intervals");
+    await expect(alice.locator("#outline .row.wk.sel")).toHaveAttribute("data-name", "Tempo intervals");
+  });
+
+  test("with JSON chosen, a chip opens the plan with the workout's picture open in the outline", async ({ alice }) => {
+    await alice.addInitScript(() => localStorage.setItem("planEditor.editMode", "json"));
+    await openCalendar(alice);
+    await alice.locator("#cModes button[data-mode=workouts]").click();
+    await goToMonthOf(alice, today());
+    await weekOf(alice, today()).getByRole("button", { name: "Tempo intervals", exact: true }).click();
+    await expect(alice.locator("body")).toHaveAttribute("data-view", "plans");
     const row = alice.locator("#outline .row[data-name='Tempo intervals']");
     await expect(row.locator(".name")).toHaveAttribute("aria-expanded", "true");
     await expect(row.locator(".wv-host")).toBeVisible();
@@ -481,12 +492,12 @@ test.describe("Both mode", () => {
     await expect(alice.locator("#cgrid .cband")).toHaveCount(0);
   });
 
-  test("clicking a chip opens the plan in the Plans view with the workout's picture open", async ({ alice }) => {
+  test("clicking a chip opens the plan in the Plans view on that workout, in the form", async ({ alice }) => {
     await openCalendar(alice);
     await weekOf(alice, today()).getByRole("button", { name: "Tempo intervals", exact: true }).click();
     await expect(alice.locator("body")).toHaveAttribute("data-view", "plans");
     await expect(alice.locator("#current")).toContainText("alice-run-block.json");
-    await expect(alice.locator("#outline .row[data-name='Tempo intervals'] .wv-host")).toBeVisible();
+    await expect(alice.locator("#pform .wf-name")).toHaveValue("Tempo intervals");
   });
 
   test("the side panel lists the day's plans, then its workouts", async ({ alice }) => {

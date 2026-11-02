@@ -204,6 +204,9 @@ describe("edits", () => {
     expect(out[2].times).toBe(2);
     const taken = M.takeOut(blocks, 1, 1, { keep: true });
     expect(taken.map((b: any) => [b.steps.map((s: Step) => s.stepType), b.times])).toEqual([[["warmup"], 1], [["interval"], 2], [["recovery"], 1], [["cooldown"], 1]]);
+    // an exercise taken out of a superset keeps the superset's sets
+    const lifts = M.takeOut(M.toBlocks(SUPERSETS.steps), 1, 0, { keep: true, times: 3 });
+    expect(lifts.slice(1, 3).map((b: any) => [b.steps.map((s: Step) => s.exerciseName), b.times])).toEqual([[["INCLINE_DUMBBELL_BENCH_PRESS"], 3], [["WEIGHTED_CHIN_UP"], 3]]);
   });
 
   it("joins steps into a repeat and undoes a repeat", () => {
@@ -310,6 +313,11 @@ describe("units", () => {
     expect(M.parseClock("4:30")).toBe(270);
     expect(M.parseClock("90")).toBe(90);
     expect(M.parseClock("30", "min")).toBe(1800);
+    expect(M.parseClock("90s", "min")).toBe(90);
+    expect(M.parseClock("2 min")).toBe(120);
+    expect(M.parseClock("1.5h")).toBe(5400);
+    expect(M.distanceIn(1200, "km")).toBe("1.2");
+    expect(M.distanceIn(1200, "m")).toBe("1200");
     expect(M.parseClock("4:75")).toBeNull();
     expect(M.parseClock("abc")).toBeNull();
     expect(M.parseClock("")).toBeNull();

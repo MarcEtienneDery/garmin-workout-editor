@@ -73,6 +73,12 @@ async function openPlans(page: Page): Promise<void> {
 
 const GARMIN_REASON = "This profile has no Garmin login: add one in Settings.";
 
+// These specs are about the JSON editor and the outline beside it, the Plans view as it is with JSON chosen (the choice is kept in the
+// browser): the form, which a plan opens on otherwise, has workout-form.spec.ts.
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("planEditor.editMode", "json"));
+});
+
 test.describe("Plans: opening a plan", () => {
   test("with nothing open, the file tools are off and the panes say so", async ({ alice }) => {
     await openPlans(alice);
@@ -409,17 +415,21 @@ test.describe("Plans: a change made elsewhere, and Reload", () => {
 });
 
 test.describe("Plans: the outline's workout buttons", () => {
-  test("+ Add workout asks for a name and appends that workout to the plan", async ({ me, profile }) => {
+  test("+ Add workout asks for a name and a type, and appends that workout to the plan", async ({ me, profile }) => {
     await makeFile(profile.api, `workout-plans/${profile.name}-add.json`, planJson());
     await openPlans(me);
     await openPlan(me, `${profile.name}-add.json`);
     await me.getByRole("button", { name: "+ Add workout" }).click();
     await expect(me.locator("#dlgTitle")).toHaveText("Add a workout");
     await expect(me.locator("#dlgInput")).toHaveValue("New workout");
+    await expect(me.locator("#dlgChoice")).toHaveValue("strength_training");
     await me.locator("#dlgInput").fill("Hill sprints");
+    await me.locator("#dlgChoice").selectOption("running");
     await me.locator("#dlgOk").click();
     await expect(me.locator("#outline .row.wk .name")).toHaveText(["Easy run", "Hill sprints"]);
-    expect(JSON.parse(await textOf(me)).workouts.at(-1).workoutName).toBe("Hill sprints");
+    const added = JSON.parse(await textOf(me)).workouts.at(-1);
+    expect([added.workoutName, added.workoutType]).toEqual(["Hill sprints", "running"]);
+    expect(added.steps.map((s: { stepType: string }) => s.stepType)).toEqual(["warmup", "interval", "cooldown"]);
     await expect(me.locator("#save")).toBeEnabled();
   });
 

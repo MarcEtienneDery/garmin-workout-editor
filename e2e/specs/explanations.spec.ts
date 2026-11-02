@@ -14,7 +14,7 @@ const card = (page: Page, heading: string) => page.locator(".scard").filter({ ha
 
 async function openSettings(page: Page): Promise<void> {
   await openView(page, "settings");
-  await expect(page.locator("#sbody .scard")).toHaveCount(4, { timeout: 15_000 });
+  await expect(page.locator("#sbody .scard")).toHaveCount(5, { timeout: 15_000 });
 }
 
 test.describe("each note behind its ⓘ", () => {
@@ -50,6 +50,7 @@ test.describe("each note behind its ⓘ", () => {
     await openSettings(alice);
     for (const [heading, about, says] of [
       ["Nutrition goals", "About the nutrition goals", "What the Food view measures each day against"],
+      ["Units", "About the units", "Plans keep pounds whatever it is"],
       ["Garmin account", "About the Garmin account", "Connect it to sync activities and health data"],
       ["Renpho scale", "About the Renpho scale", "It only reads from Renpho."],
       ["Web sign-in", "About the web sign-in", "The password is kept as a hash."],
@@ -75,6 +76,7 @@ test.describe("each note behind its ⓘ", () => {
   });
 
   test("a workout's estimate says how it was timed behind its ⓘ", async ({ alice }) => {
+    await alice.addInitScript(() => localStorage.setItem("planEditor.editMode", "json")); // the outline's picture: the form has its own (workout-form.spec.ts)
     await openView(alice, "plans");
     await alice.locator("#filelist .file", { hasText: "alice-run-block.json" }).click();
     const tempo = alice.locator("#outline .row.wk").nth(1);

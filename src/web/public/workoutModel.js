@@ -51,6 +51,12 @@
     return clock(1000 / speed);
   }
 
+  const LB_PER_KG = 2.20462262;
+  /** A weight kept in lb, in the unit asked for: 195 -> "195 lb", or "88.5 kg". */
+  function weight(lb, unit) {
+    return unit === "kg" ? `${Math.round((lb / LB_PER_KG) * 10) / 10} kg` : `${Math.round(lb * 10) / 10} lb`;
+  }
+
   // ── What a step is and what it asks for ─────────────────────────────────
 
   const KIND = { warmup: "warmup", cooldown: "cooldown", recovery: "recovery", rest: "rest", interval: "work", exercise: "work", repeat: "work" };
@@ -89,8 +95,8 @@
     };
   }
 
-  /** The target, as text, plus a number on a per-kind scale for the height of its bar. */
-  function targetOf(st) {
+  /** The target, as text, plus a number on a per-kind scale for the height of its bar. `w` (its workout) says whether a cadence is a ride's (rpm). */
+  function targetOf(st, w) {
     const a = num(st.targetValueOne), b = num(st.targetValueTwo), lo = Math.min(a || b, b || a), hi = Math.max(a, b);
     const span = (f, unit) => `${lo === hi ? f(lo) : `${f(lo)}–${f(hi)}`}${unit}`;
     switch (st.targetType) {
@@ -105,7 +111,7 @@
       case "power.zone":
         return lo ? { label: "Power", value: span(String, " W"), kind: "power", mid: (lo + hi) / 2 } : null;
       case "cadence.zone":
-        return lo ? { label: "Cadence", value: span(String, " spm"), kind: "cadence", mid: (lo + hi) / 2 } : null;
+        return lo ? { label: "Cadence", value: span(String, w && w.workoutType === "cycling" ? " rpm" : " spm"), kind: "cadence", mid: (lo + hi) / 2 } : null;
       case "open":
         return { label: "Target", value: "Open", kind: "", mid: 0 };
       default:
@@ -132,7 +138,7 @@
    * pace for its heart-rate target or its easy pace, and with no pacer 6:00/km. Those are assumed. open: nothing says how long.
    */
   function stepMetrics(st, w, pacer) {
-    const m = measure(st), target = targetOf(st), run = isRun(w, st);
+    const m = measure(st), target = targetOf(st, w), run = isRun(w, st);
     let seconds = m.seconds || 0, meters = m.meters || 0, assumed = false, paceFrom = null;
     const speedOf = () => {
       if (target && target.kind === "speed") return target.mid;
@@ -154,28 +160,28 @@
 
   const loadOf = (st) => num(st.weight) || num(st.weightPercentage);
 
-  /** The text on a step's card: a title and the values that go under it, each with a label. */
-  function describeStep(st, w) {
+  /** The text on a step's card: a title and the values that go under it, each with a label. A weight is in `unit` (lb unless kg). */
+  function describeStep(st, w, unit) {
     const { title, subtitle } = titleOf(st, w), m = measure(st), metrics = [];
     if (m.seconds) metrics.push({ value: clock(m.seconds), label: m.lap ? "Time (lap button)" : "Time" });
     else if (m.meters) metrics.push({ value: distance(m.meters), label: m.lap ? "Distance (lap button)" : "Distance" });
     else if (m.reps) metrics.push({ value: String(m.reps), label: "Reps" });
     else if (m.lap) metrics.push({ value: "Lap button", label: "Ends when you press it" });
     else if (m.other) metrics.push({ value: m.other.value ? String(m.other.value) : "—", label: prettyName(m.other.name) });
-    const target = targetOf(st);
+    const target = targetOf(st, w);
     if (target) metrics.push({ value: target.value, label: target.label });
-    if (num(st.weight)) metrics.push({ value: `${st.weight} lb`, label: "Weight" });
+    if (num(st.weight)) metrics.push({ value: weight(st.weight, unit), label: "Weight" });
     if (num(st.weightPercentage)) metrics.push({ value: `${st.weightPercentage}%`, label: `of ${st.benchmarkKey ? prettyName(st.benchmarkKey) : "1RM"}` });
     if (num(st.restTimeSeconds)) metrics.push({ value: clock(st.restTimeSeconds), label: "Rest" });
     return { kind: kindOf(st), title, subtitle, metrics, open: !!m.lap && !m.seconds && !m.meters };
   }
 
   /** The line a set has on its exercise's card. */
-  function describeSet(st, times) {
+  function describeSet(st, times, unit) {
     return {
       times,
       reps: String(num(st.endConditionValue) || num(st.reps)),
-      load: num(st.weight) ? `${st.weight} lb` : num(st.weightPercentage) ? `${st.weightPercentage}%` : "",
+      load: num(st.weight) ? weight(st.weight, unit) : num(st.weightPercentage) ? `${st.weightPercentage}%` : "",
       rest: num(st.restTimeSeconds) ? clock(st.restTimeSeconds) : "",
     };
   }
@@ -240,10 +246,10 @@
 
   const TIER = { warmup: 0.5, cooldown: 0.5, work: 0.8, recovery: 0.3, rest: 0.2, other: 0.6 };
 
-  function timeline(nodes, w, expand, pacer) {
+  function timeline(nodes, w, expand, pacer, unit) {
     const segs = [];
     const push = (key, st, count, index) => {
-      const m = stepMetrics(st, w, pacer), text = describeStep(st, w);
+      const m = stepMetrics(st, w, pacer), text = describeStep(st, w, unit);
       segs.push({ key, index, kind: kindOf(st), st, seconds: m.seconds * count, meters: m.meters * count, assumed: m.assumed, paceFrom: m.paceFrom, open: m.open, count, text: [text.title, ...text.metrics.filter((x) => x.label !== "Rest").map((x) => (x.label === "Reps" ? `${x.value} reps` : x.value))].join(" · ") });
       if (num(st.restTimeSeconds)) segs.push({ key, index, kind: "rest", st, seconds: st.restTimeSeconds * count, meters: 0, assumed: false, paceFrom: null, open: false, count, text: `Rest ${clock(st.restTimeSeconds)}` });
     };
@@ -263,7 +269,7 @@
   }
 
   /** Give each segment a weight (its width) and a height (0 to 1) for the bar chart. */
-  function shape(segs) {
+  function shape(segs, w) {
     const known = segs.reduce((t, s) => t + s.seconds, 0) || segs.length * 60;
     for (const s of segs) {
       // lap-button steps and steps of unknown length get a placeholder of at least three minutes, so they show; short ones get a minimum
@@ -271,14 +277,14 @@
     }
     const levels = {}, loads = {};
     for (const s of segs) {
-      const t = targetOf(s.st);
+      const t = targetOf(s.st, w);
       if (t && t.kind && t.mid) { const l = (levels[t.kind] = levels[t.kind] || { lo: Infinity, hi: -Infinity }); l.lo = Math.min(l.lo, t.mid); l.hi = Math.max(l.hi, t.mid); }
       const load = loadOf(s.st);
       if (load) { const k = num(s.st.weight) ? "weight" : "percentage"; loads[k] = Math.max(loads[k] || 0, load); }
     }
     for (const s of segs) {
       let h = TIER[s.kind] ?? TIER.other;
-      const t = s.kind === "rest" ? null : targetOf(s.st), load = s.kind === "rest" ? 0 : loadOf(s.st);
+      const t = s.kind === "rest" ? null : targetOf(s.st, w), load = s.kind === "rest" ? 0 : loadOf(s.st);
       if (load) h = 0.35 + 0.6 * (load / loads[num(s.st.weight) ? "weight" : "percentage"]);
       else if (t && t.kind && levels[t.kind] && levels[t.kind].hi > levels[t.kind].lo) h *= 0.8 + 0.2 * ((t.mid - levels[t.kind].lo) / (levels[t.kind].hi - levels[t.kind].lo));
       s.height = Math.max(0.15, Math.min(1, h));
@@ -286,14 +292,14 @@
     return segs;
   }
 
-  /** Everything the picture needs for one workout. options.pacer (from pacerFrom) times the steps that name no pace. */
+  /** Everything the picture needs for one workout. options.pacer (from pacerFrom) times the steps that name no pace; options.unit says weights in kg. */
   function analyze(w, options) {
-    const pacer = (options && options.pacer) || null;
+    const pacer = (options && options.pacer) || null, unit = (options && options.unit) || "lb";
     const steps = w && Array.isArray(w.steps) ? w.steps.filter(isStep) : [];
     const tree = buildTree(steps);
-    let segments = timeline(tree, w, true, pacer);
-    if (segments.length > MAX_SEGMENTS) segments = timeline(tree, w, false, pacer);
-    shape(segments);
+    let segments = timeline(tree, w, true, pacer, unit);
+    if (segments.length > MAX_SEGMENTS) segments = timeline(tree, w, false, pacer, unit);
+    shape(segments, w);
     const total = { seconds: 0, meters: 0, assumed: false, open: 0, paceFrom: null };
     for (const s of segments) {
       total.seconds += s.seconds; total.meters += s.meters;
@@ -331,5 +337,5 @@
     return out;
   }
 
-  return { analyze, pacerFrom, buildTree, describeStep, describeSet, changedSteps, isSuperset, clock, duration, distance, pace, targetOf, stepMetrics, prettyName, ASSUMED_PACE, SECONDS_PER_REP };
+  return { analyze, pacerFrom, buildTree, describeStep, describeSet, changedSteps, isSuperset, clock, duration, distance, pace, weight, targetOf, stepMetrics, prettyName, ASSUMED_PACE, SECONDS_PER_REP };
 });

@@ -675,6 +675,7 @@ test.describe("what the Garmin and Settings reads say", () => {
       profiles: [profile.name],
       connected: [],
       profileInfo: { [profile.name]: { garmin: false, renpho: false, webPassword: true, hasActivities: false, hasWellness: false, hasWeight: false } },
+      prefs: { [profile.name]: { weightUnit: "lb" } },
       user: { admin: false, name: profile.name },
       defaultProfile: profile.name,
       reason: "Garmin is not connected: add a Garmin login in Settings to sync and send workouts.",

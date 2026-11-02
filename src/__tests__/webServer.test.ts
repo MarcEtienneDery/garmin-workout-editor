@@ -367,6 +367,27 @@ describe("web plan editor", () => {
     });
   });
 
+  describe("the workout form's exercises", () => {
+    it("lists Garmin's exercises with their category, and those the profile's plans use, most used first", async () => {
+      addProfile("MED");
+      seed("workout-plans/lift.json", { weekStart: "2026-10-12", weekEnd: "2026-10-18", workouts: [
+        { workoutName: "A", workoutType: "strength_training", steps: [{ exerciseName: "BARBELL_ROW" }, { exerciseName: "BARBELL_BENCH_PRESS" }, { stepType: "repeat", repeatSteps: [{ exerciseName: "BARBELL_BENCH_PRESS" }] }] },
+      ] });
+      const r = (await call("GET", "/api/exercises")).json;
+      expect(r.profile).toBe("MED");
+      expect(r.exercises.length).toBeGreaterThan(1000);
+      expect(r.exercises).toContainEqual({ name: "ROMANIAN_DEADLIFT", category: "DEADLIFT" });
+      expect(r.used).toEqual(["BARBELL_BENCH_PRESS", "BARBELL_ROW"]);
+    });
+
+    it("lists none used when no profile is known", async () => {
+      const r = (await call("GET", "/api/exercises")).json;
+      expect(r.profile).toBeNull();
+      expect(r.used).toEqual([]);
+      expect(r.exercises.length).toBeGreaterThan(1000);
+    });
+  });
+
   describe("site icon", () => {
     it("is linked from the page and served without a login, as SVG with a PNG for iOS home screens", async () => {
       const page = await (await fetch(`${base}/`)).text();
@@ -1223,6 +1244,18 @@ describe("web plan editor", () => {
         expect(out.renpho).toEqual(expect.objectContaining({ account: null, settings: expect.objectContaining({ fetchEnabled: false, pushEnabled: false }), log: [], recent: [] }));
         expect(out.encryption).toEqual({ enabled: false, plain: 1 }); // the Garmin login is the one password kept
         expect(JSON.stringify(out)).not.toMatch(/"x"|password":"/);
+      });
+
+      it("keeps the unit of weight the profile picks, lb unless it picks kg, and tells every view at once", async () => {
+        addProfile("MED");
+        expect((await call("GET", "/api/settings")).json.prefs).toEqual({ weightUnit: "lb" });
+        expect((await call("GET", "/api/garmin")).json.prefs).toEqual({ MED: { weightUnit: "lb" } });
+        expect((await call("POST", "/api/settings/prefs", { prefs: { weightUnit: "kg" } })).json.prefs).toEqual({ weightUnit: "kg" });
+        expect((await call("GET", "/api/garmin")).json.prefs.MED).toEqual({ weightUnit: "kg" });
+        expect((await call("POST", "/api/settings/prefs", { prefs: { weightUnit: "stone" } })).status).toBe(400);
+        expect((await call("POST", "/api/settings/prefs", { prefs: {} })).json.prefs).toEqual({ weightUnit: "kg" });
+        store().prefs.set("MED", { weightUnit: "oz" as never });
+        expect(store().prefs.get("MED")).toEqual({ weightUnit: "lb" }); // a cell that holds nothing known is the default
       });
 
       it("saves the Garmin login in the database, checks it and removes it, the profile staying", async () => {

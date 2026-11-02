@@ -109,13 +109,15 @@
   }
 
   /**
-   * Seconds from "1:02:05", "4:30", "4:30.5" or a bare number, which counts as `bare` ("s" or "min": a rest is typed in seconds, a step in
-   * minutes). null for text that is not a time; 0 is a time.
+   * Seconds from "1:02:05", "4:30", "4:30.5", "90s", "2 min", "1h" or a bare number, which counts as `bare` ("s" or "min": a rest is typed
+   * in seconds, a step in minutes). null for text that is not a time; 0 is a time.
    */
   function parseClock(text, bare = "s") {
-    const t = String(text ?? "").trim().replace(/\s+/g, "");
+    const t = String(text ?? "").trim().replace(/\s+/g, "").replace(",", ".");
     if (!t) return null;
     if (/^\d+(\.\d+)?$/.test(t)) return round(Number(t) * (bare === "min" ? 60 : 1), 1);
+    const unit = /^(\d+(?:\.\d+)?)(s|sec|secs|seconds?|m|min|mins|minutes?|h|hr|hrs|hours?)$/i.exec(t); // 90s, 2min, 1h
+    if (unit) return round(Number(unit[1]) * (/^h/i.test(unit[2]) ? 3600 : /^m/i.test(unit[2]) ? 60 : 1), 1);
     const m = /^(?:(\d+):)?(\d+):(\d{1,2}(?:\.\d+)?)$/.exec(t);
     if (!m || Number(m[3]) >= 60 || (m[1] !== undefined && Number(m[2]) >= 60)) return null;
     return round(Number(m[1] || 0) * 3600 + Number(m[2]) * 60 + Number(m[3]), 1);
@@ -154,6 +156,8 @@
     if (!m) return { value: "", unit: "km" };
     return m < 1000 && Number.isInteger(m) ? { value: String(m), unit: "m" } : { value: String(round(m / 1000, 3)), unit: "km" };
   }
+  /** A distance in the unit a field shows it in: 1200 -> "1.2" (km) or "1200" (m). */
+  const distanceIn = (meters, unit) => (num(meters) ? String(unit === "m" ? round(meters, 1) : round(meters / 1000, 3)) : "");
   /** Metres from a distance typed in `unit` ("km" or "m"); a trailing "km" or "m" typed with it wins. null when it is not a distance. */
   function parseDistance(text, unit = "km") {
     const m = /^\s*(\d+(?:[.,]\d+)?|[.,]\d+)\s*(km|m)?\s*$/i.exec(String(text ?? ""));
@@ -360,11 +364,14 @@
     return blocks.map((x, i) => (i === k ? { ...b, times: Math.max(2, b.times), steps: [...b.steps.slice(0, at), ...steps, ...b.steps.slice(at)] } : x));
   }
 
-  /** Step j taken out of repeat k (dropped, or, with `keep`, put after the repeat as a step done once). A repeat left with one step stays a repeat of it. */
-  function takeOut(blocks, k, j, { keep = false } = {}) {
+  /**
+   * Step j taken out of repeat k: dropped, or, with `keep`, put beside the repeat (before it when it was the first step), done `times`
+   * times (once unless said: an exercise taken out of a superset keeps its sets). A repeat left with one step stays a repeat of it.
+   */
+  function takeOut(blocks, k, j, { keep = false, times = 1 } = {}) {
     const b = blocks[k], st = b.steps[j], left = b.steps.filter((_, m) => m !== j);
     const rest = left.length ? [{ ...b, steps: left }] : [];
-    const out = keep ? [{ steps: [st], times: 1, gi: undefined }] : [];
+    const out = keep ? [{ steps: [st], times: Math.max(1, times), gi: undefined }] : [];
     return [...blocks.slice(0, k), ...(keep && j === 0 ? [...out, ...rest] : [...rest, ...out]), ...blocks.slice(k + 1)];
   }
 
@@ -568,7 +575,7 @@
   return {
     LB_PER_KG, SPORTS, TYPES, KINDS, TARGETS, PRESETS, ALIASES,
     modeOf, sportOf, kindLabel, targetUnit, targetsFor, prettyName,
-    clock, parseClock, paceText, parsePace, kmhText, parseKmh, parseNumber, distanceField, parseDistance, weightText, parseWeight, weightLabel,
+    clock, parseClock, paceText, parsePace, kmhText, parseKmh, parseNumber, distanceField, distanceIn, parseDistance, weightText, parseWeight, weightLabel,
     endOf, withEnd, targetOf, withTarget, withRest, isExercise, patched, formProblem,
     flatten, toBlocks, fromBlocks,
     setTimes, insertBlocks, removeBlocks, moveBlocks, duplicateBlocks, updateStep, insertInto, takeOut, moveInside, joinBlocks, splitBlock, unrepeat, eachSet, sameSets, block, copyStep,

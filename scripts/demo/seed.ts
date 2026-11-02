@@ -39,17 +39,30 @@ const round = (n: number, step = 1) => Math.round(n / step) * step;
 /** m/s from a pace in min:sec per km. */
 const mps = (min: number, sec: number) => Math.round((1000 / (min * 60 + sec)) * 1000) / 1000;
 const hrZone = (lo: number, hi: number) => ({ targetType: "heart.rate.zone", targetValueOne: lo, targetValueTwo: hi });
-const set = (exerciseName: string, reps: number, weight: number | undefined, rest: number, sets: number) => ({
-  stepType: "repeat",
-  targetType: "no.target",
-  numberOfRepeats: sets,
-  endCondition: "iterations",
-  endConditionValue: sets,
-  repeatSteps: [
-    { stepType: "exercise", exerciseName, targetType: "no.target", endCondition: "reps", endConditionValue: reps, ...(weight ? { weight } : {}) },
-    { stepType: "rest", targetType: "no.target", endCondition: "time", endConditionValue: rest },
-  ],
-});
+const power = (lo: number, hi: number) => ({ targetType: "power.zone", targetValueOne: lo, targetValueTwo: hi });
+const time = (seconds: number) => ({ endCondition: "time", endConditionValue: seconds, durationSeconds: seconds });
+const dist = (meters: number) => ({ endCondition: "distance", endConditionValue: meters, distanceMeters: meters });
+const lap = { endCondition: "lap.button", endConditionValue: 0 };
+
+// A repeat is a run of steps that share a repeatGroupIndex and a numberOfRepeats, as the plans write them; steps() numbers them.
+let repeatMark = 0;
+/** These steps done `times` times. */
+const repeat = (times: number, ...steps: object[]) => {
+  const mark = --repeatMark;
+  return steps.map((st) => ({ ...st, numberOfRepeats: times, repeatGroupIndex: mark }));
+};
+/** An exercise done `sets` times: `reps` reps (at `weight` lb), `rest` seconds after each set. */
+const set = (exerciseName: string, reps: number, weight: number | undefined, rest: number, sets: number) =>
+  repeat(sets, { stepType: "interval", exerciseName, targetType: "no.target", endCondition: "reps", endConditionValue: reps, reps, ...(weight ? { weight } : {}), restTimeSeconds: rest });
+/** The steps as the plans hold them: one flat list numbered from 1, each repeat with an index of its own (0, 1, …). */
+function steps(...parts: (object | object[])[]): object[] {
+  const index = new Map<number, number>();
+  return parts.flat().map((st: any, i) => {
+    if (st.repeatGroupIndex === undefined) return { ...st, stepOrder: i + 1 };
+    if (!index.has(st.repeatGroupIndex)) index.set(st.repeatGroupIndex, index.size);
+    return { ...st, repeatGroupIndex: index.get(st.repeatGroupIndex), stepOrder: i + 1 };
+  });
+}
 
 /** The workouts of the build, with the weekday each falls on, counted from today's (so today always has the tempo). */
 const BUILD = [
@@ -60,21 +73,13 @@ const BUILD = [
       workoutName: "Tempo 3 x 2 km",
       workoutType: "running",
       description: "Comfortably hard: the pace you could hold for an hour.",
-      steps: [
-        { stepType: "warmup", ...hrZone(120, 145), endCondition: "time", endConditionValue: 900 },
-        {
-          stepType: "repeat",
-          targetType: "no.target",
-          numberOfRepeats: 3,
-          endCondition: "iterations",
-          endConditionValue: 3,
-          repeatSteps: [
-            { stepType: "interval", targetType: "pace.zone", targetValueOne: mps(4, 40), targetValueTwo: mps(4, 30), endCondition: "distance", endConditionValue: 2000 },
-            { stepType: "recovery", targetType: "no.target", endCondition: "time", endConditionValue: 120 },
-          ],
-        },
-        { stepType: "cooldown", ...hrZone(110, 140), endCondition: "time", endConditionValue: 600 },
-      ],
+      steps: steps(
+        { stepType: "warmup", ...hrZone(120, 145), ...time(900) },
+        repeat(3,
+          { stepType: "interval", targetType: "pace.zone", targetValueOne: mps(4, 40), targetValueTwo: mps(4, 30), ...dist(2000) },
+          { stepType: "recovery", targetType: "no.target", ...time(120) }),
+        { stepType: "cooldown", ...hrZone(110, 140), ...time(600) },
+      ),
     },
   },
   {
@@ -84,10 +89,10 @@ const BUILD = [
       workoutName: "Long run",
       workoutType: "running",
       description: "Easy and steady. Last 3 km at half-marathon pace if it feels good.",
-      steps: [
-        { stepType: "interval", ...hrZone(130, 148), endCondition: "distance", endConditionValue: 15000 },
-        { stepType: "interval", targetType: "pace.zone", targetValueOne: mps(4, 55), targetValueTwo: mps(4, 45), endCondition: "distance", endConditionValue: 3000 },
-      ],
+      steps: steps(
+        { stepType: "interval", ...hrZone(130, 148), ...dist(15000) },
+        { stepType: "interval", targetType: "pace.zone", targetValueOne: mps(4, 55), targetValueTwo: mps(4, 45), ...dist(3000) },
+      ),
     },
   },
   {
@@ -97,14 +102,15 @@ const BUILD = [
       workoutName: "Strength A",
       workoutType: "strength_training",
       description: "Heavy and short. Stop each set with two reps in the tank.",
-      steps: [
+      steps: steps(
+        { stepType: "warmup", targetType: "no.target", ...lap },
         set("BARBELL_BACK_SQUAT", 5, 185, 120, 3),
         set("BARBELL_BENCH_PRESS", 6, 145, 120, 3),
         set("BENT_OVER_ROW_WITH_BARBELL", 8, 115, 90, 3),
         set("PULL_UP", 8, undefined, 90, 3),
         set("ROMANIAN_DEADLIFT", 8, 155, 90, 2),
-        { stepType: "exercise", exerciseName: "PLANK", targetType: "no.target", endCondition: "time", endConditionValue: 60 },
-      ],
+        { stepType: "interval", exerciseName: "PLANK", targetType: "no.target", ...time(60) },
+      ),
     },
   },
   {
@@ -114,7 +120,7 @@ const BUILD = [
       workoutName: "Easy run",
       workoutType: "running",
       description: "Conversational pace, nose breathing.",
-      steps: [{ stepType: "interval", ...hrZone(128, 145), endCondition: "distance", endConditionValue: 8000 }],
+      steps: steps({ stepType: "interval", ...hrZone(128, 145), ...dist(8000) }),
     },
   },
   {
@@ -124,21 +130,13 @@ const BUILD = [
       workoutName: "Intervals 6 x 800 m",
       workoutType: "running",
       description: "5K pace on the reps, jog the recoveries.",
-      steps: [
-        { stepType: "warmup", ...hrZone(120, 145), endCondition: "time", endConditionValue: 900 },
-        {
-          stepType: "repeat",
-          targetType: "no.target",
-          numberOfRepeats: 6,
-          endCondition: "iterations",
-          endConditionValue: 6,
-          repeatSteps: [
-            { stepType: "interval", targetType: "pace.zone", targetValueOne: mps(4, 15), targetValueTwo: mps(4, 5), endCondition: "distance", endConditionValue: 800 },
-            { stepType: "recovery", targetType: "no.target", endCondition: "distance", endConditionValue: 400 },
-          ],
-        },
-        { stepType: "cooldown", targetType: "no.target", endCondition: "lap.button" },
-      ],
+      steps: steps(
+        { stepType: "warmup", ...hrZone(120, 145), ...time(900) },
+        repeat(6,
+          { stepType: "interval", targetType: "pace.zone", targetValueOne: mps(4, 15), targetValueTwo: mps(4, 5), ...dist(800) },
+          { stepType: "recovery", targetType: "no.target", ...dist(400) }),
+        { stepType: "cooldown", targetType: "no.target", ...lap },
+      ),
     },
   },
 ];
@@ -169,12 +167,12 @@ function mobilityPlan() {
         workoutType: "strength_training",
         description: "20 minutes, any time of day.",
         scheduledDate: days,
-        steps: [
+        steps: steps(
           set("GLUTE_BRIDGE", 12, undefined, 30, 3),
           set("WALKING_LUNGE", 10, undefined, 30, 2),
           set("HANGING_KNEE_RAISE", 10, undefined, 45, 3),
-          { stepType: "exercise", exerciseName: "PLANK", targetType: "no.target", endCondition: "time", endConditionValue: 45 },
-        ],
+          { stepType: "interval", exerciseName: "PLANK", targetType: "no.target", ...time(45) },
+        ),
       },
     ],
   };
@@ -186,18 +184,18 @@ function taperPlan() {
     weekStart: day(start),
     weekEnd: day(start + 6),
     workouts: [
-      { workoutName: "Shakeout", workoutType: "running", scheduledDate: [day(start + 1), day(start + 4)], steps: [{ stepType: "interval", ...hrZone(125, 140), endCondition: "time", endConditionValue: 1800 }] },
+      { workoutName: "Shakeout", workoutType: "running", scheduledDate: [day(start + 1), day(start + 4)], steps: steps({ stepType: "interval", ...hrZone(125, 140), ...time(1800) }) },
       {
         workoutName: "Race-pace tune-up",
         workoutType: "running",
         scheduledDate: day(start + 2),
-        steps: [
-          { stepType: "warmup", targetType: "no.target", endCondition: "time", endConditionValue: 600 },
-          { stepType: "interval", targetType: "pace.zone", targetValueOne: mps(4, 58), targetValueTwo: mps(4, 52), endCondition: "distance", endConditionValue: 5000 },
-          { stepType: "cooldown", targetType: "no.target", endCondition: "time", endConditionValue: 600 },
-        ],
+        steps: steps(
+          { stepType: "warmup", targetType: "no.target", ...time(600) },
+          { stepType: "interval", targetType: "pace.zone", targetValueOne: mps(4, 58), targetValueTwo: mps(4, 52), ...dist(5000) },
+          { stepType: "cooldown", targetType: "no.target", ...time(600) },
+        ),
       },
-      { workoutName: "Half marathon", workoutType: "running", description: "Race day.", scheduledDate: day(start + 6), steps: [{ stepType: "interval", targetType: "pace.zone", targetValueOne: mps(5, 0), targetValueTwo: mps(4, 52), endCondition: "distance", endConditionValue: 21100 }] },
+      { workoutName: "Half marathon", workoutType: "running", description: "Race day.", scheduledDate: day(start + 6), steps: steps({ stepType: "interval", targetType: "pace.zone", targetValueOne: mps(5, 0), targetValueTwo: mps(4, 52), ...dist(21100) }) },
     ],
   };
 }
@@ -209,12 +207,21 @@ const ideasPlan = () => ({
     {
       workoutName: "Hill repeats",
       workoutType: "running",
-      steps: [
-        { stepType: "warmup", targetType: "no.target", endCondition: "time", endConditionValue: 900 },
-        { stepType: "repeat",
-  targetType: "no.target", numberOfRepeats: 8, endCondition: "iterations", endConditionValue: 8, repeatSteps: [{ stepType: "interval", targetType: "no.target", endCondition: "time", endConditionValue: 60 }, { stepType: "recovery", targetType: "no.target", endCondition: "time", endConditionValue: 90 }] },
-        { stepType: "cooldown", targetType: "no.target", endCondition: "time", endConditionValue: 600 },
-      ],
+      steps: steps(
+        { stepType: "warmup", targetType: "no.target", ...time(900) },
+        repeat(8, { stepType: "interval", targetType: "no.target", ...time(60) }, { stepType: "recovery", targetType: "no.target", ...time(90) }),
+        { stepType: "cooldown", targetType: "no.target", ...time(600) },
+      ),
+    },
+    {
+      workoutName: "Sweet spot ride",
+      workoutType: "cycling",
+      description: "Three blocks just under threshold, easy spinning between.",
+      steps: steps(
+        { stepType: "warmup", ...power(120, 160), ...time(600) },
+        repeat(3, { stepType: "interval", ...power(230, 250), ...time(600) }, { stepType: "recovery", ...power(120, 140), ...time(300) }),
+        { stepType: "cooldown", targetType: "no.target", ...time(600) },
+      ),
     },
   ],
 });

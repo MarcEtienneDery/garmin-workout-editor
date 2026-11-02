@@ -224,43 +224,38 @@ const SCENES: Scene[] = [
     // the page's Monaco editor is the global `editor` (a script-level binding, not a property of window)
     ready: (page) => page.waitForFunction('typeof editor !== "undefined" && !!editor && document.getElementById("new").onclick !== null'),
     run: async (s, page) => {
+      const form = page.locator("#pform");
       await s.pause(700);
-      await s.click(page.locator("#filelist .file").filter({ hasText: "half-marathon-build" }), { wait: 1200 });
-      const intervals = page.locator("#outline .row.wk").filter({ hasText: "Intervals 6 x 800 m" });
-      await s.click(intervals.locator(".name"), { wait: 1600 });
-      await s.sweep(intervals.locator(".wv-chart").first(), 0.05, 0.95, 2200);
-      await s.pause(600);
-      await s.click(intervals.getByRole("button", { name: "Edit in JSON" }), { wait: 1200 });
-      // a typo the validation catches as it is typed, then put right
-      const placed = await page.evaluate(`(() => {
-        const model = editor.getModel();
-        for (let n = editor.getPosition().lineNumber; n <= model.getLineCount(); n++) {
-          const at = model.getLineContent(n).indexOf('"warmup"');
-          if (at < 0) continue;
-          editor.revealLineInCenter(n);
-          editor.setPosition({ lineNumber: n, column: at + 8 });
-          editor.focus();
-          return true;
-        }
-        return false;
+      await s.click(page.locator("#filelist .file").filter({ hasText: "half-marathon-build" }), { wait: 1400 });
+      // the interval workout in the form: one rep more, and a faster pace on the reps
+      await s.click(form.locator(".wf-pw").filter({ hasText: "Intervals 6 x 800 m" }), { wait: 1600 });
+      await s.click(form.locator(".wf-rep").getByRole("button", { name: "Times: one more" }), { wait: 900 });
+      const from = form.getByLabel("Pace from");
+      await s.click(from, { wait: 200 });
+      await page.keyboard.press("Control+A");
+      await page.keyboard.type("4:00", { delay: 110 });
+      await page.keyboard.press("Tab");
+      await s.pause(1400);
+      // the change, already in the plan's JSON
+      await s.click(page.locator("#emode button[data-mode=json]"), { wait: 400 });
+      await page.evaluate(`(() => {
+        const m = editor.getModel().findMatches('"Intervals 6 x 800 m"', false, false, true, null, false)[0];
+        if (m) { editor.revealLineInCenter(m.range.startLineNumber + 12); editor.setPosition(m.range.getStartPosition()); }
       })()`);
-      if (placed) {
-        await s.pause(500);
-        for (let i = 0; i < 6; i++) await page.keyboard.press("Backspace", { delay: 70 });
-        await page.keyboard.type("warmpu", { delay: 90 });
-        await page.locator("#problems .msg.err").first().waitFor();
-        await s.moveTo(page.locator("#problems .msg.err").first());
-        await s.pause(1800);
-        await s.moveTo(page.locator(".monaco-editor .view-lines"), 0.4, 0.5);
-        for (let i = 0; i < 6; i++) await page.keyboard.press("Backspace", { delay: 70 });
-        await page.keyboard.type("warmup", { delay: 90 });
-        await s.pause(1200);
-      }
-      const strength = page.locator("#outline .row.wk").filter({ hasText: "Strength A" });
-      await s.click(intervals.locator(".name"), { wait: 500 });
-      await s.click(strength.locator(".name"), { wait: 1400 });
-      await s.scroll(page.locator("#outline"), 640, 1400);
       await s.pause(2200);
+      await s.click(page.locator("#emode button[data-mode=form]"), { wait: 800 });
+      // a strength workout: exercises with their sets, and two of them made a superset
+      await s.click(page.locator("#outline .row.wk .name").filter({ hasText: "Strength A" }), { wait: 1600 });
+      await s.reveal(form.locator(".wf-ex").filter({ hasText: "Bent Over Row With Barbell" }), 1200);
+      await s.click(form.getByRole("button", { name: "More for Bent Over Row With Barbell" }), { wait: 700 });
+      await s.click(page.locator(".wf-menu").getByRole("menuitem", { name: "Superset with the next exercise" }), { wait: 1400 });
+      await s.click(form.locator(".wf-ss").getByRole("button", { name: "Rounds: one more" }), { wait: 1600 });
+      await s.reveal(form.locator(".wf-add"), 900);
+      await s.click(form.locator(".wf-add").getByRole("button", { name: "+ Exercise" }), { wait: 600 });
+      await s.type(page.getByLabel("Search Garmin's exercises"), "hip thrust", 90);
+      await s.pause(900);
+      await s.click(page.locator("dialog.wf-pick .wf-pk-row").first(), { wait: 1600 });
+      await s.pause(1200);
     },
   },
   {

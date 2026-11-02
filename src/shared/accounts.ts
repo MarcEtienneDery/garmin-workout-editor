@@ -5,7 +5,7 @@
  */
 import { SETTING_FIELDS, getGoals } from "./nutritionGoals";
 import { garminLogin } from "./profileLoader";
-import { INTERVAL_HOURS, MAX_PROFILE_NAME, type Measurement, type RenphoSettings, SealKeyError, type SqliteStore, isProfileName, sealing } from "./store";
+import { INTERVAL_HOURS, MAX_PROFILE_NAME, type Measurement, type Prefs, type RenphoSettings, SealKeyError, type SqliteStore, isProfileName, sealing } from "./store";
 import { isRealDay, localToday } from "./wellnessSync";
 
 /** A request the person can fix: the message is for them. */
@@ -212,11 +212,26 @@ export function renphoView(store: SqliteStore, profile: string, now = Date.now()
   };
 }
 
+// ── Preferences ──
+
+/** Change some of the profile's preferences (a key left out stays): weightUnit "lb" or "kg". */
+export function savePrefs(store: SqliteStore, profile: string, input: { weightUnit?: unknown }): Prefs {
+  const prefs = store.prefs.get(profile);
+  if (input.weightUnit !== undefined) {
+    if (input.weightUnit !== "lb" && input.weightUnit !== "kg") throw new SettingsError('The unit of weight is "lb" or "kg".');
+    prefs.weightUnit = input.weightUnit;
+  }
+  store.prefs.set(profile, prefs);
+  return prefs;
+}
+
 /** Everything the Settings view shows for a profile. */
 export function settingsView(store: SqliteStore, profile: string, now = Date.now()) {
   return {
     profile,
     garmin: garminAccount(profile),
+    // how the profile likes things shown (the unit of weight)
+    prefs: store.prefs.get(profile),
     web: { hasPassword: store.profiles.webPasswordHash(profile) !== null },
     // the daily food goals by key (with `kcalBurnPct`, the share of the burned calories the calorie goal adds), and what each can be set for (label, unit, whether it is a floor, a ceiling, an aim or the burn)
     goals: { values: getGoals(store, profile), fields: SETTING_FIELDS.map(({ max: _max, ...field }) => field) },

@@ -4,7 +4,7 @@ import { ACTIVITY_SCHEMA, ActivityTable } from "./activities";
 import { CREDENTIAL_SCHEMA, CredentialTable } from "./credentials";
 import { FOOD_CACHE_SCHEMA, FoodCacheTable } from "./foods";
 import { GoalTable, NUTRITION_SCHEMA, NutritionTable, migrateNutrition } from "./nutrition";
-import { PROFILE_SCHEMA, ProfileTable, backfillProfiles } from "./profiles";
+import { PROFILE_SCHEMA, PrefsTable, ProfileTable, backfillProfiles } from "./profiles";
 import { RENPHO_SCHEMA, RenphoTable } from "./renpho";
 import { SESSION_SCHEMA, SessionTable } from "./sessions";
 import { TOKEN_SCHEMA, TokenTable } from "./tokens";
@@ -100,6 +100,8 @@ export class SqliteStore {
   readonly wellness: WellnessTable;
   /** The profiles that exist, and the hash of each one's web sign-in password (see profiles.ts). */
   readonly profiles: ProfileTable;
+  /** How each profile likes things shown, such as its unit of weight (see profiles.ts). */
+  readonly prefs: PrefsTable;
   /** The web editor's sign-in sessions, which outlive a restart (see sessions.ts). */
   readonly sessions: SessionTable;
   /** The logins of every profile for Garmin and Renpho (see credentials.ts). */
@@ -122,6 +124,7 @@ export class SqliteStore {
     this.tokens = new TokenTable(db);
     this.wellness = new WellnessTable(db, (fn) => this.tx(fn));
     this.profiles = new ProfileTable(db);
+    this.prefs = new PrefsTable(db);
     this.sessions = new SessionTable(db);
     this.credentials = new CredentialTable(db);
     this.renpho = new RenphoTable(db, (fn) => this.tx(fn));

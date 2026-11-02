@@ -65,6 +65,12 @@ async function putPlan(profile: Profile, kind: string, text: string) {
 
 const tab = (page: Page, name: "files" | "editor" | "outline" | "problems") => page.locator(`#tabbar button[data-tab="${name}"]`);
 
+// These specs are about the JSON editor on a phone, the Plans view with JSON chosen (the choice is kept in the browser): the form on a
+// phone has workout-form.phone.spec.ts.
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("planEditor.editMode", "json"));
+});
+
 /**
  * Plans opens with its toolbar and tabs wired: the page wires them once the editor has its schema, so a tap before that does
  * nothing. Waits for that answer, then for the view.

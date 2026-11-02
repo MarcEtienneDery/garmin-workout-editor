@@ -67,7 +67,7 @@ const PROFILE_PASSWORD = "profile pass one";
 
 // ── helpers ──
 
-/** One of the four cards, by its heading. */
+/** One of the five cards, by its heading. */
 const card = (page: Page, heading: string) => page.locator(".scard").filter({ has: page.locator("h2", { hasText: heading }) });
 const goalsCard = (page: Page) => card(page, "Nutrition goals");
 const garminCard = (page: Page) => card(page, "Garmin account");
@@ -81,14 +81,14 @@ const goalField = (page: Page, key: string) => page.locator(`#s-goal_${key}`);
 const okLine = (c: Locator) => c.locator(".sline.ok:visible");
 const errLine = (c: Locator) => c.locator(".sline.err:visible");
 
-/** Open Settings (signed in already) and wait until its four cards are drawn; loaded again once if they are not (see openView). */
+/** Open Settings (signed in already) and wait until its five cards are drawn; loaded again once if they are not (see openView). */
 async function openSettings(page: Page): Promise<void> {
   for (let attempt = 1; ; attempt++) {
     if (attempt === 1) await page.goto("/#settings");
     else await page.reload();
     await ready(page);
     try {
-      await slow(page.locator("#sbody .scard")).toHaveCount(4, { timeout: 15_000 });
+      await slow(page.locator("#sbody .scard")).toHaveCount(5, { timeout: 15_000 });
       await slow(page.locator("#sbody .empty")).toHaveCount(0);
       return;
     } catch (error) {
@@ -704,7 +704,7 @@ test.describe("the web sign-in password card", () => {
       await me.reload();
       await ready(me);
       await slow(me.locator("#login")).toBeHidden();
-      await slow(me.locator("#sbody .scard")).toHaveCount(4);
+      await slow(me.locator("#sbody .scard")).toHaveCount(5);
     } finally {
       await other.close();
     }
@@ -955,12 +955,13 @@ test.describe("a profile's own Settings", () => {
 // ── the Settings view as a whole ──
 
 test.describe("the Settings view", () => {
-  test("the four cards come in order: nutrition goals, Garmin, Renpho, web sign-in; the note is never shown", async ({ me }) => {
+  test("the five cards come in order: nutrition goals, units, Garmin, Renpho, web sign-in; the note is never shown", async ({ me }) => {
     await openSettings(me);
     await slow(me.locator("#sbody h2").nth(0)).toContainText("Nutrition goals");
-    await slow(me.locator("#sbody h2").nth(1)).toContainText("Garmin account");
-    await slow(me.locator("#sbody h2").nth(2)).toContainText("Renpho scale");
-    await slow(me.locator("#sbody h2").nth(3)).toContainText("Web sign-in");
+    await slow(me.locator("#sbody h2").nth(1)).toContainText("Units");
+    await slow(me.locator("#sbody h2").nth(2)).toContainText("Garmin account");
+    await slow(me.locator("#sbody h2").nth(3)).toContainText("Renpho scale");
+    await slow(me.locator("#sbody h2").nth(4)).toContainText("Web sign-in");
     await slow(me.locator("#sNote")).toBeHidden();
   });
 

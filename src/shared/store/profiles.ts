@@ -16,7 +16,19 @@ CREATE TABLE IF NOT EXISTS profiles (
   created_at        INTEGER NOT NULL,
   web_password_hash TEXT
 ) WITHOUT ROWID;
+CREATE TABLE IF NOT EXISTS profile_prefs (
+  profile    TEXT PRIMARY KEY,
+  prefs      TEXT NOT NULL,
+  updated_at INTEGER NOT NULL
+) WITHOUT ROWID;
 `;
+
+/** How a profile likes things shown. weightUnit: the unit the editor shows weights in (plans keep lb whatever it is). */
+export interface Prefs {
+  weightUnit: "lb" | "kg";
+}
+export const DEFAULT_PREFS: Prefs = { weightUnit: "lb" };
+const WEIGHT_UNITS: readonly Prefs["weightUnit"][] = ["lb", "kg"];
 
 /** A name that is only letters, digits, hyphens and underscores, at most MAX_PROFILE_NAME of them (it names the profile's data/<name>/ folder). */
 export const isProfileName = (name: unknown): name is string => typeof name === "string" && PROFILE_NAME_REGEX.test(name);
@@ -154,5 +166,28 @@ export class ProfileTable {
   async checkWebPasswordAsync(name: string, password: string): Promise<boolean> {
     const hash = this.webPasswordHash(name);
     return hash ? passwordMatchesAsync(password, hash) : decoyCheck(password);
+  }
+}
+
+/** Each profile's preferences (see Prefs): one JSON object per profile, and a profile with no row has the defaults. */
+export class PrefsTable {
+  constructor(private readonly db: Database) {}
+
+  /** The profile's preferences; one it never chose, or a cell that cannot be read, is the default. */
+  get(profile: string): Prefs {
+    const r = this.db.prepare("SELECT prefs FROM profile_prefs WHERE profile = ?").get(profile);
+    let raw: Record<string, unknown> = {};
+    try {
+      const parsed = r && typeof r.prefs === "string" ? JSON.parse(r.prefs) : null;
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) raw = parsed;
+    } catch {
+      // a damaged cell counts as no choice
+    }
+    return { weightUnit: WEIGHT_UNITS.includes(raw.weightUnit as Prefs["weightUnit"]) ? (raw.weightUnit as Prefs["weightUnit"]) : DEFAULT_PREFS.weightUnit };
+  }
+
+  /** Keep these preferences for the profile. */
+  set(profile: string, prefs: Prefs, now = Date.now()): void {
+    this.db.prepare("INSERT INTO profile_prefs (profile, prefs, updated_at) VALUES (?, ?, ?) ON CONFLICT (profile) DO UPDATE SET prefs = excluded.prefs, updated_at = excluded.updated_at").run(profile, JSON.stringify(prefs), now);
   }
 }

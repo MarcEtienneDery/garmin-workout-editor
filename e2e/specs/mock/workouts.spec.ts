@@ -59,6 +59,11 @@ const test = base.extend<{ garmin: Profile; gme: Page }>({
 });
 test.use({ trace: "off" });
 
+// The dialog's checks below are made on its JSON (the choice is kept in the browser): its form has its own describe, at the end.
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("planEditor.editMode", "json"));
+});
+
 const planWorkout = (name: string, extra: Record<string, unknown> = {}) => ({
   workoutName: name,
   workoutType: "running",
@@ -363,6 +368,64 @@ test.describe("Workouts view: the New dialog in mock mode", () => {
     await openNewDialog(gme);
     await expect(gme.locator("#wdPlan option", { hasText: active })).toHaveCount(1);
     await expect(gme.locator("#wdPlan option", { hasText: archived })).toHaveCount(0);
+  });
+});
+
+test.describe("Workouts view: the New dialog's form", () => {
+  // the form, which the dialog opens on unless the JSON was chosen
+  test.beforeEach(async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem("planEditor.editMode", "form"));
+  });
+
+  test("+ New opens on the form: the name, the type, and the exercises a new lifting workout starts with", async ({ gme }) => {
+    await openView(gme, "workouts");
+    await openNewDialog(gme);
+    const form = gme.locator("#wdForm");
+    await expect(form.locator(".wf-name")).toHaveValue("New workout");
+    await expect(form.getByLabel("Type of workout")).toHaveValue("strength_training");
+    await expect(form.locator(".wf-ex .wf-exname")).toHaveText([/^Barbell Back Squat/, /^Barbell Bench Press/]);
+    await expect(gme.locator("#wdEditor")).toBeHidden();
+    await expect(gme.locator("#wdMode button[data-mode=form]")).toHaveAttribute("aria-pressed", "true");
+  });
+
+  test("what the form changes is in the dialog's JSON, and Save puts it in the plan", async ({ gme, garmin }) => {
+    const path = `workout-plans/${garmin.name}-form.json`;
+    await putPlan(garmin.api, path, [planWorkout("Already here")]);
+    await openView(gme, "workouts");
+    await openNewDialog(gme);
+    const form = gme.locator("#wdForm");
+    await form.locator(".wf-name").fill("Leg day");
+    await form.locator(".wf-name").press("Tab");
+    const squat = form.locator(".wf-card").filter({ hasText: "Barbell Back Squat" });
+    await squat.getByRole("button", { name: "Sets: one more" }).click();
+    await gme.locator("#wdMode button[data-mode=json]").click();
+    await expect(gme.locator("#wdEditor")).toBeVisible();
+    const shown = JSON.parse(await gme.evaluate(() => dlgEditor.getValue() as string));
+    expect(shown.workoutName).toBe("Leg day");
+    expect(shown.steps.find((s: any) => s.exerciseName === "BARBELL_BACK_SQUAT").numberOfRepeats).toBe(4);
+    await gme.locator("#wdMode button[data-mode=form]").click();
+    await gme.locator("#wdPlan").selectOption(path);
+    await gme.locator("#wdSave").click();
+    await expect(gme.locator("#wdlg")).toBeHidden();
+    const after = await readPlan(garmin.api, path);
+    expect(after.data.workouts.map((w: any) => w.workoutName)).toEqual(["Already here", "Leg day"]);
+    expect(after.data.workouts[1].steps.find((s: any) => s.exerciseName === "BARBELL_BACK_SQUAT").numberOfRepeats).toBe(4);
+  });
+
+  test("the exercise picker and the step menus work over the dialog", async ({ gme }) => {
+    await openView(gme, "workouts");
+    await openNewDialog(gme);
+    const form = gme.locator("#wdForm");
+    await form.getByRole("button", { name: "+ Exercise" }).click();
+    const picker = gme.locator("dialog.wf-pick");
+    await picker.getByLabel("Search Garmin's exercises").fill("ohp");
+    await picker.locator(".wf-pk-row").first().click();
+    await expect(picker).toBeHidden();
+    await expect(gme.locator("#wdlg")).toBeVisible();
+    await expect(form.locator(".wf-ex .wf-exname").last()).toContainText("Overhead");
+    await form.getByRole("button", { name: "More for Barbell Back Squat" }).click();
+    await gme.locator("#wdlg .wf-menu").getByRole("menuitem", { name: "Superset with the next exercise" }).click();
+    await expect(form.locator(".wf-ss")).toHaveCount(1);
   });
 });
 

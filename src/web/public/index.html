@@ -214,10 +214,108 @@
   .wv-host { padding:4px 0 8px; }
   .wv-note { color:var(--dim); margin:0 0 8px; }
   .row.wk .name::before { content:"▸ "; color:var(--dim); } .row.wk .name[aria-expanded="true"]::before { content:"▾ "; }
+  body[data-emode="form"] .row.wk .name::before { content:none; }
+  .row.wk.sel { background:#37373d; box-shadow:inset 2px 0 0 var(--accent); }
   .row.wk > .wv-chart.mini { flex:none; }
   .plans a { color:var(--accent); cursor:pointer; text-decoration:none; } .plans a:hover { text-decoration:underline; }
   .plans div { padding:2px 0; }
   details.plan-version { margin-top:10px; } details.plan-version summary { cursor:pointer; color:var(--dim); }
+
+  /* ── The workout form: the Plans view's centre (Form, or the JSON a tap away) and the Workouts view's dialog ── */
+  #center { display:flex; flex-direction:column; min-width:0; min-height:0; }
+  #ebar { flex-wrap:wrap; }
+  #ebar #ewk { flex:1 1 160px; min-width:0; max-width:420px; }
+  #ebar .spacer, #wdlg .dhead .spacer { flex:1; }
+  #eUndo, #eRedo { padding:2px 9px; font-size:15px; }
+  #center > #editor { flex:1; min-height:0; }
+  #pform, #wdForm { flex:1; min-height:0; overflow:auto; overscroll-behavior:contain; }
+  body[data-emode="form"] #center > #editor, body:not([data-emode="form"]) #pform, body:not([data-emode="form"]) #ewk,
+  #wdlg[data-emode="form"] #wdEditor, #wdlg:not([data-emode="form"]) #wdForm { display:none; }
+  .wf { max-width:760px; margin:0 auto; padding:12px 16px 48px; display:grid; gap:12px; align-content:start; }
+  .wf :is(input[type="text"], input[type="date"], textarea, select) { background:#333; color:var(--fg); border:1px solid var(--line); border-radius:3px; padding:4px 6px; font:inherit; color-scheme:dark; min-width:0; }
+  .wf [aria-invalid="true"] { border-color:var(--err); }
+  .wf button.danger { color:var(--err); }
+  .wf-head { display:grid; gap:8px; }
+  .wf-name { width:100%; font-size:17px !important; font-weight:600; }
+  .wf-row { display:flex; flex-wrap:wrap; gap:6px 14px; align-items:center; }
+  .wf-f { display:inline-grid; gap:2px; align-content:start; min-width:0; }
+  .wf-fc { display:flex; align-items:center; gap:6px; min-width:0; }
+  .wf-fl { color:var(--dim); font-size:12px; white-space:nowrap; }
+  .wf-head .wf-row { align-items:end; }
+  .wf-check { display:inline-flex; gap:6px; align-items:center; cursor:pointer; }
+  .wf-days { display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
+  .wf-day { display:inline-flex; align-items:center; }
+  .wf-notes { width:100%; resize:vertical; min-height:32px; line-height:1.4; }
+  .wf-dim { color:var(--dim); }
+  .wf-note { color:var(--dim); padding:10px 0; list-style:none; }
+  .wf-note.warn p { color:var(--warn); margin:0 0 8px; }
+  .wf-pic > summary { cursor:pointer; color:var(--dim); padding:2px 0; width:max-content; max-width:100%; }
+  .wf-pic[open] > summary { margin-bottom:8px; }
+  .wf-pic .wv-chart { height:72px; }
+  .wf-pic .mm-figs { max-width:250px; }
+  .wf-list, .wf-inner { list-style:none; margin:0; padding:0; display:grid; gap:8px; }
+  .wf-card { border:1px solid var(--line); border-left:4px solid var(--c, var(--line)); border-radius:4px; background:var(--panel); min-width:0; }
+  .wf-rep { --c:var(--warn); }
+  .wf-ch { display:flex; align-items:center; gap:8px; padding:6px 8px; background:rgba(255,255,255,.04); }
+  .wf-t { flex:1 1 0; min-width:0; display:grid; gap:1px; }
+  .wf-times { display:inline-flex; align-items:center; gap:6px; flex:none; }
+  .wf-t small { font-size:11px; }
+  .wf-title { font-weight:600; }
+  .wf-exname { all:unset; cursor:pointer; font-weight:600; overflow-wrap:anywhere; } .wf-exname:hover, .wf-exname:focus-visible { text-decoration:underline; } .wf-caret { font-size:10px; color:var(--dim); }
+  .wf-grip { flex:none; cursor:grab; color:var(--dim); touch-action:none; user-select:none; -webkit-user-select:none; padding:4px 2px; font-size:16px; line-height:1; }
+  button.wf-more { flex:none; margin-left:auto; background:none; border:0; color:var(--dim); padding:2px 8px; font-size:16px; line-height:1; }
+  button.wf-more:hover:not(:disabled) { background:#3d3d3d; color:var(--fg); }
+  .wf-line { display:flex; flex-wrap:wrap; gap:8px 18px; align-items:end; padding:8px 10px; }
+  .wf-line > .wf-x { margin-left:auto; align-self:center; }
+  .wf-ex > div + div > .wf-line { border-top:1px solid #2f2f2f; }
+  .wf-cfoot { display:flex; gap:16px; padding:0 10px 8px; }
+  button.wf-link { background:none; border:0; color:var(--accent); padding:2px 0; }
+  button.wf-link:hover:not(:disabled) { background:none; text-decoration:underline; }
+  button.wf-x { flex:none; background:none; border:0; color:var(--dim); padding:2px 6px; font-size:16px; line-height:1; }
+  button.wf-x:hover:not(:disabled) { background:#3d3d3d; color:var(--fg); }
+  .wf-stepper { display:inline-flex; align-items:center; }
+  .wf-stepper input { border-radius:0; margin:0 -1px; position:relative; }
+  button.wf-sb { padding:2px 8px; min-width:28px; }
+  .wf-stepper .wf-sb:first-child { border-radius:3px 0 0 3px; } .wf-stepper .wf-sb:last-child { border-radius:0 3px 3px 0; }
+  .wf input.wf-num { width:64px; text-align:center; }
+  .wf input.wf-int { width:44px; }
+  .wf-member { border-top:1px solid #2f2f2f; }
+  .wf-mh { display:flex; align-items:center; gap:8px; padding:6px 10px 0; }
+  /* a step: its grip, then its fields (wrapping on a narrow screen), then its menu, which stays at the top right */
+  .wf-step { display:grid; grid-template-columns:auto minmax(0,1fr) auto; gap:4px 8px; align-items:center; padding:6px 8px; }
+  .wf-step > .wf-more { align-self:start; }
+  .wf-sf { display:flex; flex-wrap:wrap; align-items:center; gap:6px 10px; min-width:0; }
+  .wf-end, .wf-tgt { display:inline-flex; gap:6px; align-items:center; }
+  .wf-under { grid-column:2 / -1; display:grid; gap:4px; }
+  .wf-then { display:flex; align-items:center; gap:8px; }
+  .wf-inner { padding:0 8px 4px; }
+  .wf-inner > li { border:1px solid #333; border-left:3px solid var(--c); border-radius:3px; background:rgba(255,255,255,.02); }
+  .wf-msgs .msg { padding:0 10px 6px; font-size:12px; }
+  .wf-add { display:flex; flex-wrap:wrap; gap:8px; }
+  .wf-simple { display:grid; gap:8px; }
+  .wf-simple p { margin:0; }
+  .wf-plan .wf-pw { cursor:pointer; }
+  .wf-pw > button { all:unset; display:grid; gap:2px; width:100%; box-sizing:border-box; padding:8px 10px; cursor:pointer; }
+  .wf-pw > button:focus-visible { outline:2px solid var(--accent); outline-offset:-2px; }
+  .wf-pw small { color:var(--dim); }
+  .wf-pw .wv-chart.mini { grid-area:auto; margin-top:4px; }
+  .wf-menu { inset:auto; margin:0; width:max-content; min-width:200px; max-width:calc(100vw - 16px); padding:4px; background:var(--panel); color:var(--fg); border:1px solid var(--line); border-radius:6px; box-shadow:0 8px 24px rgba(0,0,0,.5); }
+  .wf-menu:popover-open { display:flex; flex-direction:column; }
+  .wf-menu button { border:0; background:none; text-align:left; padding:7px 12px; }
+  .wf-menu button.danger { color:var(--err); }
+  .wf-card.wf-lifted { opacity:.4; }
+  .wf-card.wf-drop-before { box-shadow:0 -3px 0 var(--accent); } .wf-card.wf-drop-after { box-shadow:0 3px 0 var(--accent); }
+  body.wf-dragging, body.wf-dragging * { cursor:grabbing !important; user-select:none; }
+  dialog.wf-pick[open] { display:flex; flex-direction:column; width:min(560px, 96vw); height:min(82dvh, 720px); }
+  .wf-pk-bar { padding:8px 12px; } .wf-pk-bar input { width:100%; }
+  .wf-pk-cats { display:flex; gap:4px; overflow-x:auto; padding:0 12px 8px; scrollbar-width:thin; }
+  .wf-pk-cats .tchip { flex:none; }
+  .wf-pk-list { flex:1; min-height:0; overflow:auto; padding:0 6px 10px; }
+  button.wf-pk-row { display:grid; gap:1px; width:100%; text-align:left; background:none; border:0; border-bottom:1px solid #2f2f2f; border-radius:0; padding:8px; }
+  button.wf-pk-row.cur b::after { content:" ✓"; color:var(--ok); }
+  .wf-pk-row small { color:var(--dim); }
+  .wf-pk-h { color:var(--dim); font-size:11px; text-transform:uppercase; letter-spacing:.06em; padding:10px 8px 4px; }
+  #wdlg .dhead .seg button { padding:2px 10px; }
 
   /* ── Recovery view: the readiness for a day, the trends, the stored numbers and Garmin's responses ── */
   body:not([data-view="recovery"]) #rview, body:not([data-view="weight"]) #bview, body:not([data-view="food"]) #fview, body:not([data-view="settings"]) #sview, body:not([data-view="today"]) #tview { display:none; }
@@ -727,9 +825,9 @@
     #activity pre { padding:4px 12px; font-size:12px; }
 
     main { display:block; position:relative; overflow:hidden; }
-    #files, #editor, #side { width:100%; height:100%; border:0; }
+    #files, #center, #side { width:100%; height:100%; border:0; }
     body:not([data-tab="files"]) #files,
-    body:not([data-tab="editor"]) #editor,
+    body:not([data-tab="editor"]) #center,
     body[data-tab="files"] #side, body[data-tab="editor"] #side { display:none; }
     body[data-tab="outline"] #problemsPane, body[data-tab="problems"] #outlinePane { display:none; }
     aside h2 { padding:14px 12px 6px; font-size:12px; }
@@ -767,6 +865,21 @@
     #wdPlanRow label { flex-direction:column; align-items:stretch; width:100%; gap:4px; }
     #wdlg[open] { width:100vw; max-width:100vw; height:var(--vvh, 100dvh); max-height:var(--vvh, 100dvh); top:var(--vvtop, 0px); margin:0; border-radius:0; border:0; }
     #dlg, #hdlg, #pdlg { width:94vw; }
+    .wf { padding:10px 12px 48px; }
+    .wf-line { display:grid; grid-template-columns:1fr 1fr; gap:8px 12px; }
+    .wf-line > .wf-x { grid-column:2; justify-self:end; }
+    .wf :is(input[type="date"], textarea) { min-height:40px; font-size:16px; }
+    button.wf-sb { min-width:40px; padding:0; }
+    .wf input.wf-num { width:62px; padding:4px 2px; } .wf input.wf-int { width:46px; }
+    .wf-step { gap:4px 6px; padding:6px 6px; }
+    .wf-sf { gap:6px 8px; }
+    button.wf-more, button.wf-x { min-width:40px; }
+    button.wf-link { min-height:36px; }
+    .wf-menu { left:0; right:0; bottom:0; width:auto; max-width:none; padding:8px 8px calc(8px + env(safe-area-inset-bottom)); border-radius:12px 12px 0 0; }
+    .wf-menu button { min-height:44px; font-size:15px; }
+    dialog.wf-pick[open] { width:100vw; max-width:100vw; height:var(--vvh, 100dvh); max-height:var(--vvh, 100dvh); top:var(--vvtop, 0px); margin:0; border-radius:0; border:0; }
+    button.wf-pk-row { padding:10px 8px; font-size:15px; }
+    #ebar { gap:6px; }
 
     #aview { display:block; position:relative; overflow:hidden; }
     #amain, #adetail { width:100%; height:100%; border:0; }
@@ -888,7 +1001,20 @@
     <div id="filebar"><label for="fileSort">Sort</label><select id="fileSort" title="Order the files inside each folder"></select></div>
     <div id="filelist"></div>
   </aside>
-  <div id="editor"></div>
+  <div id="center">
+    <div class="wbar" id="ebar">
+      <div class="seg" id="emode" role="group" aria-label="Edit the plan as">
+        <button data-mode="form" aria-pressed="true">Form</button>
+        <button data-mode="json" aria-pressed="false" title="The plan's JSON, every field">JSON</button>
+      </div>
+      <select id="ewk" aria-label="What the form shows"></select>
+      <span class="spacer"></span>
+      <button id="eUndo" title="Undo (Ctrl+Z)" aria-label="Undo" disabled>↶</button>
+      <button id="eRedo" title="Redo (Ctrl+Shift+Z)" aria-label="Redo" disabled>↷</button>
+    </div>
+    <div id="editor"></div>
+    <div id="pform"></div>
+  </div>
   <aside id="side">
     <div id="outlinePane">
       <h2>Outline</h2>
@@ -1085,9 +1211,10 @@
   <form id="mvAny"><label for="mvDate">Any day</label><input type="date" id="mvDate" required><button class="primary">Move</button></form>
 </div>
 
-<dialog id="wdlg">
-  <div class="dhead"><b id="wdTitle">Workout</b><button id="wdClose" aria-label="Close">✕</button></div>
+<dialog id="wdlg" data-emode="form">
+  <div class="dhead"><b id="wdTitle">Workout</b><div class="seg" id="wdMode" role="group" aria-label="Edit the workout as"><button data-mode="form" aria-pressed="true">Form</button><button data-mode="json" aria-pressed="false">JSON</button></div><button id="wdClose" aria-label="Close">✕</button></div>
   <div class="dform" id="wdPlanRow" hidden><label>Add to plan <select id="wdPlan"></select></label></div>
+  <div id="wdForm"></div>
   <div id="wdEditor"></div>
   <div id="wdProblems"></div>
   <div class="dfoot">
@@ -1150,6 +1277,8 @@
 <script src="/workoutModel.js"></script>
 <script src="/exerciseMuscles.js"></script>
 <script src="/muscleMap.js"></script>
+<script src="/workoutFormModel.js"></script>
+<script src="/workoutForm.js"></script>
 <script src="/activityModel.js"></script>
 <script src="/activityCharts.js"></script>
 <script src="/activityMap.js"></script>
@@ -1497,6 +1626,7 @@ async function openFile(p, discarded = false) { // `discarded`: the person was a
   const f = await api("GET", fileUrl(p));
   current = { path: f.path, version: f.version };
   savedText = f.text;
+  P.path = f.path; P.sel = null;
   editor.setValue(f.text);
   editor.setScrollTop(0);
   // A plan opens on its outline (the JSON is one tab away). A file with no workout list to outline, or with broken JSON, opens in the editor.
@@ -1837,15 +1967,15 @@ async function runValidate() {
 function parsed() { try { return JSON.parse(editor.getValue()); } catch { return null; } }
 const workoutsOf = (d) => (Array.isArray(d) ? d : d && Array.isArray(d.workouts) ? d.workouts : null);
 
-function newWorkout(name) {
-  return { workoutName: name, workoutType: "strength_training", description: "", sendToDevice: true,
-    steps: [{ stepType: "interval", targetType: "no.target", endCondition: "reps", endConditionValue: 10, reps: 10, exerciseName: "BARBELL_BENCH_PRESS", stepOrder: 1 }] };
-}
+/** A new workout of this type (strength unless said), with the steps the form starts such a workout with. */
+const newWorkout = (name, type = "strength_training") => WFM.newWorkout(type, name);
 
+/** Change the open plan's workouts (`fn` gets the list, and the whole document); one Undo takes the change back. */
 function mutate(fn) {
   const data = parsed(); const list = workoutsOf(data);
   if (!list) return toast("Fix the JSON first.");
-  fn(list);
+  fn(list, data);
+  editor.pushUndoStop();
   editor.executeEdits("outline", [{ range: editor.getModel().getFullModelRange(), text: JSON.stringify(data, null, 2) + "\n" }]);
   editor.pushUndoStop();
 }
@@ -1940,11 +2070,21 @@ async function planRowGarmin(i, action, state) {
   }
 }
 
-/** Put the editor's cursor on a workout of the open plan. */
-function revealWorkout(w) {
+/** Put the editor's cursor on a workout of the open plan, or on its step `step` (its place in the steps). */
+function revealWorkout(w, step) {
   setTab("editor"); editor.layout();
   const m = editor.getModel().findMatches('"workoutName"\\s*:\\s*' + JSON.stringify(w.workoutName).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), false, true, true, null, false);
-  if (m.length) { editor.revealLineInCenter(m[0].range.startLineNumber); editor.setPosition(m[0].range.getStartPosition()); editor.focus(); }
+  if (!m.length) return;
+  if (step !== undefined && step !== null) {
+    // the steps of this workout start after the "steps" key that follows its name (or come before it: keys are in any order)
+    const start = editor.getModel().findMatches('"steps"', false, false, true, null, false).map((x) => x.range.startLineNumber);
+    const own = start.filter((l) => l < m[0].range.startLineNumber).pop();
+    const after = start.find((l) => l > m[0].range.startLineNumber);
+    const next = editor.getModel().findMatches('"workoutName"', false, false, true, null, false).map((x) => x.range.startLineNumber).find((l) => l > m[0].range.startLineNumber);
+    const from = after !== undefined && (next === undefined || after < next) ? after : own;
+    if (from !== undefined) return revealStep(editor, step, from);
+  }
+  editor.revealLineInCenter(m[0].range.startLineNumber); editor.setPosition(m[0].range.getStartPosition()); editor.focus();
 }
 
 // Which workouts of the open plan show their picture. Kept here because renderOutline starts from scratch on every edit and every sync result.
@@ -1982,20 +2122,28 @@ function renderOutline() {
       };
       top.prepend(chip);
     }
-    // the name opens the workout's picture; the JSON is one button away
-    name.setAttribute("aria-expanded", String(open));
-    clickable(name, () => { if (open) outlineOpen.names.delete(label); else outlineOpen.names.add(label); renderOutline(); });
+    if (editMode === "form") { // the name opens the workout in the form
+      row.classList.toggle("sel", P.sel === i);
+      if (P.sel === i) row.setAttribute("aria-current", "true");
+      clickable(name, () => selectPlanWorkout(i));
+    } else { // the name opens the workout's picture; the JSON is one button away
+      name.setAttribute("aria-expanded", String(open));
+      clickable(name, () => { if (open) outlineOpen.names.delete(label); else outlineOpen.names.add(label); renderOutline(); });
+    }
     if (garminOn(planProfile())) {
       const state = st?.state;
       const up = ["modified", "not-uploaded", "missing"].includes(state);
       addButton("upload", up ? "Upload this workout to Garmin" : `Upload: ${state === "synced" ? "already up to date" : "still checking"}`, up && !garminBusy, guard(() => planRowGarmin(i, "upload", state)));
       addButton("download", state === "modified" ? "Download Garmin's version into this workout" : `Download: ${state === "synced" ? "already up to date" : "not on Garmin"}`, state === "modified" && !garminBusy, guard(() => planRowGarmin(i, "download", state)));
     }
-    addButton("clone", "Duplicate", true, () => mutate((l) => { const c = structuredClone(l[i]); delete c.workoutId; c.workoutName += " (copy)"; l.splice(i + 1, 0, c); }));
+    // the form stays on the workout it shows when the list shifts under it
+    addButton("clone", "Duplicate", true, () => { if (P.sel !== null && P.sel > i) P.sel++; mutate((l) => { const c = structuredClone(l[i]); delete c.workoutId; c.workoutName += " (copy)"; l.splice(i + 1, 0, c); }); });
     addButton("delete", "Remove from the plan", true, guard(async () => {
-      if (await confirmDialog({ title: `Remove "${w?.workoutName}"?`, text: "It leaves the plan; a copy on Garmin, if any, is not touched.", ok: "Remove", danger: true })) mutate((l) => l.splice(i, 1));
+      if (!(await confirmDialog({ title: `Remove "${w?.workoutName}"?`, text: "It leaves the plan; a copy on Garmin, if any, is not touched.", ok: "Remove", danger: true }))) return;
+      if (P.sel === i) P.sel = null; else if (P.sel !== null && P.sel > i) P.sel--;
+      mutate((l) => l.splice(i, 1));
     }), "ico danger");
-    if (open) {
+    if (open && editMode !== "form") {
       const host = mk("div", "wv-host");
       const flagged = st && st.differences.length && st.state === "modified" ? WM.changedSteps(st.differences) : new Set();
       if (flagged.size) host.append(flagNote(st.differences, "on Garmin"));
@@ -2012,12 +2160,20 @@ function renderOutline() {
   });
   const add = document.createElement("div"); add.className = "row";
   add.innerHTML = "<button>+ Add workout</button>";
-  add.firstChild.onclick = guard(async () => {
-    const n = await promptDialog({ title: "Add a workout", input: { label: "Workout name", value: "New workout" }, ok: "Add" });
-    if (n) mutate((l) => l.push(newWorkout(n)));
-  });
+  add.firstChild.onclick = guard(addPlanWorkout);
   el.append(add);
 }
+
+/** Add a workout to the open plan: its name and type asked, its steps those a new workout of the type starts with; the form opens on it. */
+async function addPlanWorkout() {
+  const types = WFM.TYPES.map((t) => ({ value: t, label: WFM.SPORTS[t].label }));
+  const r = await askDialog({ title: "Add a workout", input: { label: "Workout name", value: "New workout" }, choice: { label: "Type", options: types }, ok: "Add" });
+  if (!r) return;
+  let at = -1;
+  mutate((l) => { at = l.push(newWorkout(r.input, r.choice)) - 1; });
+  if (at >= 0 && editMode === "form") selectPlanWorkout(at);
+}
+
 
 /** The Move menu of the open plan's workout `i`: moving saves the plan, so a plan with unsaved changes is saved first, once asked. */
 const planMove = (i, w) => ({
@@ -2031,6 +2187,201 @@ const planMove = (i, w) => ({
     await moveWorkout({ name: w.workoutName, plans: [{ path: current.path, index: i }], from, to, workoutId: w.workoutId, profile: planProfile() });
   }),
 });
+
+// ── The workout form: a workout edited in fields, the JSON one tap away ──
+// The Plans view's centre shows the open plan in a form (the plan's week and its workouts, or one workout) or as JSON; the Workouts view's
+// dialog does the same for one workout. The form writes every change into the JSON editor beside it, so the two never disagree, its Undo
+// is the editor's, and Save, the checks and the comparison with Garmin work on what the form wrote. workoutForm.js draws a workout.
+const WFM = WorkoutFormModel;
+const EDIT_MODE_KEY = "planEditor.editMode";
+let editMode = (() => { try { return localStorage.getItem(EDIT_MODE_KEY) === "json" ? "json" : "form"; } catch { return "form"; } })();
+document.body.dataset.emode = editMode;
+const P = { path: null, sel: null }; // the open plan's workout the form shows (its place in the list), null for the plan itself
+
+/** The unit a profile has weights shown in ("lb" or "kg", Settings); plans keep lb whatever it is. */
+const weightUnitOf = (profile) => ((garmin.prefs || {})[profile || garmin.defaultProfile || garmin.profiles[0]] || {}).weightUnit || "lb";
+
+const exerciseLists = new Map(); // profile -> the promise of GET /api/exercises
+function exercisesFor(profile) {
+  const key = profile || "";
+  if (!exerciseLists.has(key)) {
+    const got = api("GET", "/api/exercises" + (profile ? `?profile=${encodeURIComponent(profile)}` : ""));
+    exerciseLists.set(key, got);
+    got.catch(() => exerciseLists.delete(key)); // a failed load is asked again next time
+  }
+  return exerciseLists.get(key);
+}
+
+/** The picture of a workout in the form: its profile, or the muscles a lifting workout works. */
+function formPicture(w, profile) {
+  const a = WM.analyze(w, { pacer: pacerFor(profile), unit: weightUnitOf(profile) }), box = mk("div", "wvbox"), root = mk("div", "wv");
+  if (a.hasSteps) root.append(profileEl(a));
+  linkVisual(root);
+  box.append(root);
+  return box;
+}
+
+/** A form for a host: { read, write, profile, undo, toJson } (see workoutForm.js). */
+function makeForm(host) {
+  return WorkoutForm.create({
+    read: host.read, write: host.write, undo: host.undo, toJson: host.toJson,
+    unit: () => weightUnitOf(host.profile()),
+    pacer: () => pacerFor(host.profile()),
+    picture: (w) => formPicture(w, host.profile()),
+    about: (a) => { const basis = paceBasis(a, !RUNS.has(host.profile() || "")); return basis ? help("pace", basis, "the estimate") : null; },
+    exercises: () => exercisesFor(host.profile()),
+    toast, toastUndo, ask: askDialog,
+    modal: (dlg) => { dlg.showModal(); navDialog(dlg); },
+  });
+}
+
+const planForm = makeForm({
+  read: () => {
+    const list = workoutsOf(parsed()), w = list && P.sel !== null ? list[P.sel] : null;
+    return w ? { workout: w } : { workout: null, problem: "This workout is no longer in the plan." };
+  },
+  write: (w) => mutate((l) => { l[P.sel] = w; }),
+  profile: () => planProfile(),
+  undo: () => editor.getModel().undo(),
+  toJson: (i) => { setEditMode("json"); const w = (workoutsOf(parsed()) || [])[P.sel]; if (w) revealWorkout(w, i); },
+});
+
+/** Put the cursor of a JSON editor on the (i+1)-th step after line `from` (its "stepType"), or on that line when there is no step i. */
+function revealStep(ed, i, from = 1) {
+  requestAnimationFrame(() => {
+    ed.layout();
+    const steps = ed.getModel().findMatches('"stepType"', false, false, true, null, false).filter((m) => m.range.startLineNumber >= from);
+    const at = i === null || i === undefined ? null : steps[i];
+    const pos = at ? at.range.getStartPosition() : { lineNumber: from, column: 1 };
+    ed.revealLineInCenter(pos.lineNumber); ed.setPosition(pos); ed.focus();
+  });
+}
+
+/** Form or JSON, for the Plans view and the Workouts view's dialog alike; the choice is kept. */
+function setEditMode(mode) {
+  editMode = mode === "json" ? "json" : "form";
+  try { localStorage.setItem(EDIT_MODE_KEY, editMode); } catch { /* the choice lasts until the page closes */ }
+  document.body.dataset.emode = editMode;
+  $("wdlg").dataset.emode = editMode;
+  for (const id of ["emode", "wdMode"]) $(id).querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.mode === editMode)));
+  if (editMode === "json") {
+    if (editor) requestAnimationFrame(() => editor.layout());
+    if (dlgEditor && $("wdlg").open) requestAnimationFrame(() => dlgEditor.layout());
+  } else {
+    renderPlanForm();
+    if ($("wdlg").open) dialogForm.render();
+  }
+  renderOutline();
+}
+
+/** Show workout i of the open plan in the form (null: the plan itself), and on a phone the pane it is in. */
+function selectPlanWorkout(i, { tab = true } = {}) {
+  P.path = current ? current.path : null; P.sel = i;
+  if (editMode !== "form") setEditMode("form");
+  renderPlanForm(true);
+  renderOutline();
+  if (tab && mobileQuery.matches) setTab("editor");
+  $("pform").scrollTop = 0;
+}
+
+/**
+ * Draw the Plans view's form from the editor's text: the plan, or the workout chosen. Unless `now`, once the event that changed the text
+ * is over: a field left by Tab has given the focus to the next one by then, and the field keeps it (by its data-fk).
+ */
+let planFormTimer = 0;
+function renderPlanForm(now = false) {
+  setUndoButtons();
+  clearTimeout(planFormTimer);
+  if (editMode !== "form") return;
+  if (!now) { planFormTimer = setTimeout(() => renderPlanForm(true), 0); return; }
+  const box = $("pform"), data = current ? parsed() : undefined, list = workoutsOf(data);
+  if (current && P.path !== current.path) { P.path = current.path; P.sel = null; }
+  if (P.sel !== null && !(list && list[P.sel])) P.sel = null;
+  const pick = $("ewk");
+  pick.replaceChildren(new Option(list ? "The plan" : "—", "plan"), ...(list || []).map((w, i) => new Option(w && w.workoutName ? w.workoutName : `Workout ${i + 1}`, String(i))));
+  pick.value = P.sel === null ? "plan" : String(P.sel);
+  pick.disabled = !list;
+  const note = (text, button) => { const wrap = mk("div", "wf"); wrap.append(mk("div", "wf-note", text)); if (button) wrap.append(button); box.replaceChildren(wrap); };
+  if (!current) return note("Open a plan from the list.");
+  if (data === null) { const b = mk("button", "", "Show the JSON"); b.onclick = () => setEditMode("json"); return note("The JSON has a mistake, so the form cannot read it: the Checks say where.", b); }
+  if (!list) { const b = mk("button", "", "Show the JSON"); b.onclick = () => setEditMode("json"); return note("This file is not a list of workouts: it is edited as JSON.", b); }
+  if (P.sel === null) {
+    const active = document.activeElement, inside = !!active && box.contains(active), key = inside ? active.dataset.fk : null;
+    const page = planPage(data, list);
+    if (inside) active.blur(); // a focused element taken out of the page makes Chrome scroll the pane to its top
+    box.replaceChildren(page);
+    if (key) box.querySelector(`[data-fk="${CSS.escape(key)}"]`)?.focus({ preventScroll: true });
+    return;
+  }
+  if (planForm.el.parentElement !== box) box.replaceChildren(planForm.el);
+  planForm.render();
+}
+
+/** The plan in the form: its week and notes, and its workouts, each opening in the form. */
+function planPage(data, list) {
+  const box = mk("div", "wf wf-plan"), profile = planProfile();
+  if (!Array.isArray(data)) {
+    const head = mk("section", "wf-head"), row = mk("div", "wf-row");
+    const field = (label, key, type) => {
+      const input = mk(type === "notes" ? "textarea" : "input", type === "notes" ? "wf-notes" : "");
+      if (type !== "notes") input.type = "date";
+      input.value = data[key] ?? "";
+      input.setAttribute("aria-label", label);
+      input.dataset.fk = key;
+      input.onchange = () => mutate((l, d) => { if (input.value === "" && d[key] === undefined) return; d[key] = input.value; });
+      if (type === "notes") { input.placeholder = "Notes on the plan"; input.rows = 2; return input; }
+      const f = mk("label", "wf-f"); f.append(mk("span", "wf-fl", label), input);
+      row.append(f);
+      return f;
+    };
+    field("Week from", "weekStart", "date"); field("to", "weekEnd", "date");
+    head.append(row, field("Notes", "notes", "notes"));
+    box.append(head);
+  }
+  const ol = mk("ol", "wf-list");
+  ol.setAttribute("aria-label", "Workouts");
+  list.forEach((w, i) => {
+    const li = mk("li", "wf-card wf-pw"), b = mk("button");
+    li.style.setProperty("--c", typeColor(w && w.workoutType));
+    b.type = "button"; b.dataset.fk = "pw:" + i;
+    const days = w && w.scheduledDate !== undefined ? [].concat(w.scheduledDate).join(", ") : "not scheduled";
+    b.append(mk("b", "", (w && w.workoutName) || `Workout ${i + 1}`), mk("small", "", [w && WFM.SPORTS[w.workoutType] ? WFM.SPORTS[w.workoutType].label : w && w.workoutType, days].filter(Boolean).join(" · ")));
+    if (w && Array.isArray(w.steps) && w.steps.length) { const mini = profileEl(WM.analyze(w, { pacer: pacerFor(profile) }), { mini: true }); if (mini) b.append(mini); }
+    b.onclick = () => selectPlanWorkout(i);
+    li.append(b); ol.append(li);
+  });
+  if (!list.length) ol.append(mk("li", "wf-note", "No workouts yet."));
+  const add = mk("div", "wf-add"), btn = mk("button", "", "+ Add workout");
+  btn.type = "button"; btn.dataset.fk = "addw"; btn.onclick = guard(addPlanWorkout);
+  add.append(btn);
+  box.append(ol, add);
+  return box;
+}
+
+function setUndoButtons() {
+  const model = editor && editor.getModel();
+  $("eUndo").disabled = !(current && model && model.canUndo && model.canUndo());
+  $("eRedo").disabled = !(current && model && model.canRedo && model.canRedo());
+}
+
+function bindEditMode() {
+  $("emode").querySelectorAll("button").forEach((b) => (b.onclick = () => setEditMode(b.dataset.mode)));
+  $("wdMode").querySelectorAll("button").forEach((b) => (b.onclick = () => setEditMode(b.dataset.mode)));
+  setEditMode(editMode);
+  $("ewk").onchange = (e) => selectPlanWorkout(e.target.value === "plan" ? null : Number(e.target.value), { tab: false });
+  $("eUndo").onclick = () => { editor.getModel().undo(); setUndoButtons(); };
+  $("eRedo").onclick = () => { editor.getModel().redo(); setUndoButtons(); };
+  // in the form, Ctrl+Z and Ctrl+Shift+Z (or Ctrl+Y) undo and redo the form's changes, except in a field, which has its own; Ctrl+S saves
+  $("pform").addEventListener("keydown", (e) => {
+    if (!(e.ctrlKey || e.metaKey)) return;
+    const key = e.key.toLowerCase(), field = e.target.matches("input, textarea, select");
+    if (key === "s") { e.preventDefault(); e.target.dispatchEvent(new Event("change", { bubbles: true })); save(); return; }
+    if (field || !editor || (key !== "z" && key !== "y")) return;
+    e.preventDefault();
+    if (key === "y" || e.shiftKey) editor.getModel().redo(); else editor.getModel().undo();
+    setUndoButtons();
+  });
+}
 
 // ── Workouts view: the Garmin library next to the plan workouts, with create / edit / delete ──
 // Everything here goes through /api/workouts and /api/garmin/workout, which keep the plan files
@@ -2365,6 +2716,12 @@ function profileEl(a, { mini = false, changed = new Set() } = {}) {
   return chart;
 }
 
+/** How the steps of a workout that name no pace were timed, said once the runs are known; "" when every step has its pace. */
+function paceBasis(a, loading) {
+  if (a.pace.from === "runs") return `Steps with no pace target are timed from your last ${a.pace.runs} runs: at the pace you ran at that heart rate, or ${WM.clock(a.pace.easy)} /km with no heart-rate target.`;
+  return a.pace.from === "default" && !loading ? `Steps with no pace target count at ${WM.clock(WM.ASSUMED_PACE)} /km: no recent runs to learn your pace from.` : "";
+}
+
 function summaryEl(w, a, loading, move) {
   const box = mk("div", "wv-sum"), approx = a.assumed || a.open ? "~" : "";
   const why = [`Estimated: ${a.pace.from === "runs" ? "a step with no pace target is timed from your recent runs" : `a step with no pace target counts at ${WM.clock(WM.ASSUMED_PACE)} /km`}`, `each rep counts ${WM.SECONDS_PER_REP} s`, a.open ? `${a.open} step${a.open > 1 ? "s" : ""} ending on the lap button ${a.open > 1 ? "are" : "is"} not counted` : ""].filter(Boolean).join("; ");
@@ -2379,8 +2736,7 @@ function summaryEl(w, a, loading, move) {
   if (dates.length && move) box.append(movableDays(dates, move.run));
   else if (dates.length) stat(dates.join(", "), "Scheduled");
   // how the steps with no pace were timed, behind an ⓘ on the estimate
-  const basis = a.pace.from === "runs" ? `Steps with no pace target are timed from your last ${a.pace.runs} runs: at the pace you ran at that heart rate, or ${WM.clock(a.pace.easy)} /km with no heart-rate target.`
-    : a.pace.from === "default" && !loading ? `Steps with no pace target count at ${WM.clock(WM.ASSUMED_PACE)} /km: no recent runs to learn your pace from.` : "";
+  const basis = paceBasis(a, loading);
   if (basis) { const [info, note] = help("pace", basis, "the estimate"); (estimate[0] || box).append(info); box.append(note); }
   if (w && w.description) box.append(mk("div", "wv-notes", w.description));
   return box;
@@ -2400,7 +2756,7 @@ function movableDays(dates, run) {
   return box;
 }
 
-function cardEl(node, w, changed) {
+function cardEl(node, w, changed, unit) {
   const li = mk("li", "wv-card");
   li.dataset.k = node.key; li.tabIndex = 0;
   if (node.kind === "sets") {
@@ -2409,7 +2765,7 @@ function cardEl(node, w, changed) {
     const head = mk("div", "wv-ch"), list = mk("ul", "wv-sets");
     head.append(mk("span", "wv-title", WM.prettyName(node.name)), mk("small", "", `${total} set${total === 1 ? "" : "s"}`));
     for (const line of node.lines) {
-      const d = WM.describeSet(line.st, line.times), row = mk("li", changed.has(line.index) ? "changed" : "");
+      const d = WM.describeSet(line.st, line.times, unit), row = mk("li", changed.has(line.index) ? "changed" : "");
       row.append(mk("span", "n", line.times > 1 ? `${line.times} ×` : ""), mk("b", "", `${d.reps} reps`));
       if (d.load) row.append(mk("span", "", d.load));
       if (d.rest) row.append(mk("span", "r", `rest ${d.rest}`));
@@ -2419,7 +2775,7 @@ function cardEl(node, w, changed) {
     li.append(head, list);
     return li;
   }
-  const d = WM.describeStep(node.st, w);
+  const d = WM.describeStep(node.st, w, unit);
   li.classList.add("k-" + d.kind);
   const head = mk("div", "wv-ch"), metrics = mk("div", "wv-metrics");
   head.append(mk("span", "wv-title", d.title));
@@ -2431,12 +2787,12 @@ function cardEl(node, w, changed) {
   return li;
 }
 
-function stepListEl(nodes, w, changed) {
+function stepListEl(nodes, w, changed, unit) {
   const ol = mk("ol", "wv-steps");
   for (const n of nodes) {
-    if (n.kind !== "group") { ol.append(cardEl(n, w, changed)); continue; }
+    if (n.kind !== "group") { ol.append(cardEl(n, w, changed, unit)); continue; }
     const g = mk("li", "wv-group");
-    g.append(mk("div", "wv-gh", `⟳ ${WM.isSuperset(n) ? `Superset · ${n.times} rounds` : `${n.times} times`}`), stepListEl(n.children, w, changed));
+    g.append(mk("div", "wv-gh", `⟳ ${WM.isSuperset(n) ? `Superset · ${n.times} rounds` : `${n.times} times`}`), stepListEl(n.children, w, changed, unit));
     ol.append(g);
   }
   return ol;
@@ -2472,9 +2828,9 @@ function linkVisual(root) {
 
 /** `move`, for a picture of plan workouts: { dates, run(from, to) }, the days they are on, each with a Move menu. */
 function workoutVisual(w, { changed = new Set(), profile, move } = {}) {
-  const a = WM.analyze(w, { pacer: pacerFor(profile) }), box = mk("div", "wvbox"), root = mk("div", "wv");
+  const unit = weightUnitOf(profile), a = WM.analyze(w, { pacer: pacerFor(profile), unit }), box = mk("div", "wvbox"), root = mk("div", "wv");
   root.append(summaryEl(w, a, !RUNS.has(profile || ""), move));
-  if (a.hasSteps) root.append(profileEl(a, { changed }), stepListEl(a.tree, w, changed));
+  if (a.hasSteps) root.append(profileEl(a, { changed }), stepListEl(a.tree, w, changed, unit));
   else root.append(mk("div", "wv-empty", w && w.distanceMeters ? "No steps: Garmin builds its own for a distance-only run." : "No steps."));
   linkVisual(root);
   box.append(root);
@@ -2553,6 +2909,12 @@ function renderDetail() {
 async function openPlanWorkout(path, w) {
   setView("plans");
   if (!current || current.path !== path) await openFile(path);
+  if (!current || current.path !== path) return; // declined to discard the open file's changes
+  if (editMode === "form") {
+    const i = (workoutsOf(parsed()) || []).findIndex((x) => x && x.workoutName === w.workoutName);
+    selectPlanWorkout(i >= 0 ? i : null);
+    return;
+  }
   outlineOpen.path = path; outlineOpen.names.add(w.workoutName);
   setTab("outline"); renderOutline();
   [...$("outline").children].find((r) => r.dataset.name === w.workoutName)?.scrollIntoView({ block: "nearest" });
@@ -3247,7 +3609,10 @@ async function loadStats() {
 
 const fmtKm = (m) => `${(m / 1000).toLocaleString(undefined, { maximumFractionDigits: 1 })} km`;
 const fmtNum = (n) => Math.round(n).toLocaleString();
-const lb = (w) => `${+w.toFixed(1)} lb`;
+/** A volume lifted (kept in lb), whole, in the unit of the Activities view's profile. */
+const lbVolume = (v) => (weightUnitOf(A.profile) === "kg" ? `${fmtNum(v / WFM.LB_PER_KG)} kg` : `${fmtNum(v)} lb`);
+/** A weight lifted (kept in lb), in the unit of the Activities view's profile. */
+const lb = (w) => WM.weight(w, weightUnitOf(A.profile));
 const fromNote = (b) => `from ${b.reps} @ ${lb(b.weight)} on ${b.date}`;
 const ONE_RM_NOTE = "est. 1RM: your best set of the exercise by the Epley formula, weight × (1 + reps ÷ 30), over sets of up to 12 counted reps.";
 /** A list's heading with an ⓘ; the note opens at the top of the list. */
@@ -3335,7 +3700,7 @@ function renderActivityStats() {
     heading("Strength");
     box.append(tiles([
       [fmtNum(g.sessions), "sessions"], [AM.duration(g.seconds) || "–", "time"], [fmtNum(g.sets), "sets"], [fmtNum(g.reps), "reps"],
-      [g.detailed ? `${fmtNum(g.volume)} lb` : "–", "volume lifted", `from the ${g.detailed} of ${g.sessions} sessions whose details are stored`],
+      [g.detailed ? lbVolume(g.volume) : "–", "volume lifted", `from the ${g.detailed} of ${g.sessions} sessions whose details are stored`],
     ]));
     if (g.detailed < g.sessions) box.append(mk("div", "anote", `The exercise figures cover ${g.detailed} of ${g.sessions} sessions; the others have no details stored yet.`));
     if (g.exercises.length) {
@@ -3344,7 +3709,7 @@ function renderActivityStats() {
       for (const e of shown) {
         const chips = [
           e.best && [`est. 1RM ${lb(e.best.oneRm)}`], e.heaviest && [`heaviest ${lb(e.heaviest.weight)} × ${e.heaviest.reps || "–"}`],
-          [`${fmtNum(e.sets)} sets · ${fmtNum(e.reps)} reps`], e.volume && [`${fmtNum(e.volume)} lb`],
+          [`${fmtNum(e.sets)} sets · ${fmtNum(e.reps)} reps`], e.volume && [lbVolume(e.volume)],
         ].filter(Boolean);
         const when = [e.best ? fromNote(e.best) : "", `last ${e.lastDate}`].filter(Boolean).join(" · ");
         list.append(exerciseBlock(e.name, `${e.sessions} session${e.sessions === 1 ? "" : "s"}`, chips, when));
@@ -3682,7 +4047,7 @@ function renderActivityDetail() {
     const list = mk("div", "aexs");
     for (const x of lifts) {
       const runs = AM.setRuns(x), count = runs.reduce((a, r) => a + r.count, 0);
-      list.append(exerciseBlock(x.exerciseName, `${x.supersetGroup ? "superset · " : ""}${count} set${count === 1 ? "" : "s"}`, runs.map(AM.runText).filter(Boolean).map((c) => [c])));
+      list.append(exerciseBlock(x.exerciseName, `${x.supersetGroup ? "superset · " : ""}${count} set${count === 1 ? "" : "s"}`, runs.map((r) => AM.runText(r, weightUnitOf(A.profile))).filter(Boolean).map((c) => [c])));
     }
     box.append(list);
     // each loaded exercise's sets as a share of its one-rep max
@@ -3733,8 +4098,9 @@ const wellnessView = (name, prefix, path, range, render, extra = {}) => ({ name,
 /** How many days back from today a view shows (its day and range), so that its Sync fills in all of them. */
 const backFromToday = (d) => (d && d.today && d.date ? Math.max(0, Math.round((Date.parse(d.today) - Date.parse(d.date)) / 86_400_000)) : 0);
 const R = wellnessView("recovery", "r", "/api/wellness", 30, () => renderRecovery(), { span: (V) => backFromToday(V.data) + V.range, activitiesAt: 0, activitiesBusy: false });
-const storedUnit = () => { try { return localStorage.getItem("weightUnit") === "kg" ? "kg" : "lb"; } catch { return "lb"; } };
-const B = wellnessView("weight", "b", "/api/weight", 60, () => renderWeight(), { unit: storedUnit(), span: (V) => V.range });
+/** The unit picked in the Weight view's bar, kept in this browser; null until one is picked (the profile's unit is shown then). */
+const storedUnit = () => { try { const v = localStorage.getItem("weightUnit"); return v === "kg" || v === "lb" ? v : null; } catch { return null; } };
+const B = wellnessView("weight", "b", "/api/weight", 60, () => renderWeight(), { chosen: storedUnit(), span: (V) => V.range });
 const wellnessQuery = (V) => `${V.profile ? `profile=${encodeURIComponent(V.profile)}&` : ""}${V.date ? `date=${V.date}&` : ""}days=${V.range}`;
 const SIGNAL_NAMES = { hrv: "HRV", restingHr: "Resting heart rate", sleep: "Sleep", bodyBattery: "Body Battery", stress: "Stress yesterday", load: "Training load" };
 
@@ -3959,6 +4325,7 @@ function bindRecoveryView() {
 
 function renderWeight() {
   const box = $("bbody"), d = B.data;
+  B.unit = B.chosen || weightUnitOf(B.profile);
   renderWellnessNote(B);
   $("bRange").value = String(B.range);
   $("bUnits").querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.unit === B.unit)));
@@ -4000,8 +4367,8 @@ function bindWeightView() {
   $("vWeight").onclick = () => setView("weight");
   $("bRange").onchange = (e) => { B.range = Number(e.target.value); guard(loadWeight)(); };
   $("bUnits").querySelectorAll("button").forEach((b) => b.onclick = () => {
-    B.unit = b.dataset.unit;
-    try { localStorage.setItem("weightUnit", B.unit); } catch { /* the choice lasts until the page closes */ }
+    B.chosen = b.dataset.unit;
+    try { localStorage.setItem("weightUnit", B.chosen); } catch { /* the choice lasts until the page closes */ }
     renderWeight();
   });
   $("bSync").onclick = guard(() => syncWellness(B, false));
@@ -5657,6 +6024,50 @@ async function downloadFit() {
   document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+/** How the profile has things shown: the unit of weight (the plans keep lb, whatever it is). */
+function unitsCard(d) {
+  const unit = (d.prefs && d.prefs.weightUnit) || "lb", card = mk("div", "scard");
+  card.append(...scardHead("Units", mk("span", "chip", unit === "kg" ? "kg" : "lb"), help("units", "The unit lifting weights are shown and typed in: the workout form and pictures, and the sets, 1RM and volume of the activities. Plans keep pounds whatever it is, which is what Garmin is sent. The Weight view starts from it, and keeps a choice of its own once one is picked in its bar.", "the units")));
+  const seg = mk("div", "seg");
+  seg.setAttribute("role", "group"); seg.setAttribute("aria-label", "Lifting weights in");
+  for (const [value, label] of [["lb", "Pounds (lb)"], ["kg", "Kilograms (kg)"]]) {
+    const b = sbtn(label, () => setWeightUnit(S.profile, value), { key: "prefs:" + value });
+    b.setAttribute("aria-pressed", String(unit === value));
+    seg.append(b);
+  }
+  const row = mk("div", "sbtns");
+  row.append(mk("span", "", "Lifting weights in"), seg);
+  card.append(row);
+  const msg = messageLine("prefs"); if (msg) card.append(msg);
+  return card;
+}
+
+/** Show lifting weights in `unit` for the profile (Settings): kept by the server, followed at once by every view that draws one. */
+async function setWeightUnit(profile, unit) {
+  const before = weightUnitOf(profile);
+  if (before === unit) return;
+  const set = (u) => { garmin.prefs = { ...(garmin.prefs || {}), [profile || garmin.defaultProfile || garmin.profiles[0]]: { weightUnit: u } }; redrawWeights(); };
+  set(unit);
+  try {
+    const r = await api("POST", "/api/settings/prefs", { profile, prefs: { weightUnit: unit } });
+    if (S.data && S.data.profile === r.profile) { S.data = r; S.msg.prefs = null; }
+  } catch (e) {
+    set(before);
+    S.msg.prefs = { ok: false, text: e.message };
+    throw e;
+  } finally { if (document.body.dataset.view === "settings") renderSettings(); }
+}
+
+/** Draw again what shows weights, in the unit now chosen. */
+function redrawWeights() {
+  const view = document.body.dataset.view;
+  if (view === "weight") renderWeight();
+  if (view === "activities") renderActivities();
+  if (view === "plans") { renderPlanForm(true); renderOutline(); }
+  if (view === "workouts" && W.detail) renderDetail();
+  if ($("wdlg").open) dialogForm.render();
+}
+
 function renderSettings() {
   const box = $("sbody"), d = S.data, keep = $("sscroll").scrollTop;
   box.replaceChildren();
@@ -5667,7 +6078,7 @@ function renderSettings() {
   else {
     const enc = d.encryption;
     if (!enc.enabled || enc.plain) box.append(sline("warn", enc.enabled ? `Saved passwords are encrypted, but ${enc.plain} older one${enc.plain === 1 ? "" : "s"} is still plain text: it is encrypted the next time it is used.` : "Saved passwords are stored as plain text in the database. Set CREDENTIALS_KEY (in the compose file, for both services) to encrypt them."));
-    box.append(goalsCard(d), garminCard(d), renphoCard(d), webCard(d));
+    box.append(goalsCard(d), unitsCard(d), garminCard(d), renphoCard(d), webCard(d));
   }
   $("sscroll").scrollTop = keep;
 }
@@ -5803,6 +6214,27 @@ const confirmSaveFirst = () => confirmDialog({ title: "Save before running on Ga
 
 let dlgEditor, dlgMode = null, dlgLink = null, dlgSaving = false;
 
+/** The form of the dialog's workout: it writes into the dialog's JSON editor, which Save reads. */
+const dialogForm = makeForm({
+  read: () => { const { workout, error } = dialogWorkout(); return workout ? { workout } : { workout: null, problem: error }; },
+  write: (w) => {
+    dlgEditor.pushUndoStop();
+    dlgEditor.executeEdits("form", [{ range: dlgEditor.getModel().getFullModelRange(), text: JSON.stringify(w, null, 2) + "\n" }]);
+    dlgEditor.pushUndoStop();
+  },
+  profile: () => W.profile || planProfile(),
+  undo: () => dlgEditor.getModel().undo(),
+  toJson: (i) => { setEditMode("json"); revealStep(dlgEditor, i); },
+});
+$("wdForm").append(dialogForm.el);
+$("wdForm").addEventListener("keydown", (e) => {
+  if (!(e.ctrlKey || e.metaKey) || e.target.matches("input, textarea, select")) return;
+  const key = e.key.toLowerCase();
+  if (key !== "z" && key !== "y") return;
+  e.preventDefault();
+  if (key === "y" || e.shiftKey) dlgEditor.getModel().redo(); else dlgEditor.getModel().undo();
+});
+
 function ensureDialogEditor() {
   if (dlgEditor) return;
   dlgEditor = monaco.editor.create($("wdEditor"), {
@@ -5810,7 +6242,7 @@ function ensureDialogEditor() {
     minimap: { enabled: false }, tabSize: 2, scrollBeyondLastLine: false, ...monacoLayoutOptions(),
   });
   let timer;
-  dlgEditor.onDidChangeModelContent(() => { clearTimeout(timer); timer = setTimeout(checkDialog, 500); updateScheduleBox(); });
+  dlgEditor.onDidChangeModelContent(() => { clearTimeout(timer); timer = setTimeout(checkDialog, 500); updateScheduleBox(); if (editMode === "form" && $("wdlg").open) dialogForm.schedule(); });
   dlgEditor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => guard(saveDialog)());
 }
 
@@ -5867,8 +6299,10 @@ async function openWorkoutDialog(mode, workout, opts = {}) {
   $("wdUpload").checked = onGarmin && !opts.link; $("wdUpload").disabled = garminOnly || !!opts.link || !onGarmin;
   $("wdSchedule").checked = true;
   dlgEditor.setValue(JSON.stringify(workout, null, 2) + "\n");
+  $("wdlg").dataset.emode = editMode;
   $("wdlg").showModal(); navDialog($("wdlg"));
   dlgEditor.layout(); updateScheduleBox();
+  dialogForm.render(); $("wdForm").scrollTop = 0;
   setTimeout(checkDialog, 0);
 }
 
@@ -6098,7 +6532,7 @@ require(["vs/editor/editor.main"], async (m) => {
   } catch {}
   editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, save);
   editor.onDidChangeModelContent(() => {
-    setButtons(); renderOutline(); scheduleSync();
+    setButtons(); renderOutline(); renderPlanForm(); scheduleSync();
     clearTimeout(validateTimer); validateTimer = setTimeout(runValidate, 600);
   });
   $("save").onclick = save; $("new").onclick = newFile; $("validate").onclick = runValidate;
@@ -6110,10 +6544,12 @@ require(["vs/editor/editor.main"], async (m) => {
   $("actions").addEventListener("click", (e) => e.target.closest("button") && document.body.classList.remove("menu-open"));
   document.querySelectorAll("#tabbar button[data-tab]").forEach((b) => (b.onclick = () => { setView("plans"); setTab(b.dataset.tab); }));
   $("syncRefresh").onclick = guard(() => refreshSync(true));
-  $("profile").onchange = () => { setButtons(); renderFiles(); refreshSync(true); }; // the Garmin buttons follow the profile chosen
+  $("profile").onchange = () => { setButtons(); renderFiles(); refreshSync(true); renderPlanForm(true); }; // the Garmin buttons follow the profile chosen
+  renderPlanForm(true);
   window.addEventListener("beforeunload", (e) => { if (!leaving && isDirty()) e.preventDefault(); });
 });
 setTab("files");
+bindEditMode();
 bindMenus();
 bindExplanations();
 $("logout").onclick = guard(signOut);

@@ -207,7 +207,7 @@ test.describe("dragging a workout in the Calendar", () => {
 
     await chip.click();
     await expect(me.locator("body")).toHaveAttribute("data-view", "plans");
-    await expect(me.locator("#outline .row[data-name='Morning run'] .wv-host")).toBeVisible();
+    await expect(me.locator("#pform .wf-name")).toHaveValue("Morning run");
   });
 
   test("held over ▶ the month turns, and the workout can be dropped on a day of the next month", async ({ me, profile }) => {
@@ -310,6 +310,11 @@ test.describe("Move… in the Calendar's day panel", () => {
 // ── the days in a workout's picture ──────────────────────────────────────
 
 test.describe("the Move menu of a workout's days in the Plans view", () => {
+  // the days of a workout's picture in the outline, which shows it with JSON chosen (the form's days are fields of the plan)
+  test.beforeEach(async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem("planEditor.editMode", "json"));
+  });
+
   /** The plan opened from its chip, on the outline with the workout's picture open. */
   async function openPicture(page: Page, plan: string, day: string, workout: string) {
     await openOnPlan(page, plan, "2031-09-01");

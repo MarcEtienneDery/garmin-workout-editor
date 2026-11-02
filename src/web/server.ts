@@ -94,7 +94,8 @@ import { diffPlanWorkout, extractWorkouts, validatePlanData } from "../mcp/tools
 import { MAX_SCAN_BYTES, activePlanDocs, isExportSnapshot } from "../shared/planDocs";
 import { refreshWellness, rereadWeighIns, startBackgroundWellness, wellnessSyncStatus } from "../mcp/tools/wellness";
 import { bodyRange, intensityWeek, readinessAt, wellnessRange } from "../shared/wellnessReport";
-import { SettingsError, createProfile, removeGarminLogin, removeRenpho, saveGarminLogin, saveRenpho, saveWebPassword, settingsView } from "../shared/accounts";
+import { SettingsError, createProfile, removeGarminLogin, removeRenpho, saveGarminLogin, savePrefs, saveRenpho, saveWebPassword, settingsView } from "../shared/accounts";
+import exerciseCategoryMap from "../exercise-category-map.json";
 import { recentFit, testRenphoLogin } from "../shared/renphoSync";
 import { runRenpho, startRenphoTimer } from "../mcp/tools/renpho";
 import { testGarminLogin } from "../mcp/tools/settings";
@@ -392,6 +393,8 @@ function garminInfo(who: Principal) {
     profiles,
     connected,
     profileInfo,
+    // how each profile likes things shown (its unit of weight), so every view knows before Settings is opened
+    prefs: Object.fromEntries(profiles.map((p) => [p, store().prefs.get(p)])),
     user: userInfo(who),
     defaultProfile: who.admin
       ? (getSettings().defaultProfile ?? (profiles.length === 1 ? profiles[0] : null))
@@ -496,6 +499,28 @@ function planEntriesFor(profile: string): PlanEntry[] {
     });
   }
   return entries;
+}
+
+// ── The workout form's exercise picker ──
+
+/** Garmin's exercises with their category, as the plans may name them (the list the uploads check names against). */
+const EXERCISES = Object.entries(exerciseCategoryMap as Record<string, string>).map(([name, category]) => ({ name, category }));
+const MAX_USED = 40;
+
+/** The exercises the profile's plans name, most used first (nested repeats counted too): the picker lists them first. */
+function usedExercises(profile: string): string[] {
+  const counts = new Map<string, number>();
+  const visit = (steps: unknown): void => {
+    if (!Array.isArray(steps)) return;
+    for (const st of steps) {
+      if (!st || typeof st !== "object") continue;
+      const name = (st as any).exerciseName;
+      if (typeof name === "string" && name) counts.set(name, (counts.get(name) ?? 0) + 1);
+      visit((st as any).repeatSteps);
+    }
+  };
+  for (const e of planEntriesFor(profile)) visit(e.workout.steps);
+  return [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, MAX_USED).map(([name]) => name);
 }
 
 // ── Calendar view: where the plan files put their workouts (this is the files, not Garmin's own calendar) ──
@@ -1387,6 +1412,19 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
       return send(res, 200, settingsView(store(), profile));
     }
 
+    case "POST /api/settings/prefs": {
+      // How the profile likes things shown: weightUnit "lb" or "kg" (plans keep lb; this is what the editor shows).
+      const body = await readBody(req);
+      const profile = profileFor(who, "", body.profile);
+      try {
+        savePrefs(store(), profile, body.prefs ?? {});
+      } catch (error) {
+        if (error instanceof SettingsError) throw new HttpError(400, error.message);
+        throw error;
+      }
+      return send(res, 200, settingsView(store(), profile));
+    }
+
     case "POST /api/settings/web": {
       // The password the profile signs in to the web editor with, typed twice (password, confirm). It is mandatory: it can be changed, not removed.
       const body = await readBody(req);
@@ -1526,6 +1564,12 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
         // no usable profile: nothing to learn a pace from
       }
       return send(res, 200, { profile, runs: profile ? recentRuns(profile) : [] });
+    }
+
+    case "GET /api/exercises": {
+      // Garmin's exercises for the workout form's picker, and the ones the profile's plans use (none when no profile is known).
+      const profile = profileOrNull(who, url.searchParams.get("profile"));
+      return send(res, 200, { profile, exercises: EXERCISES, used: profile ? usedExercises(profile) : [] });
     }
 
     case "GET /api/calendar":
