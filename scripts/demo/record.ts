@@ -360,6 +360,13 @@ const SCENES: Scene[] = [
       await s.pause(1000);
       await s.click(page.locator("#views button, #views a").filter({ hasText: "Calendar" }), { wait: 1500 });
       await s.click(page.locator("#cgrid .cday.today, #cgrid .cday.sel").first(), { wait: 1600 });
+      // a plan opens on its outline; a workout tapped there opens in the form, and a set is one tap more
+      await s.click(page.locator("#views button, #views a").filter({ hasText: "Plans" }), { wait: 1200 });
+      await s.click(page.locator("#filelist .file").filter({ hasText: "half-marathon-build" }), { wait: 1500 });
+      await s.click(page.locator("#outline .row.wk .name").filter({ hasText: "Strength A" }), { wait: 1400 });
+      await s.reveal(page.locator("#pform .wf-ex").first(), 1000);
+      await s.pause(500);
+      await s.click(page.locator("#pform .wf-line").first().getByRole("button", { name: "Sets: one more" }), { wait: 1600 });
       await s.click(page.locator("#views button, #views a").filter({ hasText: "Food" }), { wait: 1800 });
       // the add sheet over the whole screen: a food logged lately, one tap
       await s.click(meal(page, "snack").getByRole("button", { name: "Add a food to Snacks" }), { wait: 1200 });
