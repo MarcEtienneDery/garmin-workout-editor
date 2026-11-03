@@ -8,7 +8,7 @@ Every recording below runs on the demo database (`npm run demo`, see [Try it wit
 
 ## Features
 
-- [Today](#today) · [Plans](#plans-a-json-editor-that-draws-the-workout) · [Calendar](#calendar) · [Activities](#activities-graphs-map-and-laps) · [Strength and lifetime stats](#strength-and-lifetime-stats) · [Recovery](#recovery-and-readiness) · [Weight](#weight) · [Food logging](#food-logging) · [Logging a meal with AI](#logging-a-meal-with-ai) · [On a phone](#on-a-phone) · [With Claude](#with-claude-mcp)
+- [Today](#today) · [Plans](#plans-a-workout-form-with-the-json-a-tap-away) · [Calendar](#calendar) · [Activities](#activities-graphs-map-and-laps) · [Strength and lifetime stats](#strength-and-lifetime-stats) · [Recovery](#recovery-and-readiness) · [Weight](#weight) · [Food logging](#food-logging) · [Logging a meal with AI](#logging-a-meal-with-ai) · [On a phone](#on-a-phone) · [With Claude](#with-claude-mcp)
 
 The views keep to the numbers: how one is made sits behind a small ⓘ (at a view's foot, *About these numbers*), and *Show explanations* in the account menu shows every note at once.
 
@@ -68,7 +68,7 @@ The top of the day is a glance: a ring of the calories eaten, split into protein
 
 <img src="docs/media/phone.webp" width="320" alt="The editor on a phone: the Today page, the calendar with a day's plans, and the food log with its add sheet">
 
-Below 900 px wide every view is one pane at a time, the header's views scroll sideways, and a tap on a calendar day lists it below the grid. The Food view is made for logging with a thumb: the day's glance fits in the top third of the screen, the search, barcode and AI wait in a bar at the bottom, and the add sheet covers the screen. Add it to the home screen for its icon.
+Below 900 px wide every view is one pane at a time, the header's views scroll sideways, and a tap on a calendar day lists it below the grid. A plan opens on its outline, and a workout tapped there opens in the form: a line of sets is two columns of fields big enough for a thumb, a ⋯ menu is a sheet at the foot of the screen and the exercise picker covers it. The Food view is made for logging with a thumb: the day's glance fits in the top third of the screen, the search, barcode and AI wait in a bar at the bottom, and the add sheet covers the screen. Add it to the home screen for its icon.
 
 ### With Claude (MCP)
 

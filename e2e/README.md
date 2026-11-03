@@ -56,6 +56,9 @@ before they tap the page under it.
   page will show with web-first assertions (`await expect(locator).toHaveText(...)`).
 * The page needs no network: foods (`/api/foods/search`, `/api/foods/barcode`, `/api/foods/ai`), OpenStreetMap tiles and the camera are
   answered with `page.route` / launch options by the spec that needs them. Block `**/tile.openstreetmap.org/**` in any spec that opens a map.
+* The Plans view and the Workouts view's dialog open a workout in the form. A spec about the JSON editor says so with
+  `test.use({ editMode: "json" })` (for a file or a `describe`), or `chooseEditMode(page, "json")` from fixtures before the page loads;
+  the form's own specs are `workout-form.spec.ts` and `workout-form.phone.spec.ts`.
 * The API wants `X-Requested-With: plan-editor` on every non-GET request (`CSRF` from fixtures); `profile.api` and `admin` send it.
 * A test that fails because the app is wrong is not weakened to pass: mark it `test.fixme(...)` with a comment saying what the app does,
   and say so in your report.
