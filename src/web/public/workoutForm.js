@@ -31,19 +31,40 @@
     return el;
   }
 
-  const KIND_CLASS = { warmup: "warmup", cooldown: "cooldown", recovery: "recovery", rest: "rest", interval: "work", exercise: "work", repeat: "work" };
-  const kindClass = (st) => KIND_CLASS[st.stepType] || "other";
   const muscleLabel = (id) => ((root.MuscleMap && root.MuscleMap.MUSCLES.find((m) => m.id === id)) || { label: id }).label;
   const muscles = (name) => {
     const m = root.MuscleMap ? root.MuscleMap.musclesOf(name) : null;
     return m ? m.primary.map(muscleLabel).join(" · ") : "";
   };
-  const isoDay = (d) => [d.getFullYear(), d.getMonth() + 1, d.getDate()].map((n, i) => String(n).padStart(i ? 2 : 4, "0")).join("-");
-  /** A day of the calendar written YYYY-MM-DD (2026-02-30 is not one). */
-  const isDay = (v) => {
-    const ms = typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) ? Date.parse(v + "T00:00:00Z") : NaN;
-    return !Number.isNaN(ms) && new Date(ms).toISOString().slice(0, 10) === v;
-  };
+  /** Whether a name is one of Garmin's exercises: exerciseMuscles.js lists every one (a test keeps it so), so no request is needed. */
+  const known = root.MuscleMap ? (name) => Object.prototype.hasOwnProperty.call(root.MuscleMap.EXERCISES, name) : null;
+
+  /** The box `node` scrolls in. */
+  function scroller(node) {
+    for (let n = node.parentElement; n; n = n.parentElement) {
+      const s = getComputedStyle(n).overflowY;
+      if ((s === "auto" || s === "scroll") && n.scrollHeight > n.clientHeight) return n;
+    }
+    return document.scrollingElement;
+  }
+
+  /**
+   * Put `nodes` in `box` in place of what it holds, as the person had it: the box it scrolls in stays where it was (Chrome scrolls it to
+   * its top when the focused element goes), and the field that had the focus has it again (the one with the same data-fk), with its
+   * selection. The page's plan view draws with it too.
+   */
+  function redraw(box, nodes) {
+    const active = document.activeElement, inside = !!active && box.contains(active);
+    const key = inside ? active.getAttribute("data-fk") : null;
+    const sel = inside && typeof active.selectionStart === "number" ? [active.selectionStart, active.selectionEnd] : null;
+    const pane = scroller(box), top = pane.scrollTop;
+    box.replaceChildren(...nodes);
+    pane.scrollTop = top;
+    const again = key && box.querySelector(`[data-fk="${CSS.escape(key)}"]`);
+    if (!again || again.disabled) return;
+    again.focus({ preventScroll: true });
+    if (sel && again.setSelectionRange && again.type === "text") try { again.setSelectionRange(sel[0], sel[1]); } catch { /* not a text field */ }
+  }
 
   /**
    * A form for one workout. opts:
@@ -51,9 +72,11 @@
    *   write(workout)  the workout changed: the host keeps it (in its JSON, with an Undo step)
    *   unit()          "lb" or "kg": how weights are shown and typed (they are kept in lb)
    *   pacer()         the pacer of workoutModel.js for the estimates (or null)
-   *   picture(w)      an element that draws the workout (its profile, or the muscles it works)
-   *   exercises()     a promise of { exercises: [{ name, category }], used: [names] }
-   *   about(analysis)  [ⓘ button, note] saying how the estimate was timed, or null (the page's help())
+   *   picture(w, a)   an element that draws the workout (its profile, or the muscles it works); `a` is WM.analyze's answer
+   *   about(a)        [ⓘ button, note] saying how the estimate was timed, or null (the page's help())
+   *   exercises()     a promise of { exercises: [{ name, category }], used: [names] }, asked when the picker first opens
+   *   isDay(v), today()  the page's: a real day of the calendar written YYYY-MM-DD, and today's
+   *   phone()         whether the screen is a phone's; place(menu, anchor) puts a menu by its button (a phone shows it as a sheet)
    *   toast(text), toastUndo(text, undo), undo(), ask(dialog options) → answer or null, toJson(stepIndex), modal(dialog)
    * Returns { el, render, schedule }: render draws it again from read(); schedule does so once the current event is over.
    */
@@ -61,33 +84,27 @@
     const el = h("div", { class: "wf" });
     const units = new Map(); // the unit (km or m) a distance field was switched to, by field
     const listId = `wf-rests-${++seq}`;
-    let renderTimer = 0, known = null, catalog = null, drag = null;
+    let renderTimer = 0, catalog = null, drag = null, follow = null; // follow: the card a keyboard move took, which keeps the focus
 
     function render() {
       clearTimeout(renderTimer);
-      const active = document.activeElement, inside = !!active && el.contains(active), key = inside ? active.getAttribute("data-fk") : null;
-      const sel = key && typeof active.selectionStart === "number" ? [active.selectionStart, active.selectionEnd] : null;
-      const parts = draw().flat().filter(Boolean);
-      if (inside) active.blur(); // a focused element taken out of the page makes Chrome scroll the pane to its top
-      el.replaceChildren(...parts);
-      if (!key) return;
-      const again = el.querySelector(`[data-fk="${CSS.escape(key)}"]`);
-      if (!again || again.disabled) return;
-      again.focus({ preventScroll: true });
-      if (sel && again.setSelectionRange && again.type === "text") try { again.setSelectionRange(sel[0], sel[1]); } catch { /* not a text field */ }
+      redraw(el, draw().flat().filter(Boolean));
+      if (follow === null) return;
+      const card = el.querySelectorAll(".wf-list > .wf-card")[follow];
+      follow = null;
+      card?.querySelector("input, select, button")?.focus({ preventScroll: true });
     }
     /** Draw again once the event that changed the workout is over: a field left by Tab has given the focus to the next one by then. */
     const schedule = () => { clearTimeout(renderTimer); renderTimer = setTimeout(render, 0); };
 
-    /** Garmin's exercise list, once: the picker lists it, and the checks then know which names are Garmin's. */
+    /** Garmin's exercises and their categories, asked once, when the picker first opens; worked out once for the picker's lists. */
     function loadCatalog() {
-      if (catalog) return catalog;
-      catalog = Promise.resolve(opts.exercises()).then((r) => {
-        const names = new Set(r.exercises.map((e) => e.name));
-        known = (n) => names.has(n);
-        schedule();
-        return r;
-      }, (e) => { catalog = null; throw e; });
+      catalog = catalog || Promise.resolve(opts.exercises()).then((r) => ({
+        all: r.exercises,
+        used: r.used || [],
+        categories: [...new Set(r.exercises.map((e) => e.category))].sort(),
+        byName: new Map(r.exercises.map((e) => [e.name, e])),
+      }), (e) => { catalog = null; throw e; });
       return catalog;
     }
 
@@ -98,7 +115,6 @@
       if (!w) return [h("div", { class: "wf-note", text: problem || "No workout." })];
       const trouble = problem || M.formProblem(w);
       if (trouble) return [h("div", { class: "wf-note warn" }, h("p", { text: trouble }), h("button", { type: "button", onclick: () => opts.toJson(null) }, "Edit in JSON"))];
-      loadCatalog().catch(() => {});
       const flat = M.flatten(w.steps || []), blocks = M.toBlocks(flat);
       const offsets = []; blocks.reduce((at, b, k) => { offsets[k] = at; return at + b.steps.length; }, 0);
       const problems = new Map();
@@ -122,22 +138,67 @@
       return h("datalist", { id: listId }, REST_CHOICES.map((s) => h("option", { value: M.clock(s) })));
     }
 
+    // ── Small fields ──
+
+    /** A field with its label above it. */
+    const field = (label, ...controls) => h("div", { class: "wf-f" }, h("span", { class: "wf-fl", text: label }), h("div", { class: "wf-fc" }, controls));
+
+    /**
+     * A text field that keeps what `parse` makes of what is typed (trimmed): `set` gets it; null is text that is not one (said as
+     * `what: …`, and kept to be put right).
+     */
+    function entry({ value, label, fk, mode = "decimal", placeholder, list }, parse, what, set) {
+      const input = h("input", { type: "text", inputmode: mode, class: "wf-num", value, placeholder, list, "aria-label": label, "data-fk": fk });
+      input.onchange = () => {
+        const text = input.value.trim(), v = parse(text);
+        if (v === null) return bad(input, `${what}: ${text}`);
+        set(v);
+      };
+      return input;
+    }
+    const positive = (n) => (n !== null && n > 0 ? n : null);
+
+    /** A number with − and + beside it (a phone's thumb), between min and max. */
+    function stepper(value, min, max, set, fk, label) {
+      const now = Math.round(Number(value) || 0);
+      const input = h("input", { type: "text", inputmode: "numeric", class: "wf-num wf-int", value: now ? String(now) : "", "aria-label": label, "data-fk": fk });
+      const go = (n) => { const v = Math.max(min, Math.min(max, n)); if (v !== now) set(v); else input.value = String(now || ""); };
+      input.onchange = () => { const n = parseInt(input.value, 10); if (Number.isFinite(n)) go(n); else bad(input, `Not a number: ${input.value.trim()}`); };
+      return h("span", { class: "wf-stepper" },
+        h("button", { type: "button", class: "wf-sb", "aria-label": `${label}: one less`, disabled: now <= min, "data-fk": fk + ":-", onclick: () => go(now - 1) }, "−"),
+        input,
+        h("button", { type: "button", class: "wf-sb", "aria-label": `${label}: one more`, disabled: now >= max, "data-fk": fk + ":+", onclick: () => go(now + 1) }, "+"));
+    }
+
+    /** The field of how a step ends: its reps (a stepper), its time (a bare number counts as `bare`), or the number another of Garmin's ends counts; null on the lap button. */
+    function endInput(ctx, k, j, end, bare) {
+      const key = `${k}:${j}`;
+      if (end.by === "reps") return stepper(end.value, 1, 999, (n) => writeStep(ctx, k, j, (s) => M.withEnd(s, "reps", n)), `reps:${key}`, "Reps");
+      if (end.by === "time") return entry({ value: end.value ? M.clock(end.value) : "", label: "Time", fk: `t:${key}`, mode: "text", placeholder: "m:ss" }, (t) => positive(M.parseClock(t, bare)), "Not a time", (sec) => writeStep(ctx, k, j, (s) => M.withEnd(s, "time", sec)));
+      if (end.by && end.by !== "lap") return entry({ value: end.value ? String(end.value) : "", label: M.prettyName(end.by), fk: `ev:${key}` }, (t) => positive(M.parseNumber(t)), "Not a number above 0", (n) => writeStep(ctx, k, j, (s) => M.patched(s, { endConditionValue: n })));
+      return null;
+    }
+
+    /** The rest after a set or a step: typed as 1:30 or in seconds, emptied for none. */
+    const restInput = (ctx, k, j, st, label) => entry({ value: st.restTimeSeconds ? M.clock(st.restTimeSeconds) : "", label, fk: `rest:${k}:${j}`, mode: "numeric", placeholder: "—", list: listId },
+      (t) => (t ? M.parseClock(t, "s") : 0), "Not a time", (sec) => writeStep(ctx, k, j, (s) => M.withRest(s, sec)));
+
     // ── The head: name, type, days, notes ──
 
     function head(ctx) {
-      const { w } = ctx, id = ++seq;
+      const { w } = ctx;
       const name = h("input", { type: "text", class: "wf-name", value: w.workoutName ?? "", placeholder: "Workout name", "aria-label": "Workout name", autocomplete: "off", spellcheck: "false", "data-fk": "name" });
       name.onchange = () => {
         const v = name.value.trim();
         if (!v) { name.value = w.workoutName ?? ""; opts.toast("A workout needs a name."); return; }
         if (v !== w.workoutName) write({ ...w, workoutName: v });
       };
-      const type = h("select", { class: "wf-type", "aria-label": "Type of workout", "data-fk": "type" });
+      const type = h("select", { "aria-label": "Type of workout", "data-fk": "type" });
       for (const t of M.TYPES) type.add(new Option(M.SPORTS[t].label, t));
       if (!M.SPORTS[w.workoutType]) type.add(new Option(w.workoutType ? M.prettyName(w.workoutType) : "No type", w.workoutType ?? ""));
       type.value = w.workoutType ?? "";
       type.onchange = () => changeType(ctx, type.value);
-      const send = h("input", { type: "checkbox", id: `wf-send-${id}`, "data-fk": "send" });
+      const send = h("input", { type: "checkbox", "data-fk": "send" });
       send.checked = !!w.sendToDevice;
       send.onchange = () => write(M.patched(w, { sendToDevice: send.checked ? true : undefined }));
 
@@ -145,13 +206,14 @@
       const setDays = (list) => write(M.patched(w, { scheduledDate: list.length === 0 ? undefined : list.length === 1 ? list[0] : list }));
       const dayBox = h("div", { class: "wf-days" });
       days.forEach((d, i) => {
-        const input = h("input", { type: isDay(d) ? "date" : "text", value: String(d), "aria-label": `Day ${i + 1}`, "data-fk": `day:${i}` });
+        const input = h("input", { type: opts.isDay(d) ? "date" : "text", value: String(d), "aria-label": `Day ${i + 1}`, "data-fk": `day:${i}` });
         input.onchange = () => { const v = input.value.trim(); setDays(v ? days.map((x, j) => (j === i ? v : x)) : days.filter((_, j) => j !== i)); };
         dayBox.append(h("span", { class: "wf-day" }, input, h("button", { type: "button", class: "wf-x", title: "Not on this day", "aria-label": `Not on ${d}`, "data-fk": `dayx:${i}`, onclick: () => setDays(days.filter((_, j) => j !== i)) }, "×")));
       });
+      // a day added is a week after the last one (else today)
       const nextDay = () => {
-        const last = [...days].reverse().find(isDay);
-        return last ? new Date(Date.parse(last + "T00:00:00Z") + 7 * 864e5).toISOString().slice(0, 10) : isoDay(new Date());
+        const last = [...days].reverse().find(opts.isDay);
+        return last ? new Date(Date.parse(last + "T00:00:00Z") + 7 * 864e5).toISOString().slice(0, 10) : opts.today();
       };
       dayBox.append(h("button", { type: "button", class: "wf-link", "data-fk": "addday", onclick: () => setDays([...days, nextDay()]) }, days.length ? "+ Day" : "+ Schedule"));
 
@@ -166,7 +228,7 @@
         name,
         h("div", { class: "wf-row" },
           h("label", { class: "wf-f" }, h("span", { class: "wf-fl", text: "Type" }), type),
-          h("label", { class: "wf-check", for: `wf-send-${id}` }, send, "Send to watch"),
+          h("label", { class: "wf-check" }, send, "Send to watch"),
           w.workoutId !== undefined && w.workoutId !== null && w.workoutId !== "" ? h("small", { class: "wf-dim", text: `On Garmin · ${w.workoutId}`, title: "Garmin's id of this workout: an upload replaces it" }) : null),
         h("div", { class: "wf-row" }, field("Days", dayBox)),
         notes);
@@ -198,7 +260,7 @@
     function overview(ctx) {
       const w = { ...ctx.w, steps: ctx.flat };
       if (!ctx.flat.length && !w.distanceMeters) return null;
-      const a = WM.analyze(w, { pacer: opts.pacer() }), approx = a.assumed || a.open ? "~" : "";
+      const a = WM.analyze(w, { pacer: opts.pacer(), unit: ctx.unit }), approx = a.assumed || a.open ? "~" : "";
       const parts = [];
       if (a.seconds) parts.push(approx + WM.duration(a.seconds));
       if (a.meters) parts.push(approx + WM.distance(a.meters));
@@ -206,9 +268,10 @@
       else if (a.steps) parts.push(`${a.steps} step${a.steps === 1 ? "" : "s"}`);
       const summary = h("summary", { text: parts.join(" · ") || "Overview" });
       const box = h("details", { class: "wf-pic" }, summary);
+      if (overviewOpen === null) overviewOpen = !opts.phone(); // open on a desktop, shut on a phone until opened
       box.open = overviewOpen;
-      box.ontoggle = () => { overviewOpen = box.open; if (box.open && !box.querySelector(".wvbox")) box.append(opts.picture(w)); };
-      if (box.open) box.append(opts.picture(w));
+      box.ontoggle = () => { overviewOpen = box.open; if (box.open && !box.querySelector(".wvbox")) box.append(opts.picture(w, a)); };
+      if (box.open) box.append(opts.picture(w, a));
       // how the steps with no pace were timed: behind an ⓘ in the line, the note under it (outside the box, so it shows when shut)
       const about = opts.about ? opts.about(a) : null;
       if (!about) return box;
@@ -228,9 +291,10 @@
         if (!e.altKey || (e.key !== "ArrowUp" && e.key !== "ArrowDown")) return;
         const li = e.target.closest(".wf-card");
         if (!li || li.parentElement !== list) return;
-        const c = +li.dataset.c, to = moveTo(ctx, c, e.key === "ArrowUp" ? -1 : 1);
+        const c = +li.dataset.c, by = e.key === "ArrowUp" ? -1 : 1, to = moveTo(ctx, c, by);
         if (to === null) return;
         e.preventDefault();
+        follow = c + by;
         writeBlocks(ctx, M.moveBlocks(ctx.blocks, ctx.cards[c].k, ctx.cards[c].count, to));
       });
       return list;
@@ -241,7 +305,7 @@
       if (card.kind === "superset") return supersetCard(ctx, card, c);
       if (card.kind === "repeat") return repeatCard(ctx, card, c);
       const st = ctx.blocks[card.k].steps[0];
-      return h("li", { class: `wf-card wf-st k-${kindClass(st)}`, "data-c": c }, stepRow(ctx, card.k, 0, { c }));
+      return h("li", { class: `wf-card k-${WM.kindOf(st)}`, "data-c": c }, stepRow(ctx, card.k, 0, c));
     }
 
     /** Where card c lands one place up (by -1) or down (1), as the block index moveBlocks takes; null at either end. */
@@ -252,24 +316,50 @@
     }
 
     const grip = () => h("span", { class: "wf-grip", title: "Drag to move (or Alt+↑ / Alt+↓)", "aria-hidden": "true" }, "⠿");
-    const caret = () => h("span", { class: "wf-caret", "aria-hidden": "true" }, " ▾");
+    const link = (label, fk, onclick, aria) => h("button", { type: "button", class: "wf-link", "data-fk": fk, "aria-label": aria, title: aria, onclick }, label);
 
-    function moveItems(ctx, c) {
+    /** The menu of a card: move it, duplicate it, its own items, its JSON, delete it (with Undo). */
+    function cardMenu(ctx, c, what, extra) {
       const card = ctx.cards[c], up = moveTo(ctx, c, -1), down = moveTo(ctx, c, 1);
       return [
         up !== null && { label: "Move up", run: () => writeBlocks(ctx, M.moveBlocks(ctx.blocks, card.k, card.count, up)) },
         down !== null && { label: "Move down", run: () => writeBlocks(ctx, M.moveBlocks(ctx.blocks, card.k, card.count, down)) },
+        { label: "Duplicate", run: () => writeBlocks(ctx, M.duplicateBlocks(ctx.blocks, card.k, card.count)) },
+        ...extra,
+        { label: "Edit in JSON", run: () => opts.toJson(ctx.offsets[card.k]) },
+        { label: "Delete", danger: true, run: () => { writeBlocks(ctx, M.removeBlocks(ctx.blocks, card.k, card.count)); opts.toastUndo(`${what} deleted`, opts.undo); } },
       ];
     }
-    const jsonItem = (ctx, k, j) => ({ label: "Edit in JSON", run: () => opts.toJson(ctx.offsets[k] + j) });
-    const deleteItem = (ctx, k, count, what) => ({
-      label: "Delete", danger: true,
-      run: () => { writeBlocks(ctx, M.removeBlocks(ctx.blocks, k, count)); opts.toastUndo(`${what} deleted`, opts.undo); },
-    });
 
-    /** The problems of the steps at flat positions `at`, under the part of the form that edits them. */
-    function messages(ctx, at) {
-      const list = at.flatMap((i) => ctx.problems.get(i) || []);
+    /** The menu of step j of repeat (or superset) k: move it inside, its own items, its JSON, delete it (with Undo). */
+    function insideMenu(ctx, k, j, what, extra) {
+      const b = ctx.blocks[k];
+      return [
+        j > 0 && { label: "Move up", run: () => writeBlocks(ctx, M.moveInside(ctx.blocks, k, j, -1)) },
+        j < b.steps.length - 1 && { label: "Move down", run: () => writeBlocks(ctx, M.moveInside(ctx.blocks, k, j, 1)) },
+        ...extra,
+        { label: "Edit in JSON", run: () => opts.toJson(ctx.offsets[k] + j) },
+        { label: "Delete", danger: true, run: () => { writeBlocks(ctx, b.steps.length > 1 ? M.takeOut(ctx.blocks, k, j) : M.removeBlocks(ctx.blocks, k)); opts.toastUndo(`${what} deleted`, opts.undo); } },
+      ];
+    }
+
+    /** The head of a repeat or a superset: its title, how many times, its menu. */
+    const groupHead = (ctx, k, title, word, items) => h("div", { class: "wf-ch" }, grip(),
+      h("div", { class: "wf-t" }, h("span", { class: "wf-title", text: title })),
+      h("div", { class: "wf-times" }, stepper(ctx.blocks[k].times, 2, 99, (n) => writeBlocks(ctx, M.setTimes(ctx.blocks, k, n)), `times:${k}`, word === "rounds" ? "Rounds" : "Times"), h("span", { class: "wf-dim", text: word })),
+      menu(items, `More for the ${title.toLowerCase()}`, `menu:${k}`));
+
+    /** An exercise's name, which opens the picker (`rename(to)` gets the one picked), and the muscles it works. */
+    function exerciseTitle(name, fk, rename) {
+      const pick = h("button", { type: "button", class: "wf-exname", title: "Pick another exercise", "data-fk": fk }, M.prettyName(name), h("span", { class: "wf-caret", "aria-hidden": "true" }, " ▾"));
+      pick.onclick = () => pickExercise(name).then((to) => { if (to && to !== name) rename(to); });
+      const worked = muscles(name);
+      return h("div", { class: "wf-t" }, pick, worked ? h("small", { class: "wf-dim", text: worked }) : null);
+    }
+
+    /** The problems of the step at flat position i, under the part of the form that edits it. */
+    function messages(ctx, i) {
+      const list = ctx.problems.get(i) || [];
       return list.length ? h("div", { class: "wf-msgs" }, list.map((p) => h("div", { class: "msg " + p.level, text: p.text }))) : null;
     }
 
@@ -281,31 +371,19 @@
       const canJoin = card.count === 1 && next && ((next.kind === "exercise" && next.count === 1) || next.kind === "superset");
       const same = card.count > 1 ? M.sameSets(blocks, card.k, card.count) : null;
       const lines = Array.from({ length: card.count }, (_, j) => [card.k + j, 0]);
-      const items = [
-        ...moveItems(ctx, c),
-        { label: "Duplicate", run: () => writeBlocks(ctx, M.duplicateBlocks(blocks, card.k, card.count)) },
+      const items = cardMenu(ctx, c, title, [
         canJoin && { label: "Superset with the next exercise", run: () => writeBlocks(ctx, joinNext(ctx, card, next)) },
         card.count === 1 && blocks[card.k].times > 1 && { label: "Give each set its own line", run: () => writeBlocks(ctx, M.eachSet(blocks, card.k)) },
         same && { label: "Make the sets one line", run: () => writeBlocks(ctx, same) },
         ...countItems(ctx, lines, first),
-        jsonItem(ctx, card.k, 0),
-        deleteItem(ctx, card.k, card.count, title),
-      ];
-      const li = h("li", { class: "wf-card wf-ex k-work", "data-c": c });
-      const pick = h("button", { type: "button", class: "wf-exname", title: "Pick another exercise", "data-fk": `ex:${card.k}` }, title, caret());
-      pick.onclick = () => pickExercise(name).then((to) => { if (to && to !== name) writeBlocks(ctx, renamed(blocks, card.k, card.count, name, to)); });
-      const worked = muscles(name);
-      li.append(h("div", { class: "wf-ch" }, grip(), h("div", { class: "wf-t" }, pick, worked ? h("small", { class: "wf-dim", text: worked }) : null), menu(items, `More for ${title}`, `exm:${card.k}`)));
+      ]);
+      const li = h("li", { class: "wf-card wf-ex k-work", "data-c": c },
+        h("div", { class: "wf-ch" }, grip(), exerciseTitle(name, `ex:${card.k}`, (to) => writeBlocks(ctx, renamed(blocks, lines, name, to))), menu(items, `More for ${title}`, `menu:${card.k}`)));
       for (let j = 0; j < card.count; j++) li.append(setLine(ctx, card.k + j, card.count > 1));
-      li.append(h("div", { class: "wf-cfoot" }, h("button", {
-        type: "button", class: "wf-link", title: "A set with reps, a weight or a rest of its own", "data-fk": `addset:${card.k}`,
-        onclick: () => writeBlocks(ctx, M.insertBlocks(blocks, card.k + card.count, [{ steps: [M.copyStep(blocks[card.k + card.count - 1].steps[0])], times: 1 }])),
-      }, "+ Different set")));
+      const last = blocks[card.k + card.count - 1].steps[0];
+      li.append(h("div", { class: "wf-cfoot" }, link("+ Different set", `addset:${card.k}`, () => writeBlocks(ctx, M.insertBlocks(blocks, card.k + card.count, [M.once(M.copyStep(last))])))));
       return li;
     }
-
-    /** A field with its label above it. */
-    const field = (label, ...controls) => h("div", { class: "wf-f" }, h("span", { class: "wf-fl", text: label }), h("div", { class: "wf-fc" }, controls));
 
     /** One line of an exercise's sets: how many, the reps (or a time), the load, the rest after each. */
     function setLine(ctx, k, removable) {
@@ -314,18 +392,16 @@
         field("Sets", stepper(b.times, 1, 99, (n) => writeBlocks(ctx, M.setTimes(ctx.blocks, k, n)), `sets:${k}`, "Sets")),
         liftEnd(ctx, k, 0, st),
         load(ctx, k, 0, st),
-        rest(ctx, k, 0, st, "Rest"),
+        field("Rest", restInput(ctx, k, 0, st, "Rest")),
         removable ? h("button", { type: "button", class: "wf-x", title: "Remove these sets", "aria-label": "Remove these sets", "data-fk": `setx:${k}`, onclick: () => writeBlocks(ctx, M.removeBlocks(ctx.blocks, k)) }, "×") : null);
-      return h("div", {}, line, messages(ctx, [ctx.offsets[k]]));
+      return h("div", {}, line, messages(ctx, ctx.offsets[k]));
     }
 
     /** How an exercise's set ends: reps (most), a time (a plank), or the lap button (as many as you can); the menu switches it. */
     function liftEnd(ctx, k, j, st) {
-      const end = M.endOf(st), key = `${k}:${j}`;
-      if (end.by === "reps") return field("Reps", stepper(end.value, 1, 999, (n) => writeStep(ctx, k, j, (s) => M.withEnd(s, "reps", n)), `reps:${key}`, "Reps"));
-      if (end.by === "time") return field("Time", clockInput(end.value, "s", (sec) => writeStep(ctx, k, j, (s) => M.withEnd(s, "time", sec)), `t:${key}`, "Time"));
-      if (end.by === "lap") return field("Until done", h("span", { class: "wf-dim wf-lap", text: "lap press" }));
-      return field(M.prettyName(end.by || "value"), numberInput(end.value, (n) => writeStep(ctx, k, j, (s) => M.patched(s, { endConditionValue: n })), `ev:${key}`, M.prettyName(end.by || "value")));
+      const end = M.endOf(st);
+      const label = { reps: "Reps", time: "Time", lap: "Until done" }[end.by] || M.prettyName(end.by || "value");
+      return field(label, endInput(ctx, k, j, end, "s") || h("span", { class: "wf-dim", text: "lap press" }));
     }
 
     /** The menu items that switch how the sets at `refs` ([block, step] pairs) are counted and loaded, as `st` is now. */
@@ -343,41 +419,14 @@
 
     /** The load: a weight in the profile's unit (kept in lb), or a percentage of a one-rep max (the menu switches). Empty is none: body weight. */
     function load(ctx, k, j, st) {
-      const unit = ctx.unit, key = `${k}:${j}`, pct = st.weightPercentage !== undefined;
-      let input;
-      if (pct) {
-        input = h("input", { type: "text", inputmode: "decimal", class: "wf-num", value: String(st.weightPercentage ?? ""), "aria-label": "Percent of the one-rep max", "data-fk": `pct:${key}` });
-        input.onchange = () => {
-          const n = M.parseNumber(input.value);
-          if (n === null || n <= 0) return bad(input, "A percentage above 0.");
-          writeStep(ctx, k, j, (s) => M.patched(s, { weightPercentage: n }));
-        };
-      } else {
-        input = h("input", { type: "text", inputmode: "decimal", class: "wf-num", value: M.weightText(st.weight, unit), placeholder: "—", "aria-label": `Weight in ${unit}`, "data-fk": `w:${key}` });
-        input.onchange = () => {
-          const t = input.value.trim();
-          if (!t) return writeStep(ctx, k, j, (s) => M.patched(s, { weight: undefined }));
-          const lb = M.parseWeight(t, unit);
-          if (lb === null) return bad(input, `Not a weight: ${t}`);
-          writeStep(ctx, k, j, (s) => M.patched(s, { weight: lb > 0 ? lb : undefined }));
-        };
+      const unit = ctx.unit, key = `${k}:${j}`;
+      if (st.weightPercentage !== undefined) {
+        const of = st.benchmarkKey && st.benchmarkKey !== st.exerciseName ? h("small", { class: "wf-dim", text: `of ${M.prettyName(st.benchmarkKey)}` }) : null;
+        return field("% of 1RM", entry({ value: String(st.weightPercentage ?? ""), label: "Percent of the one-rep max", fk: `pct:${key}` },
+          (t) => positive(M.parseNumber(t)), "Not a percentage above 0", (n) => writeStep(ctx, k, j, (s) => M.patched(s, { weightPercentage: n }))), of);
       }
-      const of = pct && st.benchmarkKey && st.benchmarkKey !== st.exerciseName ? h("small", { class: "wf-dim", text: `of ${M.prettyName(st.benchmarkKey)}` }) : null;
-      return field(pct ? "% of 1RM" : `Weight (${unit === "kg" ? "kg" : "lb"})`, input, of);
-    }
-
-    /** The rest after a set or a step, labelled. */
-    const rest = (ctx, k, j, st, label) => field(label, restInput(ctx, k, j, st, label));
-
-    /** The rest after a set or a step: typed as 1:30 or in seconds, emptied for none. */
-    function restInput(ctx, k, j, st, label) {
-      const input = h("input", { type: "text", inputmode: "numeric", class: "wf-num", value: st.restTimeSeconds ? M.clock(st.restTimeSeconds) : "", placeholder: "—", list: listId, "aria-label": label, "data-fk": `rest:${k}:${j}` });
-      input.onchange = () => {
-        const t = input.value.trim(), sec = t ? M.parseClock(t, "s") : 0;
-        if (sec === null) return bad(input, `Not a time: ${t}`);
-        writeStep(ctx, k, j, (s) => M.withRest(s, sec));
-      };
-      return input;
+      return field(`Weight (${unit === "kg" ? "kg" : "lb"})`, entry({ value: M.weightText(st.weight, unit), label: `Weight in ${unit}`, fk: `w:${key}`, placeholder: "—" },
+        (t) => (t ? M.parseWeight(t, unit) : 0), "Not a weight", (lb) => writeStep(ctx, k, j, (s) => M.patched(s, { weight: lb > 0 ? lb : undefined }))));
     }
 
     /** An exercise card joined with the next card (an exercise, or a superset it goes first in). */
@@ -387,128 +436,91 @@
       return M.removeBlocks(M.insertInto(ctx.blocks, next.k, 0, [st]), card.k);
     }
 
-    /** The exercise `from` renamed `to` on lines k..k+count-1 (a 1RM it was a percentage of follows). */
-    function renamed(blocks, k, count, from, to) {
-      let out = blocks;
-      for (let i = k; i < k + count; i++) for (let j = 0; j < out[i].steps.length; j++) out = M.updateStep(out, i, j, (s) => rename(s, from, to));
-      return out;
+    /** The exercise `from` renamed `to` in the steps at `refs` ([block, step] pairs); a 1RM it was a percentage of follows. */
+    function renamed(blocks, refs, from, to) {
+      return refs.reduce((out, [k, j]) => M.updateStep(out, k, j, (s) => M.patched(s, { exerciseName: to, benchmarkKey: s.benchmarkKey === from ? to : s.benchmarkKey })), blocks);
     }
-    const rename = (s, from, to) => M.patched(s, { exerciseName: to, benchmarkKey: s.benchmarkKey === from ? to : s.benchmarkKey });
 
     // ── Strength: a superset ──
 
     function supersetCard(ctx, card, c) {
       const { blocks } = ctx, k = card.k, b = blocks[k];
-      const items = [
-        ...moveItems(ctx, c),
-        { label: "Duplicate", run: () => writeBlocks(ctx, M.duplicateBlocks(blocks, k)) },
-        { label: "Split into its exercises", run: () => writeBlocks(ctx, M.splitBlock(blocks, k)) },
-        jsonItem(ctx, k, 0),
-        deleteItem(ctx, k, 1, "Superset"),
-      ];
-      const li = h("li", { class: "wf-card wf-ss k-work", "data-c": c });
-      li.append(h("div", { class: "wf-ch" }, grip(),
-        h("div", { class: "wf-t" }, h("span", { class: "wf-title", text: "Superset" })),
-        h("div", { class: "wf-times" }, stepper(b.times, 2, 99, (n) => writeBlocks(ctx, M.setTimes(blocks, k, n)), `rounds:${k}`, "Rounds"), h("span", { class: "wf-dim", text: "rounds" })),
-        menu(items, "More for the superset", `ssm:${k}`)));
+      const items = cardMenu(ctx, c, "Superset", [{ label: "Split into its exercises", run: () => writeBlocks(ctx, M.splitBlock(blocks, k)) }]);
+      const li = h("li", { class: "wf-card wf-ss k-work", "data-c": c }, groupHead(ctx, k, "Superset", "rounds", items));
       b.steps.forEach((st, j) => li.append(member(ctx, k, j, st, j === b.steps.length - 1)));
-      li.append(h("div", { class: "wf-cfoot" }, h("button", {
-        type: "button", class: "wf-link", "aria-label": "Add an exercise to the superset", title: "Add an exercise to the superset", "data-fk": `ssadd:${k}`,
-        onclick: () => pickExercise().then((name) => {
-          if (!name) return;
-          // the new exercise goes last, so the rest after the round moves to it
-          const last = b.steps[b.steps.length - 1], added = M.withRest(M.newSet(name, { reps: M.endOf(last).value || 10 }), last.restTimeSeconds || 0);
-          writeBlocks(ctx, M.insertInto(M.updateStep(blocks, k, b.steps.length - 1, (s) => M.withRest(s, 0)), k, undefined, [added]));
-        }),
-      }, "+ Exercise")));
+      li.append(h("div", { class: "wf-cfoot" }, link("+ Exercise", `ssadd:${k}`, () => pickExercise().then((name) => {
+        if (!name) return;
+        // the new exercise goes last, so the rest after the round moves to it
+        const last = b.steps[b.steps.length - 1], added = M.withRest(M.newSet(name, { reps: M.endOf(last).value || 10 }), last.restTimeSeconds || 0);
+        writeBlocks(ctx, M.insertInto(M.updateStep(blocks, k, b.steps.length - 1, (s) => M.withRest(s, 0)), k, undefined, [added]));
+      }), "Add an exercise to the superset")));
       return li;
     }
 
     function member(ctx, k, j, st, last) {
       const b = ctx.blocks[k], name = st.exerciseName, title = M.prettyName(name);
-      const items = [
-        j > 0 && { label: "Move up", run: () => writeBlocks(ctx, M.moveInside(ctx.blocks, k, j, -1)) },
-        j < b.steps.length - 1 && { label: "Move down", run: () => writeBlocks(ctx, M.moveInside(ctx.blocks, k, j, 1)) },
+      const items = insideMenu(ctx, k, j, title, [
         { label: "Take out of the superset", run: () => writeBlocks(ctx, M.takeOut(ctx.blocks, k, j, { keep: true, times: b.times })) },
         ...countItems(ctx, [[k, j]], st),
-        jsonItem(ctx, k, j),
-        { label: "Delete", danger: true, run: () => { writeBlocks(ctx, M.takeOut(ctx.blocks, k, j)); opts.toastUndo(`${title} deleted`, opts.undo); } },
-      ];
-      const pick = h("button", { type: "button", class: "wf-exname", title: "Pick another exercise", "data-fk": `ex:${k}:${j}` }, title, caret());
-      pick.onclick = () => pickExercise(name).then((to) => { if (to && to !== name) writeStep(ctx, k, j, (s) => rename(s, name, to)); });
-      const worked = muscles(name);
+      ]);
       return h("div", { class: "wf-member" },
-        h("div", { class: "wf-mh" }, h("div", { class: "wf-t" }, pick, worked ? h("small", { class: "wf-dim", text: worked }) : null), menu(items, `More for ${title}`, `mm:${k}:${j}`)),
-        h("div", { class: "wf-line" }, liftEnd(ctx, k, j, st), load(ctx, k, j, st), rest(ctx, k, j, st, last ? "Rest after the round" : "Rest after")),
-        messages(ctx, [ctx.offsets[k] + j]));
+        h("div", { class: "wf-mh" }, exerciseTitle(name, `ex:${k}:${j}`, (to) => writeBlocks(ctx, renamed(ctx.blocks, [[k, j]], name, to))), menu(items, `More for ${title}`, `menu:${k}:${j}`)),
+        h("div", { class: "wf-line" }, liftEnd(ctx, k, j, st), load(ctx, k, j, st), field(last ? "Rest after the round" : "Rest after", restInput(ctx, k, j, st, last ? "Rest after the round" : "Rest after"))),
+        messages(ctx, ctx.offsets[k] + j));
     }
 
     // ── A step, and a repeat of steps (run, ride; and the warm-up of a lifting day) ──
 
     function repeatCard(ctx, card, c) {
       const k = card.k, b = ctx.blocks[k];
-      const items = [
-        ...moveItems(ctx, c),
-        { label: "Duplicate", run: () => writeBlocks(ctx, M.duplicateBlocks(ctx.blocks, k)) },
-        { label: "Do these steps once", run: () => writeBlocks(ctx, M.unrepeat(ctx.blocks, k)) },
-        jsonItem(ctx, k, 0),
-        deleteItem(ctx, k, 1, "Repeat"),
-      ];
+      const items = cardMenu(ctx, c, "Repeat", [{ label: "Do these steps once", run: () => writeBlocks(ctx, M.setTimes(ctx.blocks, k, 1)) }]);
       const inner = h("ol", { class: "wf-inner" });
-      b.steps.forEach((st, j) => inner.append(h("li", { class: `k-${kindClass(st)}` }, stepRow(ctx, k, j, null))));
+      b.steps.forEach((st, j) => inner.append(h("li", { class: `k-${WM.kindOf(st)}` }, stepRow(ctx, k, j, null))));
+      const add = (type) => () => writeBlocks(ctx, M.insertInto(ctx.blocks, k, undefined, [M.newStep(ctx.w, type)]));
       return h("li", { class: "wf-card wf-rep", "data-c": c },
-        h("div", { class: "wf-ch" }, grip(), h("div", { class: "wf-t" }, h("span", { class: "wf-title", text: "Repeat" })),
-          h("div", { class: "wf-times" }, stepper(b.times, 2, 99, (n) => writeBlocks(ctx, M.setTimes(ctx.blocks, k, n)), `times:${k}`, "Times"), h("span", { class: "wf-dim", text: "times" })),
-          menu(items, "More for the repeat", `repm:${k}`)),
+        groupHead(ctx, k, "Repeat", "times", items),
         inner,
-        h("div", { class: "wf-cfoot" },
-          h("button", { type: "button", class: "wf-link", "data-fk": `rstep:${k}`, onclick: () => writeBlocks(ctx, M.insertInto(ctx.blocks, k, undefined, [M.newStep(ctx.w, ctx.mode === "strength" ? "other" : "interval")])) }, "+ Step"),
-          h("button", { type: "button", class: "wf-link", "data-fk": `rrec:${k}`, onclick: () => writeBlocks(ctx, M.insertInto(ctx.blocks, k, undefined, [M.newStep(ctx.w, "recovery")])) }, "+ Recovery")));
+        h("div", { class: "wf-cfoot" }, link("+ Step", `rstep:${k}`, add(ctx.mode === "strength" ? "other" : "interval")), link("+ Recovery", `rrec:${k}`, add("recovery"))));
     }
 
-    /** One step: its kind, how it ends, what it aims for, and a rest after it. `place.c` is its card when it is a card of its own. */
-    function stepRow(ctx, k, j, place) {
-      const b = ctx.blocks[k], st = b.steps[j], key = `${k}:${j}`, strength = ctx.mode === "strength", inRepeat = b.times > 1;
+    /** One step: its kind, how it ends, what it aims for, and a rest after it. `c` is its card when it is a card of its own (null in a repeat). */
+    function stepRow(ctx, k, j, c) {
+      const st = ctx.blocks[k].steps[j], key = `${k}:${j}`, strength = ctx.mode === "strength";
       const kinds = strength ? ["warmup", "rest", "recovery", "cooldown", "other"] : ["warmup", "interval", "recovery", "rest", "cooldown", "other"];
-      const kind = h("select", { class: "wf-kind", "aria-label": "Kind of step", "data-fk": `kind:${key}` });
+      const kind = h("select", { "aria-label": "Kind of step", "data-fk": `kind:${key}` });
       for (const t of kinds) kind.add(new Option(M.kindLabel(t, ctx.w), t));
       if (!kinds.includes(st.stepType)) kind.add(new Option(M.kindLabel(st.stepType, ctx.w), st.stepType ?? ""));
       kind.value = st.stepType ?? "";
       kind.onchange = () => writeStep(ctx, k, j, (s) => M.patched(s, { stepType: kind.value }));
 
-      const items = [];
-      if (place) items.push(...moveItems(ctx, place.c), { label: "Duplicate", run: () => writeBlocks(ctx, M.duplicateBlocks(ctx.blocks, k)) }, { label: "Repeat it", run: () => writeBlocks(ctx, M.setTimes(ctx.blocks, k, 2)) });
-      if (inRepeat) items.push(
-        j > 0 && { label: "Move up", run: () => writeBlocks(ctx, M.moveInside(ctx.blocks, k, j, -1)) },
-        j < b.steps.length - 1 && { label: "Move down", run: () => writeBlocks(ctx, M.moveInside(ctx.blocks, k, j, 1)) },
-        { label: "Duplicate", run: () => writeBlocks(ctx, M.insertInto(ctx.blocks, k, j + 1, [M.copyStep(st)])) },
-        { label: "Take out of the repeat", run: () => writeBlocks(ctx, M.takeOut(ctx.blocks, k, j, { keep: true })) });
-      items.push(st.restTimeSeconds ? { label: "No rest after it", run: () => writeStep(ctx, k, j, (s) => M.withRest(s, 0)) } : { label: "Add a rest after it", run: () => writeStep(ctx, k, j, (s) => M.withRest(s, 60)) });
-      items.push(jsonItem(ctx, k, j));
-      items.push(inRepeat && b.steps.length > 1
-        ? { label: "Delete", danger: true, run: () => { writeBlocks(ctx, M.takeOut(ctx.blocks, k, j)); opts.toastUndo("Step deleted", opts.undo); } }
-        : deleteItem(ctx, k, 1, "Step"));
+      const rested = st.restTimeSeconds ? { label: "No rest after it", run: () => writeStep(ctx, k, j, (s) => M.withRest(s, 0)) } : { label: "Add a rest after it", run: () => writeStep(ctx, k, j, (s) => M.withRest(s, 60)) };
+      const items = c !== null
+        ? cardMenu(ctx, c, "Step", [{ label: "Repeat it", run: () => writeBlocks(ctx, M.setTimes(ctx.blocks, k, 2)) }, rested])
+        : insideMenu(ctx, k, j, "Step", [
+          { label: "Duplicate", run: () => writeBlocks(ctx, M.insertInto(ctx.blocks, k, j + 1, [M.copyStep(st)])) },
+          { label: "Take out of the repeat", run: () => writeBlocks(ctx, M.takeOut(ctx.blocks, k, j, { keep: true })) },
+          rested,
+        ]);
 
       const fields = h("div", { class: "wf-sf" }, kind, endField(ctx, k, j, st), !strength || (st.targetType && st.targetType !== "no.target") ? target(ctx, k, j, st) : null);
-      const row = h("div", { class: `wf-step k-${kindClass(st)}` }, place ? grip() : h("span"), fields, menu(items, "More for this step", `stm:${key}`));
+      const row = h("div", { class: `wf-step k-${WM.kindOf(st)}` }, c !== null ? grip() : h("span"), fields, menu(items, "More for this step", `menu:${key}`));
       const under = [];
       if (st.exerciseName) under.push(h("small", { class: "wf-dim", text: M.prettyName(st.exerciseName) }));
       if (st.restTimeSeconds) under.push(h("div", { class: "wf-then" }, h("span", { class: "wf-fl", text: "Then rest" }), restInput(ctx, k, j, st, "Then rest"), h("button", { type: "button", class: "wf-x", title: "No rest after it", "aria-label": "No rest after it", "data-fk": `restx:${key}`, onclick: () => writeStep(ctx, k, j, (s) => M.withRest(s, 0)) }, "×")));
-      const msgs = messages(ctx, [ctx.offsets[k] + j]);
-      if (msgs) under.push(msgs);
-      if (under.length) row.append(h("div", { class: "wf-under" }, under));
+      under.push(messages(ctx, ctx.offsets[k] + j));
+      if (under.some(Boolean)) row.append(h("div", { class: "wf-under" }, under));
       return row;
     }
 
     /** How a step ends: a distance (km or m), a time, the lap button; another of Garmin's ends shows as a number. */
     function endField(ctx, k, j, st) {
       const end = M.endOf(st), key = `${k}:${j}`, dist = end.by === "distance";
-      const unit = dist ? units.get(key) || M.distanceField(end.value).unit : null;
-      const by = h("select", { class: "wf-by", "aria-label": "Ends after", title: "Ends after a distance, a time, or when you press the lap button", "data-fk": `by:${key}` });
+      const unit = dist ? units.get(key) || M.distanceUnit(end.value) : null;
+      const by = h("select", { "aria-label": "Ends after", title: "Ends after a distance, a time, or when you press the lap button", "data-fk": `by:${key}` });
       const choices = ctx.mode === "strength" ? [["time", "time"], ["lap", "lap"]] : [["km", "km"], ["m", "m"], ["time", "time"], ["lap", "lap"]];
       for (const [v, label] of choices) by.add(new Option(label, v));
       const own = dist ? unit : end.by;
-      if (!choices.some(([v]) => v === own)) by.add(new Option(own === "distance" ? "km" : M.prettyName(own || "none"), own || ""));
+      if (!choices.some(([v]) => v === own)) by.add(new Option(M.prettyName(own || "none"), own || ""));
       by.value = own || "";
       by.onchange = () => {
         const v = by.value;
@@ -516,30 +528,18 @@
           units.set(key, v);
           return dist ? render() : writeStep(ctx, k, j, (s) => M.withEnd(s, "distance", v === "km" ? 1000 : 400));
         }
-        writeStep(ctx, k, j, (s) => M.withEnd(s, v, v === "time" ? (s.stepType === "rest" ? 60 : s.stepType === "recovery" ? 120 : 600) : 0));
+        writeStep(ctx, k, j, (s) => M.withEnd(s, v, v === "time" ? M.defaultTime(s.stepType) : 0));
       };
-      let field = null;
-      if (dist) {
-        field = h("input", { type: "text", inputmode: "decimal", class: "wf-num", value: M.distanceIn(end.value, unit), "aria-label": `Distance in ${unit}`, "data-fk": `ev:${key}` });
-        field.onchange = () => {
-          const m = M.parseDistance(field.value, unit);
-          if (m === null) return bad(field, `Not a distance: ${field.value.trim()}`);
-          writeStep(ctx, k, j, (s) => M.withEnd(s, "distance", m));
-        };
-      } else if (end.by === "time") {
-        field = clockInput(end.value, st.stepType === "rest" ? "s" : "min", (sec) => writeStep(ctx, k, j, (s) => M.withEnd(s, "time", sec)), `ev:${key}`, "Time");
-      } else if (end.by === "reps") {
-        field = stepper(end.value, 1, 999, (n) => writeStep(ctx, k, j, (s) => M.withEnd(s, "reps", n)), `ev:${key}`, "Reps");
-      } else if (end.by && end.by !== "lap") {
-        field = numberInput(end.value, (n) => writeStep(ctx, k, j, (s) => M.patched(s, { endConditionValue: n })), `ev:${key}`, M.prettyName(end.by));
-      }
-      return h("span", { class: "wf-end" }, field, by);
+      const input = dist
+        ? entry({ value: M.distanceIn(end.value, unit), label: `Distance in ${unit}`, fk: `ev:${key}` }, (t) => M.parseDistance(t, unit), "Not a distance", (m) => writeStep(ctx, k, j, (s) => M.withEnd(s, "distance", m)))
+        : endInput(ctx, k, j, end, st.stepType === "rest" ? "s" : "min");
+      return h("span", { class: "wf-end" }, input, by);
     }
 
     /** What a step aims for, as a range typed in the target's unit: a pace fast end first, as runners say it. */
     function target(ctx, k, j, st) {
       const key = `${k}:${j}`, type = st.targetType || "no.target", info = M.TARGETS[type] || {}, t = M.targetOf(st);
-      const pick = h("select", { class: "wf-tt", "aria-label": "Target", "data-fk": `tt:${key}` });
+      const pick = h("select", { "aria-label": "Target", "data-fk": `tt:${key}` });
       for (const tt of M.targetsFor(ctx.w, st)) pick.add(new Option((M.TARGETS[tt] || { label: tt }).label, tt));
       if (!M.TARGETS[type]) pick.add(new Option(type, type));
       pick.value = type;
@@ -554,7 +554,7 @@
       const ends = info.field === "pace" ? [t.hi, t.lo] : [t.lo, t.hi];
       const unit = M.targetUnit(type, ctx.w), what = info.label.toLowerCase();
       const fields = ends.map((v, n) => h("input", { type: "text", inputmode: info.field === "pace" ? "text" : "decimal", class: "wf-num", value: show(v), placeholder: info.field === "pace" ? "m:ss" : "", "aria-label": `${info.label} ${n === 0 ? "from" : "to"}`, "data-fk": `tv${n}:${key}` }));
-      const put = () => {
+      const put = () => { // the two ends are written together, so a range is never half new
         const values = fields.map((f) => (f.value.trim() ? parse(f.value) : null));
         const wrong = fields.find((f, n) => f.value.trim() && (values[n] === null || values[n] <= 0));
         if (wrong) return bad(wrong, `Not a ${what}: ${wrong.value.trim()}`);
@@ -567,14 +567,9 @@
 
     /** A distance-only run: Garmin makes its steps from the distance. */
     function distanceOnly(ctx) {
-      const { w } = ctx, unit = M.distanceField(w.distanceMeters).unit;
-      const input = h("input", { type: "text", inputmode: "decimal", class: "wf-num", value: M.distanceIn(w.distanceMeters, unit), "aria-label": `Distance in ${unit}`, "data-fk": "dist" });
-      input.onchange = () => {
-        const m = M.parseDistance(input.value, unit);
-        if (m === null) return bad(input, `Not a distance: ${input.value.trim()}`);
-        write({ ...w, distanceMeters: m });
-      };
-      const steps = () => write({ ...w, steps: [M.newStep(w, "interval", { by: "distance", value: w.distanceMeters })].map((s, i) => ({ ...s, stepOrder: i + 1 })) });
+      const { w } = ctx, unit = M.distanceUnit(w.distanceMeters);
+      const input = entry({ value: M.distanceIn(w.distanceMeters, unit), label: `Distance in ${unit}`, fk: "dist" }, (t) => M.parseDistance(t, unit), "Not a distance", (m) => write({ ...w, distanceMeters: m }));
+      const steps = () => write({ ...w, steps: M.fromBlocks([M.once(M.newStep(w, "interval", { by: "distance", value: w.distanceMeters }))]) });
       return h("div", { class: "wf-simple" },
         h("p", { class: "wf-dim", text: "No steps: Garmin makes its own for the distance." }),
         h("div", { class: "wf-row" }, h("div", { class: "wf-f" }, h("span", { class: "wf-fl", text: "Distance" }), input, h("span", { class: "wf-dim", text: unit })),
@@ -593,17 +588,17 @@
       const insert = (added) => writeBlocks(ctx, M.insertBlocks(blocks, at, added));
       if (ctx.mode === "strength") {
         add("+ Exercise", "add:ex", () => pickExercise().then((name) => name && insert([{ steps: [M.newSet(name, lastSet(ctx))], times: 3 }])));
-        add("+ Rest", "add:rest", () => insert([{ steps: [M.newStep(w, "rest")], times: 1 }]));
+        add("+ Rest", "add:rest", () => insert([M.once(M.newStep(w, "rest"))]));
       } else {
-        add("+ Step", "add:step", () => insert([{ steps: [M.newStep(w, "interval")], times: 1 }]));
+        add("+ Step", "add:step", () => insert([M.once(M.newStep(w, "interval"))]));
         add("+ Repeat", "add:rep", () => insert([{ steps: [M.newStep(w, "interval"), M.newStep(w, "recovery")], times: 4 }]), "A step and its recovery, done several times");
-        add("+ Rest", "add:rest", () => insert([{ steps: [M.newStep(w, "rest")], times: 1 }]));
+        add("+ Rest", "add:rest", () => insert([M.once(M.newStep(w, "rest"))]));
       }
-      if (!warm) add("+ Warm-up", "add:wu", () => writeBlocks(ctx, M.insertBlocks(blocks, 0, [{ steps: [M.newStep(w, "warmup")], times: 1 }])));
-      if (!cool) add("+ Cool-down", "add:cd", () => writeBlocks(ctx, M.insertBlocks(blocks, blocks.length, [{ steps: [M.newStep(w, "cooldown")], times: 1 }])));
+      if (!warm) add("+ Warm-up", "add:wu", () => writeBlocks(ctx, M.insertBlocks(blocks, 0, [M.once(M.newStep(w, "warmup"))])));
+      if (!cool) add("+ Cool-down", "add:cd", () => writeBlocks(ctx, M.insertBlocks(blocks, blocks.length, [M.once(M.newStep(w, "cooldown"))])));
       const presets = M.PRESETS[w.workoutType];
       if (presets) {
-        const pick = h("select", { class: "wf-preset", "aria-label": "Add a ready-made part", "data-fk": "add:preset" }, h("option", { value: "", text: "+ Ready-made…" }));
+        const pick = h("select", { "aria-label": "Add a ready-made part", "data-fk": "add:preset" }, h("option", { value: "", text: "+ Ready-made…" }));
         for (const p of presets) pick.add(new Option(p.label, p.id));
         pick.onchange = () => { const p = presets.find((x) => x.id === pick.value); if (p) insert(p.blocks(w)); };
         bar.append(pick);
@@ -617,40 +612,6 @@
       if (!st) return { reps: 10, rest: 90 };
       const end = M.endOf(st);
       return { reps: end.by === "reps" && end.value ? end.value : 10, rest: st.restTimeSeconds ?? 90 };
-    }
-
-    // ── Small fields ──
-
-    /** A number with − and + beside it (a phone's thumb), between min and max. */
-    function stepper(value, min, max, set, fk, label) {
-      const now = Math.round(Number(value) || 0);
-      const input = h("input", { type: "text", inputmode: "numeric", class: "wf-num wf-int", value: now ? String(now) : "", "aria-label": label, "data-fk": fk });
-      const go = (n) => { const v = Math.max(min, Math.min(max, n)); if (v !== now) set(v); else input.value = String(now || ""); };
-      input.onchange = () => { const n = parseInt(input.value, 10); if (Number.isFinite(n)) go(n); else bad(input, `Not a number: ${input.value.trim()}`); };
-      return h("span", { class: "wf-stepper" },
-        h("button", { type: "button", class: "wf-sb", "aria-label": `${label}: one less`, disabled: now <= min, "data-fk": fk + ":-", onclick: () => go(now - 1) }, "−"),
-        input,
-        h("button", { type: "button", class: "wf-sb", "aria-label": `${label}: one more`, disabled: now >= max, "data-fk": fk + ":+", onclick: () => go(now + 1) }, "+"));
-    }
-
-    function clockInput(seconds, bare, set, fk, label) {
-      const input = h("input", { type: "text", inputmode: "text", class: "wf-num", value: seconds ? M.clock(seconds) : "", placeholder: "m:ss", "aria-label": label, "data-fk": fk });
-      input.onchange = () => {
-        const sec = M.parseClock(input.value, bare);
-        if (sec === null || sec <= 0) return bad(input, `Not a time: ${input.value.trim()}`);
-        set(sec);
-      };
-      return input;
-    }
-
-    function numberInput(value, set, fk, label) {
-      const input = h("input", { type: "text", inputmode: "decimal", class: "wf-num", value: value ? String(value) : "", "aria-label": label, "data-fk": fk });
-      input.onchange = () => {
-        const n = M.parseNumber(input.value);
-        if (n === null || n <= 0) return bad(input, `Not a number above 0: ${input.value.trim()}`);
-        set(n);
-      };
-      return input;
     }
 
     // ── Menus ──
@@ -676,14 +637,14 @@
       if (menuEl.parentElement !== host) host.append(menuEl);
       if (menuEl.matches(":popover-open")) menuEl.hidePopover();
       menuEl.replaceChildren(...items.map((it) => h("button", { type: "button", role: "menuitem", class: it.danger ? "danger" : "", onclick: () => { menuEl.hidePopover(); it.run(); } }, it.label)));
-      menuEl.ontoggle = (e) => { if (e.newState === "closed" && anchor.isConnected && !el.contains(document.activeElement)) anchor.focus({ preventScroll: true }); };
+      menuEl.ontoggle = (e) => {
+        if (e.newState !== "closed") return;
+        if (anchor.isConnected && !el.contains(document.activeElement)) anchor.focus({ preventScroll: true });
+        menuEl.ontoggle = null; // its items and its button belong to a drawing that is gone once the form changes
+        menuEl.replaceChildren();
+      };
       menuEl.showPopover();
-      menuEl.style.left = menuEl.style.top = "";
-      if (!matchMedia("(max-width: 900px)").matches) { // under the button, or over it without room below; a phone shows a sheet at the foot
-        const a = anchor.getBoundingClientRect(), m = menuEl.getBoundingClientRect();
-        menuEl.style.left = Math.max(8, Math.min(a.right - m.width, innerWidth - m.width - 8)) + "px";
-        menuEl.style.top = (a.bottom + 4 + m.height <= innerHeight - 8 ? a.bottom + 4 : Math.max(8, a.top - 4 - m.height)) + "px";
-      }
+      opts.place(menuEl, anchor);
       menuEl.querySelector("button")?.focus();
     }
 
@@ -695,9 +656,10 @@
       return loadCatalog().then((cat) => new Promise((resolve) => {
         const p = picker || (picker = makePicker());
         let picked = null;
-        p.state = { all: cat.exercises, used: cat.used || [], category: "", current };
+        p.state = { cat, category: "", current };
         p.search.value = "";
-        fillPicker(p);
+        fillChips(p);
+        fillList(p);
         p.dlg.onclose = () => { p.dlg.onclose = null; resolve(picked); };
         p.choose = (name) => { picked = name; p.dlg.close(); };
         opts.modal(p.dlg);
@@ -710,13 +672,14 @@
       const cats = h("div", { class: "wf-pk-cats", role: "group", "aria-label": "Category" });
       const list = h("div", { class: "wf-pk-list" });
       const close = h("button", { type: "button", "aria-label": "Close" }, "✕");
+      // the id is what the page's history entry for an open dialog names (Back closes it)
       const dlg = h("dialog", { class: "wf-pick", "aria-label": "Pick an exercise", id: `wfpick${++seq}` },
         h("div", { class: "dhead" }, h("b", { text: "Pick an exercise" }), close),
         h("div", { class: "wf-pk-bar" }, search), cats, list);
       document.body.append(dlg);
       const p = { dlg, search, cats, list, state: null, choose: null };
       close.onclick = () => dlg.close();
-      search.oninput = () => fillPicker(p);
+      search.oninput = () => fillList(p);
       search.onkeydown = (e) => {
         if (e.key === "Enter") { e.preventDefault(); const first = list.querySelector("button"); if (first) first.click(); }
         if (e.key === "ArrowDown") { e.preventDefault(); list.querySelector("button")?.focus(); }
@@ -729,22 +692,31 @@
       return p;
     }
 
-    function fillPicker(p) {
-      const { all, used, category, current } = p.state, query = p.search.value;
-      const categories = [...new Set(all.map((e) => e.category))].sort();
-      p.cats.replaceChildren(...["", ...categories].map((cat) => h("button", {
-        type: "button", class: "tchip", "aria-pressed": String(cat === category), onclick: () => { p.state.category = cat === category ? "" : cat; fillPicker(p); },
-      }, cat ? M.prettyName(cat) : "All")));
+    /** The categories, once each time the picker opens; a tap narrows the list to one (another tap on it, to all). */
+    function fillChips(p) {
+      const chips = ["", ...p.state.cat.categories].map((cat) => {
+        const chip = h("button", { type: "button", class: "tchip", "aria-pressed": String(cat === ""), "data-cat": cat }, cat ? M.prettyName(cat) : "All");
+        chip.onclick = () => {
+          p.state.category = cat === p.state.category ? "" : cat;
+          for (const b of p.cats.children) b.setAttribute("aria-pressed", String(b.dataset.cat === p.state.category));
+          fillList(p);
+        };
+        return chip;
+      });
+      p.cats.replaceChildren(...chips);
+    }
+
+    function fillList(p) {
+      const { cat, category, current } = p.state, query = p.search.value;
       const row = (e) => h("button", { type: "button", class: "wf-pk-row" + (e.name === current ? " cur" : ""), onclick: () => p.choose(e.name) },
         h("b", { text: M.prettyName(e.name) }), h("small", { text: [M.prettyName(e.category), muscles(e.name)].filter(Boolean).join(" · ") }));
-      const byName = new Map(all.map((e) => [e.name, e]));
       const out = [];
       if (!query.trim() && !category) {
-        const mine = used.map((n) => byName.get(n)).filter(Boolean);
+        const mine = cat.used.map((n) => cat.byName.get(n)).filter(Boolean);
         if (mine.length) out.push(h("div", { class: "wf-pk-h", text: "In your plans" }), ...mine.map(row));
-        out.push(h("div", { class: "wf-pk-h", text: `Type to search Garmin's ${all.length} exercises, or pick a category.` }));
+        out.push(h("div", { class: "wf-pk-h", text: `Type to search Garmin's ${cat.all.length} exercises, or pick a category.` }));
       } else {
-        const hits = M.searchExercises(all, query, { category, recent: used, limit: 80 });
+        const hits = M.searchExercises(cat.all, query, { category, recent: cat.used, limit: 80 });
         out.push(...(hits.length ? hits.map(row) : [h("div", { class: "wf-pk-h", text: "No exercise has all these words." })]));
       }
       p.list.replaceChildren(...out);
@@ -804,13 +776,12 @@
     }
 
     const escDrag = (e) => { if (e.key === "Escape" && drag) { e.preventDefault(); e.stopPropagation(); endDrag(null, false); } };
-    const scroller = (node) => { for (let n = node.parentElement; n; n = n.parentElement) { const s = getComputedStyle(n).overflowY; if ((s === "auto" || s === "scroll") && n.scrollHeight > n.clientHeight) return n; } return document.scrollingElement; };
 
     return { el, render, schedule };
   }
 
-  // whether the overview is open, for every form: open on a desktop, closed on a phone until opened
-  let overviewOpen = !matchMedia("(max-width: 900px)").matches;
+  // whether the overview is open, for every form: open on a desktop, shut on a phone until opened (decided when the first one is drawn)
+  let overviewOpen = null;
 
-  root.WorkoutForm = { create };
+  root.WorkoutForm = { create, redraw };
 })(typeof self !== "undefined" ? self : this);

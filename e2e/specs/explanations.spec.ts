@@ -3,7 +3,7 @@
  * account menu shows them all, remembered in this browser. Reads only: alice's data is never changed (an ⓘ in a checkbox's row ticks nothing).
  */
 import type { Page } from "@playwright/test";
-import { test, expect, openView } from "../support/fixtures";
+import { test, expect, openView, chooseEditMode } from "../support/fixtures";
 
 /** The views whose notes on their numbers are one "About these numbers" line at their foot, by their body. */
 const FEET = [["today", "#tbody"], ["recovery", "#rbody"], ["weight", "#bbody"], ["food", "#fbody"]] as const;
@@ -76,7 +76,7 @@ test.describe("each note behind its ⓘ", () => {
   });
 
   test("a workout's estimate says how it was timed behind its ⓘ", async ({ alice }) => {
-    await alice.addInitScript(() => localStorage.setItem("planEditor.editMode", "json")); // the outline's picture: the form has its own (workout-form.spec.ts)
+    await chooseEditMode(alice, "json"); // the outline's picture: the form has its own (workout-form.spec.ts)
     await openView(alice, "plans");
     await alice.locator("#filelist .file", { hasText: "alice-run-block.json" }).click();
     const tempo = alice.locator("#outline .row.wk").nth(1);

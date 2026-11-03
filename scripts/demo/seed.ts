@@ -44,24 +44,22 @@ const time = (seconds: number) => ({ endCondition: "time", endConditionValue: se
 const dist = (meters: number) => ({ endCondition: "distance", endConditionValue: meters, distanceMeters: meters });
 const lap = { endCondition: "lap.button", endConditionValue: 0 };
 
-// A repeat is a run of steps that share a repeatGroupIndex and a numberOfRepeats, as the plans write them; steps() numbers them.
-let repeatMark = 0;
+// A repeat is a run of steps that share a repeatGroupIndex and a numberOfRepeats, as the plans write them: repeat() makes the run, steps() numbers it.
 /** These steps done `times` times. */
-const repeat = (times: number, ...steps: object[]) => {
-  const mark = --repeatMark;
-  return steps.map((st) => ({ ...st, numberOfRepeats: times, repeatGroupIndex: mark }));
-};
+const repeat = (times: number, ...steps: object[]) => steps.map((st) => ({ ...st, numberOfRepeats: times }));
 /** An exercise done `sets` times: `reps` reps (at `weight` lb), `rest` seconds after each set. */
 const set = (exerciseName: string, reps: number, weight: number | undefined, rest: number, sets: number) =>
   repeat(sets, { stepType: "interval", exerciseName, targetType: "no.target", endCondition: "reps", endConditionValue: reps, reps, ...(weight ? { weight } : {}), restTimeSeconds: rest });
-/** The steps as the plans hold them: one flat list numbered from 1, each repeat with an index of its own (0, 1, …). */
+/** The steps as the plans hold them: one flat list numbered from 1, each repeat (a part given as a list) with an index of its own (0, 1, …). */
 function steps(...parts: (object | object[])[]): object[] {
-  const index = new Map<number, number>();
-  return parts.flat().map((st: any, i) => {
-    if (st.repeatGroupIndex === undefined) return { ...st, stepOrder: i + 1 };
-    if (!index.has(st.repeatGroupIndex)) index.set(st.repeatGroupIndex, index.size);
-    return { ...st, repeatGroupIndex: index.get(st.repeatGroupIndex), stepOrder: i + 1 };
-  });
+  let group = 0;
+  return parts
+    .flatMap((part) => {
+      if (!Array.isArray(part)) return [part];
+      const gi = group++;
+      return part.map((st) => ({ ...st, repeatGroupIndex: gi }));
+    })
+    .map((st, i) => ({ ...st, stepOrder: i + 1 }));
 }
 
 /** The workouts of the build, with the weekday each falls on, counted from today's (so today always has the tempo). */

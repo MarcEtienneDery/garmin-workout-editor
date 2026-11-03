@@ -127,7 +127,7 @@ describe("reading the steps as blocks", () => {
     const pyramid = M.toBlocks(ordered([lift("BARBELL_BACK_SQUAT", 5, 3, 0, { weight: 225 }), { ...lift("BARBELL_BACK_SQUAT", 3, 1, 1, { weight: 245 }) }, lift("BARBELL_BENCH_PRESS", 8, 3, 2)]));
     const cards = M.strengthCards(pyramid);
     expect(cards.map((c: any) => [c.kind, c.name, c.count])).toEqual([["exercise", "BARBELL_BACK_SQUAT", 2], ["exercise", "BARBELL_BENCH_PRESS", 1]]);
-    expect(M.setCount(pyramid, cards[0])).toBe(4);
+    expect(pyramid.slice(0, 2).reduce((t: number, b: any) => t + b.times, 0)).toBe(4); // its sets
   });
 });
 
@@ -215,7 +215,7 @@ describe("edits", () => {
     expect(joined.map((b: any) => [b.steps.length, b.times])).toEqual([[2, 2]]);
     const out = M.fromBlocks(M.setTimes(joined, 0, 6));
     expect(out.map((s: Step) => [s.numberOfRepeats, s.repeatGroupIndex])).toEqual([[6, 0], [6, 0]]);
-    expect(M.fromBlocks(M.unrepeat(M.toBlocks(out), 0))).toEqual(steps);
+    expect(M.fromBlocks(M.setTimes(M.toBlocks(out), 0, 1))).toEqual(steps);
   });
 
   it("drops the index of a step done once when it would join it to the repeat beside it", () => {
@@ -287,6 +287,7 @@ describe("nested repeats", () => {
     const flat = M.flatten(nested.steps);
     expect(M.toBlocks(flat).map((b: any) => [b.steps.map((s: Step) => s.stepType), b.times])).toEqual([[["warmup"], 1], [["interval", "recovery"], 4], [["cooldown"], 1]]);
     expect(flat[1]).toEqual({ ...nested.steps[1].repeatSteps[0], numberOfRepeats: 4, repeatGroupIndex: 0 });
+    expect(M.fromBlocks(M.toBlocks(flat)).map((st: Step) => st.stepOrder)).toEqual([1, 2, 3, 4]); // written in order, as the upload reads it
     // the demo's steps leave out the fields that mirror endConditionValue, which Garmin's copy has: an edit adds them (withEnd)
     const mirrored = flat.map((st: Step) => M.withEnd(st, M.endOf(st).by, M.endOf(st).value));
     expect(garminDiff({ ...nested, steps: M.fromBlocks(M.toBlocks(mirrored)) })).toEqual([]);
@@ -340,9 +341,8 @@ describe("units", () => {
     expect(M.kmhText(8.333)).toBe("30");
     expect(M.parseKmh("30")).toBe(8.333);
     expect(M.parseKmh("0")).toBeNull();
-    expect(M.distanceField(400)).toEqual({ value: "400", unit: "m" });
-    expect(M.distanceField(2500)).toEqual({ value: "2.5", unit: "km" });
-    expect(M.distanceField(21100)).toEqual({ value: "21.1", unit: "km" });
+    expect([M.distanceUnit(400), M.distanceUnit(2500), M.distanceUnit(400.5), M.distanceUnit(0)]).toEqual(["m", "km", "km", "km"]);
+    expect([M.distanceIn(400, "m"), M.distanceIn(2500, "km"), M.distanceIn(21100, "km")]).toEqual(["400", "2.5", "21.1"]);
     expect(M.parseDistance("2,5")).toBe(2500);
     expect(M.parseDistance("400", "m")).toBe(400);
     expect(M.parseDistance("400m", "km")).toBe(400);

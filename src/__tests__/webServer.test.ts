@@ -1248,12 +1248,12 @@ describe("web plan editor", () => {
 
       it("keeps the unit of weight the profile picks, lb unless it picks kg, and tells every view at once", async () => {
         addProfile("MED");
-        expect((await call("GET", "/api/settings")).json.prefs).toEqual({ weightUnit: "lb" });
         expect((await call("GET", "/api/garmin")).json.prefs).toEqual({ MED: { weightUnit: "lb" } });
-        expect((await call("POST", "/api/settings/prefs", { prefs: { weightUnit: "kg" } })).json.prefs).toEqual({ weightUnit: "kg" });
+        expect((await call("POST", "/api/settings/prefs", { prefs: { weightUnit: "kg" } })).status).toBe(200);
         expect((await call("GET", "/api/garmin")).json.prefs.MED).toEqual({ weightUnit: "kg" });
         expect((await call("POST", "/api/settings/prefs", { prefs: { weightUnit: "stone" } })).status).toBe(400);
-        expect((await call("POST", "/api/settings/prefs", { prefs: {} })).json.prefs).toEqual({ weightUnit: "kg" });
+        expect((await call("POST", "/api/settings/prefs", { prefs: {} })).status).toBe(200);
+        expect(store().prefs.get("MED")).toEqual({ weightUnit: "kg" }); // a key left out stays
         store().prefs.set("MED", { weightUnit: "oz" as never });
         expect(store().prefs.get("MED")).toEqual({ weightUnit: "lb" }); // a cell that holds nothing known is the default
       });

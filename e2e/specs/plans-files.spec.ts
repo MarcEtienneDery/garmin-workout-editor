@@ -82,9 +82,7 @@ const SHARED = "shared-base.json";
 
 // The edits these specs make are typed into the JSON editor, so the Plans view is shown with JSON chosen (the choice is kept in the
 // browser); the form has workout-form.spec.ts.
-test.beforeEach(async ({ page }) => {
-  await page.addInitScript(() => localStorage.setItem("planEditor.editMode", "json"));
-});
+test.use({ editMode: "json" });
 const ALICE_FILES = ["alice-run-block.json", "alice-someday.json", SHARED];
 
 /** The names of alice's list rows that belong to the seeded plans, in the order the page shows them. */

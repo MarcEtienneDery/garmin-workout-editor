@@ -311,9 +311,7 @@ test.describe("Move… in the Calendar's day panel", () => {
 
 test.describe("the Move menu of a workout's days in the Plans view", () => {
   // the days of a workout's picture in the outline, which shows it with JSON chosen (the form's days are fields of the plan)
-  test.beforeEach(async ({ page }) => {
-    await page.addInitScript(() => localStorage.setItem("planEditor.editMode", "json"));
-  });
+  test.use({ editMode: "json" });
 
   /** The plan opened from its chip, on the outline with the workout's picture open. */
   async function openPicture(page: Page, plan: string, day: string, workout: string) {

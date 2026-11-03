@@ -60,9 +60,7 @@ const test = base.extend<{ garmin: Profile; gme: Page }>({
 test.use({ trace: "off" });
 
 // The dialog's checks below are made on its JSON (the choice is kept in the browser): its form has its own describe, at the end.
-test.beforeEach(async ({ page }) => {
-  await page.addInitScript(() => localStorage.setItem("planEditor.editMode", "json"));
-});
+test.use({ editMode: "json" });
 
 const planWorkout = (name: string, extra: Record<string, unknown> = {}) => ({
   workoutName: name,
@@ -372,10 +370,7 @@ test.describe("Workouts view: the New dialog in mock mode", () => {
 });
 
 test.describe("Workouts view: the New dialog's form", () => {
-  // the form, which the dialog opens on unless the JSON was chosen
-  test.beforeEach(async ({ page }) => {
-    await page.addInitScript(() => localStorage.setItem("planEditor.editMode", "form"));
-  });
+  test.use({ editMode: "form" }); // the form, which the dialog opens on unless the JSON was chosen
 
   test("+ New opens on the form: the name, the type, and the exercises a new lifting workout starts with", async ({ gme }) => {
     await openView(gme, "workouts");

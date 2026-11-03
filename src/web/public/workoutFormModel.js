@@ -9,22 +9,23 @@
  * repeatGroupIndex and a numberOfRepeats above 1, and restTimeSeconds on a step is a rest after it. A list written with nested
  * repeatSteps (as the demo data is) is read as the same blocks; the first edit writes it flat, the only form the upload understands.
  *
- * Pure functions, shared by the page (which loads this as a plain script) and the tests (which require() it).
+ * Pure functions, shared by the page (which loads this as a plain script, after workoutModel.js) and the tests (which require() it).
+ * Clocks, names and the lb/kg factor are workoutModel.js's.
  */
 (function (root, factory) {
-  const api = factory();
-  if (typeof module === "object" && module.exports) module.exports = api;
+  const node = typeof module === "object" && module.exports;
+  const api = factory(node ? require("./workoutModel.js") : root.WorkoutModel);
+  if (node) module.exports = api;
   else root.WorkoutFormModel = api;
-})(typeof self !== "undefined" ? self : this, function () {
+})(typeof self !== "undefined" ? self : this, function (WM) {
   "use strict";
 
-  const LB_PER_KG = 2.20462262;
+  const { LB_PER_KG, clock, prettyName } = WM;
   const num = (v) => (typeof v === "number" && isFinite(v) ? v : 0);
+  const isNum = (v) => typeof v === "number" && isFinite(v);
   const isStep = (s) => s !== null && typeof s === "object" && !Array.isArray(s);
   const hasGroup = (st) => st.repeatGroupIndex !== undefined && st.repeatGroupIndex !== null;
   const round = (n, places) => { const f = 10 ** places; return Math.round(n * f) / f; };
-  const pad = (n) => String(n).padStart(2, "0");
-  const prettyName = (key) => String(key).toLowerCase().split("_").filter(Boolean).map((x) => x.charAt(0).toUpperCase() + x.slice(1)).join(" ");
 
   /** A copy of `obj` with `patch` applied: a key set to undefined goes. The same object when nothing changes. */
   function patched(obj, patch) {
@@ -55,7 +56,7 @@
     swimming: { mode: "json", label: "Swim", targets: [], end: "distance", work: "Swim" },
   };
   /** The workout types the form's type list offers, in its order. */
-  const TYPES = ["strength_training", "running", "cycling", "cardio", "other", "swimming"];
+  const TYPES = Object.keys(SPORTS);
   const sportOf = (w) => SPORTS[w && w.workoutType] || null;
 
   /** How the form edits a workout: "strength", "endurance" or "json". A type the plans do not know (walking, say) gets the plain step editor. */
@@ -65,20 +66,8 @@
     return w && typeof w.workoutType === "string" && w.workoutType ? "endurance" : "strength";
   }
 
-  /** The kinds of step, in the order the form lists them. `work` is the sport's own word for a work step (Run, Ride). */
-  const KINDS = [
-    { type: "warmup", label: "Warm up" },
-    { type: "interval", label: "work" },
-    { type: "recovery", label: "Recover" },
-    { type: "rest", label: "Rest" },
-    { type: "cooldown", label: "Cool down" },
-    { type: "other", label: "Other" },
-  ];
-  const kindLabel = (type, w) => {
-    if (type === "interval" || type === "exercise") return (sportOf(w) || SPORTS.other).work;
-    const k = KINDS.find((x) => x.type === type);
-    return k ? k.label : prettyName(type || "step");
-  };
+  /** What a kind of step is called: a work step by the sport's own word for it (Run, Ride), the others as the workout's picture says. */
+  const kindLabel = (type, w) => (type === "interval" || type === "exercise" ? (sportOf(w) || SPORTS.other).work : WM.KIND_LABEL[type] || prettyName(type || "step"));
 
   /** Target types: the label, the unit and how a value is written in a field. Values are as the plan holds them (speeds in m/s). */
   const TARGETS = {
@@ -102,12 +91,6 @@
 
   // ── Units: what a field shows, and what a field typed means ─────────────
 
-  /** 45 -> "0:45", 3725 -> "1:02:05". */
-  function clock(seconds) {
-    const s = Math.round(num(seconds)), h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
-    return h ? `${h}:${pad(m)}:${pad(s % 60)}` : `${m}:${pad(s % 60)}`;
-  }
-
   /**
    * Seconds from "1:02:05", "4:30", "4:30.5", "90s", "2 min", "1h" or a bare number, which counts as `bare` ("s" or "min": a rest is typed
    * in seconds, a step in minutes). null for text that is not a time; 0 is a time.
@@ -124,7 +107,7 @@
   }
 
   /** A pace from a speed in m/s: 3.333 -> "5:00" (per km). "" for no speed. */
-  const paceText = (speed) => (num(speed) > 0 ? clock(1000 / speed) : "");
+  const paceText = (speed) => (num(speed) > 0 ? WM.pace(speed) : "");
 
   /** A speed in m/s from a pace typed as "4:58" (or "458", "4.58"), to the thousandth. null when it is not a pace. */
   function parsePace(text) {
@@ -150,12 +133,8 @@
     return /^-?\d+(\.\d+)?$/.test(t) || /^-?\.\d+$/.test(t) ? Number(t) : null;
   }
 
-  /** A distance for a field: under a kilometre in metres, else in km. { value: "400", unit: "m" } or { value: "2.5", unit: "km" }. */
-  function distanceField(meters) {
-    const m = num(meters);
-    if (!m) return { value: "", unit: "km" };
-    return m < 1000 && Number.isInteger(m) ? { value: String(m), unit: "m" } : { value: String(round(m / 1000, 3)), unit: "km" };
-  }
+  /** The unit a distance is shown in at first: whole metres under a kilometre in m, else km. */
+  const distanceUnit = (meters) => (num(meters) && meters < 1000 && Number.isInteger(meters) ? "m" : "km");
   /** A distance in the unit a field shows it in: 1200 -> "1.2" (km) or "1200" (m). */
   const distanceIn = (meters, unit) => (num(meters) ? String(unit === "m" ? round(meters, 1) : round(meters / 1000, 3)) : "");
   /** Metres from a distance typed in `unit` ("km" or "m"); a trailing "km" or "m" typed with it wins. null when it is not a distance. */
@@ -178,8 +157,6 @@
     if (n === null || n < 0) return null;
     return unit === "kg" ? round(n * LB_PER_KG, 2) : round(n, 1);
   }
-  /** A weight in lb said in the unit, with it: "195 lb", "88.5 kg". */
-  const weightLabel = (lb, unit = "lb") => `${weightText(lb, unit) || 0} ${unit === "kg" ? "kg" : "lb"}`;
 
   // ── One step: how it ends, what it aims for, its rest ───────────────────
 
@@ -189,9 +166,7 @@
   function endOf(st) {
     const by = st.endCondition, v = num(st.endConditionValue);
     if (by === "lap.button") return { by: "lap", value: 0 };
-    if (by === "reps") return { by, value: v || num(st.reps) };
-    if (by === "time") return { by, value: v || num(st.durationSeconds) };
-    if (by === "distance") return { by, value: v || num(st.distanceMeters) };
+    if (MIRROR[by]) return { by, value: v || num(st[MIRROR[by]]) };
     if (!by && st.stepType === "rest") return { by: "time", value: v || num(st.durationSeconds) };
     return { by: by || "", value: v };
   }
@@ -201,19 +176,16 @@
    * field that mirrors the value (reps, durationSeconds, distanceMeters) follows, and the mirrors of the other ends go.
    */
   function withEnd(st, by, value) {
-    if (by === "lap") return patched(st, { endCondition: "lap.button", endConditionValue: 0, reps: undefined, durationSeconds: undefined, distanceMeters: undefined });
-    const patch = { endCondition: by, endConditionValue: value, reps: undefined, durationSeconds: undefined, distanceMeters: undefined };
+    const lap = by === "lap", patch = { endCondition: lap ? "lap.button" : by, endConditionValue: lap ? 0 : value, reps: undefined, durationSeconds: undefined, distanceMeters: undefined };
     if (MIRROR[by]) patch[MIRROR[by]] = value;
     return patched(st, patch);
   }
 
   /** The target: { type, lo, hi } with the plan's values (speeds in m/s), lo the lower number. */
   function targetOf(st) {
-    const type = st.targetType || "no.target";
-    const a = st.targetValueOne, b = st.targetValueTwo;
-    const has = (v) => typeof v === "number" && isFinite(v);
-    if (has(a) && has(b)) return { type, lo: Math.min(a, b), hi: Math.max(a, b) };
-    return { type, lo: has(a) ? a : has(b) ? b : null, hi: has(b) && has(a) ? Math.max(a, b) : null };
+    const type = st.targetType || "no.target", a = st.targetValueOne, b = st.targetValueTwo;
+    if (isNum(a) && isNum(b)) return { type, lo: Math.min(a, b), hi: Math.max(a, b) };
+    return { type, lo: isNum(a) ? a : isNum(b) ? b : null, hi: null };
   }
 
   /**
@@ -222,8 +194,7 @@
    */
   function withTarget(st, type, lo, hi) {
     if (type === "no.target" || type === "open") return patched(st, { targetType: type, targetValueOne: undefined, targetValueTwo: undefined });
-    const has = (v) => typeof v === "number" && isFinite(v);
-    let one = has(lo) ? lo : undefined, two = has(hi) ? hi : undefined;
+    let one = isNum(lo) ? lo : undefined, two = isNum(hi) ? hi : undefined;
     if (one !== undefined && two !== undefined && one > two) [one, two] = [two, one];
     const now = targetOf(st);
     if (st.targetType === type && now.lo === (one ?? null) && now.hi === (two ?? null)) return st;
@@ -295,8 +266,8 @@
   /**
    * The flat list of these blocks. A repeat's steps carry its count and its index: it keeps the index it had when no other repeat
    * holds it yet, and gets a new one otherwise (a repeat copied, or two that the list once numbered alike). A step done once drops a
-   * count above 1, and the index it had when that index would join it to a repeat beside it. stepOrder follows the order when the
-   * steps have one. Steps that need no change are the same objects.
+   * count above 1, and the index it had when that index would join it to a repeat beside it. stepOrder numbers the steps in their
+   * order, which is the order the upload follows. Steps that need no change are the same objects.
    */
   function fromBlocks(blocks) {
     const groups = blocks.filter((b) => b.times > 1);
@@ -317,13 +288,13 @@
         out.push(num(st.numberOfRepeats) > 1 || joins ? patched(st, { numberOfRepeats: undefined, repeatGroupIndex: undefined }) : st);
       }
     });
-    const ordered = out.some((s) => s.stepOrder !== undefined);
-    return ordered ? out.map((s, i) => patched(s, { stepOrder: i + 1 })) : out;
+    return out.map((s, i) => patched(s, { stepOrder: i + 1 }));
   }
 
   // ── Edits on blocks (each returns a new list; the blocks it does not touch are the same objects) ──
 
-  const block = (steps, times = 1) => ({ steps, times: steps.length > 1 ? Math.max(2, times) : Math.max(1, times), gi: undefined });
+  /** A block of one step, done once. */
+  const once = (st) => ({ steps: [st], times: 1, gi: undefined });
   const copyStep = (st) => { const { repeatGroupIndex: _g, numberOfRepeats: _n, ...rest } = JSON.parse(JSON.stringify(st)); return rest; };
 
   /** A block's steps done another number of times. Down to 1, a repeat of several steps becomes those steps, each a block of its own. */
@@ -331,7 +302,7 @@
     const b = blocks[k], n = Math.max(1, Math.floor(num(times)) || 1);
     if (n === b.times) return blocks;
     if (n > 1) return blocks.map((x, i) => (i === k ? { ...b, times: n } : x));
-    return [...blocks.slice(0, k), ...b.steps.map((st) => ({ steps: [st], times: 1, gi: undefined })), ...blocks.slice(k + 1)];
+    return [...blocks.slice(0, k), ...b.steps.map(once), ...blocks.slice(k + 1)];
   }
 
   const insertBlocks = (blocks, at, added) => [...blocks.slice(0, at), ...added, ...blocks.slice(at)];
@@ -371,7 +342,7 @@
   function takeOut(blocks, k, j, { keep = false, times = 1 } = {}) {
     const b = blocks[k], st = b.steps[j], left = b.steps.filter((_, m) => m !== j);
     const rest = left.length ? [{ ...b, steps: left }] : [];
-    const out = keep ? [{ steps: [st], times: Math.max(1, times), gi: undefined }] : [];
+    const out = keep ? [{ ...once(st), times: Math.max(1, times) }] : [];
     return [...blocks.slice(0, k), ...(keep && j === 0 ? [...out, ...rest] : [...rest, ...out]), ...blocks.slice(k + 1)];
   }
 
@@ -384,7 +355,7 @@
       return blocks.map((x, i) => (i === k ? { ...b, steps } : x));
     }
     if (b.steps.length === 1) return blocks;
-    const st = b.steps[j], left = { ...b, steps: b.steps.filter((_, m) => m !== j) }, alone = { steps: [st], times: 1, gi: undefined };
+    const st = b.steps[j], left = { ...b, steps: b.steps.filter((_, m) => m !== j) }, alone = once(st);
     return [...blocks.slice(0, k), ...(to < 0 ? [alone, left] : [left, alone]), ...blocks.slice(k + 1)];
   }
 
@@ -407,14 +378,12 @@
     return [...blocks.slice(0, k), ...b.steps.map((st, j) => ({ steps: [st], times: b.times, gi: j === 0 ? b.gi : undefined })), ...blocks.slice(k + 1)];
   }
 
-  /** Repeat k undone: its steps once each, in order (a repeat of steps no longer repeated). */
-  const unrepeat = (blocks, k) => setTimes(blocks, k, 1);
 
   /** A line of N sets made N lines of one set each, so each set can differ. */
   function eachSet(blocks, k) {
     const b = blocks[k];
     if (b.steps.length !== 1 || b.times < 2) return blocks;
-    const sets = Array.from({ length: b.times }, (_, i) => ({ steps: [i === 0 ? b.steps[0] : copyStep(b.steps[0])], times: 1, gi: undefined }));
+    const sets = Array.from({ length: b.times }, (_, i) => once(i === 0 ? b.steps[0] : copyStep(b.steps[0])));
     return [...blocks.slice(0, k), ...sets, ...blocks.slice(k + 1)];
   }
 
@@ -449,8 +418,6 @@
     return cards;
   }
 
-  /** The sets of an exercise card, counted. */
-  const setCount = (blocks, card) => blocks.slice(card.k, card.k + card.count).reduce((t, b) => t + b.times, 0);
 
   // ── New steps and workouts ──────────────────────────────────────────────
 
@@ -459,13 +426,17 @@
    * cool-down of a strength workout on the lap button, else 10 and 5 minutes; a rest one minute, a recovery two; a work step the sport's way.
    */
   function newStep(w, type = "interval", end) {
-    const sport = sportOf(w) || SPORTS.other, strength = sport.mode === "strength";
+    const sport = sportOf(w) || SPORTS.other;
     const [by, value] = end ? [end.by, end.value]
-      : type === "warmup" || type === "cooldown" ? (strength ? ["lap", 0] : ["time", type === "warmup" ? 600 : 300])
-      : type === "rest" ? ["time", 60] : type === "recovery" ? ["time", 120]
-      : sport.end === "distance" ? ["distance", 1000] : sport.end === "reps" ? ["reps", 10] : ["time", 600];
+      : (type === "warmup" || type === "cooldown") && sport.mode === "strength" ? ["lap", 0]
+      : TIMES[type] ? ["time", TIMES[type]]
+      : sport.end === "distance" ? ["distance", 1000] : sport.end === "reps" ? ["reps", 10] : ["time", defaultTime(type)];
     return withEnd({ stepType: type, targetType: "no.target" }, by, value);
   }
+
+  /** How long a step of this kind lasts when it is timed and nothing says how long: 10 min warm-up, 5 min cool-down, 1 min rest, 2 min recovery, else 10 min. */
+  const TIMES = { warmup: 600, cooldown: 300, rest: 60, recovery: 120 };
+  const defaultTime = (type) => TIMES[type] || 600;
 
   /** A set of an exercise: `reps` reps, at `weight` lb when there is one, with `rest` seconds after it. */
   function newSet(exerciseName, { reps = 10, weight, rest = 90 } = {}) {
@@ -474,15 +445,14 @@
     return withRest(st, rest);
   }
 
-  /** The steps a new workout of this type starts with. */
+  /** The steps a new workout of this type starts with: a strength workout two exercises, a run 5 km and a ride 40 min between a warm-up and a cool-down. */
   function starterSteps(type) {
-    const w = { workoutType: type };
-    let blocks;
-    if (modeOf(w) === "strength") blocks = [{ steps: [newStep(w, "warmup")], times: 1 }, { steps: [newSet("BARBELL_BACK_SQUAT", { reps: 8 })], times: 3 }, { steps: [newSet("BARBELL_BENCH_PRESS", { reps: 8 })], times: 3 }];
-    else if (type === "running") blocks = [newStep(w, "warmup"), newStep(w, "interval", { by: "distance", value: 5000 }), newStep(w, "cooldown")].map((st) => ({ steps: [st], times: 1 }));
-    else if (type === "cycling") blocks = [newStep(w, "warmup"), newStep(w, "interval", { by: "time", value: 2400 }), newStep(w, "cooldown")].map((st) => ({ steps: [st], times: 1 }));
-    else blocks = [{ steps: [newStep(w, "interval", { by: "time", value: 1800 })], times: 1 }];
-    return fromBlocks(blocks).map((st, i) => ({ ...st, stepOrder: i + 1 }));
+    const w = { workoutType: type }, work = { running: { by: "distance", value: 5000 }, cycling: { by: "time", value: 2400 } }[type];
+    const blocks = modeOf(w) === "strength"
+      ? [once(newStep(w, "warmup")), { steps: [newSet("BARBELL_BACK_SQUAT", { reps: 8 })], times: 3 }, { steps: [newSet("BARBELL_BENCH_PRESS", { reps: 8 })], times: 3 }]
+      : work ? [newStep(w, "warmup"), newStep(w, "interval", work), newStep(w, "cooldown")].map(once)
+      : [once(newStep(w, "interval", { by: "time", value: 1800 }))];
+    return fromBlocks(blocks);
   }
 
   /** A new workout of this type, named. */
@@ -566,21 +536,25 @@
   function searchExercises(all, query, { category, recent = [], limit = 60 } = {}) {
     const words = String(query ?? "").toUpperCase().split(/[^A-Z0-9]+/).filter(Boolean).flatMap((t) => ALIASES[t] || [t]);
     const rank = new Map(recent.map((name, i) => [name, i]));
-    const hits = all.filter((e) => (!category || e.category === category) && words.every((t) => e.name.includes(t) || e.name.replace(/_/g, "").includes(t)));
+    const hits = all.filter((e) => {
+      if (category && e.category !== category) return false;
+      const joined = words.length ? e.name.replace(/_/g, "") : "";
+      return words.every((t) => e.name.includes(t) || joined.includes(t));
+    });
     const starts = (e) => (words.length && e.name.startsWith(words[0]) ? 0 : 1);
-    hits.sort((a, b) => (rank.has(a.name) ? rank.get(a.name) : 1e9) - (rank.has(b.name) ? rank.get(b.name) : 1e9) || starts(a) - starts(b) || a.name.length - b.name.length || a.name.localeCompare(b.name));
+    hits.sort((a, b) => (rank.has(a.name) ? rank.get(a.name) : 1e9) - (rank.has(b.name) ? rank.get(b.name) : 1e9) || starts(a) - starts(b) || a.name.length - b.name.length || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
     return hits.slice(0, limit);
   }
 
   return {
-    LB_PER_KG, SPORTS, TYPES, KINDS, TARGETS, PRESETS, ALIASES,
-    modeOf, sportOf, kindLabel, targetUnit, targetsFor, prettyName,
-    clock, parseClock, paceText, parsePace, kmhText, parseKmh, parseNumber, distanceField, distanceIn, parseDistance, weightText, parseWeight, weightLabel,
+    SPORTS, TYPES, TARGETS, PRESETS,
+    modeOf, kindLabel, targetUnit, targetsFor, prettyName,
+    clock, parseClock, paceText, parsePace, kmhText, parseKmh, parseNumber, distanceUnit, distanceIn, parseDistance, weightText, parseWeight,
     endOf, withEnd, targetOf, withTarget, withRest, isExercise, patched, formProblem,
     flatten, toBlocks, fromBlocks,
-    setTimes, insertBlocks, removeBlocks, moveBlocks, duplicateBlocks, updateStep, insertInto, takeOut, moveInside, joinBlocks, splitBlock, unrepeat, eachSet, sameSets, block, copyStep,
-    strengthCards, setCount,
-    newStep, newSet, starterSteps, newWorkout,
+    once, setTimes, insertBlocks, removeBlocks, moveBlocks, duplicateBlocks, updateStep, insertInto, takeOut, moveInside, joinBlocks, splitBlock, eachSet, sameSets, copyStep,
+    strengthCards,
+    newStep, newSet, defaultTime, starterSteps, newWorkout,
     check, searchExercises,
   };
 });

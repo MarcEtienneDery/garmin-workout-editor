@@ -27,8 +27,8 @@ CREATE TABLE IF NOT EXISTS profile_prefs (
 export interface Prefs {
   weightUnit: "lb" | "kg";
 }
-export const DEFAULT_PREFS: Prefs = { weightUnit: "lb" };
-const WEIGHT_UNITS: readonly Prefs["weightUnit"][] = ["lb", "kg"];
+const DEFAULT_PREFS: Prefs = { weightUnit: "lb" };
+export const WEIGHT_UNITS: readonly Prefs["weightUnit"][] = ["lb", "kg"];
 
 /** A name that is only letters, digits, hyphens and underscores, at most MAX_PROFILE_NAME of them (it names the profile's data/<name>/ folder). */
 export const isProfileName = (name: unknown): name is string => typeof name === "string" && PROFILE_NAME_REGEX.test(name);

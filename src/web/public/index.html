@@ -1626,7 +1626,7 @@ async function openFile(p, discarded = false) { // `discarded`: the person was a
   const f = await api("GET", fileUrl(p));
   current = { path: f.path, version: f.version };
   savedText = f.text;
-  P.path = f.path; P.sel = null;
+  P.sel = null;
   editor.setValue(f.text);
   editor.setScrollTop(0);
   // A plan opens on its outline (the JSON is one tab away). A file with no workout list to outline, or with broken JSON, opens in the editor.
@@ -1674,7 +1674,7 @@ const newFile = guard(async () => {
   if (!/^(workout-plans|data)\//.test(name)) name = "workout-plans/" + name;
   if (!name.endsWith(".json")) name += ".json";
   const today = new Date().toISOString().slice(0, 10);
-  const text = JSON.stringify({ generatedAt: new Date().toISOString(), weekStart: today, weekEnd: today, notes: "", workouts: [newWorkout("New workout")] }, null, 2) + "\n";
+  const text = JSON.stringify({ generatedAt: new Date().toISOString(), weekStart: today, weekEnd: today, notes: "", workouts: [WFM.newWorkout("strength_training", "New workout")] }, null, 2) + "\n";
   if (isDirty() && !(await confirmDiscard())) return; // asked before the file is made: Cancel leaves nothing behind
   await api("PUT", fileUrl(name), { text, create: true });
   await openFile(name, true);
@@ -1964,20 +1964,41 @@ async function runValidate() {
   catch (e) { showValidation(null, e.message); }
 }
 
-function parsed() { try { return JSON.parse(editor.getValue()); } catch { return null; } }
-const workoutsOf = (d) => (Array.isArray(d) ? d : d && Array.isArray(d.workouts) ? d.workouts : null);
+/** The open plan's JSON, parsed once per change of the editor's text and shared by the readers: they must not change it (mutate parses its own). */
+let parsedAt = { version: -1, data: null };
+function parsed() {
+  if (!editor) return null; // Monaco still loading: no plan is open yet
+  const version = editor.getModel().getAlternativeVersionId();
+  if (parsedAt.version !== version) { let data = null; try { data = JSON.parse(editor.getValue()); } catch { /* not JSON */ } parsedAt = { version, data }; }
+  return parsedAt.data;
+}
 
-/** A new workout of this type (strength unless said), with the steps the form starts such a workout with. */
-const newWorkout = (name, type = "strength_training") => WFM.newWorkout(type, name);
+/**
+ * Write `text` into a JSON editor as one Undo step, replacing only the part that differs (the start and the end it shares with the text
+ * it holds stay), so a change of one field is a small edit, as typing it would be.
+ */
+function replaceText(ed, text, source) {
+  const model = ed.getModel(), old = model.getValue();
+  if (old === text) return;
+  let a = 0, b = 0;
+  const n = Math.min(old.length, text.length);
+  while (a < n && old.charCodeAt(a) === text.charCodeAt(a)) a++;
+  while (b < n - a && old.charCodeAt(old.length - 1 - b) === text.charCodeAt(text.length - 1 - b)) b++;
+  const range = monaco.Range.fromPositions(model.getPositionAt(a), model.getPositionAt(old.length - b));
+  ed.pushUndoStop();
+  ed.executeEdits(source, [{ range, text: text.slice(a, text.length - b) }]);
+  ed.pushUndoStop();
+}
+const workoutsOf = (d) => (Array.isArray(d) ? d : d && Array.isArray(d.workouts) ? d.workouts : null);
 
 /** Change the open plan's workouts (`fn` gets the list, and the whole document); one Undo takes the change back. */
 function mutate(fn) {
-  const data = parsed(); const list = workoutsOf(data);
+  let data = null;
+  try { data = JSON.parse(editor.getValue()); } catch { /* not JSON */ } // a copy of its own: the one parsed() shares is read only
+  const list = workoutsOf(data);
   if (!list) return toast("Fix the JSON first.");
   fn(list, data);
-  editor.pushUndoStop();
-  editor.executeEdits("outline", [{ range: editor.getModel().getFullModelRange(), text: JSON.stringify(data, null, 2) + "\n" }]);
-  editor.pushUndoStop();
+  replaceText(editor, JSON.stringify(data, null, 2) + "\n", "outline");
 }
 
 // ── Is each workout up to date on Garmin? (checked against the editor's text, unsaved edits included) ──
@@ -2136,12 +2157,9 @@ function renderOutline() {
       addButton("upload", up ? "Upload this workout to Garmin" : `Upload: ${state === "synced" ? "already up to date" : "still checking"}`, up && !garminBusy, guard(() => planRowGarmin(i, "upload", state)));
       addButton("download", state === "modified" ? "Download Garmin's version into this workout" : `Download: ${state === "synced" ? "already up to date" : "not on Garmin"}`, state === "modified" && !garminBusy, guard(() => planRowGarmin(i, "download", state)));
     }
-    // the form stays on the workout it shows when the list shifts under it
-    addButton("clone", "Duplicate", true, () => { if (P.sel !== null && P.sel > i) P.sel++; mutate((l) => { const c = structuredClone(l[i]); delete c.workoutId; c.workoutName += " (copy)"; l.splice(i + 1, 0, c); }); });
+    addButton("clone", "Duplicate", true, () => mutate((l) => { const c = structuredClone(l[i]); delete c.workoutId; c.workoutName += " (copy)"; l.splice(i + 1, 0, c); }));
     addButton("delete", "Remove from the plan", true, guard(async () => {
-      if (!(await confirmDialog({ title: `Remove "${w?.workoutName}"?`, text: "It leaves the plan; a copy on Garmin, if any, is not touched.", ok: "Remove", danger: true }))) return;
-      if (P.sel === i) P.sel = null; else if (P.sel !== null && P.sel > i) P.sel--;
-      mutate((l) => l.splice(i, 1));
+      if (await confirmDialog({ title: `Remove "${w?.workoutName}"?`, text: "It leaves the plan; a copy on Garmin, if any, is not touched.", ok: "Remove", danger: true })) mutate((l) => l.splice(i, 1));
     }), "ico danger");
     if (open && editMode !== "form") {
       const host = mk("div", "wv-host");
@@ -2170,8 +2188,18 @@ async function addPlanWorkout() {
   const r = await askDialog({ title: "Add a workout", input: { label: "Workout name", value: "New workout" }, choice: { label: "Type", options: types }, ok: "Add" });
   if (!r) return;
   let at = -1;
-  mutate((l) => { at = l.push(newWorkout(r.input, r.choice)) - 1; });
-  if (at >= 0 && editMode === "form") selectPlanWorkout(at);
+  mutate((l) => { at = l.push(WFM.newWorkout(r.choice, r.input)) - 1; });
+  if (at >= 0) showPlanWorkout(at);
+}
+
+/** Open workout i of the open plan where the mode shows a workout: in the form, or with JSON chosen, its picture in the outline. */
+function showPlanWorkout(i) {
+  if (editMode === "form") return selectPlanWorkout(i);
+  const w = (workoutsOf(parsed()) || [])[i];
+  if (!w) return;
+  outlineOpen.path = current.path; outlineOpen.names.add(w.workoutName);
+  setTab("outline"); renderOutline();
+  [...$("outline").children].find((r) => r.dataset.name === w.workoutName)?.scrollIntoView({ block: "nearest" });
 }
 
 
@@ -2196,10 +2224,14 @@ const WFM = WorkoutFormModel;
 const EDIT_MODE_KEY = "planEditor.editMode";
 let editMode = (() => { try { return localStorage.getItem(EDIT_MODE_KEY) === "json" ? "json" : "form"; } catch { return "form"; } })();
 document.body.dataset.emode = editMode;
-const P = { path: null, sel: null }; // the open plan's workout the form shows (its place in the list), null for the plan itself
+// The open plan's workout the form shows: its place in the list (null for the plan itself), and its name, which finds it again when the
+// list changes under it (a workout removed before it, Undo, a change in the JSON).
+const P = { sel: null, name: null };
 
-/** The unit a profile has weights shown in ("lb" or "kg", Settings); plans keep lb whatever it is. */
-const weightUnitOf = (profile) => ((garmin.prefs || {})[profile || garmin.defaultProfile || garmin.profiles[0]] || {}).weightUnit || "lb";
+/** The profile a view that names none acts as. */
+const profileOrDefault = (profile) => profile || garmin.defaultProfile || garmin.profiles[0];
+/** The unit a profile has lifting weights shown in ("lb" or "kg", Settings); plans keep lb whatever it is. */
+const weightUnitOf = (profile) => ((garmin.prefs || {})[profileOrDefault(profile)] || {}).weightUnit || "lb";
 
 const exerciseLists = new Map(); // profile -> the promise of GET /api/exercises
 function exercisesFor(profile) {
@@ -2212,9 +2244,9 @@ function exercisesFor(profile) {
   return exerciseLists.get(key);
 }
 
-/** The picture of a workout in the form: its profile, or the muscles a lifting workout works. */
-function formPicture(w, profile) {
-  const a = WM.analyze(w, { pacer: pacerFor(profile), unit: weightUnitOf(profile) }), box = mk("div", "wvbox"), root = mk("div", "wv");
+/** The picture of a workout in the form (`a`: its analysis): its profile, or the muscles a lifting workout works. */
+function formPicture(a) {
+  const box = mk("div", "wvbox"), root = mk("div", "wv");
   if (a.hasSteps) root.append(profileEl(a));
   linkVisual(root);
   box.append(root);
@@ -2227,9 +2259,11 @@ function makeForm(host) {
     read: host.read, write: host.write, undo: host.undo, toJson: host.toJson,
     unit: () => weightUnitOf(host.profile()),
     pacer: () => pacerFor(host.profile()),
-    picture: (w) => formPicture(w, host.profile()),
+    picture: (w, a) => formPicture(a),
     about: (a) => { const basis = paceBasis(a, !RUNS.has(host.profile() || "")); return basis ? help("pace", basis, "the estimate") : null; },
     exercises: () => exercisesFor(host.profile()),
+    // read when called: the forms are made before the date helpers further down the page are
+    isDay: (v) => isDay(v), today: () => todayIso(), phone: () => mobileQuery.matches, place: (menu, anchor) => placePopover(menu, anchor, { right: true }),
     toast, toastUndo, ask: askDialog,
     modal: (dlg) => { dlg.showModal(); navDialog(dlg); },
   });
@@ -2240,7 +2274,7 @@ const planForm = makeForm({
     const list = workoutsOf(parsed()), w = list && P.sel !== null ? list[P.sel] : null;
     return w ? { workout: w } : { workout: null, problem: "This workout is no longer in the plan." };
   },
-  write: (w) => mutate((l) => { l[P.sel] = w; }),
+  write: (w) => { P.name = w.workoutName; mutate((l) => { l[P.sel] = w; }); },
   profile: () => planProfile(),
   undo: () => editor.getModel().undo(),
   toJson: (i) => { setEditMode("json"); const w = (workoutsOf(parsed()) || [])[P.sel]; if (w) revealWorkout(w, i); },
@@ -2276,7 +2310,8 @@ function setEditMode(mode) {
 
 /** Show workout i of the open plan in the form (null: the plan itself), and on a phone the pane it is in. */
 function selectPlanWorkout(i, { tab = true } = {}) {
-  P.path = current ? current.path : null; P.sel = i;
+  const list = workoutsOf(parsed());
+  P.sel = i; P.name = i !== null && list && list[i] ? list[i].workoutName : null;
   if (editMode !== "form") setEditMode("form");
   renderPlanForm(true);
   renderOutline();
@@ -2295,8 +2330,12 @@ function renderPlanForm(now = false) {
   if (editMode !== "form") return;
   if (!now) { planFormTimer = setTimeout(() => renderPlanForm(true), 0); return; }
   const box = $("pform"), data = current ? parsed() : undefined, list = workoutsOf(data);
-  if (current && P.path !== current.path) { P.path = current.path; P.sel = null; }
-  if (P.sel !== null && !(list && list[P.sel])) P.sel = null;
+  if (P.sel !== null && !(list && list[P.sel] && list[P.sel].workoutName === P.name)) {
+    // the list changed under it: found again by its name, else (renamed in the JSON) the workout now in its place, else none
+    const i = list ? list.findIndex((w) => w && w.workoutName === P.name) : -1;
+    P.sel = i >= 0 ? i : list && list[P.sel] ? P.sel : null;
+    P.name = P.sel === null ? null : list[P.sel].workoutName;
+  }
   const pick = $("ewk");
   pick.replaceChildren(new Option(list ? "The plan" : "—", "plan"), ...(list || []).map((w, i) => new Option(w && w.workoutName ? w.workoutName : `Workout ${i + 1}`, String(i))));
   pick.value = P.sel === null ? "plan" : String(P.sel);
@@ -2305,14 +2344,7 @@ function renderPlanForm(now = false) {
   if (!current) return note("Open a plan from the list.");
   if (data === null) { const b = mk("button", "", "Show the JSON"); b.onclick = () => setEditMode("json"); return note("The JSON has a mistake, so the form cannot read it: the Checks say where.", b); }
   if (!list) { const b = mk("button", "", "Show the JSON"); b.onclick = () => setEditMode("json"); return note("This file is not a list of workouts: it is edited as JSON.", b); }
-  if (P.sel === null) {
-    const active = document.activeElement, inside = !!active && box.contains(active), key = inside ? active.dataset.fk : null;
-    const page = planPage(data, list);
-    if (inside) active.blur(); // a focused element taken out of the page makes Chrome scroll the pane to its top
-    box.replaceChildren(page);
-    if (key) box.querySelector(`[data-fk="${CSS.escape(key)}"]`)?.focus({ preventScroll: true });
-    return;
-  }
+  if (P.sel === null) return WorkoutForm.redraw(box, [planPage(data, list)]);
   if (planForm.el.parentElement !== box) box.replaceChildren(planForm.el);
   planForm.render();
 }
@@ -2365,21 +2397,27 @@ function setUndoButtons() {
 }
 
 function bindEditMode() {
-  $("emode").querySelectorAll("button").forEach((b) => (b.onclick = () => setEditMode(b.dataset.mode)));
-  $("wdMode").querySelectorAll("button").forEach((b) => (b.onclick = () => setEditMode(b.dataset.mode)));
+  for (const id of ["emode", "wdMode"]) $(id).querySelectorAll("button").forEach((b) => (b.onclick = () => setEditMode(b.dataset.mode)));
   setEditMode(editMode);
   $("ewk").onchange = (e) => selectPlanWorkout(e.target.value === "plan" ? null : Number(e.target.value), { tab: false });
   $("eUndo").onclick = () => { editor.getModel().undo(); setUndoButtons(); };
   $("eRedo").onclick = () => { editor.getModel().redo(); setUndoButtons(); };
-  // in the form, Ctrl+Z and Ctrl+Shift+Z (or Ctrl+Y) undo and redo the form's changes, except in a field, which has its own; Ctrl+S saves
+  undoKeys($("pform"), () => editor, () => { setUndoButtons(); });
+  // Ctrl+S in the plan's form saves, with the field being typed in kept first
   $("pform").addEventListener("keydown", (e) => {
-    if (!(e.ctrlKey || e.metaKey)) return;
-    const key = e.key.toLowerCase(), field = e.target.matches("input, textarea, select");
-    if (key === "s") { e.preventDefault(); e.target.dispatchEvent(new Event("change", { bubbles: true })); save(); return; }
-    if (field || !editor || (key !== "z" && key !== "y")) return;
+    if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== "s") return;
+    e.preventDefault(); e.target.dispatchEvent(new Event("change", { bubbles: true })); save();
+  });
+}
+
+/** In a form, Ctrl+Z and Ctrl+Shift+Z (or Ctrl+Y) undo and redo the changes of its JSON editor (`ed()`), except in a field, which has its own. */
+function undoKeys(box, ed, after = () => {}) {
+  box.addEventListener("keydown", (e) => {
+    const key = e.key.toLowerCase();
+    if (!(e.ctrlKey || e.metaKey) || (key !== "z" && key !== "y") || e.target.matches("input, textarea, select") || !ed()) return;
     e.preventDefault();
-    if (key === "y" || e.shiftKey) editor.getModel().redo(); else editor.getModel().undo();
-    setUndoButtons();
+    if (key === "y" || e.shiftKey) ed().getModel().redo(); else ed().getModel().undo();
+    after();
   });
 }
 
@@ -2423,7 +2461,7 @@ function setView(view) {
   else if (view === "weight") guard(loadWeight)();
   else if (view === "food") guard(loadFood)();
   else if (view === "settings") guard(loadSettings)();
-  else if (editor) requestAnimationFrame(() => editor.layout());
+  else if (editor) { requestAnimationFrame(() => editor.layout()); renderOutline(); renderPlanForm(true); } // drawn again: the unit of weight may have changed
   navSync();
 }
 
@@ -2910,14 +2948,8 @@ async function openPlanWorkout(path, w) {
   setView("plans");
   if (!current || current.path !== path) await openFile(path);
   if (!current || current.path !== path) return; // declined to discard the open file's changes
-  if (editMode === "form") {
-    const i = (workoutsOf(parsed()) || []).findIndex((x) => x && x.workoutName === w.workoutName);
-    selectPlanWorkout(i >= 0 ? i : null);
-    return;
-  }
-  outlineOpen.path = path; outlineOpen.names.add(w.workoutName);
-  setTab("outline"); renderOutline();
-  [...$("outline").children].find((r) => r.dataset.name === w.workoutName)?.scrollIntoView({ block: "nearest" });
+  const i = (workoutsOf(parsed()) || []).findIndex((x) => x && x.workoutName === w.workoutName);
+  if (i >= 0) showPlanWorkout(i);
 }
 
 // ── Row buttons: upload, download, clone, delete ──
@@ -3259,7 +3291,7 @@ function renderSide() {
 const shortDay = (iso) => fmtDate(iso, { weekday: "short", day: "numeric", month: "short" });
 const longDay = (iso) => fmtDate(iso, { weekday: "long", day: "numeric", month: "long", year: "numeric" });
 /** A day that is on the calendar, written YYYY-MM-DD: the only kind of scheduledDate that can be moved. */
-const isDay = (v) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) && isoOf(msOf(v)) === v;
+const isDay = (v) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(msOf(v)) && isoOf(msOf(v)) === v;
 
 /**
  * Move the day `from` of the plan entries `plans` ([{ path, index }]) to `to`. `name` is the workout's, for the toast, and `named`
@@ -3309,13 +3341,20 @@ function openMoveMenu(anchor, from, pick) {
   if (menu.matches(":popover-open")) menu.hidePopover();
   menu.ontoggle = (e) => { if (e.newState === "closed" && anchor.isConnected) anchor.focus(); };
   menu.showPopover();
-  menu.style.left = menu.style.top = ""; // a phone shows it as a sheet at the foot of the screen
-  if (!mobileQuery.matches) { // under the button, or over it when there is no room below
-    const a = anchor.getBoundingClientRect(), m = menu.getBoundingClientRect();
-    menu.style.left = Math.max(8, Math.min(a.left, innerWidth - m.width - 8)) + "px";
-    menu.style.top = (a.bottom + 4 + m.height <= innerHeight - 8 ? a.bottom + 4 : Math.max(8, a.top - 4 - m.height)) + "px";
-  }
+  placePopover(menu, anchor);
   $("mvNext").focus();
+}
+
+/**
+ * Put an open popover by the button that opened it: under it, or over it when there is no room below; lined up with its left edge, or
+ * its right one with `right`. A phone shows it as a sheet at the foot of the screen (its CSS), so it is left where the CSS puts it.
+ */
+function placePopover(menu, anchor, { right = false } = {}) {
+  menu.style.left = menu.style.top = "";
+  if (mobileQuery.matches) return;
+  const a = anchor.getBoundingClientRect(), m = menu.getBoundingClientRect();
+  menu.style.left = Math.max(8, Math.min(right ? a.right - m.width : a.left, innerWidth - m.width - 8)) + "px";
+  menu.style.top = (a.bottom + 4 + m.height <= innerHeight - 8 ? a.bottom + 4 : Math.max(8, a.top - 4 - m.height)) + "px";
 }
 
 /** The profile a plan of the calendar belongs to (whose Garmin its workouts are on), or undefined for the signed-in one's. */
@@ -3610,7 +3649,7 @@ async function loadStats() {
 const fmtKm = (m) => `${(m / 1000).toLocaleString(undefined, { maximumFractionDigits: 1 })} km`;
 const fmtNum = (n) => Math.round(n).toLocaleString();
 /** A volume lifted (kept in lb), whole, in the unit of the Activities view's profile. */
-const lbVolume = (v) => (weightUnitOf(A.profile) === "kg" ? `${fmtNum(v / WFM.LB_PER_KG)} kg` : `${fmtNum(v)} lb`);
+const lbVolume = (v) => (weightUnitOf(A.profile) === "kg" ? `${fmtNum(v / WM.LB_PER_KG)} kg` : `${fmtNum(v)} lb`);
 /** A weight lifted (kept in lb), in the unit of the Activities view's profile. */
 const lb = (w) => WM.weight(w, weightUnitOf(A.profile));
 const fromNote = (b) => `from ${b.reps} @ ${lb(b.weight)} on ${b.date}`;
@@ -4047,7 +4086,7 @@ function renderActivityDetail() {
     const list = mk("div", "aexs");
     for (const x of lifts) {
       const runs = AM.setRuns(x), count = runs.reduce((a, r) => a + r.count, 0);
-      list.append(exerciseBlock(x.exerciseName, `${x.supersetGroup ? "superset · " : ""}${count} set${count === 1 ? "" : "s"}`, runs.map((r) => AM.runText(r, weightUnitOf(A.profile))).filter(Boolean).map((c) => [c])));
+      list.append(exerciseBlock(x.exerciseName, `${x.supersetGroup ? "superset · " : ""}${count} set${count === 1 ? "" : "s"}`, runs.map((r) => AM.runText(r, lb)).filter(Boolean).map((c) => [c])));
     }
     box.append(list);
     // each loaded exercise's sets as a share of its one-rep max
@@ -4098,9 +4137,8 @@ const wellnessView = (name, prefix, path, range, render, extra = {}) => ({ name,
 /** How many days back from today a view shows (its day and range), so that its Sync fills in all of them. */
 const backFromToday = (d) => (d && d.today && d.date ? Math.max(0, Math.round((Date.parse(d.today) - Date.parse(d.date)) / 86_400_000)) : 0);
 const R = wellnessView("recovery", "r", "/api/wellness", 30, () => renderRecovery(), { span: (V) => backFromToday(V.data) + V.range, activitiesAt: 0, activitiesBusy: false });
-/** The unit picked in the Weight view's bar, kept in this browser; null until one is picked (the profile's unit is shown then). */
-const storedUnit = () => { try { const v = localStorage.getItem("weightUnit"); return v === "kg" || v === "lb" ? v : null; } catch { return null; } };
-const B = wellnessView("weight", "b", "/api/weight", 60, () => renderWeight(), { chosen: storedUnit(), span: (V) => V.range });
+const storedUnit = () => { try { return localStorage.getItem("weightUnit") === "kg" ? "kg" : "lb"; } catch { return "lb"; } };
+const B = wellnessView("weight", "b", "/api/weight", 60, () => renderWeight(), { unit: storedUnit(), span: (V) => V.range });
 const wellnessQuery = (V) => `${V.profile ? `profile=${encodeURIComponent(V.profile)}&` : ""}${V.date ? `date=${V.date}&` : ""}days=${V.range}`;
 const SIGNAL_NAMES = { hrv: "HRV", restingHr: "Resting heart rate", sleep: "Sleep", bodyBattery: "Body Battery", stress: "Stress yesterday", load: "Training load" };
 
@@ -4325,7 +4363,6 @@ function bindRecoveryView() {
 
 function renderWeight() {
   const box = $("bbody"), d = B.data;
-  B.unit = B.chosen || weightUnitOf(B.profile);
   renderWellnessNote(B);
   $("bRange").value = String(B.range);
   $("bUnits").querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.unit === B.unit)));
@@ -4367,8 +4404,8 @@ function bindWeightView() {
   $("vWeight").onclick = () => setView("weight");
   $("bRange").onchange = (e) => { B.range = Number(e.target.value); guard(loadWeight)(); };
   $("bUnits").querySelectorAll("button").forEach((b) => b.onclick = () => {
-    B.chosen = b.dataset.unit;
-    try { localStorage.setItem("weightUnit", B.chosen); } catch { /* the choice lasts until the page closes */ }
+    B.unit = b.dataset.unit;
+    try { localStorage.setItem("weightUnit", B.unit); } catch { /* the choice lasts until the page closes */ }
     renderWeight();
   });
   $("bSync").onclick = guard(() => syncWellness(B, false));
@@ -6024,10 +6061,10 @@ async function downloadFit() {
   document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-/** How the profile has things shown: the unit of weight (the plans keep lb, whatever it is). */
-function unitsCard(d) {
-  const unit = (d.prefs && d.prefs.weightUnit) || "lb", card = mk("div", "scard");
-  card.append(...scardHead("Units", mk("span", "chip", unit === "kg" ? "kg" : "lb"), help("units", "The unit lifting weights are shown and typed in: the workout form and pictures, and the sets, 1RM and volume of the activities. Plans keep pounds whatever it is, which is what Garmin is sent. The Weight view starts from it, and keeps a choice of its own once one is picked in its bar.", "the units")));
+/** How the profile has things shown: the unit of lifting weights (the plans keep lb, whatever it is). */
+function unitsCard() {
+  const unit = weightUnitOf(S.profile), card = mk("div", "scard");
+  card.append(...scardHead("Units", mk("span", "chip", unit), help("units", "The unit lifting weights are shown and typed in: the workout form and pictures, and the sets, 1RM and volume of the activities. Plans keep pounds whatever it is, which is what Garmin is sent. The Weight view has its own pounds or kilograms, in its bar.", "the units")));
   const seg = mk("div", "seg");
   seg.setAttribute("role", "group"); seg.setAttribute("aria-label", "Lifting weights in");
   for (const [value, label] of [["lb", "Pounds (lb)"], ["kg", "Kilograms (kg)"]]) {
@@ -6042,30 +6079,20 @@ function unitsCard(d) {
   return card;
 }
 
-/** Show lifting weights in `unit` for the profile (Settings): kept by the server, followed at once by every view that draws one. */
+/** Show lifting weights in `unit` for the profile (Settings): kept by the server; each view draws them so when it is shown. */
 async function setWeightUnit(profile, unit) {
   const before = weightUnitOf(profile);
   if (before === unit) return;
-  const set = (u) => { garmin.prefs = { ...(garmin.prefs || {}), [profile || garmin.defaultProfile || garmin.profiles[0]]: { weightUnit: u } }; redrawWeights(); };
+  const set = (u) => { garmin.prefs = { ...(garmin.prefs || {}), [profileOrDefault(profile)]: { weightUnit: u } }; };
   set(unit);
   try {
-    const r = await api("POST", "/api/settings/prefs", { profile, prefs: { weightUnit: unit } });
-    if (S.data && S.data.profile === r.profile) { S.data = r; S.msg.prefs = null; }
+    await api("POST", "/api/settings/prefs", { profile, prefs: { weightUnit: unit } });
+    S.msg.prefs = null;
   } catch (e) {
     set(before);
     S.msg.prefs = { ok: false, text: e.message };
     throw e;
-  } finally { if (document.body.dataset.view === "settings") renderSettings(); }
-}
-
-/** Draw again what shows weights, in the unit now chosen. */
-function redrawWeights() {
-  const view = document.body.dataset.view;
-  if (view === "weight") renderWeight();
-  if (view === "activities") renderActivities();
-  if (view === "plans") { renderPlanForm(true); renderOutline(); }
-  if (view === "workouts" && W.detail) renderDetail();
-  if ($("wdlg").open) dialogForm.render();
+  } finally { renderSettings(); }
 }
 
 function renderSettings() {
@@ -6078,7 +6105,7 @@ function renderSettings() {
   else {
     const enc = d.encryption;
     if (!enc.enabled || enc.plain) box.append(sline("warn", enc.enabled ? `Saved passwords are encrypted, but ${enc.plain} older one${enc.plain === 1 ? "" : "s"} is still plain text: it is encrypted the next time it is used.` : "Saved passwords are stored as plain text in the database. Set CREDENTIALS_KEY (in the compose file, for both services) to encrypt them."));
-    box.append(goalsCard(d), unitsCard(d), garminCard(d), renphoCard(d), webCard(d));
+    box.append(goalsCard(d), unitsCard(), garminCard(d), renphoCard(d), webCard(d));
   }
   $("sscroll").scrollTop = keep;
 }
@@ -6217,23 +6244,13 @@ let dlgEditor, dlgMode = null, dlgLink = null, dlgSaving = false;
 /** The form of the dialog's workout: it writes into the dialog's JSON editor, which Save reads. */
 const dialogForm = makeForm({
   read: () => { const { workout, error } = dialogWorkout(); return workout ? { workout } : { workout: null, problem: error }; },
-  write: (w) => {
-    dlgEditor.pushUndoStop();
-    dlgEditor.executeEdits("form", [{ range: dlgEditor.getModel().getFullModelRange(), text: JSON.stringify(w, null, 2) + "\n" }]);
-    dlgEditor.pushUndoStop();
-  },
+  write: (w) => replaceText(dlgEditor, JSON.stringify(w, null, 2) + "\n", "form"),
   profile: () => W.profile || planProfile(),
   undo: () => dlgEditor.getModel().undo(),
   toJson: (i) => { setEditMode("json"); revealStep(dlgEditor, i); },
 });
 $("wdForm").append(dialogForm.el);
-$("wdForm").addEventListener("keydown", (e) => {
-  if (!(e.ctrlKey || e.metaKey) || e.target.matches("input, textarea, select")) return;
-  const key = e.key.toLowerCase();
-  if (key !== "z" && key !== "y") return;
-  e.preventDefault();
-  if (key === "y" || e.shiftKey) dlgEditor.getModel().redo(); else dlgEditor.getModel().undo();
-});
+undoKeys($("wdForm"), () => dlgEditor);
 
 function ensureDialogEditor() {
   if (dlgEditor) return;
@@ -6299,7 +6316,6 @@ async function openWorkoutDialog(mode, workout, opts = {}) {
   $("wdUpload").checked = onGarmin && !opts.link; $("wdUpload").disabled = garminOnly || !!opts.link || !onGarmin;
   $("wdSchedule").checked = true;
   dlgEditor.setValue(JSON.stringify(workout, null, 2) + "\n");
-  $("wdlg").dataset.emode = editMode;
   $("wdlg").showModal(); navDialog($("wdlg"));
   dlgEditor.layout(); updateScheduleBox();
   dialogForm.render(); $("wdForm").scrollTop = 0;
@@ -6484,7 +6500,7 @@ function bindWorkoutsView() {
   $("wUpcoming").onclick = () => { W.upcoming = !W.upcoming; renderRows(); };
   $("wClear").onclick = () => { W.filter = ""; $("wFilter").value = ""; W.status = "all"; W.plan = "all"; W.types.clear(); W.upcoming = false; renderRows(); };
   $("wBackList").onclick = showWorkoutList;
-  $("wNew").onclick = guard(() => openWorkoutDialog("new", newWorkout("New workout")));
+  $("wNew").onclick = guard(() => openWorkoutDialog("new", WFM.newWorkout("strength_training", "New workout")));
   $("wEdit").onclick = guard(() => { const d = W.detail; return d && openWorkoutDialog("edit", d.plans.length ? d.plans[0].workout : d.garmin); });
   $("wDelete").onclick = guard(deleteSelected);
   $("wdSave").onclick = guard(saveDialog); $("wdCancel").onclick = $("wdClose").onclick = () => $("wdlg").close();

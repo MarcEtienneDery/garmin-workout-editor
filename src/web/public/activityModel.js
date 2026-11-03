@@ -246,9 +246,9 @@
     return out;
   }
 
-  /** One run as text: "6 @ 40 lb", "3 × 6 @ 40 lb", "135 lb" for a set whose reps were not counted, "3 × 12" without weight; "" with neither. `unit` "kg" says the weight (kept in lb) in kg. */
-  function runText(run, unit) {
-    const w = !run.weight ? "" : unit === "kg" ? `${+(run.weight / 2.20462262).toFixed(1)} kg` : `${+run.weight.toFixed(1)} lb`;
+  /** One run as text: "6 @ 40 lb", "3 × 6 @ 40 lb", "135 lb" for a set whose reps were not counted, "3 × 12" without weight; "" with neither. `weight` says a weight (kept in lb): in lb unless given. */
+  function runText(run, weight = (lb) => `${+lb.toFixed(1)} lb`) {
+    const w = run.weight ? weight(run.weight) : "";
     const core = run.reps && w ? `${run.reps} @ ${w}` : run.reps ? String(run.reps) : w;
     return core && run.count > 1 ? `${run.count} × ${core}` : core;
   }

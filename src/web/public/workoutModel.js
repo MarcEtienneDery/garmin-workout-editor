@@ -22,7 +22,7 @@
 
   const num = (v) => (typeof v === "number" && isFinite(v) ? v : 0);
   const pad = (n) => String(n).padStart(2, "0");
-  const prettyName = (key) => String(key).toLowerCase().split("_").map((x) => x.charAt(0).toUpperCase() + x.slice(1)).join(" ");
+  const prettyName = (key) => String(key).toLowerCase().split("_").filter(Boolean).map((x) => x.charAt(0).toUpperCase() + x.slice(1)).join(" ");
   const isStep = (s) => s !== null && typeof s === "object" && !Array.isArray(s);
 
   // ── Formatting ──────────────────────────────────────────────────────────
@@ -337,5 +337,5 @@
     return out;
   }
 
-  return { analyze, pacerFrom, buildTree, describeStep, describeSet, changedSteps, isSuperset, clock, duration, distance, pace, weight, targetOf, stepMetrics, prettyName, ASSUMED_PACE, SECONDS_PER_REP };
+  return { analyze, pacerFrom, buildTree, describeStep, describeSet, changedSteps, isSuperset, clock, duration, distance, pace, weight, targetOf, stepMetrics, prettyName, kindOf, KIND_LABEL, LB_PER_KG, ASSUMED_PACE, SECONDS_PER_REP };
 });

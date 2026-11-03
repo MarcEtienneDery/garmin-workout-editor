@@ -176,7 +176,7 @@ describe("chart helpers", () => {
   });
 
   it("writes an exercise's sets as runs of identical sets, and a run as short text", () => {
-    const text = (x: any) => A.setRuns(x).map(A.runText);
+    const text = (x: any) => A.setRuns(x).map((r: any) => A.runText(r));
     expect(text({ sets: 3, reps: 6, weight: 40 })).toEqual(["3 × 6 @ 40 lb"]);
     expect(text({ sets: 1, reps: 12, weight: 135 })).toEqual(["12 @ 135 lb"]);
     // reps Garmin did not count are 0: the set still shows, by its weight
@@ -185,8 +185,8 @@ describe("chart helpers", () => {
     expect(text({ sets: 3, repsList: [30, 30, 30] })).toEqual(["3 × 30"]);
     expect(text({ sets: 1 })).toEqual([""]); // cardio: nothing counted
     expect(text({ sets: 2, reps: 8, weight: 22.5 })).toEqual(["2 × 8 @ 22.5 lb"]);
-    // in kg when the profile shows weights in kg (they are kept in lb)
-    expect(A.runText({ count: 3, reps: 6, weight: 40 }, "kg")).toBe("3 × 6 @ 18.1 kg");
+    // in the profile's unit when the page says how (the weights are kept in lb)
+    expect(A.runText({ count: 3, reps: 6, weight: 40 }, (lb: number) => `${(lb / 2.20462262).toFixed(1)} kg`)).toBe("3 × 6 @ 18.1 kg");
     expect(A.setRuns(undefined)).toEqual([{ count: 1, reps: 0, weight: 0 }]);
     expect(A.setRuns({ sets: 4, repsList: [0, 0, 6, 0], weightList: [135, 175, 200, 200] }).reduce((a: number, r: any) => a + r.count, 0)).toBe(4);
   });

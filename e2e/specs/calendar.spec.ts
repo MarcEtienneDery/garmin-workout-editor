@@ -4,7 +4,7 @@
  * use dates in 2031, so no other spec's data lands on their months.
  */
 import type { APIRequestContext, Locator, Page } from "@playwright/test";
-import { test, expect, openView, loginAs, today, daysAgo, daysAhead, mondayOf, PASSWORD } from "../support/fixtures";
+import { test, expect, openView, loginAs, today, daysAgo, daysAhead, mondayOf, PASSWORD, chooseEditMode } from "../support/fixtures";
 
 // The machine is shared by every spec run at once: a page can take many seconds to answer, so each test has more than the default 30 s.
 test.describe.configure({ timeout: 60_000 });
@@ -380,7 +380,7 @@ test.describe("Workouts mode", () => {
   });
 
   test("with JSON chosen, a chip opens the plan with the workout's picture open in the outline", async ({ alice }) => {
-    await alice.addInitScript(() => localStorage.setItem("planEditor.editMode", "json"));
+    await chooseEditMode(alice, "json");
     await openCalendar(alice);
     await alice.locator("#cModes button[data-mode=workouts]").click();
     await goToMonthOf(alice, today());

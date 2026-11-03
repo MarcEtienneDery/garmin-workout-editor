@@ -75,9 +75,7 @@ const GARMIN_REASON = "This profile has no Garmin login: add one in Settings.";
 
 // These specs are about the JSON editor and the outline beside it, the Plans view as it is with JSON chosen (the choice is kept in the
 // browser): the form, which a plan opens on otherwise, has workout-form.spec.ts.
-test.beforeEach(async ({ page }) => {
-  await page.addInitScript(() => localStorage.setItem("planEditor.editMode", "json"));
-});
+test.use({ editMode: "json" });
 
 test.describe("Plans: opening a plan", () => {
   test("with nothing open, the file tools are off and the panes say so", async ({ alice }) => {
