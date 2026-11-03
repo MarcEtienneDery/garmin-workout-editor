@@ -3659,8 +3659,9 @@ const fmtKm = (m) => `${(m / 1000).toLocaleString(undefined, { maximumFractionDi
 const fmtNum = (n) => Math.round(n).toLocaleString();
 /** A volume lifted (kept in lb), whole, in the unit of the Activities view's profile. */
 const lbVolume = (v) => (weightUnitOf(A.profile) === "kg" ? `${fmtNum(v / WM.LB_PER_KG)} kg` : `${fmtNum(v)} lb`);
-/** A weight lifted (kept in lb), in the unit of the Activities view's profile. */
-const lb = (w) => WM.weight(w, weightUnitOf(A.profile));
+/** A weight lifted (kept in lb), in the unit of the Activities view's profile. Garmin's lifts come in whole pounds, which are good to a
+ *  quarter of a kilo: kg are shown to the half kilo, so 100 kg lifted is 100 kg (whole pounds make it 99.8). */
+const lb = (w) => (weightUnitOf(A.profile) === "kg" ? `${Math.round((w / WM.LB_PER_KG) * 2) / 2} kg` : WM.weight(w, "lb"));
 const fromNote = (b) => `from ${b.reps} @ ${lb(b.weight)} on ${b.date}`;
 const ONE_RM_NOTE = "est. 1RM: your best set of the exercise by the Epley formula, weight × (1 + reps ÷ 30), over sets of up to 12 counted reps.";
 /** A list's heading with an ⓘ; the note opens at the top of the list. */

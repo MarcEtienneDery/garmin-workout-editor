@@ -670,13 +670,13 @@
     function pickExercise(current) {
       return loadCatalog().then((cat) => new Promise((resolve) => {
         const p = picker || (picker = makePicker());
-        let picked = null;
         p.state = { cat, category: "", current };
         p.search.value = "";
         fillChips(p);
         fillList(p);
-        p.dlg.onclose = () => { p.dlg.onclose = null; resolve(picked); };
-        p.choose = (name) => { picked = name; p.dlg.close(); };
+        // the exercise tapped is the answer at once, not when the close event comes a task later; closed any other way, there is none
+        p.dlg.onclose = () => { p.dlg.onclose = null; resolve(null); };
+        p.choose = (name) => { resolve(name); p.dlg.close(); };
         opts.modal(p.dlg);
         p.search.focus();
       }), (e) => { opts.toast(`The exercise list did not load: ${e.message}`); return null; });

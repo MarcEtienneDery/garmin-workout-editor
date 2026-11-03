@@ -244,10 +244,13 @@ describe("WorkoutEditor", () => {
       // Test weight already in pounds
       expect(convert(100, { unitKey: "pound", factor: 453.59237 })).toBe(100);
       expect(convert(99.99947750443862, { unitKey: "pound" })).toBe(100);
-      
+      // 100 kg typed is 220.46 lb in the plan, which Garmin keeps as 99 999 g: it reads back as itself, not as 220 lb (99.8 kg)
+      expect(convert(99999 / 453.59237, { unitKey: "pound" })).toBe(220.46);
+
       // Test weight in grams (needs conversion)
       expect(convert(453.59237)).toBe(1);
-      expect(convert(102261)).toBeCloseTo(225, 0);
+      expect(convert(102058)).toBe(225);
+      expect(convert(100000)).toBe(220.46);
     });
   });
 
