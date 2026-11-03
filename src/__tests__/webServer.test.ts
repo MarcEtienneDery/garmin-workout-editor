@@ -1551,6 +1551,38 @@ describe("web plan editor", () => {
       expect(typeof r.json.version).toBe("number");
     });
   });
+  describe("what the header shows: syncs running and Garmin's 429", () => {
+    const activity = async () => (await call("GET", "/api/sync-activity")).json;
+
+    it("is quiet for a profile that syncs nothing", async () => {
+      addProfile("MED");
+      expect((await activity()).profiles).toEqual({ MED: { syncing: [], limit: null } });
+    });
+
+    it("lists the syncs that hold a lease, from whichever process holds it", async () => {
+      addProfile("MED");
+      getStore().activities.claim("MED", "mcp-1", 60_000);
+      getStore().wellness.claim("MED", "mcp-1", 60_000);
+      expect((await activity()).profiles.MED.syncing).toEqual(["activities", "wellness"]);
+    });
+
+    it("forgets a lease that ran out", async () => {
+      addProfile("MED");
+      getStore().activities.claim("MED", "mcp-1", 60_000, Date.now() - 120_000);
+      expect((await activity()).profiles.MED.syncing).toEqual([]);
+    });
+
+    it("says Garmin answered 429, until a day has passed", async () => {
+      addProfile("MED");
+      addProfile("SAM");
+      getStore().limits.record("MED");
+      getStore().limits.record("SAM", Date.now() - 2 * 86_400_000);
+      const { profiles } = await activity();
+      expect(profiles.MED.limit).toEqual({ since: expect.any(Number), lastAt: expect.any(Number), count: 1 });
+      expect(profiles.SAM.limit).toBeNull();
+    });
+  });
+
   describe("archiving a plan", () => {
     const easy = { workoutName: "Easy run", workoutType: "running", distanceMeters: 5000 };
     const archive = (body: object) => call("POST", "/api/plans/archive", { path: "workout-plans/a.json", ...body });

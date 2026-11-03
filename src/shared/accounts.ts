@@ -56,7 +56,7 @@ export function saveGarminLogin(store: SqliteStore, profile: string, input: { em
   const password = typed || (before && before.email === email ? before.password : "");
   if (!password) throw new SettingsError("Enter the password.");
   store.credentials.put(profile, "garmin", email, password);
-  if (!before || before.email !== email || before.password !== password) store.tokens.delete(profile); // the session that was open belongs to the old login: the next sign-in, and the test, must try this one
+  if (!before || before.email !== email || before.password !== password) { store.tokens.delete(profile); store.limits.clear(profile); } // the session that was open belongs to the old login: the next sign-in, and the test, must try this one
 }
 
 /**
@@ -66,6 +66,7 @@ export function saveGarminLogin(store: SqliteStore, profile: string, input: { em
 export function removeGarminLogin(store: SqliteStore, profile: string, now = Date.now()): void {
   store.credentials.delete(profile, "garmin");
   store.tokens.delete(profile);
+  store.limits.clear(profile);
   store.wellness.saveProgress(profile, { error: null, retryAfter: null }, now);
   store.activities.saveProgress(profile, { error: null, retryAfter: null }, now);
   if (store.renpho.settings(profile).pushEnabled) {

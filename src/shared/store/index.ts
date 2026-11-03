@@ -7,7 +7,7 @@ export { MAX_PROFILE_NAME, normalizeLogicalPath, profileOfPath, summarizeText } 
 export { exportFiles } from "./transfer";
 export { SqliteStore, KEEP_REVISIONS } from "./sqliteStore";
 export * from "./activities";
-export { TokenTable, type StoredToken } from "./tokens";
+export { LimitTable, TokenTable, type GarminLimit, type StoredToken } from "./tokens";
 export * from "./wellness";
 export * from "./credentials";
 export { SessionTable, type StoredSession } from "./sessions";

@@ -7,7 +7,7 @@ import { GoalTable, NUTRITION_SCHEMA, NutritionTable, migrateNutrition } from ".
 import { PROFILE_SCHEMA, ProfileTable, backfillProfiles } from "./profiles";
 import { RENPHO_SCHEMA, RenphoTable } from "./renpho";
 import { SESSION_SCHEMA, SessionTable } from "./sessions";
-import { TOKEN_SCHEMA, TokenTable } from "./tokens";
+import { LIMIT_SCHEMA, LimitTable, TOKEN_SCHEMA, TokenTable } from "./tokens";
 import { WELLNESS_SCHEMA, WellnessTable } from "./wellness";
 import { profileOfPath, summarizeText } from "./paths";
 import { StoreError, type DocMeta, type PutOptions, type RevisionMeta, type StoredDoc } from "./types";
@@ -55,6 +55,7 @@ CREATE TABLE IF NOT EXISTS revisions (
 CREATE INDEX IF NOT EXISTS revisions_by_path ON revisions (path, id);
 ${ACTIVITY_SCHEMA}
 ${TOKEN_SCHEMA}
+${LIMIT_SCHEMA}
 ${WELLNESS_SCHEMA}
 ${CREDENTIAL_SCHEMA}
 ${RENPHO_SCHEMA}
@@ -96,6 +97,8 @@ export class SqliteStore {
   readonly activities: ActivityTable;
   /** The Garmin login tokens of every profile (see tokens.ts). */
   readonly tokens: TokenTable;
+  /** Whether Garmin is answering a profile with 429, Too Many Requests (see tokens.ts). */
+  readonly limits: LimitTable;
   /** The daily health data (sleep, HRV, resting heart rate, Body Battery, stress) of every profile (see wellness.ts). */
   readonly wellness: WellnessTable;
   /** The profiles that exist, and the hash of each one's web sign-in password (see profiles.ts). */
@@ -120,6 +123,7 @@ export class SqliteStore {
   ) {
     this.activities = new ActivityTable(db, (fn) => this.tx(fn));
     this.tokens = new TokenTable(db);
+    this.limits = new LimitTable(db);
     this.wellness = new WellnessTable(db, (fn) => this.tx(fn));
     this.profiles = new ProfileTable(db);
     this.sessions = new SessionTable(db);

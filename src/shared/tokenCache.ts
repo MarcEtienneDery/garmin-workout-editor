@@ -25,6 +25,11 @@ export class TokenCache {
   private legacyFile: string;
   private readonly CACHE_DURATION_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
+  /** The profile this cache belongs to (the name of its data directory). */
+  get profileName(): string {
+    return this.profile;
+  }
+
   constructor(cacheDir: string = "data") {
     this.profile = path.basename(path.resolve(cacheDir));
     this.legacyFile = path.join(cacheDir, ".garmin-token-cache.json");

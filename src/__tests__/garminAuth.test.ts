@@ -12,7 +12,8 @@ jest.mock("@flow-js/garmin-connect", () => ({ GarminConnect: jest.fn().mockImple
 
 import { GarminClient, LOGIN_COOLDOWN_MS } from "../shared/garminClient";
 import { TokenCache } from "../shared/tokenCache";
-import { closeStore } from "../shared/store";
+import { closeStore, getStore } from "../shared/store";
+import { removeGarminLogin } from "../shared/accounts";
 
 const EMAIL = "me@example.com";
 const tokens = { oauth1: { token: "t1" }, oauth2: { access_token: "a2" } };
@@ -134,5 +135,62 @@ describe("Garmin authentication when Garmin throttles or refuses", () => {
 
     expect(await garmin.authenticate()).toBe(true);
     expect(garmin.authError().message).toMatch(/check the profile credentials/);
+  });
+});
+
+describe("Garmin 429s are recorded for the page", () => {
+  const limit = () => getStore().limits.get("MED");
+  beforeEach(() => { getStore(); }); // the database exists, as it does wherever a profile has a login
+
+  it("records a login Garmin answers with 429, and counts each refusal once", async () => {
+    connect.login.mockRejectedValue(tooMany());
+    const garmin = client();
+
+    expect(await garmin.ensureAuthenticated()).toBe(false);
+    expect(limit()).toEqual({ since: expect.any(Number), lastAt: expect.any(Number), count: 1 });
+  });
+
+  it("records a 429 met while checking the cached token", async () => {
+    cache().saveToken(EMAIL, tokens.oauth1, tokens.oauth2);
+    connect.getUserProfile.mockRejectedValueOnce(tooMany());
+
+    await client().ensureAuthenticated();
+    expect(limit()?.count).toBe(1);
+  });
+
+  it("clears the record when a login works again", async () => {
+    getStore().limits.record("MED");
+    connect.login.mockResolvedValue(undefined);
+
+    expect(await client().ensureAuthenticated()).toBe(true);
+    expect(limit()).toBeNull();
+  });
+
+  it("does not record other failures", async () => {
+    connect.login.mockRejectedValue(new Error("ERROR: (400), Bad Request, {}"));
+    await client().ensureAuthenticated();
+    expect(limit()).toBeNull();
+  });
+
+  it("records a 429 on any request of the library, and clears it when an API call works", async () => {
+    let onOk: (r: any) => any = (r) => r, onFail: (e: any) => any = (e) => Promise.reject(e);
+    (connect as any).client = { client: { interceptors: { response: { use: (ok: any, fail: any) => { onOk = ok; onFail = fail; } } } } };
+    const garmin = client();
+    delete (connect as any).client;
+
+    await expect(onFail(tooMany())).rejects.toThrow(/429/);
+    expect(limit()?.count).toBe(1);
+    onOk({ config: { url: "https://sso.garmin.com/mobile/sso/en/sign-in" } }); // the sign-in page loading says nothing
+    expect(limit()?.count).toBe(1);
+    onOk({ config: { url: "https://connectapi.garmin.com/userprofile-service/socialProfile" } });
+    expect(limit()).toBeNull();
+    expect(garmin).toBeDefined();
+  });
+
+  it("forgets the record when the login is removed or changed", () => {
+    const store = getStore();
+    store.limits.record("MED");
+    removeGarminLogin(store, "MED");
+    expect(store.limits.get("MED")).toBeNull();
   });
 });
