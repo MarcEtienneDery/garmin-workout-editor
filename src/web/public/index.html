@@ -2649,13 +2649,14 @@ function pacerFor(profile) {
       .then((r) => RUNS.set(key, WM.pacerFrom(r.runs)), () => RUNS.set(key, null))
       .finally(() => {
         runsLoading.delete(key);
-        // drawn again with the runs known: their pace, or the note that there are too few. A form a field of which has the focus is left
-        // as it is (a redraw would drop what is being typed): its next change draws it with them
-        const view = document.body.dataset.view, busy = (box) => box.contains(document.activeElement);
-        if (view === "plans") { renderOutline(); if (!busy($("pform"))) renderPlanForm(); }
-        else if (view === "today") renderToday();
-        else if (W.detail) renderDetail();
-        if (editMode === "form" && $("wdlg").open && !busy($("wdForm"))) dialogForm.schedule();
+        const view = document.body.dataset.view;
+        if (RUNS.get(key)) {
+          if (view === "plans") { renderOutline(); if (P.sel === null && !$("pform").contains(document.activeElement)) renderPlanForm(); }
+          else if (view === "today") renderToday();
+          else if (W.detail) renderDetail();
+        }
+        // a form's estimate and its ⓘ, also when there are too few runs to learn from: that part only, never a field being used
+        if (editMode === "form") { if (view === "plans") planForm.retime(); if ($("wdlg").open) dialogForm.retime(); }
       });
   }
   return null;

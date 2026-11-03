@@ -78,13 +78,15 @@
    *   isDay(v), today()  the page's: a real day of the calendar written YYYY-MM-DD, and today's
    *   phone()         whether the screen is a phone's; place(menu, anchor) puts a menu by its button (a phone shows it as a sheet)
    *   toast(text), toastUndo(text, undo), undo(), ask(dialog options) → answer or null, toJson(stepIndex), modal(dialog)
-   * Returns { el, render, schedule }: render draws it again from read(); schedule does so once the current event is over.
+   * Returns { el, render, schedule, retime }: render draws it again from read(); schedule does so once the current event is over; retime
+   * draws its overview again and nothing else (the estimate, once the runs it is timed from are known), so no field is replaced.
    */
   function create(opts) {
     const el = h("div", { class: "wf" });
     const units = new Map(); // the unit (km or m) a distance field was switched to, by field
     const listId = `wf-rests-${++seq}`;
     let renderTimer = 0, catalog = null, drag = null, follow = null; // follow: the card a keyboard move took, which keeps the focus
+    let overviewNodes = []; // what the last draw's overview() put in the form, for retime()
 
     function render() {
       clearTimeout(renderTimer);
@@ -111,6 +113,7 @@
     // ── Drawing ──
 
     function draw() {
+      overviewNodes = [];
       const { workout: w, problem } = opts.read();
       if (!w) return [h("div", { class: "wf-note", text: problem || "No workout." })];
       const trouble = problem || M.formProblem(w);
@@ -121,7 +124,19 @@
       for (const p of M.check({ ...w, steps: flat }, known)) (problems.get(p.i) || problems.set(p.i, []).get(p.i)).push(p);
       const ctx = { w, flat, blocks, offsets, problems, mode: M.modeOf(w), unit: opts.unit() };
       ctx.cards = ctx.mode === "strength" ? M.strengthCards(blocks) : blocks.map((b, k) => ({ kind: b.times > 1 ? "repeat" : "step", k, count: 1 }));
-      return [head(ctx), overview(ctx), stepsOf(ctx), adder(ctx), restList()];
+      overviewNodes = [overview(ctx)].flat().filter(Boolean);
+      return [head(ctx), overviewNodes, stepsOf(ctx), adder(ctx), restList()];
+    }
+
+    /** The overview drawn again in its place, from the workout as it is now: a field being typed in or picked from is left alone. */
+    function retime() {
+      if (!overviewNodes.length || !overviewNodes[0].isConnected || overviewNodes.some((n) => n.contains(document.activeElement))) return;
+      const { workout: w, problem } = opts.read();
+      if (!w || problem || M.formProblem(w)) return;
+      const now = [overview({ w, flat: M.flatten(w.steps || []), unit: opts.unit() })].flat().filter(Boolean);
+      overviewNodes[0].before(...now);
+      for (const n of overviewNodes) n.remove();
+      overviewNodes = now;
     }
 
     const write = (w) => opts.write(w);
@@ -777,7 +792,7 @@
 
     const escDrag = (e) => { if (e.key === "Escape" && drag) { e.preventDefault(); e.stopPropagation(); endDrag(null, false); } };
 
-    return { el, render, schedule };
+    return { el, render, schedule, retime };
   }
 
   // whether the overview is open, for every form: open on a desktop, shut on a phone until opened (decided when the first one is drawn)
