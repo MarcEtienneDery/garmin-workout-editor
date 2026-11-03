@@ -26,9 +26,17 @@ const RUN = {
   ],
 };
 
+/** Four exercises, so a set line can be scrolled up to the top of the pane, and notes of two lines (their box grows to them once drawn). */
+const PULL = {
+  workoutName: "Pull", workoutType: "strength_training", description: "Heavy and short.\nStop each set with two reps in the tank.",
+  steps: ["BARBELL_DEADLIFT", "BENT_OVER_ROW_WITH_BARBELL", "PULL_UP", "BARBELL_SHOULDER_PRESS"].map((exerciseName, i) => (
+    { stepType: "interval", targetType: "no.target", endCondition: "reps", endConditionValue: 8, reps: 8, exerciseName, weight: 95, restTimeSeconds: 90, numberOfRepeats: 3, repeatGroupIndex: i, stepOrder: i + 1 }
+  )),
+};
+
 async function openPlan(page: Page, profile: Profile): Promise<void> {
   const path = `workout-plans/${profile.name}-form.json`;
-  const made = await profile.api.put(`/api/file?path=${encodeURIComponent(path)}`, { data: { text: JSON.stringify({ weekStart: "2026-11-02", weekEnd: "2026-11-08", workouts: [LEGS, RUN] }, null, 2), create: true } });
+  const made = await profile.api.put(`/api/file?path=${encodeURIComponent(path)}`, { data: { text: JSON.stringify({ weekStart: "2026-11-02", weekEnd: "2026-11-08", workouts: [LEGS, RUN, PULL] }, null, 2), create: true } });
   expect(made.status()).toBe(201);
   const wired = page.waitForResponse((r) => r.url().includes("/api/schema") && r.ok());
   await openView(page, "plans");
@@ -126,4 +134,20 @@ test("the form stays where it was scrolled to when a change draws it again", asy
   await expect.poll(async () => (await workoutOf(me, 0)).steps.length).toBe(3);
   await expect(me.locator("#pform .wf-list > .wf-card")).toHaveCount(3);
   expect(await pane.evaluate((el) => el.scrollTop)).toBeGreaterThanOrEqual(before - 2);
+});
+
+test("a button tapped near the top of the pane stays under the finger when the form draws again", async ({ me, profile }) => {
+  await openPlan(me, profile);
+  await openWorkout(me, "Pull");
+  const pane = me.locator("#pform");
+  const plus = me.locator("#pform .wf-line").nth(1).getByRole("button", { name: "Sets: one more" });
+  // the button just under the top of the pane: the browser's scroll anchoring once moved it up by the notes box's second line
+  await plus.evaluate((el) => { const box = el.closest("#pform")!; box.scrollTop += el.getBoundingClientRect().top - box.getBoundingClientRect().top - 12; });
+  const top = await pane.evaluate((el) => el.getBoundingClientRect().top);
+  const at = (await plus.boundingBox())!.y;
+  expect(Math.abs(at - top - 12)).toBeLessThan(2);
+  await plus.tap();
+  await expect.poll(async () => (await workoutOf(me, 2)).steps[1].numberOfRepeats).toBe(4);
+  await expect(me.locator("#pform .wf-line").nth(1).getByLabel("Sets", { exact: true })).toHaveValue("4");
+  expect(Math.abs((await plus.boundingBox())!.y - at)).toBeLessThan(2);
 });

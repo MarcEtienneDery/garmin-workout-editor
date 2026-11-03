@@ -228,7 +228,9 @@
   #ebar .spacer, #wdlg .dhead .spacer { flex:1; }
   #eUndo, #eRedo { padding:2px 9px; font-size:15px; }
   #center > #editor { flex:1; min-height:0; }
-  #pform, #wdForm { flex:1; min-height:0; overflow:auto; overscroll-behavior:contain; }
+  /* the form keeps its own place when it draws again (WorkoutForm.redraw): the browser's scroll anchoring would move it once more
+     when the notes box grows to its text a frame later */
+  #pform, #wdForm { flex:1; min-height:0; overflow:auto; overscroll-behavior:contain; overflow-anchor:none; }
   body[data-emode="form"] #center > #editor, body:not([data-emode="form"]) #pform, body:not([data-emode="form"]) #ewk,
   #wdlg[data-emode="form"] #wdEditor, #wdlg:not([data-emode="form"]) #wdForm { display:none; }
   .wf { max-width:760px; margin:0 auto; padding:12px 16px 48px; display:grid; gap:12px; align-content:start; }
@@ -2647,7 +2649,13 @@ function pacerFor(profile) {
       .then((r) => RUNS.set(key, WM.pacerFrom(r.runs)), () => RUNS.set(key, null))
       .finally(() => {
         runsLoading.delete(key);
-        if (RUNS.get(key)) { if (document.body.dataset.view === "plans") renderOutline(); else if (document.body.dataset.view === "today") renderToday(); else if (W.detail) renderDetail(); }
+        // drawn again with the runs known: their pace, or the note that there are too few. A form a field of which has the focus is left
+        // as it is (a redraw would drop what is being typed): its next change draws it with them
+        const view = document.body.dataset.view, busy = (box) => box.contains(document.activeElement);
+        if (view === "plans") { renderOutline(); if (!busy($("pform"))) renderPlanForm(); }
+        else if (view === "today") renderToday();
+        else if (W.detail) renderDetail();
+        if (editMode === "form" && $("wdlg").open && !busy($("wdForm"))) dialogForm.schedule();
       });
   }
   return null;

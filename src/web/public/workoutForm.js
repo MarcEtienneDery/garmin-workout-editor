@@ -39,9 +39,9 @@
   /** Whether a name is one of Garmin's exercises: exerciseMuscles.js lists every one (a test keeps it so), so no request is needed. */
   const known = root.MuscleMap ? (name) => Object.prototype.hasOwnProperty.call(root.MuscleMap.EXERCISES, name) : null;
 
-  /** The box `node` scrolls in. */
+  /** The box that scrolls: `node` itself, or the nearest box around it. */
   function scroller(node) {
-    for (let n = node.parentElement; n; n = n.parentElement) {
+    for (let n = node; n; n = n.parentElement) {
       const s = getComputedStyle(n).overflowY;
       if ((s === "auto" || s === "scroll") && n.scrollHeight > n.clientHeight) return n;
     }

@@ -468,6 +468,8 @@ test.describe("The workout form: runs and rides", () => {
 
 test.describe("The workout form: what the estimate says", () => {
   test("the overview says how long the workout takes, and how it was timed behind its ⓘ", async ({ me, profile }) => {
+    // the runs come once the form is drawn (as on a slow line): it is drawn again with them
+    await me.route("**/api/runs*", async (route) => { await new Promise((done) => setTimeout(done, 800)); await route.continue(); });
     const path = await makePlan(profile.api, profile.name);
     await openPlan(me, path);
     await openWorkout(me, "Intervals");
