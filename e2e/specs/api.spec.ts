@@ -717,7 +717,7 @@ test.describe("what the Garmin and Settings reads say", () => {
     expect(await asAdmin.text()).not.toContain(secret);
   });
 
-  test("no read answer carries the admin token, a profile's password or a password hash", async ({ request, admin }) => {
+  test("no read answer carries the admin token, a profile's password or a password hash", async ({ request, admin, baseURL }) => {
     const reads = ["/api/session", "/api/files", "/api/garmin", "/api/settings", "/api/schema", "/api/today", "/api/activities", "/"];
     const logins = [ADMIN(), ALICE(), BOB()];
     for (const headers of logins) {
@@ -728,7 +728,7 @@ test.describe("what the Garmin and Settings reads say", () => {
     }
     const adminText = await (await admin.get("/api/settings?profile=alice")).text();
     expect(adminText).not.toContain(PASSWORD);
-    const login = await pwRequest.newContext({ baseURL: "http://127.0.0.1:8792" }).then(async (ctx) => {
+    const login = await pwRequest.newContext({ baseURL }).then(async (ctx) => {
       try {
         return await (await ctx.post("/api/login", { headers: CSRF, data: { user: "alice", password: PASSWORD } })).text();
       } finally {

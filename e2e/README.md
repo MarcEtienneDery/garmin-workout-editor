@@ -5,9 +5,9 @@
 
 | Project | Server | What it is |
 |---|---|---|
-| `desktop` | `127.0.0.1:8792` | the app as a person **without a Garmin login** meets it, with `e2e/support/seed.ts` stored. 1280×860. |
+| `desktop` | `127.0.0.1:8792`¹ | the app as a person **without a Garmin login** meets it, with `e2e/support/seed.ts` stored. 1280×860. |
 | `phone` | the same | `*.phone.spec.ts` only, on a Pixel 7. |
-| `mock` | `127.0.0.1:8793` | mock mode (`MOCK_MODE=true`): Garmin is off on the page (its buttons stay disabled, the Workouts list is empty with the note "Mock mode: Garmin writes are disabled."), the server refuses every Garmin write with that reason, and the MCP tools answer with generated data. Specs live in `e2e/specs/mock/`. No seeded profiles: sign in as `admin` with `ADMIN_TOKEN`. |
+| `mock` | `127.0.0.1:8793`¹ | mock mode (`MOCK_MODE=true`): Garmin is off on the page (its buttons stay disabled, the Workouts list is empty with the note "Mock mode: Garmin writes are disabled."), the server refuses every Garmin write with that reason, and the MCP tools answer with generated data. Specs live in `e2e/specs/mock/`. No seeded profiles: sign in as `admin` with `ADMIN_TOKEN`. |
 
 ```bash
 npm run e2e                                          # everything
@@ -16,12 +16,16 @@ npx playwright test -g "adds a food" --headed        # one test, watched
 npx playwright show-report e2e/report                # the HTML report of the last run
 ```
 
+¹ In the repository's own checkout. A linked git worktree has two ports of its own, taken from its path (`npx tsx e2e/support/ports.ts`
+prints them), so suites run in several worktrees at once never meet: each would otherwise reuse the other's servers and test the other
+checkout's code. `E2E_BASE_PORT=<port>` sets them (mock mode on the next one).
+
 Servers already running on those ports are reused (`reuseExistingServer`), which makes reruns quick. Time zone is UTC for the
 server and the browsers, so `today()` from `support/dates.ts` is the page's "today".
 
 * A run that starts the servers itself stops them when it ends. To run several `playwright` commands at once (or to keep the servers
-  for a day of work) start them once, detached: `setsid nohup npx tsx e2e/support/server.ts &` and
-  `E2E_PORT=8793 setsid nohup npx tsx e2e/support/server.ts mock &`; kill them by their ports (`lsof -ti:8792 | xargs kill`).
+  for a day of work) start them once, detached, on the checkout's ports: `setsid nohup npx tsx e2e/support/server.ts &` and
+  `setsid nohup npx tsx e2e/support/server.ts mock &`; kill them by their ports (`lsof -ti:8792 | xargs kill`).
 * Every test that changes data makes a profile of its own, so a long-lived server accumulates profiles (thousands slow the pages that
   list them). Restart the servers for a clean database before a full run.
 * Two runs at once share `e2e/results`; give the second one `--output=<dir>`.
