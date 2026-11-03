@@ -1,4 +1,5 @@
 import * as fs from "fs";
+import axios from "axios";
 import { GarminConnect } from "@flow-js/garmin-connect";
 import { getStore, getStorePath } from "./store";
 import TokenCache from "./tokenCache";
@@ -48,6 +49,16 @@ function recordLimit(profile: string, limited: boolean): void {
     /* the notice is a courtesy */
   }
 }
+
+/** Where a request goes, for the log: host and path, never the query string (the OAuth exchange signs its request there). */
+const callTarget = (config: any): string => {
+  try {
+    const url = new URL(String(config?.url ?? ""), config?.baseURL);
+    return `${url.host}${url.pathname}`;
+  } catch {
+    return String(config?.url ?? "?").split("?")[0];
+  }
+};
 
 const RATE_LIMITED = "Failed to authenticate with Garmin: it is rate limiting logins (HTTP 429, Too Many Requests)";
 
@@ -101,6 +112,49 @@ export class GarminClient {
         return Promise.reject(error);
       }
     );
+    this.logCalls();
+  }
+
+  /**
+   * One log line for every HTTP call to Garmin, the logins and the OAuth refresh included, with the status and how long it took
+   * (`GARMIN_CALL_LOG=0` turns it off). It wraps the HTTP adapter, so a call is logged once as it went out, even one the library
+   * repeats after a 401, and what a call carries (headers, tokens, body, query string) never reaches the log.
+   */
+  private logCalls(): void {
+    if (process.env.GARMIN_CALL_LOG === "0") return;
+    try {
+      const http = (this.client as any).client?.client;
+      if (!http?.defaults) return;
+      const send = axios.getAdapter(http.defaults.adapter);
+      const profile = this.tokenCache.profileName;
+      http.defaults.adapter = async (config: any) => {
+        const started = Date.now();
+        const note = (outcome: string) =>
+          console.log(`📡 Garmin ${profile} ${String(config?.method ?? "get").toUpperCase()} ${callTarget(config)} → ${outcome} ${Date.now() - started}ms`);
+        try {
+          const response = await send(config);
+          note(String(response.status));
+          return response;
+        } catch (error: any) {
+          const status = error?.response?.status;
+          const wait = status === 429 ? error.response.headers?.["retry-after"] : undefined;
+          note(status ? `${status} ${error.response.statusText ?? ""}${wait ? ` (retry-after ${wait}s)` : ""}`.trim() : String(error?.code ?? error?.name ?? "failed"));
+          throw error;
+        }
+      };
+    } catch {
+      /* the log is a courtesy */
+    }
+  }
+
+  /** The library trades an expired access token for a new one by itself; keep it, so the next call does not have to be refused first. */
+  private keepRefreshedToken(before: any): void {
+    try {
+      const { oauth1, oauth2 } = (this.client as any).exportToken();
+      if (oauth2?.access_token && oauth2.access_token !== before?.access_token) this.tokenCache.saveToken(this.email, oauth1, oauth2);
+    } catch {
+      /* the cache is a courtesy */
+    }
   }
 
   /** Record a 429 from Garmin, once per error. */
@@ -165,6 +219,7 @@ export class GarminClient {
             `✅ Authenticated with cached token as: ${userProfile.userName}`
           );
           this.clearLimit();
+          this.keepRefreshedToken(cached.oauth2Token);
           return true;
         } catch (error: any) {
           this.noteRateLimit(error);

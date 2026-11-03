@@ -138,6 +138,77 @@ describe("Garmin authentication when Garmin throttles or refuses", () => {
   });
 });
 
+describe("the cached token", () => {
+  it("is used however old it is", async () => {
+    getStore().tokens.put("MED", EMAIL, { oauth1Token: tokens.oauth1, oauth2Token: tokens.oauth2 }, Date.now() - 30 * 86_400_000);
+
+    expect(await client().authenticate()).toBe(true);
+    expect(connect.login).not.toHaveBeenCalled();
+    expect(connect.loadToken).toHaveBeenCalledWith(tokens.oauth1, tokens.oauth2);
+  });
+
+  it("is replaced by the access token the library got when it refreshed the old one", async () => {
+    cache().saveToken(EMAIL, tokens.oauth1, tokens.oauth2);
+    connect.exportToken.mockReturnValue({ oauth1: tokens.oauth1, oauth2: { access_token: "refreshed" } });
+
+    expect(await client().authenticate()).toBe(true);
+    expect(cache().loadToken(EMAIL)).toEqual({ oauth1Token: tokens.oauth1, oauth2Token: { access_token: "refreshed" } });
+  });
+
+  it("is left as it is when the library did not refresh it", async () => {
+    cache().saveToken(EMAIL, tokens.oauth1, tokens.oauth2);
+    const put = jest.spyOn(getStore().tokens, "put");
+
+    expect(await client().authenticate()).toBe(true);
+    expect(put).not.toHaveBeenCalled();
+  });
+});
+
+describe("the log of calls to Garmin", () => {
+  const withHttp = (adapter: jest.Mock) => {
+    const http: any = { defaults: { adapter }, interceptors: { response: { use: () => undefined } } };
+    (connect as any).client = { client: http };
+    const garmin = client();
+    delete (connect as any).client;
+    return { http, garmin };
+  };
+  const lines = () => (console.log as jest.Mock).mock.calls.map((c) => String(c[0])).filter((l) => l.startsWith("📡"));
+
+  it("has a line for each call: profile, method, host and path, status and time, and never the query string", async () => {
+    const { http } = withHttp(jest.fn().mockResolvedValue({ status: 200, data: {} }));
+    const config = { method: "post", url: "https://connectapi.garmin.com/oauth-service/oauth/exchange/user/2.0?oauth_signature=SECRET&oauth_token=T" };
+
+    expect(await http.defaults.adapter(config)).toEqual({ status: 200, data: {} });
+    expect(lines()).toEqual([expect.stringMatching(/^📡 Garmin MED POST connectapi\.garmin\.com\/oauth-service\/oauth\/exchange\/user\/2\.0 → 200 \d+ms$/)]);
+  });
+
+  it("says what a refusal was, with when Garmin asks to come back, and still throws it", async () => {
+    const refused = Object.assign(new Error("ERROR: (429)"), { response: { status: 429, statusText: "Too Many Requests", headers: { "retry-after": "120" } } });
+    const { http } = withHttp(jest.fn().mockRejectedValue(refused));
+
+    await expect(http.defaults.adapter({ method: "post", url: "https://sso.garmin.com/mobile/api/login?clientId=GCM" })).rejects.toBe(refused);
+    expect(lines()).toEqual([expect.stringMatching(/^📡 Garmin MED POST sso\.garmin\.com\/mobile\/api\/login → 429 Too Many Requests \(retry-after 120s\) \d+ms$/)]);
+  });
+
+  it("names the network error when Garmin did not answer", async () => {
+    const { http } = withHttp(jest.fn().mockRejectedValue(Object.assign(new Error("socket hang up"), { code: "ECONNRESET" })));
+
+    await expect(http.defaults.adapter({ method: "get", url: "https://connectapi.garmin.com/x" })).rejects.toThrow("socket hang up");
+    expect(lines()).toEqual([expect.stringMatching(/GET connectapi\.garmin\.com\/x → ECONNRESET \d+ms$/)]);
+  });
+
+  it("can be turned off with GARMIN_CALL_LOG=0", async () => {
+    process.env.GARMIN_CALL_LOG = "0";
+    try {
+      const adapter = jest.fn().mockResolvedValue({ status: 200 });
+      const { http } = withHttp(adapter);
+      expect(http.defaults.adapter).toBe(adapter);
+    } finally {
+      delete process.env.GARMIN_CALL_LOG;
+    }
+  });
+});
+
 describe("Garmin 429s are recorded for the page", () => {
   const limit = () => getStore().limits.get("MED");
   beforeEach(() => { getStore(); }); // the database exists, as it does wherever a profile has a login

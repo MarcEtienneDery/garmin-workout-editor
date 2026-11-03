@@ -13,6 +13,10 @@ interface CacheEntry {
  * TokenCache keeps the Garmin session tokens of one profile in the database (the garmin_tokens table, see
  * store/tokens.ts) to avoid repeated authentication and throttling. Nothing is written to a file.
  *
+ * Tokens have no age limit of ours: the OAuth1 token lasts about a year and the library trades it for a new access token
+ * whenever Garmin refuses the old one, so only Garmin rejecting the session (or the login being changed) ends a cache. A
+ * limit of days threw away working sessions and sent the next call to a fresh login, which Garmin throttles with 429.
+ *
  * A cache file left by an earlier version (`<profile data dir>/.garmin-token-cache.json`) is taken into the database the
  * first time it is looked at, and deleted once it is safely there, so nobody has to log in again for the move. A file
  * put there by hand later (a login made on another machine) is taken in the same way when it is newer than the database's.
@@ -23,7 +27,6 @@ export class TokenCache {
   private profile: string;
   /** Where an earlier version kept the cache; only read to move it into the database. */
   private legacyFile: string;
-  private readonly CACHE_DURATION_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
   /** The profile this cache belongs to (the name of its data directory). */
   get profileName(): string {
@@ -73,7 +76,7 @@ export class TokenCache {
       getStore().tokens.put(this.profile, email, { oauth1Token, oauth2Token });
       fs.rmSync(this.legacyFile, { force: true }); // the database has the fresh one
       console.log(
-        `💾 Token cache saved for ${email} (expires in 7 days)`
+        `💾 Token cache saved for ${email}`
       );
     } catch (error: any) {
       console.warn(`⚠️ Failed to save token cache: ${error.message}`);
@@ -90,7 +93,7 @@ export class TokenCache {
         return null;
       }
 
-      // Verify email matches and cache is not expired
+      // Verify the email matches
       if (entry.email !== email) {
         console.log(
           `ℹ️ Token cache is for different email (${entry.email}), skipping`
@@ -98,19 +101,8 @@ export class TokenCache {
         return null;
       }
 
-      const age = Date.now() - entry.timestamp;
-      if (age > this.CACHE_DURATION_MS) {
-        console.log("ℹ️ Token cache expired (7 days old), will re-authenticate");
-        this.clearToken();
-        return null;
-      }
-
-      const daysRemaining = Math.floor(
-        (this.CACHE_DURATION_MS - age) / (24 * 60 * 60 * 1000)
-      );
-      console.log(
-        `✓ Loaded cached token for ${email} (expires in ${daysRemaining} day${daysRemaining !== 1 ? "s" : ""})`
-      );
+      const days = Math.floor((Date.now() - entry.timestamp) / (24 * 60 * 60 * 1000));
+      console.log(`✓ Loaded cached token for ${email} (saved ${days} day${days !== 1 ? "s" : ""} ago)`);
 
       return { oauth1Token: entry.oauth1Token, oauth2Token: entry.oauth2Token };
     } catch (error: any) {
@@ -145,10 +137,7 @@ export class TokenCache {
   hasCachedToken(email: string): boolean {
     try {
       const entry = this.entry();
-      if (!entry || entry.email !== email) {
-        return false;
-      }
-      return Date.now() - entry.timestamp <= this.CACHE_DURATION_MS;
+      return !!entry && entry.email === email;
     } catch {
       return false;
     }
