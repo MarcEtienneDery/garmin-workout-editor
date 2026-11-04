@@ -380,9 +380,37 @@ function profileSources(profile: string) {
   };
 }
 
-function garminInfo(who: Principal) {
+/** The profiles a login sees: all of them for the admin, its own for a profile. */
+const visibleProfiles = (who: Principal): string[] => {
   const all = getAvailableProfiles();
-  const profiles = who.admin ? all : all.filter((p) => p === who.profile);
+  return who.admin ? all : all.filter((p) => p === who.profile);
+};
+
+/** How long after the last 429 the page goes on saying so, when nothing has worked or failed since. */
+const LIMIT_SHOWN_MS = 24 * 3_600_000;
+
+/**
+ * What the header shows at a glance: per profile, which syncs hold a lease now (the activities, the health data, the Renpho scale: the
+ * MCP server's runs count, as the lease is in the database) and whether Garmin is answering with 429. Cheap reads only: the page asks every few seconds.
+ */
+function syncActivity(who: Principal, now = Date.now()) {
+  const running = (state: { holder: string | null; leaseUntil: number | null }) => !!state.holder && (state.leaseUntil ?? 0) > now;
+  const profiles = Object.fromEntries(
+    visibleProfiles(who).map((profile) => {
+      const syncing = [
+        running(store().activities.state(profile)) && "activities",
+        running(store().wellness.state(profile)) && "wellness",
+        running(store().renpho.state(profile)) && "renpho",
+      ].filter((kind): kind is string => !!kind);
+      const limit = store().limits.get(profile);
+      return [profile, { syncing, limit: limit && now - limit.lastAt < LIMIT_SHOWN_MS ? limit : null }];
+    })
+  );
+  return { now, profiles };
+}
+
+function garminInfo(who: Principal) {
+  const profiles = visibleProfiles(who);
   const mock = getSettings().mock;
   const profileInfo = Object.fromEntries(profiles.map((p) => [p, profileSources(p)]));
   const connected = profiles.filter((p) => profileInfo[p].garmin);
@@ -1252,6 +1280,9 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
 
     case "GET /api/garmin":
       return send(res, 200, garminInfo(who));
+
+    case "GET /api/sync-activity":
+      return send(res, 200, syncActivity(who));
 
     case "GET /api/garmin/devices": {
       const info = garminInfo(who);

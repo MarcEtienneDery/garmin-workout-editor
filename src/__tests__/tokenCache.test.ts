@@ -43,17 +43,20 @@ describe("the Garmin token cache", () => {
     expect(new TokenCache(dataDir).hasCachedToken(EMAIL)).toBe(true);
   });
 
-  it("does not hand the tokens of one account to another, nor expired ones", () => {
+  it("does not hand the tokens of one account to another", () => {
     const cache = new TokenCache(dataDir);
     cache.saveToken(EMAIL, tokens.oauth1, tokens.oauth2);
     expect(cache.loadToken("someone@else.com")).toBeNull();
     expect(cache.hasCachedToken("someone@else.com")).toBe(false);
     expect(cache.loadToken(EMAIL)).not.toBeNull(); // the other account's look did not clear it
+  });
 
-    getStore().tokens.put("MED", EMAIL, { oauth1Token: 1, oauth2Token: 2 }, Date.now() - 8 * DAY);
-    expect(cache.hasCachedToken(EMAIL)).toBe(false);
-    expect(cache.loadToken(EMAIL)).toBeNull(); // too old: a new login is due
-    expect(getStore().tokens.get("MED")).toBeNull(); // and the stale row is gone
+  it("keeps a login however old: only Garmin refusing the session ends it, not a number of days", () => {
+    const cache = new TokenCache(dataDir);
+    getStore().tokens.put("MED", EMAIL, { oauth1Token: 1, oauth2Token: 2 }, Date.now() - 200 * DAY);
+    expect(cache.hasCachedToken(EMAIL)).toBe(true);
+    expect(cache.loadToken(EMAIL)).toEqual({ oauth1Token: 1, oauth2Token: 2 });
+    expect(getStore().tokens.get("MED")).not.toBeNull();
   });
 
   it("keeps each profile's tokens apart", () => {
@@ -97,9 +100,10 @@ describe("the Garmin token cache", () => {
       expect(fs.existsSync(file)).toBe(false);
     });
 
-    it("keeps its age: an expired file is moved in and then found expired, not renewed", () => {
+    it("keeps its age, however old, so a newer login is never replaced by it", () => {
       legacy({ timestamp: Date.now() - 9 * DAY });
-      expect(new TokenCache(dataDir).loadToken(EMAIL)).toBeNull();
+      expect(new TokenCache(dataDir).loadToken(EMAIL)).toEqual({ oauth1Token: tokens.oauth1, oauth2Token: tokens.oauth2 });
+      expect(getStore().tokens.get("MED")!.savedAt).toBeLessThan(Date.now() - 8 * DAY);
     });
 
     it("is left alone when it cannot be read, and an older file never replaces the database's login", () => {

@@ -111,6 +111,16 @@
   .chip { font-size:11px; line-height:16px; padding:0 7px; border-radius:9px; border:1px solid var(--line); color:var(--dim); white-space:nowrap; flex:none; }
   .chip.ok { color:var(--ok); border-color:#2d6a5c; } .chip.warn { color:var(--warn); border-color:#7a6a3d; } .chip.err { color:var(--err); border-color:#8a4a40; }
   button.chip { background:none; padding:0 7px; cursor:pointer; }
+  /* The header's status: a sync running, or Garmin answering 429 (syncActivityModel.js). */
+  #syncActivity { margin-left:auto; display:inline-flex; align-items:center; gap:5px; }
+  #syncActivity:not([hidden]) + #account { margin-left:0; }
+  #syncActivity .ssShort { display:none; }
+  #syncActivity .ssIcon { width:9px; height:9px; border-radius:50%; flex:none; }
+  #syncActivity.busy { color:var(--accent); border-color:var(--accent); }
+  #syncActivity.busy .ssIcon { border:2px solid currentColor; border-top-color:transparent; animation:ssspin .9s linear infinite; }
+  #syncActivity.warn .ssIcon { background:currentColor; }
+  @keyframes ssspin { to { transform:rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { #syncActivity.busy .ssIcon { animation:none; border-top-color:currentColor; } }
   button.chip:hover:not(:disabled) { background:#333; }
   #syncbar { display:flex; align-items:center; gap:6px; padding:4px 10px; color:var(--dim); }
   #syncbar[hidden] { display:none; }
@@ -808,6 +818,8 @@
     #current { font-size:14px; }
     #current .dir { display:none; }
     #accountName { max-width:80px; }
+    #syncActivity { min-height:0; padding:2px 8px; font-size:12px; line-height:16px; }
+    #syncActivity .ssLong { display:none; } #syncActivity .ssShort { display:inline; }
     #menu { display:block; min-width:40px; font-size:20px; line-height:1; padding:0; }
     body.menu-open #menu { background:var(--accent); border-color:var(--accent); color:#fff; }
     #actions { display:none; position:absolute; z-index:10; top:100%; left:0; right:0; padding:10px; gap:8px; grid-template-columns:1fr 1fr;
@@ -953,6 +965,7 @@
     <button id="vWeight" aria-pressed="false">Weight</button>
     <button id="vFood" aria-pressed="false">Food</button>
   </nav>
+  <button id="syncActivity" class="chip" type="button" hidden><span class="ssIcon" aria-hidden="true"></span><span class="ssLong"></span><span class="ssShort"></span></button>
   <div class="dd account" id="account" hidden>
     <button id="accountBtn" class="menubtn" aria-expanded="false" aria-controls="accountMenu" title="Account"><span class="avatar" id="accountAvatar" aria-hidden="true"></span><span id="accountName"></span></button>
     <div class="menu" id="accountMenu">
@@ -1292,6 +1305,7 @@
 <script src="/foodPhoto.js"></script>
 <script src="/settingsModel.js"></script>
 <script src="/navModel.js"></script>
+<script src="/syncActivityModel.js"></script>
 <script src="/trendCharts.js"></script>
 <script src="/workoutListModel.js"></script>
 <script src="/vendor/monaco/loader.js"></script>
@@ -1426,10 +1440,47 @@ async function request(method, url, body) {
   return { res, data };
 }
 async function api(method, url, body) {
-  const { res, data } = await request(method, url, body);
-  if (res.status === 401) showLogin("Your session has ended. Sign in again."); // the page and any unsaved edits stay behind the form
-  if (!res.ok) throw Object.assign(new Error(data.error || res.statusText), { data });
-  return data;
+  // a request that starts a sync or talks to Garmin changes the header's status: look right after it starts and when it is over
+  const kick = method === "POST" && SYNC_ACTIVITY_POSTS.test(url);
+  if (kick) setTimeout(pollSyncActivity, 400);
+  try {
+    const { res, data } = await request(method, url, body);
+    if (res.status === 401) showLogin("Your session has ended. Sign in again."); // the page and any unsaved edits stay behind the form
+    if (!res.ok) throw Object.assign(new Error(data.error || res.statusText), { data });
+    return data;
+  } finally {
+    if (kick) pollSyncActivity();
+  }
+}
+
+// ── Header status: a sync running, or Garmin answering 429 ─────────
+const SYNC_ACTIVITY_POSTS = /^\/api\/(wellness|activities)\/sync|^\/api\/garmin\/|^\/api\/settings\/(renpho|garmin)/;
+let syncActivity = null, syncActivityTimer = null, syncActivityOn = false; // syncActivityOn: signed in, so asking is allowed
+
+function renderSyncActivity() {
+  const pill = SyncActivityModel.summary(syncActivity), el = $("syncActivity");
+  el.hidden = !pill;
+  if (!pill) return;
+  el.className = "chip " + (pill.kind === "limit" ? "warn" : "busy");
+  el.querySelector(".ssLong").textContent = pill.long;
+  el.querySelector(".ssShort").textContent = pill.short;
+  el.title = pill.title;
+  el.setAttribute("aria-label", pill.long + ". " + pill.title);
+}
+
+/** Ask what is syncing and whether Garmin says 429; asks again in 3 s while a sync runs, else in 15 s. */
+async function pollSyncActivity() {
+  clearTimeout(syncActivityTimer);
+  if (!syncActivityOn) return;
+  if (!document.hidden) {
+    try {
+      const { res, data } = await request("GET", "/api/sync-activity");
+      if (res.ok) syncActivity = data; else if (res.status === 401) syncActivity = null;
+      renderSyncActivity();
+    } catch { /* the pill keeps what it showed */ }
+  }
+  clearTimeout(syncActivityTimer);
+  syncActivityTimer = setTimeout(pollSyncActivity, SyncActivityModel.busy(syncActivity) ? 3000 : 15000);
 }
 
 // ── Sign-in ────────────────────────────────────────────────────────────
@@ -6579,7 +6630,11 @@ bindEditMode();
 bindMenus();
 bindExplanations();
 $("logout").onclick = guard(signOut);
+$("syncActivity").onclick = () => toast($("syncActivity").title, 9000); // a phone has no hover for the title
+document.addEventListener("visibilitychange", () => { if (!document.hidden) pollSyncActivity(); });
 const garminReady = sessionReady.then(() => {
+  syncActivityOn = true;
+  pollSyncActivity();
   guard(refreshFiles)();
   return loadGarmin(); // the Workouts view waits for it
 });

@@ -1,4 +1,7 @@
+import * as fs from "fs";
+import axios from "axios";
 import { GarminConnect } from "@flow-js/garmin-connect";
+import { getStore, getStorePath } from "./store";
 import TokenCache from "./tokenCache";
 
 /** Single exercise entry within a raw Garmin set (top-ranked classification) */
@@ -29,6 +32,34 @@ export const httpStatus = (error: any): number | null => {
   return status ? Number(status) : null;
 };
 
+/** How often a request that worked looks the 429 record up to clear it (another process may have set it). */
+const LIMIT_RECHECK_MS = 30_000;
+
+/** Marks an error whose 429 is already recorded, so one refusal seen at two places counts once. */
+const NOTED = Symbol("garmin429Noted");
+
+/** Keep (or drop) the record that Garmin answers this profile with 429, for the page to show. It is a courtesy and never fails a request. */
+function recordLimit(profile: string, limited: boolean): void {
+  try {
+    if (!fs.existsSync(getStorePath())) return;
+    const limits = getStore().limits;
+    if (limited) limits.record(profile);
+    else if (limits.get(profile)) limits.clear(profile);
+  } catch {
+    /* the notice is a courtesy */
+  }
+}
+
+/** Where a request goes, for the log: host and path, never the query string (the OAuth exchange signs its request there). */
+const callTarget = (config: any): string => {
+  try {
+    const url = new URL(String(config?.url ?? ""), config?.baseURL);
+    return `${url.host}${url.pathname}`;
+  } catch {
+    return String(config?.url ?? "?").split("?")[0];
+  }
+};
+
 const RATE_LIMITED = "Failed to authenticate with Garmin: it is rate limiting logins (HTTP 429, Too Many Requests)";
 
 const NETWORK_CODES = new Set(["ECONNRESET", "ECONNREFUSED", "ECONNABORTED", "ETIMEDOUT", "ENOTFOUND", "EAI_AGAIN"]);
@@ -55,6 +86,10 @@ export class GarminClient {
   private lastAuthFailure: string | null = null;
   /** No fresh login before this time (ms since epoch): Garmin answered the last one with 429. */
   private loginBlockedUntil = 0;
+  /** This process has recorded a 429 that no request has cleared yet. */
+  private limited = false;
+  /** When a request that worked last looked the record up (ms since epoch). */
+  private limitChecked = 0;
 
   constructor(email: string, password: string, mockMode: boolean = false, dataDir?: string) {
     this.email = email;
@@ -65,6 +100,78 @@ export class GarminClient {
       username: email,
       password: password,
     });
+    // Every request the library makes passes here, so a 429 on any of them (a login, a sync) is recorded. A call to the API that works clears
+    // it; the sign-in page loading says nothing (a login that is refused loads it first).
+    (this.client as any).client?.client?.interceptors?.response?.use(
+      (response: any) => {
+        if (/\/\/connectapi\./.test(String(response?.config?.url ?? ""))) this.clearLimit();
+        return response;
+      },
+      (error: any) => {
+        this.noteRateLimit(error);
+        return Promise.reject(error);
+      }
+    );
+    this.logCalls();
+  }
+
+  /**
+   * One log line for every HTTP call to Garmin, the logins and the OAuth refresh included, with the status and how long it took
+   * (`GARMIN_CALL_LOG=0` turns it off). It wraps the HTTP adapter, so a call is logged once as it went out, even one the library
+   * repeats after a 401, and what a call carries (headers, tokens, body, query string) never reaches the log.
+   */
+  private logCalls(): void {
+    if (process.env.GARMIN_CALL_LOG === "0") return;
+    try {
+      const http = (this.client as any).client?.client;
+      if (!http?.defaults) return;
+      const send = axios.getAdapter(http.defaults.adapter);
+      const profile = this.tokenCache.profileName;
+      http.defaults.adapter = async (config: any) => {
+        const started = Date.now();
+        const note = (outcome: string) =>
+          console.log(`📡 Garmin ${profile} ${String(config?.method ?? "get").toUpperCase()} ${callTarget(config)} → ${outcome} ${Date.now() - started}ms`);
+        try {
+          const response = await send(config);
+          note(String(response.status));
+          return response;
+        } catch (error: any) {
+          const status = error?.response?.status;
+          const wait = status === 429 ? error.response.headers?.["retry-after"] : undefined;
+          note(status ? `${status} ${error.response.statusText ?? ""}${wait ? ` (retry-after ${wait}s)` : ""}`.trim() : String(error?.code ?? error?.name ?? "failed"));
+          throw error;
+        }
+      };
+    } catch {
+      /* the log is a courtesy */
+    }
+  }
+
+  /** The library trades an expired access token for a new one by itself; keep it, so the next call does not have to be refused first. */
+  private keepRefreshedToken(before: any): void {
+    try {
+      const { oauth1, oauth2 } = (this.client as any).exportToken();
+      if (oauth2?.access_token && oauth2.access_token !== before?.access_token) this.tokenCache.saveToken(this.email, oauth1, oauth2);
+    } catch {
+      /* the cache is a courtesy */
+    }
+  }
+
+  /** Record a 429 from Garmin, once per error. */
+  private noteRateLimit(error: any): void {
+    if (httpStatus(error) !== 429 || (error && typeof error === "object" && error[NOTED])) return;
+    if (error && typeof error === "object") error[NOTED] = true;
+    this.limited = true;
+    recordLimit(this.tokenCache.profileName, true);
+  }
+
+  /** Something worked: forget the 429 record, looking it up only now and then unless this process set it. */
+  private clearLimit(): void {
+    const now = Date.now();
+    if (!this.limited && now - this.limitChecked < LIMIT_RECHECK_MS) return;
+    this.limitChecked = now;
+    this.limited = false;
+    recordLimit(this.tokenCache.profileName, false);
   }
 
   /**
@@ -111,8 +218,11 @@ export class GarminClient {
           console.log(
             `✅ Authenticated with cached token as: ${userProfile.userName}`
           );
+          this.clearLimit();
+          this.keepRefreshedToken(cached.oauth2Token);
           return true;
         } catch (error: any) {
+          this.noteRateLimit(error);
           if (isTransient(error)) {
             // Throttled or unreachable says nothing about the token: keep it, and do not log in again on top of it.
             console.log(`ℹ️ Could not check the cached token, keeping it: ${error.message}`);
@@ -139,6 +249,7 @@ export class GarminClient {
       // Verify authentication by getting user profile
       const userProfile = await this.client.getUserProfile();
       console.log(`✅ Successfully authenticated as: ${userProfile.userName}`);
+      this.clearLimit();
 
       // Save OAuth tokens to cache using the library's public exportToken() API
       try {
@@ -151,6 +262,7 @@ export class GarminClient {
       return true;
     } catch (error: any) {
       console.error("❌ Authentication error:", error.message);
+      this.noteRateLimit(error);
       if (httpStatus(error) === 429) this.loginBlockedUntil = Date.now() + LOGIN_COOLDOWN_MS;
       // Clear the cache only when the session itself was refused, not when Garmin is throttling or unreachable
       if (!isTransient(error)) this.tokenCache.clearToken();
