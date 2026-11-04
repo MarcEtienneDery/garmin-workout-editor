@@ -1242,6 +1242,62 @@ describe("web plan editor", () => {
         expect((await call("POST", "/api/settings/garmin", { action: "nonsense" })).status).toBe(400);
       });
 
+      describe("the MCP token", () => {
+        const prevUrl = process.env.MCP_PUBLIC_URL;
+        afterEach(() => { if (prevUrl === undefined) delete process.env.MCP_PUBLIC_URL; else process.env.MCP_PUBLIC_URL = prevUrl; });
+
+        it("is made once, shown once and never read back, and the old one stops when a new one is made", async () => {
+          addProfile("MED");
+          const before = (await call("GET", "/api/settings")).json.mcp;
+          expect(before).toEqual({ url: null, token: null });
+          const made = await call("POST", "/api/settings/mcp", { action: "create" });
+          expect(made.status).toBe(200);
+          expect(made.json.token).toMatch(/^gwm_[0-9a-f]{64}$/);
+          expect(made.json.mcp.token).toEqual({ createdAt: expect.any(Number), lastUsedAt: null });
+          expect(store().mcpTokens.profileOf(made.json.token)).toBe("MED");
+          const again = (await call("GET", "/api/settings")).json;
+          expect(JSON.stringify(again)).not.toContain(made.json.token);
+          expect(again.mcp.token).not.toBeNull();
+          const next = (await call("POST", "/api/settings/mcp", { action: "create" })).json.token;
+          expect(next).not.toBe(made.json.token);
+          expect(store().mcpTokens.profileOf(made.json.token)).toBeNull();
+          expect(store().mcpTokens.profileOf(next)).toBe("MED");
+        });
+
+        it("is removed, and an unknown action is refused", async () => {
+          addProfile("MED");
+          const token = (await call("POST", "/api/settings/mcp", { action: "create" })).json.token;
+          const removed = await call("POST", "/api/settings/mcp", { action: "remove" });
+          expect(removed.json.mcp.token).toBeNull();
+          expect(removed.json.token).toBeUndefined();
+          expect(store().mcpTokens.profileOf(token)).toBeNull();
+          expect((await call("POST", "/api/settings/mcp", { action: "remove" })).status).toBe(200); // nothing to remove is not an error
+          expect((await call("POST", "/api/settings/mcp", { action: "nope" })).status).toBe(400);
+        });
+
+        it("tells the page where the MCP server is, from MCP_PUBLIC_URL", async () => {
+          addProfile("MED");
+          process.env.MCP_PUBLIC_URL = "https://mcp.example.com/mcp/";
+          expect((await call("GET", "/api/settings")).json.mcp.url).toBe("https://mcp.example.com");
+          process.env.MCP_PUBLIC_URL = "garbage";
+          expect((await call("GET", "/api/settings")).json.mcp.url).toBeNull();
+        });
+
+        it("is made for the profile that asks and for no other, and the admin can make one for any", async () => {
+          addProfile("MED", "med-pw");
+          addProfile("SAM", "sam-pw");
+          const med = await call("POST", "/api/settings/mcp", { action: "create", profile: "SAM" }, login("MED", "med-pw"));
+          expect(med.status).toBe(200);
+          expect(store().mcpTokens.profileOf(med.json.token)).toBe("MED"); // asked for SAM, got its own
+          expect(store().mcpTokens.info("SAM")).toBeNull();
+          const admin = await startWebServer({ host: "127.0.0.1", port: 0, token: "admin-token" });
+          try {
+            const res = await fetch(`http://127.0.0.1:${(admin.address() as AddressInfo).port}/api/settings/mcp`, { method: "POST", headers: login("x", "admin-token"), body: JSON.stringify({ action: "create", profile: "SAM" }) });
+            expect(store().mcpTokens.profileOf(((await res.json()) as any).token)).toBe("SAM");
+          } finally { await new Promise((r) => admin.close(r)); }
+        });
+      });
+
       it("saves the Renpho login and switches, tests the login, runs a sync by hand and clears what is kept", async () => {
         addProfile("MED");
         expect((await call("POST", "/api/settings/renpho", { action: "save", fetchEnabled: true })).json.error).toBe("Save the Renpho login first.");
@@ -2079,6 +2135,136 @@ describe("web plan editor", () => {
       const res = await fetch(`http://127.0.0.1:${(admin.address() as AddressInfo).port}/api/profiles`, { method: "POST", headers: { ...H, ...basic("x", "admin-token") }, body: JSON.stringify(body) });
       expect(res.status).toBe(201);
       await new Promise((r) => admin.close(r));
+    });
+
+    describe("signing up with an invite", () => {
+      let admin: http.Server;
+      let adminAt: string;
+      beforeEach(async () => {
+        admin = await startWebServer({ host: "127.0.0.1", port: 0, token: "admin-token" });
+        adminAt = `http://127.0.0.1:${(admin.address() as AddressInfo).port}`;
+      });
+      afterEach(async () => { await new Promise((r) => admin.close(r)); });
+
+      const asAdmin = async (method: string, url: string, body?: unknown) => {
+        const res = await fetch(adminAt + url, { method, headers: { ...H, ...basic("x", "admin-token") }, body: body === undefined ? undefined : JSON.stringify(body) });
+        return { status: res.status, json: (await res.json().catch(() => ({}))) as any };
+      };
+      const makeInvite = async (extra: object = {}) => (await asAdmin("POST", "/api/invites", { action: "create", ...extra })).json.created as string;
+      const signUp = (body: unknown, headers: Record<string, string> = H) => fetch(base + "/api/signup", { method: "POST", headers, body: JSON.stringify(body) });
+      const mine = (code: string, name = "NEWBIE", password = "long enough") => ({ code, name, password, confirm: password });
+      const cookieOf = (res: Response) => res.headers.getSetCookie().map((c) => c.split(";")[0]).find((c) => c.startsWith("plan_editor_session=")) ?? "";
+      const cookied = (cookie: string) => ({ ...H, Cookie: cookie });
+      const sessionOf = async (cookie: string) => ((await (await fetch(base + "/api/session", { headers: { Cookie: cookie } })).json()) as any).user;
+
+      it("lets only the admin make, list, cancel and forget invites", async () => {
+        expect((await as("MED", "med-pw")("GET", "/api/invites")).status).toBe(403);
+        expect((await as("MED", "med-pw")("POST", "/api/invites", { action: "create" })).status).toBe(403);
+
+        const made = await asAdmin("POST", "/api/invites", { action: "create", note: "for Sam", maxUses: 3, days: 30 });
+        expect(made.status).toBe(201);
+        expect(made.json.created).toMatch(/^[A-Z2-9]{12}$/);
+        expect(made.json.invites).toEqual([expect.objectContaining({ code: made.json.created, note: "for Sam", maxUses: 3, uses: 0, status: "active", joined: [] })]);
+        expect((await asAdmin("GET", "/api/invites")).json.invites).toHaveLength(1);
+
+        expect((await asAdmin("POST", "/api/invites", { action: "revoke", code: made.json.created })).json.invites[0].status).toBe("revoked");
+        expect((await asAdmin("POST", "/api/invites", { action: "revoke", code: "NOSUCHCODE22" })).status).toBe(404);
+        expect((await asAdmin("POST", "/api/invites", { action: "remove", code: made.json.created })).json.invites).toEqual([]);
+        expect((await asAdmin("POST", "/api/invites", { action: "nope" })).status).toBe(400);
+        expect((await asAdmin("POST", "/api/invites", { action: "create", maxUses: 0 })).status).toBe(400);
+      });
+
+      it("tells the page whether a code works, with no login and without giving away who it is for", async () => {
+        const code = await makeInvite({ note: "for Sam" });
+        const ask = async (c: string) => { const res = await fetch(`${base}/api/invite?code=${encodeURIComponent(c)}`); return { status: res.status, json: (await res.json()) as any }; };
+        expect(await ask(code)).toEqual({ status: 200, json: { valid: true } });
+        expect((await ask(code.toLowerCase().replace(/(.{4})(?=.)/g, "$1-"))).status).toBe(200); // as typed from a message
+        const unknown = await ask("NOSUCHCODE22");
+        expect(unknown).toEqual({ status: 404, json: expect.objectContaining({ valid: false, problem: "unknown", error: "That invite code is not valid." }) });
+        await asAdmin("POST", "/api/invites", { action: "revoke", code });
+        expect((await ask(code)).json).toEqual(expect.objectContaining({ problem: "revoked" }));
+        expect(JSON.stringify(await ask(code))).not.toMatch(/Sam/);
+      });
+
+      it("makes the profile, signs it in with its own reach, and shows the welcome flow once", async () => {
+        const code = await makeInvite({ note: "for Sam" });
+        const res = await signUp(mine(code, "NEWBIE"));
+        expect(res.status).toBe(201);
+        const flags = res.headers.getSetCookie().find((c) => c.startsWith("plan_editor_session=")) ?? "";
+        expect(flags).toMatch(/HttpOnly/);
+        expect(flags).toMatch(/SameSite=Strict/);
+        expect(((await res.json()) as any).user).toEqual({ admin: false, name: "NEWBIE", welcome: true });
+
+        const cookie = cookieOf(res);
+        expect(await sessionOf(cookie)).toEqual({ admin: false, name: "NEWBIE", welcome: true });
+        const files = await call("GET", "/api/files", undefined, cookied(cookie));
+        expect(files.json.files.map((f: any) => f.path)).toEqual(["workout-plans/a.json"]);
+        expect((await call("GET", q("data/MED/w.json"), undefined, cookied(cookie))).status).toBe(403);
+        expect((await as("NEWBIE", "long enough")("GET", "/api/files")).status).toBe(200); // the password works for Basic too
+
+        const done = await call("POST", "/api/welcome", { action: "done" }, cookied(cookie));
+        expect(done.json.user).toEqual({ admin: false, name: "NEWBIE" });
+        expect(await sessionOf(cookie)).toEqual({ admin: false, name: "NEWBIE" });
+        expect((await call("POST", "/api/welcome", { action: "later" }, cookied(cookie))).status).toBe(400);
+
+        const listed = (await asAdmin("GET", "/api/invites")).json.invites[0];
+        expect(listed).toEqual(expect.objectContaining({ uses: 1, status: "used", joined: ["NEWBIE"] }));
+      });
+
+      it("has no welcome flow for a profile the admin added or for the admin", async () => {
+        expect(((await (await fetch(base + "/api/login", { method: "POST", headers: H, body: JSON.stringify({ user: "MED", password: "med-pw" }) })).json()) as any).user).toEqual({ admin: false, name: "MED" });
+        expect((await asAdmin("POST", "/api/welcome", { action: "done" })).status).toBe(200);
+      });
+
+      it("makes one profile per use, then says the invite is used up", async () => {
+        const code = await makeInvite({ maxUses: 2 });
+        expect((await signUp(mine(code, "ONE"))).status).toBe(201);
+        expect((await signUp(mine(code, "TWO"))).status).toBe(201);
+        const third = await signUp(mine(code, "THREE"));
+        expect(third.status).toBe(403);
+        expect(await third.json()).toEqual({ error: "That invite has been used up. Ask for a new one.", problem: "used" });
+        expect(store().profiles.has("THREE")).toBe(false);
+      });
+
+      it("refuses a bad name or password with the reason, and keeps the code for another try", async () => {
+        const code = await makeInvite();
+        const refused = async (body: object) => { const res = await signUp(body); return { status: res.status, error: ((await res.json()) as any).error }; };
+        expect(await refused({ ...mine(code), name: "med" })).toEqual({ status: 400, error: "The name MED is taken. Choose another." });
+        expect(await refused({ ...mine(code), name: "has space" })).toEqual({ status: 400, error: expect.stringMatching(/letters, numbers/) });
+        expect(await refused({ ...mine(code), password: "short", confirm: "short" })).toEqual({ status: 400, error: "The password is at least 8 characters." });
+        expect(await refused({ ...mine(code), confirm: "another one" })).toEqual({ status: 400, error: "The two passwords are not the same." });
+        expect((await signUp(mine(code))).status).toBe(201);
+      });
+
+      it("needs a code, and refuses a revoked or expired one", async () => {
+        expect((await signUp({ name: "NEWBIE", password: "long enough", confirm: "long enough" })).status).toBe(403);
+        const revoked = await makeInvite();
+        await asAdmin("POST", "/api/invites", { action: "revoke", code: revoked });
+        expect((await signUp(mine(revoked))).status).toBe(403);
+        const expiring = await makeInvite({ days: 1 });
+        const now = jest.spyOn(Date, "now").mockReturnValue(Date.now() + 2 * 86_400_000);
+        try {
+          expect(await (await signUp(mine(expiring))).json()).toEqual(expect.objectContaining({ problem: "expired" }));
+        } finally { now.mockRestore(); }
+        expect(store().profiles.has("NEWBIE")).toBe(false);
+      });
+
+      it("refuses a sign-up without the X-Requested-With header", async () => {
+        const code = await makeInvite();
+        expect((await signUp(mine(code), { "Content-Type": "application/json" })).status).toBe(403);
+        expect(store().profiles.has("NEWBIE")).toBe(false);
+      });
+
+      it("counts wrong codes per address, apart from wrong passwords, and makes the address wait", async () => {
+        const code = await makeInvite({ maxUses: 5 });
+        for (let i = 0; i < 10; i++) expect((await signUp(mine("WRONGCODE" + String(i).padStart(3, "2")))).status).toBe(403);
+        const blocked = await signUp(mine(code));
+        expect(blocked.status).toBe(429);
+        expect(Number(blocked.headers.get("retry-after"))).toBeGreaterThan(0);
+        expect((await fetch(`${base}/api/invite?code=${code}`)).status).toBe(429); // the check shares the count
+        // wrong passwords are a different count: the owner signs in
+        expect((await fetch(base + "/api/login", { method: "POST", headers: H, body: JSON.stringify({ user: "MED", password: "med-pw" }) })).status).toBe(200);
+      });
     });
 
     it("runs Garmin actions as the logged-in profile, whatever the request says", async () => {

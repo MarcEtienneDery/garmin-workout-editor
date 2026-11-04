@@ -14,6 +14,7 @@ import {
   dataProfile,
   getValidatorEditor,
   logicalPath as checkedPath,
+  mayReach,
   readJsonDoc,
   runTool,
   updateJsonDoc,
@@ -281,7 +282,7 @@ function summarizeJsonText(text: string, sizeBytes: number): Record<string, unkn
 
 function listDocuments(prefix: string): FileEntry[] {
   const store = getStore();
-  return store.list(prefix).map((meta) => ({
+  return store.list(prefix).filter((meta) => mayReach(meta.path, meta.owner)).map((meta) => ({
     path: meta.path,
     sizeBytes: meta.size,
     modified: new Date(meta.updatedAt).toISOString(),

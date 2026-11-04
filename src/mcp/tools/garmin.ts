@@ -12,6 +12,7 @@ import {
   logicalPath as checkedPath,
   readJsonDoc,
   requireAuth,
+  scopedProfile,
   runTool,
   updateJsonDoc,
   writeJsonDoc,
@@ -538,12 +539,17 @@ export function registerGarminTools(server: McpServer): void {
       annotations: { readOnlyHint: true },
     },
     () =>
-      runTool(async () => ({
-        mock: getSettings().mock,
-        defaultProfile: getSettings().defaultProfile ?? null,
-        profiles: getAvailableProfiles(),
-        garminProfiles: getAvailableProfiles().filter(garminConnected),
-      }))
+      runTool(async () => {
+        // a connection made with one profile's token is that profile's alone: it sees no other, and no default to fall back on
+        const only = scopedProfile();
+        const profiles = only ? getAvailableProfiles().filter((p) => p === only) : getAvailableProfiles();
+        return {
+          mock: getSettings().mock,
+          defaultProfile: only ?? getSettings().defaultProfile ?? null,
+          profiles,
+          garminProfiles: profiles.filter(garminConnected),
+        };
+      })
   );
 
   server.registerTool(

@@ -15,6 +15,7 @@
 # Overrides (environment): LIVE_DB, LIVE_WEB_ENV, LIVE_CONFIG, DEV_DIR (default ~/garmin-dev, outside ~/docker so the backup skips it),
 # DEV_WEB_PORT (8798), DEV_MCP_PORT (8797), DEV_WEB_BIND (unset: all interfaces, so the LAN reaches the editor),
 # DEV_MCP_BIND (127.0.0.1: the MCP server is for a tunnel hostname, like live's).
+# DEV_MCP_PUBLIC_URL (http://127.0.0.1:<DEV_MCP_PORT>: the address Settings → Claude (MCP) puts in the lines it gives a profile; a tunnel hostname if dev has one).
 set -euo pipefail
 
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
@@ -67,6 +68,9 @@ fi
 # The Food view's AI box needs the same Claude login as live (renewed there, picked up here on the next deploy).
 {
   cat "$tokens"
+  # where dev's MCP server is reached from outside, for the lines Settings → Claude (MCP) gives a profile: this host's loopback port unless
+  # DEV_MCP_PUBLIC_URL names a tunnel hostname (https://dev-mcp.example.com)
+  echo "MCP_PUBLIC_URL=${DEV_MCP_PUBLIC_URL:-http://127.0.0.1:$DEV_MCP_PORT}"
   [[ -f $LIVE_WEB_ENV ]] && grep -E '^(FOOD_AI_[A-Z_]*|CLAUDE_CODE_OAUTH_TOKEN|ANTHROPIC_API_KEY|TRUST_PROXY)=' "$LIVE_WEB_ENV" || true
   # live's key only when the copied logins are kept: they are sealed with it, and a scrubbed copy has nothing to open
   (( keep_logins )) && [[ -f $LIVE_WEB_ENV ]] && { grep -E '^CREDENTIALS_KEY=' "$LIVE_WEB_ENV" || true; }

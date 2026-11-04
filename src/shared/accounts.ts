@@ -5,7 +5,7 @@
  */
 import { SETTING_FIELDS, getGoals } from "./nutritionGoals";
 import { garminLogin } from "./profileLoader";
-import { INTERVAL_HOURS, MAX_PROFILE_NAME, type Measurement, type RenphoSettings, SealKeyError, type SqliteStore, isProfileName, sealing } from "./store";
+import { INTERVAL_HOURS, InviteError, type Invite, MAX_INVITE_USES, MAX_NOTE, MAX_PROFILE_NAME, type Measurement, type RenphoSettings, SealKeyError, type SqliteStore, isProfileName, normalizeCode, sealing } from "./store";
 import { isRealDay, localToday } from "./wellnessSync";
 
 /** A request the person can fix: the message is for them. */
@@ -112,6 +112,85 @@ export function createProfile(store: SqliteStore, input: { name?: unknown; passw
   const password = checkWebPassword(input.password, input.confirm);
   store.profiles.create(name, password);
   return name;
+}
+
+// ── MCP token ──
+
+/**
+ * The address the MCP server is reached at from outside (MCP_PUBLIC_URL, set on the web service), as the Settings view shows it in the
+ * lines that set an assistant up: an http(s) address without a trailing slash, and without a trailing /mcp (the lines add it). Null when
+ * it is not set or is not an address, and the lines then carry a placeholder for the host.
+ */
+export function publicMcpUrl(env: NodeJS.ProcessEnv = process.env): string | null {
+  const text = (env.MCP_PUBLIC_URL ?? "").trim();
+  if (!text) return null;
+  try {
+    const url = new URL(text);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+    return (url.origin + url.pathname.replace(/\/+$/, "").replace(/\/mcp$/, "")).replace(/\/+$/, "");
+  } catch {
+    return null;
+  }
+}
+
+/** Make the profile's MCP token (replacing the one it had). The token comes back here, once: the database keeps only a hash of it. */
+export const createMcpToken = (store: SqliteStore, profile: string, now = Date.now()): string => store.mcpTokens.create(profile, now);
+
+/** The MCP half of the Settings view: where the server is, and whether the profile has a token (never the token). */
+export const mcpView = (store: SqliteStore, profile: string) => ({ url: publicMcpUrl(), token: store.mcpTokens.info(profile) });
+
+// ── Invites and sign-up ──
+
+/** A name is taken whatever its case: "med" next to "MED" would be two folders the lookups cannot tell apart. */
+export const profileTaken = (store: SqliteStore, name: string): string | undefined => {
+  const wanted = name.trim().toLowerCase();
+  return wanted ? store.profiles.names().find((p) => p.toLowerCase() === wanted) : undefined;
+};
+
+/** The days an invite made from the Settings view can last: the choices, and the longest. */
+export const MAX_INVITE_DAYS = 365;
+
+/**
+ * Make an invite code: a note for the admin (who it is for), how many people may use it (1 to MAX_INVITE_USES, default 1) and the days it
+ * works (1 to MAX_INVITE_DAYS; null or 0 for never expiring, default 7).
+ */
+export function createInvite(store: SqliteStore, input: { note?: unknown; maxUses?: unknown; days?: unknown }, now = Date.now()): string {
+  const note = typeof input.note === "string" ? input.note.trim() : "";
+  if (note.length > MAX_NOTE) throw new SettingsError(`The note is at most ${MAX_NOTE} characters.`);
+  const maxUses = input.maxUses === undefined || input.maxUses === null || input.maxUses === "" ? 1 : Number(input.maxUses);
+  if (!Number.isInteger(maxUses) || maxUses < 1 || maxUses > MAX_INVITE_USES) throw new SettingsError(`An invite can be used by 1 to ${MAX_INVITE_USES} people.`);
+  const never = input.days === null || input.days === 0 || input.days === "0" || input.days === "never";
+  const days = input.days === undefined || input.days === "" ? 7 : Number(input.days);
+  if (!never && (!Number.isInteger(days) || days < 1 || days > MAX_INVITE_DAYS)) throw new SettingsError(`An invite lasts 1 to ${MAX_INVITE_DAYS} days, or never expires.`);
+  try {
+    return store.invites.create({ note, maxUses, expiresAt: never ? null : now + days * 86_400_000 }, now);
+  } catch (error) {
+    throw new SettingsError(error instanceof Error ? error.message : String(error));
+  }
+}
+
+/** What the Settings view lists for the admin: every invite with its state and the profiles it made. */
+export const inviteList = (store: SqliteStore, now = Date.now()): Invite[] => store.invites.list(now);
+
+/**
+ * A person makes their own profile with an invite code: the code, a name, and a password typed twice. The code is checked first (an
+ * InviteError says what is wrong with it), then the name and password (a SettingsError), and the profile and the use of the code
+ * are written together, so a code with one use left makes one profile. The profile is marked to show the welcome flow at its first sign-in.
+ */
+export function signUp(store: SqliteStore, input: { code?: unknown; name?: unknown; password?: unknown; confirm?: unknown }, now = Date.now()): string {
+  const status = store.invites.check(input.code, now);
+  if (status !== "active") throw new InviteError(status);
+  const name = typeof input.name === "string" ? input.name.trim() : "";
+  if (!isProfileName(name)) throw new SettingsError(`A profile name is letters, numbers, hyphens and underscores, at most ${MAX_PROFILE_NAME}.`);
+  const password = checkWebPassword(input.password, input.confirm);
+  return store.transaction(() => {
+    const taken = profileTaken(store, name);
+    if (taken) throw new SettingsError(`The name ${taken} is taken. Choose another.`);
+    store.profiles.create(name, password, now);
+    store.profiles.setWelcomePending(name, true);
+    store.invites.use(normalizeCode(input.code), name, now);
+    return name;
+  });
 }
 
 // ── Renpho ──
@@ -222,6 +301,7 @@ export function settingsView(store: SqliteStore, profile: string, now = Date.now
     // the daily food goals by key (with `kcalBurnPct`, the share of the burned calories the calorie goal adds), and what each can be set for (label, unit, whether it is a floor, a ceiling, an aim or the burn)
     goals: { values: getGoals(store, profile), fields: SETTING_FIELDS.map(({ max: _max, ...field }) => field) },
     renpho: renphoView(store, profile, now),
+    mcp: mcpView(store, profile),
     // whether the saved passwords are encrypted (CREDENTIALS_KEY), and how many are not
     encryption: { enabled: sealing(), plain: store.credentials.plainCount() },
   };

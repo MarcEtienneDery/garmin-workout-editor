@@ -14,7 +14,7 @@ const card = (page: Page, heading: string) => page.locator(".scard").filter({ ha
 
 async function openSettings(page: Page): Promise<void> {
   await openView(page, "settings");
-  await expect(page.locator("#sbody .scard")).toHaveCount(4, { timeout: 15_000 });
+  await expect(page.locator("#sbody .scard")).toHaveCount(5, { timeout: 15_000 });
 }
 
 test.describe("each note behind its ⓘ", () => {
@@ -53,6 +53,7 @@ test.describe("each note behind its ⓘ", () => {
       ["Garmin account", "About the Garmin account", "Connect it to sync activities and health data"],
       ["Renpho scale", "About the Renpho scale", "It only reads from Renpho."],
       ["Web sign-in", "About the web sign-in", "The password is kept as a hash."],
+      ["Claude (MCP)", "About the MCP token", "only a hash of it is kept"],
     ] as const) {
       const c = card(alice, heading), note = c.locator("h2 + .help");
       await expect(note).toBeHidden();

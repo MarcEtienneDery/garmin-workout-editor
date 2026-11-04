@@ -4,7 +4,9 @@ import { ACTIVITY_SCHEMA, ActivityTable } from "./activities";
 import { CREDENTIAL_SCHEMA, CredentialTable } from "./credentials";
 import { FOOD_CACHE_SCHEMA, FoodCacheTable } from "./foods";
 import { GoalTable, NUTRITION_SCHEMA, NutritionTable, migrateNutrition } from "./nutrition";
-import { PROFILE_SCHEMA, ProfileTable, backfillProfiles } from "./profiles";
+import { INVITE_SCHEMA, InviteTable } from "./invites";
+import { MCP_TOKEN_SCHEMA, McpTokenTable } from "./mcpTokens";
+import { PROFILE_SCHEMA, ProfileTable, backfillProfiles, migrateProfiles } from "./profiles";
 import { RENPHO_SCHEMA, RenphoTable } from "./renpho";
 import { SESSION_SCHEMA, SessionTable } from "./sessions";
 import { LIMIT_SCHEMA, LimitTable, TOKEN_SCHEMA, TokenTable } from "./tokens";
@@ -63,6 +65,8 @@ ${NUTRITION_SCHEMA}
 ${FOOD_CACHE_SCHEMA}
 ${PROFILE_SCHEMA}
 ${SESSION_SCHEMA}
+${INVITE_SCHEMA}
+${MCP_TOKEN_SCHEMA}
 `;
 
 const META_COLUMNS = "path, owner, size, version, updated_at, source, summary, archived_at";
@@ -105,6 +109,10 @@ export class SqliteStore {
   readonly profiles: ProfileTable;
   /** The web editor's sign-in sessions, which outlive a restart (see sessions.ts). */
   readonly sessions: SessionTable;
+  /** The invite codes that let a person make a profile from the sign-in page (see invites.ts). */
+  readonly invites: InviteTable;
+  /** The tokens that let an assistant use the MCP server as one profile only (see mcpTokens.ts). */
+  readonly mcpTokens: McpTokenTable;
   /** The logins of every profile for Garmin and Renpho (see credentials.ts). */
   readonly credentials: CredentialTable;
   /** The Renpho scale sync of every profile: settings, weigh-ins, state and log (see renpho.ts). */
@@ -127,6 +135,8 @@ export class SqliteStore {
     this.wellness = new WellnessTable(db, (fn) => this.tx(fn));
     this.profiles = new ProfileTable(db);
     this.sessions = new SessionTable(db);
+    this.invites = new InviteTable(db, (fn) => this.tx(fn));
+    this.mcpTokens = new McpTokenTable(db);
     this.credentials = new CredentialTable(db);
     this.renpho = new RenphoTable(db, (fn) => this.tx(fn));
     this.nutrition = new NutritionTable(db, (fn) => this.tx(fn));
@@ -145,9 +155,15 @@ export class SqliteStore {
       db.exec(SCHEMA);
       migrateNutrition(db);
       migrateDocuments(db);
+      migrateProfiles(db);
       backfillProfiles(db);
     });
     return store;
+  }
+
+  /** Run several writes as one: all of them happen or none (a profile and the invite use that made it). */
+  transaction<T>(fn: () => T): T {
+    return this.tx(fn);
   }
 
   private tx<T>(fn: () => T): T {

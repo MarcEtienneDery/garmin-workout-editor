@@ -129,3 +129,31 @@ describe("the goals form", () => {
     expect(SM.macroGoalsNote({ kcal: "2600", proteinG: "140", carbsG: "250", fatG: "70" })).toMatch(/16 % below the calorie goal/);
   });
 });
+
+describe("setting an assistant up with the MCP server", () => {
+  it("names the server after the profile, in a form every client takes", () => {
+    expect(SM.mcpServerName("MED")).toBe("garmin-med");
+    expect(SM.mcpServerName("Marc_Étienne 2")).toBe("garmin-marc-tienne-2");
+    expect(SM.mcpServerName("___")).toBe("garmin-editor");
+    expect(SM.mcpServerName(undefined)).toBe("garmin-editor");
+  });
+
+  it("writes the connector address, the Claude Code command and the config entry", () => {
+    const [connector, code, json] = SM.mcpSnippets({ url: "https://mcp.example.com", token: "gwm_abc", profile: "MED" });
+    expect(connector).toMatchObject({ id: "connector", text: "https://mcp.example.com/mcp/gwm_abc" });
+    expect(code).toMatchObject({ id: "code", text: 'claude mcp add --transport http garmin-med https://mcp.example.com/mcp --header "Authorization: Bearer gwm_abc"' });
+    expect(JSON.parse(json.text)).toEqual({ mcpServers: { "garmin-med": { type: "http", url: "https://mcp.example.com/mcp", headers: { Authorization: "Bearer gwm_abc" } } } });
+  });
+
+  it("puts a placeholder where the address or the token is not known", () => {
+    const [connector, code] = SM.mcpSnippets({ url: null, token: null, profile: "MED" });
+    expect(connector.text).toBe("https://<your-mcp-host>/mcp/<your-token>");
+    expect(code.text).toContain("Bearer <your-token>");
+    expect(SM.mcpSnippets({ url: "http://10.0.0.2:8787", token: null, profile: "MED" })[0].text).toBe("http://10.0.0.2:8787/mcp/<your-token>");
+  });
+
+  it("says when a token was made and used", () => {
+    expect(SM.mcpTokenLine({ createdAt: NOW - 2 * 86_400_000, lastUsedAt: null }, NOW)).toBe("Made 2 d ago; not used yet.");
+    expect(SM.mcpTokenLine({ createdAt: NOW - 2 * 86_400_000, lastUsedAt: NOW - 3 * 3_600_000 }, NOW)).toBe("Made 2 d ago; last used 3 h ago.");
+  });
+});

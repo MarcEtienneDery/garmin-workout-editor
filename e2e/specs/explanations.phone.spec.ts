@@ -8,7 +8,7 @@ const pageWidth = (page: Page) => page.evaluate(() => ({ scroll: document.docume
 
 test("the ⓘ buttons of Settings are at least 32 px both ways, and their notes keep the page its width", async ({ alice }) => {
   await openView(alice, "settings");
-  await expect(alice.locator("#sbody .scard")).toHaveCount(4, { timeout: 15_000 });
+  await expect(alice.locator("#sbody .scard")).toHaveCount(5, { timeout: 15_000 });
   const infos = alice.locator("#sbody button.infob:visible");
   expect(await infos.count()).toBeGreaterThanOrEqual(5);
   for (const box of await infos.evaluateAll((els) => els.map((el) => el.getBoundingClientRect()).map((r) => ({ w: r.width, h: r.height })))) {

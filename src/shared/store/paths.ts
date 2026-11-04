@@ -38,6 +38,16 @@ export function profileOfPath(logicalPath: string): string | undefined {
   return /^data\/([^/]+)\//.exec(logicalPath)?.[1];
 }
 
+/**
+ * Whether a login that is ONE profile (a profile's web sign-in, a profile's MCP token) may reach a document: its own data/<profile>/ folder
+ * and, under workout-plans/, the plans that are shared (no owner) or its own. `owner` is the document's owner, null when it has none or
+ * does not exist yet.
+ */
+export function profileReaches(profile: string, logicalPath: string, owner: string | null): boolean {
+  const folder = profileOfPath(logicalPath);
+  return folder ? folder === profile : owner === null || owner === profile;
+}
+
 /** Cheap description of a plan document for list views. */
 export function summarizeText(text: string): DocSummary {
   if (Buffer.byteLength(text) > MAX_SUMMARY_BYTES) return {};

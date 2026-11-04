@@ -71,6 +71,12 @@
  * the plans in workout-plans/ that are shared or its own, and its Garmin actions run as that
  * profile. WEB_AUTH_TOKEN as the password (any user name) is the admin login with full access.
  * Scripts can send the same credentials as HTTP Basic instead of using a session.
+ *
+ * Sign-up: a person makes their own profile with an invite code the admin made (GET/POST /api/invites in Settings; a code can be used by
+ * a number of people until it expires or is revoked). The sign-in page takes the code, or a link that carries it (/?invite=XXXX-XXXX-XXXX),
+ * and a name and password (GET /api/invite?code= says whether a code works, POST /api/signup makes the profile and signs it in). Both
+ * answer without a login, and wrong codes are counted per client address like wrong passwords. A profile made this way is shown the welcome
+ * flow once (`welcome: true` on its user until POST /api/welcome ends it).
  */
 import * as fs from "fs";
 import * as http from "http";
@@ -78,7 +84,7 @@ import * as path from "path";
 import { createHash, randomBytes, timingSafeEqual } from "crypto";
 import * as dotenv from "dotenv";
 import { GarminNotConnectedError, PROJECT_ROOT, findProfile, garminConnected, getAvailableProfiles } from "../shared/profileLoader";
-import { type DocMeta, type StoreErrorCode, StoreError, WELLNESS_KINDS, type WellnessKind, decoyCheck, getStore, normalizeLogicalPath, profileOfPath } from "../shared/store";
+import { type DocMeta, InviteError, type StoreErrorCode, StoreError, WELLNESS_KINDS, type WellnessKind, decoyCheck, getStore, normalizeLogicalPath, profileOfPath, profileReaches } from "../shared/store";
 import { LoginThrottle, type TrustProxy, clientAddress, trustProxyOf } from "./loginThrottle";
 import { getSettings, resolveProfileName, runCaptured } from "../mcp/context";
 import { installConsoleRedirect } from "../mcp/logCapture";
@@ -94,7 +100,7 @@ import { diffPlanWorkout, extractWorkouts, validatePlanData } from "../mcp/tools
 import { MAX_SCAN_BYTES, activePlanDocs, isExportSnapshot } from "../shared/planDocs";
 import { refreshWellness, rereadWeighIns, startBackgroundWellness, wellnessSyncStatus } from "../mcp/tools/wellness";
 import { bodyRange, intensityWeek, readinessAt, wellnessRange } from "../shared/wellnessReport";
-import { SettingsError, createProfile, removeGarminLogin, removeRenpho, saveGarminLogin, saveRenpho, saveWebPassword, settingsView } from "../shared/accounts";
+import { SettingsError, createInvite, createMcpToken, createProfile, inviteList, removeGarminLogin, removeRenpho, saveGarminLogin, saveRenpho, saveWebPassword, settingsView, signUp } from "../shared/accounts";
 import { recentFit, testRenphoLogin } from "../shared/renphoSync";
 import { runRenpho, startRenphoTimer } from "../mcp/tools/renpho";
 import { testGarminLogin } from "../mcp/tools/settings";
@@ -185,9 +191,7 @@ const profilesWithWebPassword = (): string[] => store().profiles.withWebPassword
 
 /** A profile login reaches its own data/<profile>/ and the plans in workout-plans/ that are shared or its own. */
 function canReach(who: Principal, logical: string, owner: string | null): boolean {
-  if (who.admin) return true;
-  const folder = profileOfPath(logical);
-  return folder ? folder === who.profile : owner === null || owner === who.profile;
+  return who.admin || profileReaches(who.profile, logical, owner);
 }
 
 function assertScope(who: Principal, logical: string): void {
@@ -353,8 +357,9 @@ function workoutSchema() {
 const GARMIN_ACTIONS = ["upload", "schedule", "upload_schedule", "send"] as const;
 type GarminAction = (typeof GARMIN_ACTIONS)[number];
 
-/** What the page shows about the login: the profile name, or admin. */
-const userInfo = (who: Principal) => (who.admin ? { admin: true } : { admin: false, name: who.profile });
+/** What the page shows about the login: the profile name, or admin. A profile that has yet to see the welcome flow says so (`welcome`). */
+const userInfo = (who: Principal) =>
+  who.admin ? { admin: true } : { admin: false, name: who.profile, ...(store().profiles.welcomePending(who.profile) ? { welcome: true } : {}) };
 
 /** Whether the profile has Garmin health data to show: a Garmin login, or rows stored from one that was disconnected. */
 const hasHealth = (profile: string): boolean => garminConnected(profile) || store().wellness.hasRows(profile);
@@ -1432,6 +1437,38 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
       return send(res, 200, settingsView(store(), profile));
     }
 
+    case "GET /api/invites": {
+      // The invite codes the admin has made, with their state and the profiles each made.
+      if (!who.admin) throw new HttpError(403, "Only the admin login can see the invites.");
+      return send(res, 200, { invites: inviteList(store()) });
+    }
+
+    case "POST /api/invites": {
+      // Make an invite code (note, maxUses, days), cancel one (revoke) or forget one (remove).
+      if (!who.admin) throw new HttpError(403, "Only the admin login can make invites.");
+      const body = await readBody(req);
+      let created: string | undefined;
+      try {
+        if (body.action === "create") created = createInvite(store(), body);
+        else if (body.action === "revoke" || body.action === "remove") {
+          const done = body.action === "revoke" ? store().invites.revoke(body.code) : store().invites.remove(body.code);
+          if (!done) throw new HttpError(404, "No such invite.");
+        } else throw new HttpError(400, `Unknown action "${body.action}".`);
+      } catch (error) {
+        if (error instanceof SettingsError) throw new HttpError(400, error.message);
+        throw error;
+      }
+      return send(res, created ? 201 : 200, { ...(created ? { created } : {}), invites: inviteList(store()) });
+    }
+
+    case "POST /api/welcome": {
+      // The welcome flow was finished or skipped: it is not shown again (the admin has none, so nothing to do).
+      const body = await readBody(req);
+      if (body.action !== "done") throw new HttpError(400, `Unknown action "${body.action}".`);
+      if (!who.admin) store().profiles.setWelcomePending(who.profile, false);
+      return send(res, 200, { user: userInfo(who) });
+    }
+
     case "POST /api/profiles": {
       // A new profile: a name and the password it signs in with, typed twice (name, password, confirm). Garmin and Renpho are connected
       // afterwards, in Settings, if the person wants them. Once a profile has a password the editor asks for a sign-in.
@@ -1449,6 +1486,18 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
         throw error;
       }
       return send(res, 201, { name, ...garminInfo(who) });
+    }
+
+    case "POST /api/settings/mcp": {
+      // The profile's MCP token: the key that lets an assistant use the MCP server as this profile and no other. `create` makes one (and
+      // replaces the old one) and answers with it, the only time it is ever sent; `remove` takes it away. The MCP server checks it per request.
+      const body = await readBody(req);
+      const profile = profileFor(who, "", body.profile);
+      let token: string | undefined;
+      if (body.action === "create") token = createMcpToken(store(), profile);
+      else if (body.action === "remove") store().mcpTokens.remove(profile);
+      else throw new HttpError(400, `Unknown action "${body.action}".`);
+      return send(res, 200, { ...(token ? { token } : {}), ...settingsView(store(), profile) });
     }
 
     case "POST /api/settings/renpho": {
@@ -1656,6 +1705,16 @@ export function startWebServer(options: WebServerOptions): Promise<http.Server> 
     return who;
   };
 
+  // Wrong invite codes per client address, counted apart from the wrong passwords: a code is as good as a password to whoever finds it.
+  const inviteThrottle = new LoginThrottle();
+  const inviteAddress = (req: http.IncomingMessage) => clientAddress(req.headers, req.socket.remoteAddress ?? "", trustProxy);
+  const inviteWait = (address: string) => {
+    const wait = inviteThrottle.waitMs(address);
+    if (wait <= 0) return;
+    const seconds = Math.ceil(wait / 1000);
+    throw new HttpError(429, `Too many wrong invite codes. Try again in ${seconds} second${seconds === 1 ? "" : "s"}.`, { retryAfter: seconds }, { "Retry-After": String(seconds) });
+  };
+
   // Logins made through the form, kept in the database so they outlive a restart. A session ends when it has gone unused for
   // SESSION_IDLE_MS, SESSION_MAX_MS after the sign-in, on logout, or when the secret it was made with changes (a changed or removed
   // web sign-in password), just as Basic credentials stop working then.
@@ -1724,13 +1783,47 @@ export function startWebServer(options: WebServerOptions): Promise<http.Server> 
     const password = typeof body.password === "string" ? body.password : "";
     const who = password ? await verify(req, user, password) : null;
     if (!who) throw new HttpError(401, "Wrong user name or password.");
+    startSession(req, res, who, 200);
+  }
+
+  /** Open a session for a login that was just proven (the password, or the sign-up that made the profile) and answer with its cookie. */
+  function startSession(req: http.IncomingMessage, res: http.ServerResponse, who: Principal, status: number): void {
     const now = Date.now();
     const id = randomBytes(32).toString("hex");
     const idHash = idHashOf(id);
     store().sessions.create(idHash, { admin: who.admin, profile: who.profile ?? null }, bindingOf(idHash, currentSecret(who) ?? ""), expiryFor(now, now), now);
-    send(res, 200, { authRequired: true, user: userInfo(who) }, {
+    send(res, status, { authRequired: true, user: userInfo(who) }, {
       "Set-Cookie": [setCookie(req, SESSION_COOKIE, id, SESSION_IDLE_MS), setCookie(req, SIGNED_OUT_COOKIE, "", 0)],
     });
+  }
+
+  /** Whether an invite code works now, for the page that opened a link with one: the answer is the code's state, never its note or who used it. */
+  async function checkInvite(req: http.IncomingMessage, res: http.ServerResponse, url: URL): Promise<void> {
+    const address = inviteAddress(req);
+    inviteWait(address);
+    const problem = store().invites.check(url.searchParams.get("code"));
+    if (problem === "active") return send(res, 200, { valid: true });
+    inviteThrottle.fail(address);
+    throw new HttpError(404, new InviteError(problem).message, { valid: false, problem });
+  }
+
+  /** A person makes their own profile with an invite code and is signed in as it. */
+  async function signup(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+    const body = await readBody(req);
+    const address = inviteAddress(req);
+    inviteWait(address);
+    let name: string;
+    try {
+      name = signUp(store(), body);
+    } catch (error) {
+      if (error instanceof InviteError) {
+        inviteThrottle.fail(address);
+        throw new HttpError(403, error.message, { problem: error.problem });
+      }
+      if (error instanceof SettingsError) throw new HttpError(400, error.message);
+      throw error;
+    }
+    startSession(req, res, { admin: false, profile: name }, 201);
   }
 
   const server = http.createServer(async (req, res) => {
@@ -1757,6 +1850,8 @@ export function startWebServer(options: WebServerOptions): Promise<http.Server> 
 
       const route = `${req.method} ${url.pathname}`;
       if (route === "POST /api/login") return await login(req, res);
+      if (route === "POST /api/signup") return await signup(req, res);
+      if (route === "GET /api/invite") return await checkInvite(req, res, url);
       if (route === "POST /api/logout") {
         const id = cookieValue(req, SESSION_COOKIE);
         if (id) store().sessions.delete(idHashOf(id));

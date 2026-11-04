@@ -115,5 +115,28 @@
     return off <= 5 ? `${base}, in line with the calorie goal.` : `${base}, ${off} % ${sum > k ? "above" : "below"} the calorie goal of ${k.toLocaleString()}.`;
   }
 
-  return { goalsPatch, goalNumber, macroGoalsNote, ago, until, renphoStatus, uploadState, FIELDS, cell, stamp, MIN_PASSWORD, passwordProblem, profileProblem };
+  /** What the setup lines carry in place of the server's address and the token, until there is one to put there. */
+  const HOST_PLACEHOLDER = "https://<your-mcp-host>", TOKEN_PLACEHOLDER = "<your-token>";
+
+  /** The name a client lists the server under: garmin-<profile>, in lower case with only letters, digits and hyphens. */
+  const mcpServerName = (profile) => "garmin-" + (String(profile == null ? "" : profile).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "editor");
+
+  /**
+   * The lines that set an assistant up to use the MCP server as one profile: the address to add as a connector, the Claude Code command and a
+   * .mcp.json entry. `url` is where the server is reached from outside (null: a placeholder host stands in), `token` the profile's token (null:
+   * a placeholder, as the token is only shown when it is made).
+   */
+  function mcpSnippets({ url, token, profile }) {
+    const base = url || HOST_PLACEHOLDER, secret = token || TOKEN_PLACEHOLDER, name = mcpServerName(profile);
+    return [
+      { id: "connector", title: "Claude on the web or Claude Desktop", note: "Settings → Connectors → Add custom connector: name it and paste this address. The token is part of the address, so keep the address as private as a password.", text: `${base}/mcp/${secret}` },
+      { id: "code", title: "Claude Code", note: "Run it in a terminal. Here the token goes in a header, not in the address.", text: `claude mcp add --transport http ${name} ${base}/mcp --header "Authorization: Bearer ${secret}"` },
+      { id: "json", title: "Any client with a config file", note: "For example a .mcp.json at the root of a project (Claude Code), or the same entry in another client's MCP settings.", text: JSON.stringify({ mcpServers: { [name]: { type: "http", url: `${base}/mcp`, headers: { Authorization: `Bearer ${secret}` } } } }, null, 2) },
+    ];
+  }
+
+  /** What the Settings view says of a profile's token: "Made 2 d ago, last used 3 h ago". */
+  const mcpTokenLine = (info, now) => `Made ${ago(info.createdAt, now)}; ${info.lastUsedAt === null ? "not used yet" : `last used ${ago(info.lastUsedAt, now)}`}.`;
+
+  return { mcpSnippets, mcpServerName, mcpTokenLine, HOST_PLACEHOLDER, TOKEN_PLACEHOLDER, goalsPatch, goalNumber, macroGoalsNote, ago, until, renphoStatus, uploadState, FIELDS, cell, stamp, MIN_PASSWORD, passwordProblem, profileProblem };
 });
