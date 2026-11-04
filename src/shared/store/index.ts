@@ -12,7 +12,7 @@ export * from "./wellness";
 export * from "./credentials";
 export { SessionTable, type StoredSession } from "./sessions";
 export { MCP_TOKEN_PREFIX, McpTokenTable, looksLikeMcpToken, type McpTokenInfo } from "./mcpTokens";
-export { ProfileTable, decoyCheck, isProfileName } from "./profiles";
+export { PrefsTable, ProfileTable, WEIGHT_UNITS, type Prefs, decoyCheck, isProfileName } from "./profiles";
 export { InviteError, InviteTable, MAX_INVITE_USES, MAX_NOTE, displayCode, normalizeCode, type Invite, type InviteProblem, type InviteStatus } from "./invites";
 export { SealKeyError, sealing } from "./seal";
 export * from "./renpho";

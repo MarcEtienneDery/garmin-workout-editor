@@ -380,6 +380,21 @@ test.describe("what the page of a strength session with its sets stored shows", 
     await expect(lifts.nth(1).locator(".aexchip")).toHaveText("3 × 79% · 154 lb");
   });
 
+  test("in kg, the weights are the kilos lifted: 100 kg, not the 99.8 that its whole pounds (220) would make", async ({ alice }) => {
+    // alice is shared by the suite, so her Settings stay in lb: the page is told kg
+    await alice.route("**/api/garmin", async (route) => {
+      const info = await (await route.fetch()).json();
+      await route.fulfill({ json: { ...info, prefs: { ...info.prefs, alice: { ...info.prefs?.alice, weightUnit: "kg" } } } });
+    });
+    await openActivity(alice, "Gym session 9019");
+    const exercises = alice.locator("#abody h3", { hasText: exact("Exercises") }).locator("+ .aexs .aex");
+    await expect(exercises.nth(0).locator(".aexchip")).toHaveText("3 × 5 @ 100 kg");
+    await expect(exercises.nth(1).locator(".aexchip")).toHaveText("3 × 8 @ 70 kg");
+    const lifts = alice.locator("#abody h3", { hasText: exact("% of 1RM") }).locator("+ .aexs .aex");
+    await expect(lifts.nth(0).locator(".aexchip")).toHaveText("3 × 86% · 100 kg");
+    await expect(lifts.nth(0).locator(".aexnote")).toHaveText(/^from 5 @ 100 kg on \d{4}-\d{2}-\d{2}$/);
+  });
+
   test("the muscles worked count the sets each muscle gets, with a scale from fewer to more", async ({ alice }) => {
     await openActivity(alice, "Gym session 9019");
     await expect(alice.locator("#abody h3", { hasText: exact("Muscles worked") })).toBeVisible();

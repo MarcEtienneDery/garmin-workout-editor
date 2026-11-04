@@ -36,6 +36,8 @@ describe("formatting", () => {
     expect(M.targetOf({ targetType: "heart.rate.zone", targetValueOne: 146, targetValueTwo: 133 }).value).toBe("133–146 bpm");
     expect(M.targetOf({ targetType: "heart.rate.zone", targetValueOne: 3 }).value).toBe("Zone 3");
     expect(M.targetOf({ targetType: "no.target" })).toBeNull();
+    expect(M.targetOf({ targetType: "cadence.zone", targetValueOne: 85, targetValueTwo: 95 }, { workoutType: "cycling" }).value).toBe("85–95 rpm");
+    expect(M.targetOf({ targetType: "cadence.zone", targetValueOne: 170, targetValueTwo: 180 }, { workoutType: "running" }).value).toBe("170–180 spm");
   });
 });
 
@@ -60,6 +62,8 @@ describe("the step tree", () => {
     expect(tree.map((n: any) => [n.kind, n.name])).toEqual([["sets", "BARBELL_BACK_SQUAT"], ["sets", "BARBELL_BENCH_PRESS"]]);
     expect(tree[0].lines.map((l: any) => [l.times, l.st.reps])).toEqual([[1, 8], [4, 6]]);
     expect(M.describeSet(tree[0].lines[1].st, 4)).toEqual({ times: 4, reps: "6", load: "235 lb", rest: "3:00" });
+    expect(M.describeSet(tree[0].lines[1].st, 4, "kg").load).toBe("106.6 kg"); // kept in lb, shown in the profile's unit
+    expect([M.weight(195), M.weight(195, "kg")]).toEqual(["195 lb", "88.5 kg"]);
   });
 
   it("calls a repeat of two exercises a superset", () => {

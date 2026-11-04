@@ -66,7 +66,16 @@ export async function openView(page: Page, view: string): Promise<void> {
 let counter = 0;
 const unique = () => `t${Date.now().toString(36)}${(counter++).toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
-export const test = base.extend<{ admin: APIRequestContext; profile: Profile; me: Page; alice: Page }>({
+/** Show the Plans view and the Workouts view's dialog on the form or on the JSON: the choice the page keeps in the browser. */
+export const chooseEditMode = (page: Page, mode: "form" | "json") => page.addInitScript((m) => localStorage.setItem("planEditor.editMode", m), mode);
+
+export const test = base.extend<{ admin: APIRequestContext; profile: Profile; me: Page; alice: Page; editMode: "form" | "json" | undefined }>({
+  /** `test.use({ editMode: "json" })`: the specs of a file or a describe see the JSON editor (the page opens on the form otherwise). */
+  editMode: [undefined, { option: true }],
+  page: async ({ page, editMode }, use) => {
+    if (editMode) await chooseEditMode(page, editMode);
+    await use(page);
+  },
   admin: async ({ baseURL }, use) => {
     const api = await pwRequest.newContext({ baseURL, extraHTTPHeaders: { ...CSRF, ...FRESH_SOCKET, ...basic("admin", ADMIN_TOKEN) } });
     await use(api);

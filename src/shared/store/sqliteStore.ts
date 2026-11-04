@@ -6,7 +6,7 @@ import { FOOD_CACHE_SCHEMA, FoodCacheTable } from "./foods";
 import { GoalTable, NUTRITION_SCHEMA, NutritionTable, migrateNutrition } from "./nutrition";
 import { INVITE_SCHEMA, InviteTable } from "./invites";
 import { MCP_TOKEN_SCHEMA, McpTokenTable } from "./mcpTokens";
-import { PROFILE_SCHEMA, ProfileTable, backfillProfiles, migrateProfiles } from "./profiles";
+import { PROFILE_SCHEMA, PrefsTable, ProfileTable, backfillProfiles, migrateProfiles } from "./profiles";
 import { RENPHO_SCHEMA, RenphoTable } from "./renpho";
 import { SESSION_SCHEMA, SessionTable } from "./sessions";
 import { LIMIT_SCHEMA, LimitTable, TOKEN_SCHEMA, TokenTable } from "./tokens";
@@ -107,6 +107,8 @@ export class SqliteStore {
   readonly wellness: WellnessTable;
   /** The profiles that exist, and the hash of each one's web sign-in password (see profiles.ts). */
   readonly profiles: ProfileTable;
+  /** How each profile likes things shown, such as its unit of weight (see profiles.ts). */
+  readonly prefs: PrefsTable;
   /** The web editor's sign-in sessions, which outlive a restart (see sessions.ts). */
   readonly sessions: SessionTable;
   /** The invite codes that let a person make a profile from the sign-in page (see invites.ts). */
@@ -134,6 +136,7 @@ export class SqliteStore {
     this.limits = new LimitTable(db);
     this.wellness = new WellnessTable(db, (fn) => this.tx(fn));
     this.profiles = new ProfileTable(db);
+    this.prefs = new PrefsTable(db);
     this.sessions = new SessionTable(db);
     this.invites = new InviteTable(db, (fn) => this.tx(fn));
     this.mcpTokens = new McpTokenTable(db);

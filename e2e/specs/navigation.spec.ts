@@ -453,13 +453,13 @@ test.describe("the page as a whole", () => {
     slow(problems).toEqual([]);
   });
 
-  test("the app's own pages are the only ones reached: no request leaves the server for another host", async ({ alice }) => {
+  test("the app's own pages are the only ones reached: no request leaves the server for another host", async ({ alice, baseURL }) => {
     const hosts = new Set<string>();
     alice.on("request", (request) => hosts.add(new URL(request.url()).host));
     await openView(alice, "today");
     await alice.locator("#vActivities").click();
     await isOn(alice, "activities");
     await alice.waitForLoadState("networkidle");
-    slow([...hosts]).toEqual(["127.0.0.1:8792"]);
+    slow([...hosts]).toEqual([new URL(baseURL!).host]);
   });
 });

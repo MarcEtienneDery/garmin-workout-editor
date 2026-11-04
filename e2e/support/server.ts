@@ -8,6 +8,7 @@
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
+import { MAIN, MOCK } from "./ports";
 
 const mock = process.argv.includes("mock");
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), mock ? "e2e-mock-" : "e2e-"));
@@ -25,7 +26,7 @@ async function main() {
   const { startWebServer } = await import("../../src/web/server");
   const { closeStore } = await import("../../src/shared/store");
   if (!mock) seed();
-  const port = Number(process.env.E2E_PORT ?? (mock ? 8793 : 8792));
+  const port = Number(process.env.E2E_PORT ?? (mock ? MOCK : MAIN));
   const server = await startWebServer({ host: "127.0.0.1", port, token: ADMIN_TOKEN });
   console.log(`e2e ${mock ? "mock " : ""}server on http://127.0.0.1:${port} (${dir})`);
   const stop = () => {

@@ -394,20 +394,22 @@ export class WorkoutEditor {
   }
 
   /**
-   * Convert Garmin weight to lbs
+   * Convert Garmin weight to lbs, to the hundredth as a plan keeps a weight typed in kg: Garmin keeps a workout's weight to the
+   * gram, so 100 kg (220.46 lb) reads back as 220.46 lb, not 220 (99.8 kg), and a whole number of pounds as itself
    * If weightUnit is already in pounds, return as-is (rounded)
    * Otherwise, assume weight is in grams and convert: weight_lbs = weight / 453.59237
    */
   private convertGarminWeight(weightValue: number, weightUnit?: { unitKey?: string; factor?: number }): number {
     if (weightValue === 0) return 0;
-    
+    const hundredth = (lb: number) => Math.round(lb * 100) / 100;
+
     // If already in pounds, just round
     if (weightUnit?.unitKey === "pound") {
-      return Math.round(weightValue);
+      return hundredth(weightValue);
     }
-    
+
     // Otherwise assume grams and convert to lbs
-    return Math.round(weightValue / 453.59237);
+    return hundredth(weightValue / 453.59237);
   }
 
   /**

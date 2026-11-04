@@ -5,7 +5,7 @@
  */
 import { SETTING_FIELDS, getGoals } from "./nutritionGoals";
 import { garminLogin } from "./profileLoader";
-import { INTERVAL_HOURS, InviteError, type Invite, MAX_INVITE_USES, MAX_NOTE, MAX_PROFILE_NAME, type Measurement, type RenphoSettings, SealKeyError, type SqliteStore, isProfileName, normalizeCode, sealing } from "./store";
+import { INTERVAL_HOURS, InviteError, type Invite, MAX_INVITE_USES, MAX_NOTE, MAX_PROFILE_NAME, type Measurement, type Prefs, type RenphoSettings, SealKeyError, type SqliteStore, WEIGHT_UNITS, isProfileName, normalizeCode, sealing } from "./store";
 import { isRealDay, localToday } from "./wellnessSync";
 
 /** A request the person can fix: the message is for them. */
@@ -290,6 +290,19 @@ export function renphoView(store: SqliteStore, profile: string, now = Date.now()
     log: store.renpho.logLines(profile, 60),
     intervals: INTERVAL_HOURS,
   };
+}
+
+// ── Preferences ──
+
+/** Change some of the profile's preferences (a key left out stays): weightUnit "lb" or "kg". */
+export function savePrefs(store: SqliteStore, profile: string, input: { weightUnit?: unknown }): Prefs {
+  const prefs = store.prefs.get(profile);
+  if (input.weightUnit !== undefined) {
+    if (!WEIGHT_UNITS.includes(input.weightUnit as Prefs["weightUnit"])) throw new SettingsError('The unit of weight is "lb" or "kg".');
+    prefs.weightUnit = input.weightUnit as Prefs["weightUnit"];
+  }
+  store.prefs.set(profile, prefs);
+  return prefs;
 }
 
 /** Everything the Settings view shows for a profile. */
