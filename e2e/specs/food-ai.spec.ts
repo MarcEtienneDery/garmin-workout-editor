@@ -11,7 +11,7 @@ import { labelOf, sheet, sheetClose, sheetMeal, sheetTab } from "../support/food
 const EGGS = { name: "Scrambled eggs", portion: "2 large eggs", meal: "breakfast", amount: 120, unit: "g", kcal: 180, proteinG: 13, carbsG: 2, fatG: 13, nutrients: { sodiumMg: 300 } };
 const TOAST = { name: "Whole wheat toast", portion: "1 slice", meal: "breakfast", amount: 35, unit: "g", kcal: 90, proteinG: 4, carbsG: 15, fatG: 1, nutrients: {} };
 const SALMON = { name: "Salmon", portion: "100 g", meal: "dinner", amount: 100, unit: "g", kcal: 200, proteinG: 22, carbsG: 0, fatG: 12, nutrients: {} };
-const ESTIMATE = { items: [EGGS, TOAST, SALMON], note: "Assumed 1 cup of cooked rice.", remaining: 29 };
+const ESTIMATE = { items: [EGGS, TOAST, SALMON], note: "Assumed 1 cup of cooked rice.", confidence: "medium", improve: "Say how big the bowl was", remaining: 29 };
 
 interface Answer { status?: number; json: any }
 type Handler = (body: any) => Answer | Promise<Answer>;
@@ -289,6 +289,34 @@ test.describe("checking the estimate", () => {
     await expect(totals(me)).toHaveText("≈ 470 kcal · P 39 · C 17 · F 26");
     await expect(me.locator("#fsh .faires")).toContainText("Assumed 1 cup of cooked rice.");
     await expect(logButton(me)).toHaveText("Log 3 foods");
+  });
+
+  test("the AI's confidence and the few words that would sharpen the estimate sit under the total", async ({ me }) => {
+    await enableAi(me);
+    await stubAi(me);
+    await openAi(me);
+    await ask(me, "2 eggs and toast, salmon for dinner");
+    const line = me.locator("#fsh .faires .fconf");
+    await expect(line).toHaveText("Confidence: Medium · Say how big the bowl was");
+    await expect(line.locator("b")).toHaveClass(/c-medium/);
+  });
+
+  test("the confidence shows alone when nothing would sharpen the estimate, and not at all when the AI gave none", async ({ me }) => {
+    await enableAi(me);
+    await stubAi(me, () => ({ json: { ...ESTIMATE, confidence: "high", improve: "" } }));
+    await openAi(me);
+    await ask(me, "2 eggs and toast, salmon for dinner");
+    await expect(me.locator("#fsh .faires .fconf")).toHaveText("Confidence: High");
+    await expect(me.locator("#fsh .faires .fconf b")).toHaveClass(/c-high/);
+  });
+
+  test("an estimate without a confidence or a tip shows no such line", async ({ me }) => {
+    await enableAi(me);
+    await stubAi(me, () => ({ json: { items: [EGGS], note: "", confidence: null, improve: "", remaining: 28 } }));
+    await openAi(me);
+    await ask(me, "2 eggs");
+    await expect(logButton(me)).toHaveText("Log 1 food");
+    await expect(me.locator("#fsh .faires .fconf")).toHaveCount(0);
   });
 
   test("an amount typed rescales its row and the total", async ({ me }) => {

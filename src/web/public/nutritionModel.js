@@ -561,6 +561,19 @@
   /** "≈ 306 kcal · P 15 · C 16 · F 21": an estimate's numbers, marked as estimates. */
   const approx = (t) => `≈ ${kcal(t.kcal)} · ${macros(t)}`;
 
+  /** The three levels of an estimate's confidence, as the page words them. */
+  const CONFIDENCE_LABELS = { low: "Low", medium: "Medium", high: "High" };
+
+  /**
+   * How sure the AI is of an estimate and what would sharpen it: { level, label, tip } for "Confidence: Medium · Say how big the bowl
+   * was", or null when it gave neither (an older answer, or nothing to log). A level it did not give is not shown; a tip can stand alone.
+   */
+  function aiConfidence(level, improve) {
+    const known = Object.prototype.hasOwnProperty.call(CONFIDENCE_LABELS, level) ? level : null, tip = String(improve == null ? "" : improve).trim();
+    if (!known && !tip) return null;
+    return { level: known, label: known ? `Confidence: ${CONFIDENCE_LABELS[known]}` : "", tip };
+  }
+
   /** The foods to send to POST /api/nutrition ({ items }, each with its own meal), or what is wrong ({ error }): a row whose amount is no good cannot be logged. */
   function aiItems(rows) {
     if (!rows.length) return { error: "There is nothing to log." };
@@ -573,5 +586,5 @@
     return { items };
   }
 
-  return { AI_LIMITS, mealForHour, canEstimate, aiFood, aiRows, aiRowValue, aiGroups, aiTotals, approx, aiItems, gtinOk, expandUpcE, normalizeBarcode, MAX_AMOUNT, parseAmount, amountGrams, scale, brandOf, entryName, portion, productOf, pickOf, allNutrients, per100Line, foodTitle, MEAL_LABELS, mealLabel, kcal, grams, signed, macros, shares, hasBurn, figures, averageNote, bare, qty, goalValue, goalNote, goalMeter, calorieBar, ring, calorieGoal, goalLine, burnLine, macroRows, sharesLine, mealBars, nutrientRows, kindLabel, GROUPS, groupsFor, cell, chartDays, charts, kcalOf, followMacros, parseDraft, draftOf, EMPTY_DRAFT, hasNumbers, hasNutrients, recentMatch, recentFor, again, foods, NUTRIENTS, nutrientLine, nutrientTiles, scaleNutrients };
+  return { AI_LIMITS, mealForHour, canEstimate, aiFood, aiRows, aiRowValue, aiGroups, aiTotals, approx, aiConfidence, aiItems, gtinOk, expandUpcE, normalizeBarcode, MAX_AMOUNT, parseAmount, amountGrams, scale, brandOf, entryName, portion, productOf, pickOf, allNutrients, per100Line, foodTitle, MEAL_LABELS, mealLabel, kcal, grams, signed, macros, shares, hasBurn, figures, averageNote, bare, qty, goalValue, goalNote, goalMeter, calorieBar, ring, calorieGoal, goalLine, burnLine, macroRows, sharesLine, mealBars, nutrientRows, kindLabel, GROUPS, groupsFor, cell, chartDays, charts, kcalOf, followMacros, parseDraft, draftOf, EMPTY_DRAFT, hasNumbers, hasNutrients, recentMatch, recentFor, again, foods, NUTRIENTS, nutrientLine, nutrientTiles, scaleNutrients };
 });

@@ -476,6 +476,15 @@ describe("foods estimated by AI", () => {
     expect(NM.approx({ kcal: 306, proteinG: 15, carbsG: 16.4, fatG: 21 })).toBe(`≈ ${NM.kcal(306)} · P 15 · C 16.4 · F 21`);
   });
 
+  it("words the confidence and the tip, each alone when the other is missing, and nothing when both are", () => {
+    expect(NM.aiConfidence("medium", "Say how big the bowl was")).toEqual({ level: "medium", label: "Confidence: Medium", tip: "Say how big the bowl was" });
+    expect(NM.aiConfidence("high", "")).toEqual({ level: "high", label: "Confidence: High", tip: "" });
+    expect(NM.aiConfidence(null, " Weigh the rice ")).toEqual({ level: null, label: "", tip: "Weigh the rice" });
+    expect(NM.aiConfidence("certain", undefined)).toBeNull();
+    expect(NM.aiConfidence("toString", null)).toBeNull(); // an inherited property is no level
+    expect(NM.aiConfidence(undefined, undefined)).toBeNull();
+  });
+
   it("makes the foods to send, each with its meal, nutrients and product, or says what stops it", () => {
     const rows = NM.aiRows([eggs, milk, salt]);
     const sent = NM.aiItems(rows);

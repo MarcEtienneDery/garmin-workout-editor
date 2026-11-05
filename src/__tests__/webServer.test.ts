@@ -79,7 +79,7 @@ jest.mock("../shared/foodSearch", () => ({
 // Claude: no network either.
 jest.mock("../shared/foodAi", () => ({
   ...jest.requireActual("../shared/foodAi"),
-  estimateFoods: jest.fn(async () => ({ items: [], note: "", remaining: 29 })),
+  estimateFoods: jest.fn(async () => ({ items: [], note: "", confidence: null, improve: "", remaining: 29 })),
   foodAiStatus: jest.fn(() => ({ enabled: true, remaining: 30, limit: 30, backend: "cli" })),
 }));
 const g = garmin as jest.Mocked<typeof garmin>;
@@ -1109,9 +1109,9 @@ describe("web plan editor", () => {
 
       it("asks Claude about the person's words and photos as the profile, and logs nothing", async () => {
         addProfile("MED");
-        ai_.estimateFoods.mockResolvedValueOnce({ items: [eggs] as any, note: "Assumed 2 large eggs.", remaining: 29 });
+        ai_.estimateFoods.mockResolvedValueOnce({ items: [eggs] as any, note: "Assumed 2 large eggs.", confidence: "medium", improve: "Say how big the eggs were", remaining: 29 });
         const out = await call("POST", "/api/foods/ai", { text: "2 scrambled eggs", defaultMeal: "breakfast", images: [photo] });
-        expect(out).toEqual({ status: 200, json: { items: [eggs], note: "Assumed 2 large eggs.", remaining: 29 } });
+        expect(out).toEqual({ status: 200, json: { items: [eggs], note: "Assumed 2 large eggs.", confidence: "medium", improve: "Say how big the eggs were", remaining: 29 } });
         expect(ai_.estimateFoods).toHaveBeenCalledWith({ profile: "MED", text: "2 scrambled eggs", images: [photo], defaultMeal: "breakfast", today: day });
         expect((await call("GET", "/api/nutrition")).json.day.entries).toBe(0);
       });

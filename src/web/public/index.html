@@ -578,6 +578,7 @@
   .faithumbs { display:flex; gap:10px; flex-wrap:wrap; margin:0 0 10px; } .faithumb { position:relative; }
   .faithumb img { display:block; width:64px; height:64px; object-fit:cover; border-radius:4px; border:1px solid var(--line); }
   .faithumb button { position:absolute; top:-7px; right:-7px; width:22px; height:22px; padding:0; border-radius:50%; line-height:1; font-size:12px; }
+  .fconf b { font-weight:600; } .fconf b.c-high { color:var(--ok); } .fconf b.c-medium { color:var(--warn); } .fconf b.c-low { color:var(--err); } .fconf .ctip { color:var(--fg); }
   .faires { margin-top:10px; } .fair { padding:6px 0; border-top:1px solid var(--line); }
   .fairt { display:flex; gap:8px; align-items:flex-start; } .fain { flex:1 1 0; min-width:0; overflow-wrap:anywhere; } .fain span { display:block; color:var(--dim); font-size:12px; } .fairm { padding:2px 8px; }
   .fair .fpq { margin-top:4px; } .fair .fpq select { background:#333; color:var(--fg); border:1px solid var(--line); border-radius:3px; padding:4px 6px; font:inherit; } .fair .fpq .fairk { flex:1 1 auto; text-align:right; font-weight:600; white-space:nowrap; }
@@ -5604,7 +5605,7 @@ async function aiEstimate() {
   try {
     const r = await api("POST", "/api/foods/ai", { profile: F.profile, text: ai.text, images: ai.photos.map(({ mediaType, data }) => ({ mediaType, data })), defaultMeal: targetMeal() });
     if (run !== ai.run) return; // another profile was chosen meanwhile
-    ai.result = { rows: NM.aiRows(r.items), note: r.note, none: !r.items.length };
+    ai.result = { rows: NM.aiRows(r.items), note: r.note, none: !r.items.length, confidence: NM.aiConfidence(r.confidence, r.improve) };
     if (F.data && F.data.ai) F.data.ai.remaining = r.remaining;
   } catch (e) {
     if (run === ai.run) ai.error = e.message;
@@ -5704,10 +5705,20 @@ function aiPreview(result) {
   clear.onclick = () => { F.ai.result = null; renderFood(); };
   acts.append(log, again, clear);
   box.append(total);
+  if (result.confidence) box.append(aiConfidenceLine(result.confidence));
   if (result.note) box.append(mk("div", "fnote", result.note));
   box.append(acts);
   paint();
   return box;
+}
+
+/** "Confidence: Medium · Say how big the bowl was": how sure the AI is, coloured by the level, and the few words that would sharpen the estimate. */
+function aiConfidenceLine(c) {
+  const line = mk("div", "fnote fconf");
+  if (c.label) line.append(mk("b", "c-" + c.level, c.label));
+  if (c.label && c.tip) line.append(" · ");
+  if (c.tip) line.append(mk("span", "ctip", c.tip));
+  return line;
 }
 
 /** One estimated food: its name and what was assumed, the amount eaten (a grams box that rescales the numbers, when it can), its meal, and a button to leave it out. */
