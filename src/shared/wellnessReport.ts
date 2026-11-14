@@ -87,3 +87,30 @@ export function intensityWeek(store: SqliteStore, profile: string, today: string
   const stored = store.wellness.metrics(profile, start, today).map(dayIntensityMinutes).filter((n): n is number => n !== null);
   return { start, minutes: stored.reduce((total, n) => total + n, 0), daysStored: stored.length, days: sinceMonday + 1 };
 }
+
+/** The days the Today view's small trend lines look back over: today and the six before it. */
+export const TREND_DAYS = 7;
+
+/** One day of the trend lines: only the numbers a line draws, each null when that day has no summary or Garmin did not give it. */
+export interface TrendDay {
+  day: string;
+  steps: number | null;
+  /** The day's own intensity minutes (a vigorous minute twice), not the week's total. */
+  minutes: number | null;
+  /** Body Battery when the day began. */
+  bodyBatteryWake: number | null;
+  sleepSeconds: number | null;
+}
+
+/**
+ * The last TREND_DAYS days up to `today`, oldest first, one entry for every day (null for what is not stored), so a line can leave
+ * a gap where the data is missing instead of drawing a day of zero.
+ */
+export function dayTrend(store: SqliteStore, profile: string, today: string): TrendDay[] {
+  const from = addDays(today, -(TREND_DAYS - 1));
+  const stored = new Map(store.wellness.metrics(profile, from, today).map((m) => [m.day, m]));
+  return Array.from({ length: TREND_DAYS }, (_, i) => {
+    const day = addDays(from, i), m = stored.get(day);
+    return { day, steps: m?.steps ?? null, minutes: m ? dayIntensityMinutes(m) : null, bodyBatteryWake: m?.bodyBatteryWake ?? null, sleepSeconds: m?.sleepSeconds ?? null };
+  });
+}

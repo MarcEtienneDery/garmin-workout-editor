@@ -205,3 +205,56 @@ describe("the readiness", () => {
     expect(TM.readinessLine({ band: "unknown", score: null, confidence: "low", suggestion: "x" }).label).toBe("Not enough data");
   });
 });
+
+describe("the trend lines of the tiles", () => {
+  const days = (rows: Record<string, unknown>[]) => rows.map((r, i) => ({ day: `2026-10-${12 + i}`, steps: null, minutes: null, bodyBatteryWake: null, sleepSeconds: null, ...r }));
+  const week = days([{ steps: 7200 }, { steps: 9400 }, { steps: 6100 }, { steps: null }, { steps: 8800 }, { steps: 5300 }, { steps: 4491 }]);
+
+  it("gives each tile its last days, with null for a day with nothing, never zero", () => {
+    expect(tile(view({ trend: week }), "steps").trend.values).toEqual([7200, 9400, 6100, null, 8800, 5300, 4491]);
+  });
+
+  it("says the same in words for a screen reader, with 'none' where a day has nothing", () => {
+    expect(tile(view({ trend: week }), "steps").trend.text).toBe(`Steps, last 7 days: ${n(7200)}, ${n(9400)}, ${n(6100)}, none, ${n(8800)}, ${n(5300)}, ${n(4491)}`);
+  });
+
+  it("reads each tile from its own number: a day's intensity minutes, Body Battery on waking, sleep in hours", () => {
+    const v = view({ trend: days([{ minutes: 20, bodyBatteryWake: 78, sleepSeconds: 25_560 }, { minutes: 45, bodyBatteryWake: 66, sleepSeconds: 23_760 }, {}, {}, {}, {}, { minutes: 0, bodyBatteryWake: 72, sleepSeconds: 27_000 }]) });
+    expect(tile(v, "intensity").trend.values).toEqual([20, 45, null, null, null, null, 0]); // a stored zero is a zero
+    expect(tile(v, "battery").trend.values).toEqual([78, 66, null, null, null, null, 72]);
+    expect(tile(v, "sleep").trend.values).toEqual([7.1, 6.6, null, null, null, null, 7.5]);
+    expect(tile(v, "sleep").trend.text).toContain("7 h 06, 6 h 36");
+  });
+
+  it("draws no line from a server that sends no trend, or from fewer than two days with a number", () => {
+    expect(tile(view(), "steps").trend).toBeNull();
+    expect(tile(view({ trend: [] }), "steps").trend).toBeNull();
+    expect(tile(view({ trend: days([{ steps: 100 }, {}, {}, {}, {}, {}, {}]) }), "steps").trend).toBeNull();
+  });
+
+  it("puts the points inside the box: the smallest at the bottom, the largest at the top, the days spread across", () => {
+    const s = TM.sparkline([0, 5, 10], 100, 40, 4);
+    expect(s.runs).toEqual([[[4, 36], [50, 20], [96, 4]]]);
+    expect(s.last).toEqual([96, 4]);
+    expect(s.lastIsToday).toBe(true);
+  });
+
+  it("leaves a gap for a missing day, and says when today has no point", () => {
+    const s = TM.sparkline([1, 2, null, 4, 5, null], 100, 40, 0);
+    expect(s.runs.map((r: number[][]) => r.length)).toEqual([2, 2]);
+    expect(s.lastIsToday).toBe(false);
+    expect(s.last).toEqual([80, 0]);
+  });
+
+  it("sits a flat line in the middle, and draws nothing from one point", () => {
+    expect(TM.sparkline([3, 3, 3], 100, 40, 4).runs[0].map((p: number[]) => p[1])).toEqual([20, 20, 20]);
+    expect(TM.sparkline([3, null, null], 100, 40, 4)).toBeNull();
+  });
+
+  it("fills the readiness ring by the score, and not at all without one", () => {
+    expect(TM.gaugeFill(62)).toBe(0.62);
+    expect(TM.gaugeFill(140)).toBe(1);
+    expect(TM.gaugeFill(-3)).toBe(0);
+    expect(TM.gaugeFill(null)).toBe(0);
+  });
+});

@@ -93,7 +93,7 @@ import { fetchChartNow, fetchDetailsNow, refreshActivities, startBackgroundSync 
 import { diffPlanWorkout, extractWorkouts, validatePlanData } from "../mcp/tools/plans";
 import { MAX_SCAN_BYTES, activePlanDocs, isExportSnapshot } from "../shared/planDocs";
 import { refreshWellness, rereadWeighIns, startBackgroundWellness, wellnessSyncStatus } from "../mcp/tools/wellness";
-import { bodyRange, intensityWeek, readinessAt, wellnessRange } from "../shared/wellnessReport";
+import { bodyRange, dayTrend, intensityWeek, readinessAt, wellnessRange } from "../shared/wellnessReport";
 import { SettingsError, createProfile, removeGarminLogin, removeRenpho, saveGarminLogin, savePrefs, saveRenpho, saveWebPassword, settingsView } from "../shared/accounts";
 import exerciseCategoryMap from "../exercise-category-map.json";
 import { recentFit, testRenphoLogin } from "../shared/renphoSync";
@@ -1037,6 +1037,7 @@ const MIME: Record<string, string> = {
   ".css": "text/css; charset=utf-8",
   ".json": "application/json",
   ".ttf": "font/ttf",
+  ".woff2": "font/woff2",
   ".svg": "image/svg+xml",
   ".png": "image/png",
 };
@@ -1188,6 +1189,7 @@ function todayView(profile: string) {
     day: store().wellness.metrics(profile, today, today)[0] ?? null,
     progress: store().wellness.progress(profile, today),
     week: intensityWeek(store(), profile, today),
+    trend: dayTrend(store(), profile, today),
     readiness: { band: readiness.band, score: readiness.score, confidence: readiness.confidence, suggestion: readiness.suggestion },
     workouts: plannedAhead(profile, today, doneIds),
     activities,

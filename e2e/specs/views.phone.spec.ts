@@ -204,6 +204,39 @@ test.describe("Today on a phone", () => {
     await expect.poll(() => stickingOut(alice)).toEqual([]);
   });
 
+  test("the tiles make two columns, the hero and the cards one, and the food and the days ahead stack", async ({ alice }) => {
+    await openView(alice, "today");
+    await expect(alice.locator("#tbody")).not.toContainText("Loading…");
+    expect(await columnsOf(alice, "#tbody .tfigs")).toBe(2);
+    expect(await columnsOf(alice, "#tbody .thero")).toBe(1);
+    expect(await columnsOf(alice, "#tbody .trow")).toBe(1);
+    const tops = await alice.locator("#tbody .trow > *").evaluateAll((els) => els.map((el) => Math.round(el.getBoundingClientRect().top)));
+    expect(new Set(tops).size).toBe(tops.length); // one under the other, not side by side
+  });
+
+  test("everything that is tapped on Today is at least 44 px high, in both themes", async ({ alice }) => {
+    await openView(alice, "today");
+    await expect(alice.locator("#tbody")).not.toContainText("Loading…");
+    for (const theme of ["dark", "light"]) {
+      if (theme === "light") await alice.locator("#tTheme").tap();
+      const small = await alice.evaluate(() =>
+        [...document.querySelectorAll<HTMLElement>("#tbar button, #tbody .tgo, #tbody .tcal, #tbody .tgauge ~ .tch button, #tbody .twk, #tbody .tfig")]
+          .filter((el) => el.offsetParent !== null)
+          .map((el) => [el.className || el.id, Math.round(el.getBoundingClientRect().height)] as const)
+          .filter(([, h]) => h < 44),
+      );
+      expect(small, `${theme}: targets under 44 px`).toEqual([]);
+    }
+  });
+
+  test("the light theme fits the width too", async ({ alice }) => {
+    await openView(alice, "today");
+    await expect(alice.locator("#tbody")).not.toContainText("Loading…");
+    await alice.locator("#tTheme").tap();
+    await expect(alice.locator("#tview")).toHaveAttribute("data-theme", "light");
+    await expect.poll(() => stickingOut(alice)).toEqual([]);
+  });
+
   test("a tile opens the view it comes from", async ({ alice }) => {
     await openView(alice, "today");
     await expect(alice.locator("#tbody")).not.toContainText("Loading…");

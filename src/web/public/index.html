@@ -373,25 +373,149 @@
   .scard { background:var(--panel); border:1px solid var(--line); border-radius:4px; padding:12px 14px; margin-bottom:14px; }
   .scard h2 { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:0 0 2px; font-size:15px; }
   .scard h2 + .help { margin:2px 0 10px; }
-  /* ── Today view: the day so far (tiles with a bar), the workouts planned, what was done ── */
-  #tTitle { flex:0 0 auto; font-size:14px; } #tAsOf { flex:1 1 12em; min-width:0; color:var(--dim); } #tAsOf.stale { color:var(--warn); }
-  .thint { padding:8px 10px; border:1px solid #7a6a3d; border-left-width:3px; border-radius:4px; background:#2f2b1f; line-height:1.4; }
-  .tfig { cursor:pointer; } .tfig:hover { border-color:#5a5a5a; }
-  .tbar { height:6px; margin-top:8px; background:#3a3a3a; border-radius:3px; overflow:hidden; } .tbar i { display:block; height:100%; width:var(--w); background:var(--accent); } .tbar.done i { background:var(--ok); }
-  .tcard { margin-bottom:12px; padding:12px 14px; background:var(--panel); border:1px solid var(--line); border-radius:4px; }
-  .tch { display:flex; gap:6px 10px; align-items:center; flex-wrap:wrap; } .tch b { font-size:15px; } .tch .chip { cursor:pointer; } .tch .tspace { flex:1 1 0; }
-  .tsug { margin:6px 0 2px; color:var(--dim); line-height:1.45; }
-  .twk { display:grid; grid-template-columns:18px minmax(0,1fr) auto; gap:0 10px; align-items:center; padding:8px 4px; border-top:1px solid var(--line); cursor:pointer; } .twk:hover { background:#2d2d2e; }
-  .twk .tk { text-align:center; color:var(--dim); } .twk.done .tk { color:var(--ok); }
-  .twk .wv-chart { grid-area:auto; grid-column:2 / -1; margin-top:4px; }
-  .twk .tn { min-width:0; font-weight:600; overflow-wrap:anywhere; } .twk .tm { grid-column:2; color:var(--dim); font-size:12px; } .twk .chip { grid-row:1 / span 2; grid-column:3; }
-  .tcard .tch + .twk, .tcard .tch + .tnone, .tcard .tch + .tsug { margin-top:8px; }
+  /* ── Today view: the day so far (tiles with a trend and a bar), the workout and readiness, the food, the days ahead ──
+     Its own palette, set on #tview and re-set for the light theme (data-theme on #tview): everything inside, the shared Food ring and the
+     workout chart included, reads the same variables, so a theme is these two blocks. Fira Sans and Fira Code are served from /fonts/. */
+  @font-face { font-family:"Fira Sans"; font-weight:400; font-display:swap; src:url(/fonts/fira-sans-latin-400-normal.woff2) format("woff2"); }
+  @font-face { font-family:"Fira Sans"; font-weight:500; font-display:swap; src:url(/fonts/fira-sans-latin-500-normal.woff2) format("woff2"); }
+  @font-face { font-family:"Fira Sans"; font-weight:600; font-display:swap; src:url(/fonts/fira-sans-latin-600-normal.woff2) format("woff2"); }
+  @font-face { font-family:"Fira Sans"; font-weight:700; font-display:swap; src:url(/fonts/fira-sans-latin-700-normal.woff2) format("woff2"); }
+  @font-face { font-family:"Fira Code"; font-weight:400; font-display:swap; src:url(/fonts/fira-code-latin-400-normal.woff2) format("woff2"); }
+  @font-face { font-family:"Fira Code"; font-weight:500; font-display:swap; src:url(/fonts/fira-code-latin-500-normal.woff2) format("woff2"); }
+  @font-face { font-family:"Fira Code"; font-weight:600; font-display:swap; src:url(/fonts/fira-code-latin-600-normal.woff2) format("woff2"); }
+  #tview {
+    --bg:#0a0807; --panel:#15110e; --t-surface2:#1e1814; --line:rgba(255,236,214,.09); --t-line2:rgba(255,236,214,.18);
+    --fg:#fbf3ea; --dim:#b3a698; --t-faint:#968a7c;
+    --accent:#ff9f2e; --t-on-accent:#1a0d00; --t-ink:#ff9f2e;
+    --t-sky:#7cc4ff; --t-teal:#2dd4bf; --t-sand:#e8d3a9; --t-rose:#fb7185;
+    --ok:#4ade80; --warn:#fbbf24; --err:#fb7185;
+    --k-warmup:#f2503f; --k-work:#5b9bff; --k-recovery:#8c8579; --k-rest:#6b655b; --k-cooldown:#3ec57a; --k-other:#a78bfa;
+    --t-track:rgba(255,236,214,.09); --t-tint:rgba(0,0,0,.2); --t-glow:rgba(255,159,46,.3); --t-hero-glow:rgba(255,159,46,.12); --t-ok-bg:rgba(74,222,128,.18); --t-pill:rgba(255,159,46,.16);
+    background:var(--bg); color:var(--fg); font:400 15px/1.5 "Fira Sans",system-ui,sans-serif; color-scheme:dark;
+  }
+  #tview[data-theme="light"] {
+    --bg:#f7f3ec; --panel:#ffffff; --t-surface2:#f2ece1; --line:rgba(40,24,8,.10); --t-line2:rgba(40,24,8,.22);
+    --fg:#1d1610; --dim:#5e5244; --t-faint:#766a5b;
+    --accent:#d97706; --t-on-accent:#1a0d00; --t-ink:#a24a05;
+    --t-sky:#2b7fd6; --t-teal:#0f9488; --t-sand:#a98122; --t-rose:#dc3f5b;
+    --ok:#15935a; --warn:#a96a00; --err:#c0304b;
+    --k-warmup:#e0412f; --k-work:#2f6fe0; --k-recovery:#a39a8b; --k-rest:#b8b0a2; --k-cooldown:#1f9d5f; --k-other:#7c5cd6;
+    --t-track:rgba(40,24,8,.09); --t-tint:rgba(40,24,8,.035); --t-glow:rgba(217,119,6,.22); --t-hero-glow:rgba(217,119,6,.10); --t-ok-bg:rgba(21,147,90,.14); --t-pill:rgba(217,119,6,.14); color-scheme:light;
+  }
+  #tview :focus-visible { outline:2px solid var(--accent); outline-offset:3px; border-radius:8px; }
+  #tview .num, #tview .tfig b, #tview .twk .tm, #tview .tdone .ta span { font-family:"Fira Code",ui-monospace,monospace; font-variant-numeric:tabular-nums; }
+  /* the bar: the day (a title, how old the numbers are as a pill), the profile picker, Sync, the theme */
+  #tbar { flex-wrap:wrap; gap:8px 12px; padding:18px clamp(16px,2.6vw,34px) 6px; background:transparent; border-bottom:0; }
+  #tTitle { flex:0 0 auto; font-size:clamp(24px,3vw,32px); font-weight:700; letter-spacing:-.02em; }
+  #tAsOf { flex:0 1 auto; display:inline-flex; align-items:center; gap:8px; padding:7px 13px; border-radius:999px; background:var(--panel); border:1px solid var(--line); font-size:13px; color:var(--dim); white-space:normal; }
+  #tAsOf:empty { display:none; } #tAsOf::before { content:""; flex:none; width:8px; height:8px; border-radius:50%; background:var(--ok); box-shadow:0 0 0 4px color-mix(in srgb, var(--ok) 22%, transparent); }
+  #tAsOf.stale { color:var(--warn); } #tAsOf.stale::before { background:var(--warn); box-shadow:0 0 0 4px color-mix(in srgb, var(--warn) 22%, transparent); }
+  #tbar .tspacer { flex:1 1 0; }
+  #tview button { min-height:44px; padding:0 18px; background:transparent; color:var(--fg); border:1px solid var(--t-line2); border-radius:999px; font:600 14px "Fira Sans",system-ui,sans-serif; cursor:pointer; transition:background .18s, transform .18s; }
+  #tview button:hover:not(:disabled) { background:var(--t-surface2); }
+  #tview button:disabled { opacity:.55; cursor:default; }
+  #tview button.primary { background:var(--accent); border-color:transparent; color:var(--t-on-accent); }
+  #tview select { min-height:44px; padding:0 12px; background:var(--panel); color:var(--fg); border:1px solid var(--t-line2); border-radius:999px; font:inherit; }
+  #tTheme { width:44px; padding:0; display:inline-grid; place-items:center; } #tTheme svg { width:18px; height:18px; }
+  #tview[data-theme="light"] #tTheme .sun, #tview:not([data-theme="light"]) #tTheme .moon { display:none; }
+  #tNote { padding:0 clamp(16px,2.6vw,34px); }
+  #tscroll { background:var(--bg); }
+  #tbody { max-width:1280px; padding:10px clamp(16px,2.6vw,34px) 40px; }
+  #tbody h3 { margin:0 0 12px; font:500 11.5px "Fira Code",ui-monospace,monospace; letter-spacing:.14em; text-transform:uppercase; color:var(--dim); }
+  #tbody .empty { color:var(--dim); } #tview .msg.warn { color:var(--warn); }
+  .thint { margin-bottom:12px; padding:12px 16px; border:1px solid color-mix(in srgb, var(--warn) 45%, transparent); border-left-width:4px; border-radius:14px; background:color-mix(in srgb, var(--warn) 10%, var(--panel)); color:var(--fg); line-height:1.45; }
+  .thint button { margin-left:6px; min-height:36px; }
+  /* the four tiles: a number, its note, the last days as a line, and a bar against the goal */
+  .tfigs { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; margin-bottom:12px; }
+  .tfig { --c:var(--accent); display:flex; flex-direction:column; min-width:0; padding:14px 16px; background:var(--panel); border:1px solid var(--line); border-radius:18px; cursor:pointer; transition:border-color .18s, transform .18s; }
+  .tfig:hover { border-color:var(--t-line2); transform:translateY(-2px); }
+  .tfig.t-steps { --c:var(--t-sky); } .tfig.t-intensity { --c:var(--accent); } .tfig.t-battery { --c:var(--t-teal); } .tfig.t-sleep { --c:var(--t-sand); }
+  .tfig small { display:block; font:500 11.5px "Fira Code",ui-monospace,monospace; letter-spacing:.14em; text-transform:uppercase; color:var(--dim); }
+  .tfig b { display:block; margin:4px 0 0; font-size:28px; font-weight:600; line-height:1.15; letter-spacing:-.02em; }
+  .tfig > span { color:var(--dim); font-size:12.5px; line-height:1.4; }
+  .tfig .tspark { display:block; width:100%; height:auto; margin-top:8px; overflow:visible; }
+  .tspark polyline { fill:none; stroke:var(--c); stroke-width:2; stroke-linecap:round; stroke-linejoin:round; vector-effect:non-scaling-stroke; opacity:.9; } .tspark circle { fill:var(--c); }
+  .tbar { height:5px; margin-top:10px; background:var(--t-track); border-radius:9px; overflow:hidden; } .tbar i { display:block; height:100%; width:var(--w); background:var(--c); border-radius:9px; } .tbar.done i { background:var(--ok); }
+  /* the hero: today's workout beside the readiness */
+  .tcard { margin-bottom:12px; padding:20px 22px; background:var(--panel); border:1px solid var(--line); border-radius:18px; }
+  .tch { display:flex; gap:6px 10px; align-items:center; flex-wrap:wrap; } .tch b { font:500 11.5px "Fira Code",ui-monospace,monospace; letter-spacing:.14em; text-transform:uppercase; color:var(--dim); } .tch .tspace { flex:1 1 0; }
+  .thero { display:grid; grid-template-columns:minmax(0,1.7fr) minmax(0,1fr); gap:0; padding:0; overflow:hidden; background:linear-gradient(160deg, color-mix(in srgb, var(--accent) 9%, var(--panel)), var(--panel) 60%); }
+  .thero.solo { grid-template-columns:minmax(0,1fr); }
+  .thl { display:flex; flex-direction:column; gap:6px; min-width:0; padding:20px 22px; }
+  .thr { display:flex; flex-direction:column; align-items:center; gap:10px; min-width:0; padding:20px 22px; text-align:center; border-left:1px solid var(--line); background:radial-gradient(260px 180px at 50% 28%, var(--t-hero-glow), transparent 70%), var(--t-tint); }
   .tnone { margin:0; color:var(--dim); }
-  .tdone { margin-top:10px; padding-top:8px; border-top:1px solid var(--line); } .tdone h4 { margin:0 0 4px; font-size:11px; font-weight:400; text-transform:uppercase; letter-spacing:.06em; color:var(--dim); }
-  .tdone .ta { display:flex; gap:4px 10px; flex-wrap:wrap; padding:3px 0; } .tdone .ta b { font-weight:600; } .tdone .ta span { color:var(--dim); }
-  .tday { margin:10px 0 0; font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--dim); }
+  .twk { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:2px 12px; align-items:center; padding:10px 0; border-top:1px solid var(--line); cursor:pointer; }
+  .twk:first-of-type, .tch + .twk { border-top:0; }
+  .twk .tk { display:none; }
+  .twk .tn { grid-column:1; min-width:0; font-weight:700; line-height:1.1; letter-spacing:-.02em; overflow-wrap:anywhere; }
+  .twk .tm { grid-column:1; color:var(--dim); font-size:13px; }
+  .twk .chip { grid-row:1 / span 2; grid-column:2; }
+  .twk .wv-chart { grid-area:auto; grid-column:1 / -1; margin-top:8px; }
+  .thero .twk .tn { font-size:clamp(28px,3.6vw,44px); margin-top:4px; }
+  .thero .twk .tm { margin-top:6px; font-size:15px; }
+  .thero .twk .chip { grid-row:1; align-self:start; margin-top:10px; }
+  .twk.done .tn::before { content:"✓ "; color:var(--ok); }
+  #tview .chip { font:600 12px/18px "Fira Sans",system-ui,sans-serif; padding:1px 10px; border:0; border-radius:999px; background:var(--t-pill); color:var(--t-ink); }
+  #tview .chip.ok { background:var(--t-ok-bg); color:var(--ok); } #tview .chip.warn { background:color-mix(in srgb, var(--warn) 18%, transparent); color:var(--warn); }
+  /* a chip that is a button keeps a 44 px target round a smaller pill */
+  #tview button.chip { position:relative; isolation:isolate; min-height:44px; padding:0 16px; border:0; background:none; font-size:13.5px; }
+  #tview button.chip::before { content:""; position:absolute; inset:7px 0; z-index:-1; border-radius:999px; background:var(--t-pill); transition:background .18s; }
+  #tview button.chip:hover:not(:disabled) { background:none; } #tview button.chip:hover:not(:disabled)::before { background:color-mix(in srgb, var(--t-ink) 24%, transparent); }
+  /* a workout's profile, large: the shared chart with this palette, rounded and spaced, and what its colours are */
+  .thero .twk .wv-chart.mini { gap:3px; height:clamp(100px,14vw,150px); margin-top:12px; padding-top:4px; }
+  .thero .twk .wv-seg { min-width:4px; border-radius:7px 7px 3px 3px; }
+  .tleg { grid-column:1 / -1; display:flex; flex-wrap:wrap; gap:4px 14px; margin-top:10px; color:var(--dim); font-size:12px; }
+  .tleg span { display:inline-flex; align-items:center; gap:6px; } .tleg i { width:9px; height:9px; border-radius:3px; background:var(--c); }
+  /* the readiness ring */
+  .tgauge { position:relative; width:176px; height:176px; flex:none; filter:drop-shadow(0 0 14px var(--t-glow)); }
+  .tgauge svg { display:block; width:100%; height:100%; transform:rotate(-90deg); } .tgauge circle { fill:none; stroke-width:14; }
+  .tgauge .trk { stroke:var(--t-track); } .tgauge .arc { stroke:var(--accent); stroke-linecap:round; transition:stroke-dasharray .6s ease; }
+  .tgauge .tgn { position:absolute; inset:0; display:grid; place-items:center; font:600 54px/1 "Fira Code",ui-monospace,monospace; letter-spacing:-.04em; }
+  .tsug { margin:0; max-width:24ch; color:var(--dim); line-height:1.45; }
+  .tdone { width:100%; margin-top:8px; padding:12px 14px; border-radius:14px; background:var(--t-surface2); text-align:left; }
+  .thl .tdone { margin-top:14px; }
+  .tdone h4 { margin:0 0 4px; font:500 11px "Fira Code",ui-monospace,monospace; letter-spacing:.12em; text-transform:uppercase; color:var(--dim); }
+  .tdone .ta { display:flex; flex-direction:column; padding:2px 0; font-size:14px; } .tdone .ta b { font-weight:600; } .tdone .ta span { color:var(--dim); font-size:12.5px; }
+  /* food and the days ahead, side by side */
+  .trow { display:grid; grid-template-columns:minmax(0,5fr) minmax(0,7fr); gap:12px; align-items:stretch; } .trow.one { grid-template-columns:minmax(0,1fr); }
+  .trow > .tcard, .trow > .fsum.tfsum { margin-bottom:0; }
+  .fsum.tfsum { display:grid; grid-template-columns:minmax(0,1fr) auto; grid-template-rows:auto 1fr; align-content:stretch; gap:0 12px; margin:0; padding:20px 22px; background:var(--panel); border:1px solid var(--line); border-radius:18px; }
+  .tfsum > h3, .tfsum > .fglance, .tfsum > .fgoalhint { grid-column:1 / -1; }
+  .tfsum .fglance { gap:20px; padding:6px 0 4px; align-self:center; }
+  .tfsum .fring { width:132px; height:132px; } .tfsum .fring circle { stroke-width:12; } .tfsum .fring .trk { stroke:var(--t-track); }
+  .tfsum .fctr b { font:600 26px "Fira Code",ui-monospace,monospace; letter-spacing:-.03em; } .tfsum .fctr small { font-size:12px; }
+  .tfsum .fmeter, .tfsum .fmeter.empty { background:var(--t-track); border-radius:99px; overflow:hidden; } .tfsum .fseg { border-radius:0; }
+  .tfsum .fmr .fv { font-family:"Fira Code",ui-monospace,monospace; font-size:13px; }
+  .tfsum .fsumlines { grid-column:1; align-self:center; margin-top:14px; padding-top:14px; border-top:1px solid var(--line); font-size:13px; } .tfsum .fsumlines .fhn { font-family:"Fira Code",ui-monospace,monospace; font-size:12.5px; }
+  .tfsum .tgo { grid-column:2; align-self:end; margin-top:14px; min-height:44px; }
+  #tview .protein { --c:var(--t-sky); } #tview .carbs { --c:var(--accent); } #tview .fat { --c:var(--t-rose); }
   .tgo { margin-top:8px; }
-  .fsum.tfsum { margin-top:0; }
+  .tfsum .fgoalhint button { min-height:0; padding:0 4px; border:0; background:none; color:var(--t-ink); font:inherit; text-decoration:underline; }
+  /* the days ahead: a row for each workout, its day to the left */
+  .tup { margin:0; }
+  .tup .tuh { display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:6px; } .tup .tuh h3 { margin:0; }
+  .tdg { display:grid; grid-template-columns:96px minmax(0,1fr); gap:0 14px; align-items:start; padding:6px 0; border-top:1px solid var(--line); }
+  .tdg:first-of-type { border-top:0; }
+  .tday { margin:0; padding-top:14px; font:500 12px "Fira Code",ui-monospace,monospace; letter-spacing:.06em; text-transform:uppercase; color:var(--dim); }
+  .tdg.soon .tday { color:var(--t-ink); font-weight:600; }
+  .tdrows { min-width:0; }
+  .tup .twk { grid-template-columns:minmax(0,1fr) 120px; padding:12px 8px; margin:0 -8px; border-top:0; border-radius:10px; transition:background .18s; } .tup .twk:hover { background:var(--t-surface2); }
+  .tup .twk .tn { font-size:15.5px; line-height:1.25; letter-spacing:0; } #tview .tup .twk .tm { font:400 12.5px "Fira Sans",system-ui,sans-serif; }
+  .tup .twk .wv-chart.mini { grid-column:2; grid-row:1 / span 2; align-self:center; height:24px; margin:0; } .tup .twk .wv-seg { border-radius:2px 2px 0 0; min-width:2px; }
+  .tup .twk .chip { grid-column:2; grid-row:1; justify-self:end; }
+  .rfoot { margin-top:22px; }
+  #tview button.infob { min-height:0; padding:4px; border:0; background:none; color:var(--dim); font-weight:400; }
+  #tview button.infob.about { margin:0 0 0 -4px; }
+  @media (max-width:900px) {
+    .tfigs { grid-template-columns:repeat(2,minmax(0,1fr)); }
+    .thero { grid-template-columns:minmax(0,1fr); } .thr { border-left:0; border-top:1px solid var(--line); }
+    .trow { grid-template-columns:minmax(0,1fr); }
+    .tfsum .fglance { grid-template-columns:minmax(0,1fr); justify-items:center; gap:14px; } .tfsum .fmacs { width:100%; }
+    .tdg { grid-template-columns:78px minmax(0,1fr); gap:0 10px; } .tup .twk { grid-template-columns:minmax(0,1fr) 64px; }
+    .tfig b { font-size:24px; }
+  }
+  @media (max-width:420px) { .tdg { grid-template-columns:62px minmax(0,1fr); } .tup .twk { grid-template-columns:minmax(0,1fr) 52px; } }
+  @media (prefers-reduced-motion:reduce) { #tview *, #tview *::before { transition:none !important; } }
   /* ── Food view: the day at a glance, a strip of foods to log again in a tap, the meals; adding happens in a sheet opened from the bar at the bottom ── */
   #fbar { justify-content:center; flex-wrap:nowrap; }
   #fbar #fProfile { margin-right:auto; max-width:40%; }
@@ -1192,12 +1316,14 @@
     <button id="fdAi" class="fdbtn ai" type="button" title="Describe or photograph what you ate" aria-label="Describe or photograph what you ate">✨</button>
   </div></div>
 </section>
-<section id="tview">
+<section id="tview" data-theme="dark">
   <div class="wbar" id="tbar">
     <select id="tProfile" title="Garmin profile" hidden></select>
     <b id="tTitle"></b>
     <span id="tAsOf"></span>
+    <span class="tspacer"></span>
     <button id="tSync" title="Fetch the latest from Garmin" hidden>↻ Sync</button>
+    <button id="tTheme" type="button" aria-label="Switch to light theme" title="Switch to light theme"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><g class="sun"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></g><path class="moon" d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z"/></svg></button>
   </div>
   <div id="tNote" class="empty" hidden></div>
   <div id="tscroll"><div id="tbody"><div class="empty">Loading…</div></div></div>
@@ -5730,17 +5856,13 @@ function renderToday() {
   // Without Garmin (and nothing stored from it) there are no steps, sleep or Body Battery: they are left out, not shown as "not synced yet".
   const hint = d.health ? TM.watchHint(d, Date.now()) : "";
   if (hint) box.append(mk("div", "msg warn thint", hint));
-  box.append(todayWorkouts(d));
   if (d.health) box.append(todayTiles(TM.progressTiles(d)));
-  box.append(mk("h3", "", "Food"), todayFood(d));
+  box.append(todayWorkouts(d));
   const ahead = TM.workoutDays(d, measureWorkout).filter((day) => !day.today && day.items.length);
-  if (ahead.length) {
-    const card = mk("section", "tcard"), head = mk("div", "tch");
-    head.append(mk("b", "", "Coming up"));
-    card.append(head);
-    for (const day of ahead) { card.append(mk("div", "tday", day.label)); for (const w of day.items) card.append(todayWorkout(w)); }
-    box.append(mk("h3", "", "Next days"), card);
-  }
+  const row = mk("div", "trow" + (ahead.length ? "" : " one"));
+  row.append(todayFood(d));
+  if (ahead.length) row.append(todayAhead(ahead));
+  box.append(row);
   box.append(aboutFoot("today", (d.health ? "Steps, Body Battery and sleep are as of the watch's last sync (the time at the top). Intensity minutes count from Monday, a vigorous minute twice. " : "") + "Workouts are the plans' scheduledDate" + (d.health ? ", not Garmin's calendar" : "") + "; one is done once an activity is started from it. Food is measured against the goals in Settings." + (d.health ? " " + syncRule(true) : "")));
   $("tscroll").scrollTop = keep;
 }
@@ -5753,16 +5875,19 @@ function todayFood(d) {
   const card = foodSummary(TM.foodView(d)), go = mk("button", "tgo", "Open the Food view");
   go.type = "button"; go.onclick = () => { F.profile = d.profile; F.date = null; setView("food"); };
   card.classList.add("tfsum");
+  card.prepend(mk("h3", "", "Food"));
   card.append(go);
   return card;
 }
 
 /** Tiles in the Recovery view's style, with a bar for a goal, and a click that opens the view they come from. */
 function todayTiles(tiles) {
-  const grid = mk("div", "rfigs");
+  const grid = mk("div", "tfigs");
   for (const t of tiles) {
-    const tile = mk("div", "rfig tfig");
+    const tile = mk("div", `tfig t-${t.id}`);
     tile.append(mk("small", "", t.label), mk("b", "", t.value), mk("span", "", t.note));
+    const spark = t.trend && sparkEl(t.trend);
+    if (spark) tile.append(spark);
     if (t.pct !== null && t.pct !== undefined) {
       const bar = mk("div", "tbar" + (t.done ? " done" : "")), fill = document.createElement("i");
       fill.style.setProperty("--w", Math.min(100, Math.max(0, t.pct)) + "%");
@@ -5778,16 +5903,58 @@ function todayTiles(tiles) {
   return grid;
 }
 
-function todayWorkout(w) {
+/** A tile's last days as a small line (a gap where a day has nothing, a dot on today's point), described in words for a screen reader; null when there is no trend to draw. */
+function sparkEl(trend) {
+  const s = TM.sparkline(trend.values, 200, 36, 4);
+  if (!s) return null;
+  const svg = svgEl("svg", { class: "tspark", viewBox: "0 0 200 36", role: "img", "aria-label": trend.text });
+  for (const run of s.runs) {
+    if (run.length > 1) svg.append(svgEl("polyline", { points: run.map((p) => p.join(",")).join(" ") }));
+    else svg.append(svgEl("circle", { cx: run[0][0], cy: run[0][1], r: 2 }));
+  }
+  if (s.lastIsToday) svg.append(svgEl("circle", { cx: s.last[0], cy: s.last[1], r: 3.5 }));
+  return svg;
+}
+
+function todayWorkout(w, { hero = false } = {}) {
   const row = mk("div", "twk" + (w.done ? " done" : ""));
   row.title = "Open the plan";
+  row.tabIndex = 0; row.setAttribute("role", "link"); // a row is a link to its plan: the keyboard opens it too
   row.append(mk("span", "tk", w.done ? "✓" : "○"), mk("span", "tn", w.name));
   if (w.done) row.append(mk("span", "chip ok", "Done"));
   if (w.meta) row.append(mk("span", "tm", w.meta));
-  const graph = w.workout && profileEl(WM.analyze(w.workout, { pacer: pacerFor(T.profile) }), { mini: true }); // the workout's profile, small (null for a lifting workout, which is drawn as muscles when opened)
-  if (graph) row.append(graph);
+  const analysis = w.workout && WM.analyze(w.workout, { pacer: pacerFor(T.profile) });
+  const graph = analysis && profileEl(analysis, { mini: true }); // the workout's profile, small (null for a lifting workout, which is drawn as muscles when opened)
+  if (graph) { row.append(graph); if (hero) row.append(profileLegend(analysis)); }
   row.onclick = () => openPlan(w.path);
+  row.onkeydown = (e) => { if (e.key === "Enter" && e.target === row) openPlan(w.path); };
   return row;
+}
+
+const PROFILE_KINDS = { warmup: "Warm-up", work: "Work", recovery: "Recovery", rest: "Rest", cooldown: "Cool-down", other: "Other" };
+/** What the colours of a workout's profile are, for the kinds of step it has. */
+function profileLegend(a) {
+  const box = mk("div", "tleg");
+  box.setAttribute("aria-hidden", "true"); // the picture's own label says what it shows
+  for (const kind of new Set(a.segments.map((s) => s.kind))) {
+    if (!PROFILE_KINDS[kind]) continue;
+    const swatch = document.createElement("i"), item = mk("span");
+    swatch.className = `k-${kind}`;
+    item.append(swatch, PROFILE_KINDS[kind]);
+    box.append(item);
+  }
+  return box;
+}
+
+/** How ready the person is, as a ring filled by the score with the number in it. */
+function readinessGauge(score) {
+  const known = Number.isFinite(score), C = 2 * Math.PI * 74, wrap = mk("div", "tgauge");
+  wrap.setAttribute("role", "img");
+  wrap.setAttribute("aria-label", known ? `Readiness ${score} out of 100` : "Readiness not available");
+  const svg = svgEl("svg", { viewBox: "0 0 176 176", "aria-hidden": "true" });
+  svg.append(svgEl("circle", { class: "trk", cx: 88, cy: 88, r: 74 }), svgEl("circle", { class: "arc", cx: 88, cy: 88, r: 74, "stroke-dasharray": `${(C * TM.gaugeFill(score)).toFixed(1)} ${C.toFixed(1)}` }));
+  wrap.append(svg, mk("div", "tgn", known ? String(score) : "–"));
+  return wrap;
 }
 
 /** A workout totalled from its steps, timed at the profile's usual pace once its runs are known (the workout picture's own numbers). */
@@ -5795,15 +5962,26 @@ const measureWorkout = (workout) => { const a = WM.analyze(workout, { pacer: pac
 
 /** The day's workouts, how ready the person is for them, and what was already done. */
 function todayWorkouts(d) {
-  const card = mk("section", "tcard"), head = mk("div", "tch"), r = TM.readinessLine(d.readiness), day = TM.workoutDays(d, measureWorkout)[0];
-  head.append(mk("b", "", "Today's workout"), mk("span", "tspace"));
-  const chip = mk("button", "chip" + (r.cls === "go" ? " ok" : r.cls === "back" ? " warn" : ""), r.score !== null ? `${r.label} · ${r.score}` : r.label);
-  chip.title = "How recovered you are today. Opens the Recovery view."; chip.onclick = () => setView("recovery");
-  if (d.health) head.append(chip); // how recovered you are needs the watch's data
-  card.append(head);
-  if (!day.items.length) card.append(mk("div", "tnone", "Nothing is planned for today."));
-  for (const w of day.items) card.append(todayWorkout(w));
-  if (d.health && day.items.some((w) => !w.done) && r.text) card.append(mk("div", "tsug", r.text));
+  const card = mk("section", "tcard thero" + (d.health ? "" : " solo")), left = mk("div", "thl"), r = TM.readinessLine(d.readiness), day = TM.workoutDays(d, measureWorkout)[0];
+  const head = mk("div", "tch");
+  head.append(mk("b", "", "Today's workout"));
+  left.append(head);
+  if (!day.items.length) left.append(mk("div", "tnone", "Nothing is planned for today."));
+  for (const w of day.items) left.append(todayWorkout(w, { hero: true }));
+  card.append(left);
+  // how recovered you are needs the watch's data: without it the card is the workouts alone, and Done so far sits under them
+  let side = left;
+  if (d.health) {
+    side = mk("div", "thr");
+    const label = mk("div", "tch"), pill = mk("div", "tch");
+    label.append(mk("b", "", "Readiness"));
+    const chip = mk("button", "chip" + (r.cls === "go" ? " ok" : r.cls === "back" ? " warn" : ""), r.score !== null ? `${r.label} · ${r.score}` : r.label);
+    chip.type = "button"; chip.title = "How recovered you are today. Opens the Recovery view."; chip.onclick = () => setView("recovery");
+    pill.append(chip);
+    side.append(label, readinessGauge(r.score), pill);
+    if (day.items.some((w) => !w.done) && r.text) side.append(mk("p", "tsug", r.text));
+    card.append(side);
+  }
   if (d.activities.length) {
     const done = mk("div", "tdone");
     done.append(mk("h4", "", "Done so far"));
@@ -5812,14 +5990,41 @@ function todayWorkouts(d) {
       row.append(mk("b", "", line.name), mk("span", "", line.meta));
       done.append(row);
     }
-    card.append(done);
+    side.append(done);
   }
   return card;
+}
+
+/** The workouts of the next days, a row each with its day to the left (Tomorrow in the accent colour), and a way to the Calendar. */
+function todayAhead(ahead) {
+  const card = mk("section", "tcard tup"), head = mk("div", "tuh"), cal = mk("button", "tcal", "Calendar");
+  cal.type = "button"; cal.onclick = () => setView("calendar");
+  head.append(mk("h3", "", "Next days"), cal);
+  card.append(head);
+  for (const day of ahead) {
+    const group = mk("div", "tdg" + (day.label === "Tomorrow" ? " soon" : "")), rows = mk("div", "tdrows");
+    group.append(mk("div", "tday", day.label), rows);
+    for (const w of day.items) rows.append(todayWorkout(w));
+    card.append(group);
+  }
+  return card;
+}
+
+const TODAY_THEME_KEY = "todayTheme";
+/** The Today view's theme, dark or light: the saved choice, else dark (the rest of the editor is dark until it follows). */
+function setTodayTheme(theme, save) {
+  const light = theme === "light", btn = $("tTheme");
+  $("tview").dataset.theme = light ? "light" : "dark";
+  btn.setAttribute("aria-label", light ? "Switch to dark theme" : "Switch to light theme");
+  btn.title = btn.getAttribute("aria-label");
+  if (save) { try { localStorage.setItem(TODAY_THEME_KEY, light ? "light" : "dark"); } catch { /* a private window keeps nothing: the choice lasts until the page closes */ } }
 }
 
 function bindTodayView() {
   $("vToday").onclick = () => setView("today");
   $("tSync").onclick = syncToday;
+  setTodayTheme((() => { try { return localStorage.getItem(TODAY_THEME_KEY); } catch { return null; } })(), false);
+  $("tTheme").onclick = () => setTodayTheme($("tview").dataset.theme === "light" ? "dark" : "light", true);
   $("tProfile").onchange = (e) => { Object.assign(T, { profile: e.target.value, data: null, loaded: false, error: "", activitiesAt: 0 }); guard(loadToday)(); };
   // A page left open is looked at again later: the numbers have moved on, perhaps the date too.
   document.addEventListener("visibilitychange", () => { if (!document.hidden && document.body.dataset.view === "today" && Date.now() - T.shownAt > TODAY_RELOAD_MS) guard(loadToday)(); });

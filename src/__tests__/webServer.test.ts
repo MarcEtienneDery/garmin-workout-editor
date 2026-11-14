@@ -401,6 +401,22 @@ describe("web plan editor", () => {
     });
   });
 
+  describe("the Today view's fonts", () => {
+    it("serves every font the page asks for from /fonts/, as woff2, without a login, and nothing outside the public folder", async () => {
+      const page = await (await fetch(`${base}/`)).text();
+      const urls = [...page.matchAll(/url\((\/fonts\/[^)]+\.woff2)\)/g)].map((m) => m[1]);
+      expect(urls.length).toBeGreaterThanOrEqual(7); // Fira Sans in four weights, Fira Code in three
+      for (const url of urls) {
+        const res = await fetch(`${base}${url}`);
+        expect(res.status).toBe(200);
+        expect(res.headers.get("content-type")).toBe("font/woff2");
+        expect((await res.arrayBuffer()).byteLength).toBeGreaterThan(1000);
+      }
+      expect((await fetch(`${base}/fonts/..%2F..%2F..%2Fpackage.json`)).status).toBe(404); // out of the public folder
+      expect((await fetch(`${base}/fonts/missing.woff2`)).status).toBe(404);
+    });
+  });
+
   describe("map library", () => {
     it("serves Leaflet from node_modules, with its stylesheet and images, without a login", async () => {
       for (const [file, type] of [["leaflet.js", /javascript/], ["leaflet.css", /css/], ["images/marker-icon.png", /image\/png/]] as const) {
@@ -681,6 +697,16 @@ describe("web plan editor", () => {
         for (let back = 0; back <= sinceMonday() + 1; back++) store().wellness.put("MED", dayOf(back), "summary", summaryResponse()); // moderate 20 + vigorous 10 a day, and the Sunday before
         const week = (await call("GET", "/api/today")).json.week;
         expect(week).toEqual({ start: dayOf(sinceMonday()), minutes: 40 * (sinceMonday() + 1), daysStored: sinceMonday() + 1, days: sinceMonday() + 1 });
+      });
+
+      it("sends the last seven days for the small trend lines, today last, with null for a day that is not stored", async () => {
+        addProfile("MED");
+        store().wellness.put("MED", today(), "summary", summaryResponse());
+        const trend = (await call("GET", "/api/today")).json.trend;
+        expect(trend).toHaveLength(7);
+        expect(trend[6].day).toBe(today());
+        expect(trend[6].minutes).toBe(40); // moderate 20 + vigorous 10, twice
+        expect(trend[5]).toEqual({ day: dayOf(1), steps: null, minutes: null, bodyBatteryWake: null, sleepSeconds: null });
       });
 
       it("lists the workouts the profile's plans put on today and the next 7 days, once each, and marks today's done by the activity that started from it", async () => {
