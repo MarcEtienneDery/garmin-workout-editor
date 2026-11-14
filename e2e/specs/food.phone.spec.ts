@@ -499,3 +499,26 @@ test.describe("the new look on a phone", () => {
     }
   });
 });
+
+test.describe("the charts on a phone", () => {
+  test("their text is readable as shown, no scale label is cut off, and they are one over another", async ({ alice }) => {
+    await openFood(alice);
+    const charts = await alice.evaluate(() =>
+      [...document.querySelectorAll<SVGSVGElement>("#fbody .rcsvg")].map((svg) => {
+        const box = svg.getBoundingClientRect(), scale = box.width / svg.viewBox.baseVal.width;
+        const labels = [...svg.querySelectorAll<SVGTextElement>(".rc-tick, .rc-x")];
+        return { left: Math.round(box.left), minFontPx: Math.min(...labels.map((l) => parseFloat(getComputedStyle(l).fontSize) * scale)), cutOff: labels.filter((l) => { const r = l.getBoundingClientRect(); return r.left < box.left - 0.5 || r.right > box.right + 0.5; }).length };
+      }),
+    );
+    expect(charts.length).toBeGreaterThanOrEqual(2);
+    for (const c of charts) { expect(c.minFontPx).toBeGreaterThanOrEqual(9); expect(c.cutOff).toBe(0); }
+    expect(new Set(charts.map((c) => c.left)).size).toBe(1);
+  });
+
+  test("the breakdown and the trends come after the meals, in one column", async ({ alice }) => {
+    await openFood(alice);
+    const tops = await alice.evaluate(() => ["#fbody .fsum", "#fbody .fmeal:last-of-type", "#fbody .fside .fcard", "#fbody .rcharts .rc", "#fbody .rtable"].map((s) => Math.round(document.querySelector(s)!.getBoundingClientRect().top)));
+    expect(tops).toEqual([...tops].sort((a, b) => a - b));
+    await expect.poll(() => stickingOut(alice)).toEqual([]);
+  });
+});

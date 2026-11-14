@@ -8,7 +8,7 @@
 
   const RM = root.RecoveryModel;
   const { make, html } = root.ActivityCharts;
-  const W = 600, H = 124, LEFT = 40, RIGHT = 8, TOP = 8, BOTTOM = 18;
+  const DEFAULT_W = 600, DEFAULT_H = 124, DEFAULT_LEFT = 40, RIGHT = 8, TOP = 8, BOTTOM = 18;
 
   /** A path through the points, broken wherever a day has no value (`connect`: joined across them, for what is measured now and then). */
   function pathOf(points, connect = false) {
@@ -25,8 +25,13 @@
   /** Decimals for the tick labels: enough that neighbouring ticks do not read the same. */
   const tickDigits = (ticks) => { const step = ticks.length > 1 ? ticks[1] - ticks[0] : 1; return step < 0.1 ? 2 : step < 1 ? 1 : 0; };
 
-  /** One chart. Returns the element and a function that puts its cursor on a day (null: back to the picked day). */
-  function chart(days, spec, { selected, onHover, onPick }) {
+  /**
+   * One chart. Returns the element and a function that puts its cursor on a day (null: back to the picked day). `width` and `height` are the
+   * size of its drawing in its own units (a view that draws it narrower or taller than the Recovery view's 600 by 124 says so, which keeps its
+   * text at a readable size) and `left` the room for the scale's labels; a spec's `ticks` is how many grid lines it aims for.
+   */
+  function chart(days, spec, { selected, onHover, onPick, width = DEFAULT_W, height = DEFAULT_H, left = DEFAULT_LEFT }) {
+    const W = width, H = height, LEFT = left; // `left` is room for the labels of the scale
     const card = html("div", "rc"), head = html("div", "rch"), readout = html("span", "rcr");
     head.append(html("b", "", spec.title + (spec.unit ? ` (${spec.unit})` : "")), readout);
     card.append(head);
@@ -50,7 +55,7 @@
     if (goal !== null) include = include.concat([goal]);
     if (goals) include = include.concat(goals);
 
-    const sc = RM.scale(values, { min: spec.min, max: spec.max, include });
+    const sc = RM.scale(values, { min: spec.min, max: spec.max, include, count: spec.ticks });
     if (!sc || !values.some((v) => v !== null)) {
       card.append(html("div", "rcnone", "No data in this range."));
       return { el: card, setCursor() {} };
@@ -145,12 +150,12 @@
   }
 
   /** The charts of a view for the days (oldest first); `selected` is the day picked, onPick(day) is called on a click. */
-  function trends(days, specs, { selected, onPick }) {
+  function trends(days, specs, { selected, onPick, width, height, left }) {
     const box = html("div", "rcharts");
     const cards = [];
     const hover = (i) => cards.forEach((c) => c.setCursor(i));
     for (const spec of specs) {
-      const c = chart(days, spec, { selected, onHover: hover, onPick });
+      const c = chart(days, spec, { selected, onHover: hover, onPick, width, height, left });
       cards.push(c);
       box.append(c.el);
     }

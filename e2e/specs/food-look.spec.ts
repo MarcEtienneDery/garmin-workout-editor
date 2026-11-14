@@ -143,3 +143,80 @@ test.describe("the controls", () => {
     await openView(alice, "today");
   });
 });
+
+/** The text of the charts as it is shown: its size in px (the drawing is scaled to the card), and whether each label is wholly inside its drawing. */
+const chartText = (page: Page) =>
+  page.evaluate(() =>
+    [...document.querySelectorAll<SVGSVGElement>("#fbody .rcsvg")].map((svg) => {
+      const box = svg.getBoundingClientRect(), scale = box.width / svg.viewBox.baseVal.width;
+      const labels = [...svg.querySelectorAll<SVGTextElement>(".rc-tick, .rc-x")];
+      return {
+        width: Math.round(box.width),
+        minFontPx: Math.min(...labels.map((l) => parseFloat(getComputedStyle(l).fontSize) * scale)),
+        cutOff: labels.filter((l) => { const r = l.getBoundingClientRect(); return r.left < box.left - 0.5 || r.right > box.right + 0.5; }).length,
+        ticks: [...svg.querySelectorAll(".rc-tick")].map((l) => l.textContent ?? ""),
+      };
+    }),
+  );
+
+test.describe("the disposition of the Food view", () => {
+  test("on a wide screen the day is the left column and the breakdown and the trends are the right one, level with the summary", async ({ alice }) => {
+    await alice.setViewportSize({ width: 1360, height: 860 });
+    await openFood(alice);
+    const at = (selector: string) => alice.locator(selector).first().evaluate((el) => { const r = el.getBoundingClientRect(); return { left: r.left, right: r.right, top: r.top, bottom: r.bottom }; });
+    const [main, side, summary, breakdown, chart] = [await at(".fmain"), await at(".fside"), await at("#fbody .fsum"), await at("#fbody .fside .fcard"), await at("#fbody .rcharts .rc")];
+    expect(main.right).toBeLessThanOrEqual(side.left);
+    expect(summary.left).toBeGreaterThanOrEqual(main.left - 1);
+    expect(Math.abs(summary.top - breakdown.top)).toBeLessThan(8);
+    expect(chart.left).toBeGreaterThanOrEqual(side.left - 1);
+    expect(chart.right).toBeLessThanOrEqual(side.right + 1);
+    const table = await at("#fbody .rtable");
+    expect(table.top).toBeGreaterThan(Math.max(main.bottom, side.bottom) - 1); // the table runs under both
+  });
+
+  test("below 1100 px it is one column again, in the order of the page: the meals, then the breakdown, then the trends", async ({ alice }) => {
+    await alice.setViewportSize({ width: 1000, height: 800 });
+    await openFood(alice);
+    const tops = await alice.evaluate(() => ["#fbody .fsum", "#fbody .fmeal:last-of-type", "#fbody .fside .fcard", "#fbody .rcharts .rc", "#fbody .rtable"].map((s) => Math.round(document.querySelector(s)!.getBoundingClientRect().top)));
+    expect(tops).toEqual([...tops].sort((a, b) => a - b));
+    const left = await alice.evaluate(() => ["#fbody .fsum", "#fbody .fside .fcard"].map((s) => Math.round(document.querySelector(s)!.getBoundingClientRect().left)));
+    expect(new Set(left).size).toBe(1);
+  });
+
+  test("the charts are drawn for the room they get: their text is readable as shown and none of it is cut off", async ({ alice }) => {
+    for (const width of [1360, 1000]) {
+      await alice.setViewportSize({ width, height: 860 });
+      await openFood(alice);
+      const charts = await chartText(alice);
+      expect(charts.length).toBeGreaterThanOrEqual(2);
+      for (const c of charts) {
+        expect(c.minFontPx, `${width}px: text size`).toBeGreaterThanOrEqual(9.5);
+        expect(c.cutOff, `${width}px: labels cut off`).toBe(0);
+      }
+    }
+  });
+
+  test("the calorie scale stops where the data does: not a full step above the highest line", async ({ alice }) => {
+    await alice.setViewportSize({ width: 1360, height: 860 });
+    await openFood(alice);
+    const [eaten] = await chartText(alice);
+    const top = Math.max(...eaten.ticks.map((t) => Number(t.replace(/,/g, ""))));
+    expect(top).toBeLessThanOrEqual(3500);
+  });
+
+  test("two charts sit side by side when the page is one column and there is room, and one over another in the right column", async ({ alice }) => {
+    await alice.setViewportSize({ width: 1000, height: 800 });
+    await openFood(alice);
+    const lefts = await alice.locator("#fbody .rcharts .rc").evaluateAll((els) => els.map((el) => Math.round(el.getBoundingClientRect().left)));
+    expect(new Set(lefts).size).toBe(2);
+    await alice.setViewportSize({ width: 1360, height: 860 });
+    const wide = await alice.locator("#fbody .rcharts .rc").evaluateAll((els) => els.map((el) => Math.round(el.getBoundingClientRect().left)));
+    expect(new Set(wide).size).toBe(1);
+  });
+
+  test("the Recovery view's charts keep their own size", async ({ alice }) => {
+    await openView(alice, "recovery");
+    await expect(alice.locator("#rbody .rcsvg").first()).toBeVisible();
+    expect(await alice.locator("#rbody .rcsvg").first().getAttribute("viewBox")).toBe("0 0 600 124");
+  });
+});

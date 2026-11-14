@@ -1173,6 +1173,27 @@
   #fbody > h3, .fth h3 { display:flex; align-items:center; gap:14px; color:var(--fg); }
   #fbody > h3::after, .fth h3::after { content:""; flex:1; height:1px; background:var(--t-line2); }
   .fth h3 { flex:1; min-width:0; }
+  /* disposition: on a wide screen the day (what was eaten, quick add, the meals) is the left column, what to learn from it (the breakdown and the trends) the right one, and the table of every day runs under both */
+  #fbody { max-width:1280px; }
+  .fgrid { display:grid; grid-template-columns:minmax(0,1.45fr) minmax(0,1fr); gap:0 20px; align-items:start; }
+  .fcol { min-width:0; }
+  .fside > h3:first-child { position:absolute; width:1px; height:1px; margin:0; overflow:hidden; clip-path:inset(50%); } /* for a screen reader: the card says what it is */
+  /* the trend charts: taller, one over another, with text that can be read */
+  #fview .rcharts { grid-template-columns:repeat(auto-fit, minmax(340px, 1fr)); gap:14px; } /* one over another in the right column, two side by side when the page is one column */
+  #fview .rc { padding:16px 18px 12px; }
+  #fview .rch { flex-wrap:wrap; gap:2px 12px; margin-bottom:6px; }
+  #fview .rch b { font-size:14px; font-weight:700; }
+  #fview .rcr { font:500 12px "Fira Code",ui-monospace,monospace; color:var(--dim); white-space:normal; text-align:right; }
+  #fview .rc-tick, #fview .rc-x { font:500 12px "Fira Code",ui-monospace,monospace; }
+  #fview .rc-sel { fill:color-mix(in srgb, var(--accent) 14%, transparent); }
+  #fview .rc-cursor { stroke:var(--dim); }
+  #fview .rc-bar { rx:2.5px; }
+  #fview .rc-ref { stroke:var(--t-teal); stroke-width:1.6; stroke-dasharray:none; } /* what was burned is a solid line, the goal stays dashed: the two cross */
+  #fview .rc-goal { stroke-width:1.5; opacity:.85; }
+  #fview .rcl { gap:4px 16px; margin-top:8px; font-size:12px; }
+  #fview .rck i.sw-ref { border-top:2px solid var(--t-teal); }
+  @media (max-width:1100px) { .fgrid { grid-template-columns:minmax(0,1fr); } }
+  @media (max-width:700px) { #fview .rc-tick, #fview .rc-x { font-size:13px; } #fview .rc { padding:14px 14px 10px; } #fview .rcr { text-align:left; } }
   @media (max-width:900px) { #fbar { padding:12px 12px 4px; gap:6px; } .fdaypick { padding:0 12px; font-size:14px; } #fdock { padding:8px 12px calc(8px + env(safe-area-inset-bottom)); } }
   @media (max-width:700px) { #fview .fea button, #fview .fea select { min-height:40px; } #fview .fglance { gap:16px; } #fview .fring { width:120px; height:120px; } #fview .fmeal { padding:2px 14px 4px; } #fview .fsum, #fview .fcard { padding:16px; } }
   @media (prefers-reduced-motion:reduce) { :is(#fview, #fsheet) *, :is(#fview, #fsheet) *::before { transition:none !important; animation:none !important; } }
@@ -5091,23 +5112,28 @@ function renderFood() {
   if (F.error && !d) { box.append(mk("div", "msg err", F.error)); return; }
   if (!d || !d.profile) { box.append(mk("div", "empty", "No Garmin profile is configured.")); return; }
 
+  // The day (what was eaten, quick add, the meals) is the left column and what to learn from it (the breakdown, the trends) the right one on a wide
+  // screen; on a phone they follow each other. The table of every day runs under both.
+  const main = mk("div", "fcol fmain"), side = mk("div", "fcol fside"), grid = mk("div", "fgrid");
   // a past day can be logged again today, all of it, a meal or a food at a time
   if (d.date < d.today && d.day.entries) {
     const bar = mk("div", "fday"), ids = d.day.meals.flatMap((m) => m.entries.map((e) => e.id));
     bar.append(mk("span", "", `${RM.dayLabel(d.date)}: ${NM.foods(d.day.entries)}`), copyButton(ids, NM.foods, "Copy the day to today"));
-    box.append(bar);
+    main.append(bar);
   }
-  box.append(foodSummary(d));
+  main.append(foodSummary(d));
   const quick = foodQuick(d);
-  if (quick) box.append(quick);
-  for (const block of d.day.meals) box.append(foodMeal(block));
+  if (quick) main.append(quick);
+  for (const block of d.day.meals) main.append(foodMeal(block));
 
-  box.append(mk("h3", "", "Breakdown"), foodBreakdown(d));
+  side.append(mk("h3", "", "Breakdown"), foodBreakdown(d));
   const trends = mk("div", "fth");
   trends.append(mk("h3", "", "Trends"), foodRangeSelect());
-  box.append(trends);
-  if (d.average) box.append(mk("div", "fnote", NM.averageNote(d.average)));
-  box.append(TrendCharts.trends(NM.chartDays(d.days), NM.charts(d), { selected: d.date, onPick: pickFoodDay }));
+  side.append(trends);
+  if (d.average) side.append(mk("div", "fnote", NM.averageNote(d.average)));
+  side.append(TrendCharts.trends(NM.chartDays(d.days), NM.charts(d), { selected: d.date, onPick: pickFoodDay, width: 480, height: 168, left: 46 }));
+  grid.append(main, side);
+  box.append(grid);
   box.append(mk("h3", "", "Every day"));
   box.append(metricsTable(d.days, NM.groupsFor(d), NM.cell, d.date, pickFoodDay));
   box.append(aboutFoot("food", "Calories and macros are estimates. A day with nothing logged is unknown, not zero. A nutrient counts only the foods that state it: “≥” means some do not. Search and barcode foods come from Open Food Facts, made by its users: check the package when it matters. " + aiWho(d.ai) + (NM.hasBurn(d) ? " Burned is the watch's count: today's is so far. The food log stays here; Garmin cannot store it." : " The food log stays here.")));

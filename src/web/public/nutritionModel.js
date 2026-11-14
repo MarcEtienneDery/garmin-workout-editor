@@ -141,15 +141,15 @@
     const kcalGoal = follows ? { goal: { label: `Goal ${num(goals.kcal)} kcal + ${num(goals.kcalBurnPct)} % of active`, values: (d) => d.kcalGoal } } : against("kcal", "kcal");
     return [
       {
-        id: "eaten", title: "Calories eaten", unit: "kcal", kind: "bars", min: 0, value: (d) => d.kcal, ...(burn ? { ref: { label: "Burned by Garmin", value: (d) => d.burnedKcal } } : {}), ...kcalGoal,
+        id: "eaten", title: "Calories eaten", unit: "kcal", kind: "bars", min: 0, ticks: 6, value: (d) => d.kcal, ...(burn ? { ref: { label: "Burned by Garmin", value: (d) => d.burnedKcal } } : {}), ...kcalGoal,
         read: (d) => (valid(d.kcal) ? `${num(d.kcal)} kcal${burn && valid(d.burnedKcal) ? ` · burned ${num(d.burnedKcal)}` : ""}${follows && valid(d.kcalGoal) ? ` · goal ${num(d.kcalGoal)}` : ""}` : "not logged"),
       },
       {
-        id: "macros", title: "Macros", unit: "g", kind: "stack", min: 0, scaleBy: 1,
+        id: "macros", title: "Macros", unit: "g", kind: "stack", min: 0, ticks: 4, scaleBy: 1,
         parts: [{ key: "proteinG", label: "Protein", cls: "protein" }, { key: "carbsG", label: "Carbs", cls: "carbs" }, { key: "fatG", label: "Fat", cls: "fat" }],
         read: (d) => (valid(d.kcal) ? macros(d) : "not logged"),
       },
-      ...(valid(goals.proteinG) ? [{ id: "protein", title: "Protein", unit: "g", kind: "bars", min: 0, value: (d) => d.proteinG, color: () => "protein", ...against("proteinG", "g"), read: (d) => (valid(d.proteinG) ? `${grams(d.proteinG)} · ${num((d.proteinG / goals.proteinG) * 100)} % of the goal` : "not logged") }] : []),
+      ...(valid(goals.proteinG) ? [{ id: "protein", title: "Protein", unit: "g", kind: "bars", min: 0, ticks: 4, value: (d) => d.proteinG, color: () => "protein", ...against("proteinG", "g"), read: (d) => (valid(d.proteinG) ? `${grams(d.proteinG)} · ${num((d.proteinG / goals.proteinG) * 100)} % of the goal` : "not logged") }] : []),
     ];
   }
 
