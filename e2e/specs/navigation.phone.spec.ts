@@ -95,6 +95,16 @@ test.describe("the strip of views", () => {
     for (const h of heights) expect(h).toBeLessThanOrEqual(44);
   });
 
+  test("shows each view as a pill, its icon beside its name, with the open one marked", async ({ alice }) => {
+    await openView(alice, "plans");
+    const pills = await alice.locator("#views button:visible").evaluateAll((els) =>
+      els.map((el) => { const svg = el.querySelector("svg")!.getBoundingClientRect(), name = el.querySelector("span")!.getBoundingClientRect(); return { icon: svg.width, beside: svg.right <= name.left + 1, pressed: el.getAttribute("aria-pressed") }; }),
+    );
+    expect(pills.length).toBeGreaterThanOrEqual(6);
+    for (const p of pills) { expect(p.icon).toBeGreaterThanOrEqual(18); expect(p.beside).toBe(true); }
+    expect(pills.filter((p) => p.pressed === "true")).toHaveLength(1);
+  });
+
   test("the browser's Back button returns to the view before on a phone", async ({ alice }) => {
     await openView(alice, "today");
     await alice.locator("#vCalendar").tap();
