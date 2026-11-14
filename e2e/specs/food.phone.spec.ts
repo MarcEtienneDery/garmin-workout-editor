@@ -472,3 +472,30 @@ test.describe("the page on a phone", () => {
     expect(w.scroll).toBeLessThanOrEqual(w.client);
   });
 });
+
+test.describe("the new look on a phone", () => {
+  test("the day's bar fits the width with its theme button, and every control is at least 44 px, in both themes", async ({ alice }) => {
+    await openFood(alice);
+    for (const theme of ["dark", "light"]) {
+      if (theme === "light") await alice.locator("#fTheme").tap();
+      await expect(alice.locator("body")).toHaveAttribute("data-theme", theme);
+      const small = await alice.evaluate(() =>
+        [...document.querySelectorAll<HTMLElement>("#fbar button, #fbar .fdaypick, #fdock button")].filter((el) => el.offsetParent !== null).map((el) => [el.id || el.className, Math.round(el.getBoundingClientRect().height)] as const).filter(([, h]) => h < 44),
+      );
+      expect(small, `${theme}: controls under 44 px`).toEqual([]);
+      await expect.poll(() => stickingOut(alice)).toEqual([]);
+    }
+  });
+
+  test("the sheet in the light theme fits the screen, and its way-in tabs are tappable", async ({ alice }) => {
+    await openFood(alice);
+    await alice.locator("#fTheme").tap();
+    await alice.locator("#fdSearch").tap();
+    await expect(sheet(alice)).toBeVisible();
+    await expect.poll(() => stickingOut(alice)).toEqual([]);
+    for (const name of ["Search", "AI", "By hand"] as const) {
+      const box = await sheetTab(alice, name).boundingBox();
+      expect(box!.height).toBeGreaterThanOrEqual(44);
+    }
+  });
+});

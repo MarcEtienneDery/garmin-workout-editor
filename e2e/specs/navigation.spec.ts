@@ -153,7 +153,7 @@ test.describe("the rail", () => {
     const bg = () => alice.locator("header").evaluate((el) => getComputedStyle(el).backgroundColor);
     const dark = await bg();
     await alice.locator("#tTheme").click();
-    await expect(alice.locator("body")).toHaveAttribute("data-today-theme", "light");
+    await expect(alice.locator("body")).toHaveAttribute("data-theme", "light");
     const light = await bg();
     expect(light).not.toBe(dark);
     await alice.locator("#vCalendar").click();

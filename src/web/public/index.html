@@ -383,8 +383,8 @@
   @font-face { font-family:"Fira Code"; font-weight:400; font-display:swap; src:url(/fonts/fira-code-latin-400-normal.woff2) format("woff2"); }
   @font-face { font-family:"Fira Code"; font-weight:500; font-display:swap; src:url(/fonts/fira-code-latin-500-normal.woff2) format("woff2"); }
   @font-face { font-family:"Fira Code"; font-weight:600; font-display:swap; src:url(/fonts/fira-code-latin-600-normal.woff2) format("woff2"); }
-  #tview {
-    --bg:#0a0807; --panel:#15110e; --t-surface2:#1e1814; --line:rgba(255,236,214,.09); --t-line2:rgba(255,236,214,.18);
+  :is(#tview, #fview, #fsheet) {
+    --bg:#070504; --panel:#1b1612; --t-surface2:#262019; --line:rgba(255,236,214,.15); --t-line2:rgba(255,236,214,.26);
     --fg:#fbf3ea; --dim:#b3a698; --t-faint:#968a7c;
     --accent:#ff9f2e; --t-on-accent:#1a0d00; --t-ink:#ff9f2e;
     --t-sky:#7cc4ff; --t-teal:#2dd4bf; --t-sand:#e8d3a9; --t-rose:#fb7185;
@@ -393,8 +393,8 @@
     --t-track:rgba(255,236,214,.09); --t-tint:rgba(0,0,0,.2); --t-glow:rgba(255,159,46,.3); --t-hero-glow:rgba(255,159,46,.12); --t-ok-bg:rgba(74,222,128,.18); --t-pill:rgba(255,159,46,.16);
     background:var(--bg); color:var(--fg); font:400 15px/1.5 "Fira Sans",system-ui,sans-serif; color-scheme:dark;
   }
-  #tview[data-theme="light"] {
-    --bg:#f7f3ec; --panel:#ffffff; --t-surface2:#f2ece1; --line:rgba(40,24,8,.10); --t-line2:rgba(40,24,8,.22);
+  body[data-theme="light"] :is(#tview, #fview, #fsheet) {
+    --bg:#e9e1d3; --panel:#ffffff; --t-surface2:#f4eee3; --line:rgba(40,24,8,.15); --t-line2:rgba(40,24,8,.28);
     --fg:#1d1610; --dim:#5e5244; --t-faint:#766a5b;
     --accent:#d97706; --t-on-accent:#1a0d00; --t-ink:#a24a05;
     --t-sky:#2b7fd6; --t-teal:#0f9488; --t-sand:#a98122; --t-rose:#dc3f5b;
@@ -416,8 +416,8 @@
   #tview button:disabled { opacity:.55; cursor:default; }
   #tview button.primary { background:var(--accent); border-color:transparent; color:var(--t-on-accent); }
   #tview select { min-height:44px; padding:0 12px; background:var(--panel); color:var(--fg); border:1px solid var(--t-line2); border-radius:999px; font:inherit; }
-  #tTheme { width:44px; padding:0; display:inline-grid; place-items:center; } #tTheme svg { width:18px; height:18px; }
-  #tview[data-theme="light"] #tTheme .sun, #tview:not([data-theme="light"]) #tTheme .moon { display:none; }
+  .themebtn { width:44px; min-height:44px; padding:0; display:inline-grid; place-items:center; } .themebtn svg { width:18px; height:18px; }
+  body[data-theme="light"] .themebtn .sun, body:not([data-theme="light"]) .themebtn .moon { display:none; }
   #tNote { padding:0 clamp(16px,2.6vw,34px); }
   #tscroll { background:var(--bg); }
   #tbody { max-width:1280px; padding:10px clamp(16px,2.6vw,34px) 40px; }
@@ -1065,12 +1065,124 @@
     body.kbd #tabbar { display:none; }
   }
 
+  /* ── Food view, in the new look: the palette of Today (the variables on #fview and on the add sheet, so both themes), Fira type, rounded cards ──
+     Written over the rules above: the colours that were fixed greys read the variables now, and shapes are rounded. */
+  :where(#fview, #fsheet) button { background:var(--t-surface2); color:var(--fg); border-color:var(--t-line2); font-family:inherit; }
+  :where(#fview, #fsheet) button:hover:not(:disabled) { background:color-mix(in srgb, var(--fg) 8%, var(--t-surface2)); }
+  :is(#fview, #fsheet) button.primary { background:var(--accent); border-color:transparent; color:var(--t-on-accent); font-weight:700; }
+  :is(#fview, #fsheet) button.primary:hover:not(:disabled) { background:var(--accent); filter:brightness(1.08); }
+  :is(#fview, #fsheet) :is(input, select, textarea) { background:var(--t-surface2); color:var(--fg); border:1px solid var(--t-line2); border-radius:10px; font-family:inherit; }
+  :is(#fview, #fsheet) :is(input, select, textarea):focus-visible, :is(#fview, #fsheet) button:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+  #fsheet .fform input[readonly] { background:transparent; color:var(--dim); }
+  /* the bar: profile, the day (◀ a pill that opens the calendar ▶), Today, the theme */
+  #fbar { display:flex; align-items:center; justify-content:stretch; gap:8px; padding:18px clamp(16px,2.6vw,34px) 6px; background:transparent; border-bottom:0; }
+  #fbar #fProfile { flex:none; max-width:36%; margin-right:0; }
+  .fnav { flex:1 1 auto; min-width:0; display:flex; align-items:center; justify-content:center; gap:8px; }
+  #fview .themebtn { border-radius:50%; background:transparent; border:1px solid var(--t-line2); }
+  #fPrev, #fNext { width:44px; min-width:44px; height:44px; padding:0; border-radius:50%; background:var(--panel); border:1px solid var(--line); font-size:13px; }
+  #fPrev:disabled, #fNext:disabled { opacity:.4; }
+  #fToday { min-height:44px; padding:0 18px; border-radius:999px; font-weight:600; }
+  .fdaypick { flex:0 1 340px; min-height:44px; padding:0 18px; gap:8px; background:var(--panel); border:1px solid var(--line); border-radius:999px; font-size:15px; transition:border-color .18s; }
+  .fdaypick:hover { background:var(--panel); border-color:var(--t-line2); }
+  #fDayLabel b { font-weight:700; }
+  #fscroll { background:var(--bg); }
+  #fbody { max-width:1120px; padding:10px clamp(16px,2.6vw,34px) 48px; }
+  #fbody h3 { margin:28px 0 12px; font:500 11.5px "Fira Code",ui-monospace,monospace; letter-spacing:.14em; text-transform:uppercase; color:var(--dim); }
+  #fbody .empty, #fNote { color:var(--dim); } #fNote { padding:0 clamp(16px,2.6vw,34px); }
+  .fth h3 { margin-bottom:12px; }
+  /* the day at a glance */
+  #fview .fsum, #fview .fcard { margin-top:12px; padding:20px 22px; background:var(--panel); border:1px solid var(--line); border-radius:18px; }
+  #fview .fsum { padding:20px 22px 8px; }
+  #fview .fcard h4 { margin:0 0 12px; font:500 11px "Fira Code",ui-monospace,monospace; letter-spacing:.12em; text-transform:uppercase; color:var(--dim); }
+  #fview .fglance { gap:26px; }
+  #fview .fring { width:140px; height:140px; } #fview .fring circle { stroke-width:12; } #fview .fring .trk { stroke:var(--t-track); }
+  #fview .fctr b { font:600 28px "Fira Code",ui-monospace,monospace; letter-spacing:-.03em; } #fview .fctr small { font-size:12px; }
+  #fview .fmacs { gap:12px; }
+  #fview .fmr b { font-weight:600; } #fview .fmr .fv { font:500 13px "Fira Code",ui-monospace,monospace; }
+  #fview .fmeter { background:var(--t-track); border-radius:99px; } #fview .fmeter.empty { background:var(--t-track); }
+  #fview .fseg:first-of-type { border-radius:99px 0 0 99px; } #fview .fseg:last-of-type { border-radius:0 99px 99px 0; } #fview .fseg:only-of-type { border-radius:99px; }
+  #fview .fsumlines { margin-top:14px; padding-top:14px; border-top:1px solid var(--line); font-size:13px; } #fview .fsumlines .fhn { font:500 13px "Fira Code",ui-monospace,monospace; }
+  #fview .fgoalhint button { color:var(--t-ink); text-decoration:underline; }
+  :is(#fview, #fsheet) .protein { --c:var(--t-sky); } :is(#fview, #fsheet) .carbs { --c:var(--accent); } :is(#fview, #fsheet) .fat { --c:var(--t-rose); }
+  #fview :is(.rc-part, .sw-part).protein { fill:var(--t-sky); background:var(--t-sky); } #fview :is(.rc-part, .sw-part).carbs { fill:var(--accent); background:var(--accent); } #fview :is(.rc-part, .sw-part).fat { fill:var(--t-rose); background:var(--t-rose); }
+  #fview .rc-bar.protein { fill:var(--t-sky); }
+  #fview .fnuts { border-top-color:var(--line); } #fview .fnbrief .st-ok, #fview .st-ok .fmn, #fview .st-ok .fhn { color:var(--ok); }
+  /* the foods used lately */
+  #fbody .fqh { font:500 11px "Fira Code",ui-monospace,monospace; letter-spacing:.12em; }
+  #fbody .fqh select { color:var(--t-ink); font-family:"Fira Sans",system-ui,sans-serif; }
+  #fview .fqh .flink { color:var(--t-ink); font-family:"Fira Sans",system-ui,sans-serif; }
+  #fview .fchip { width:152px; padding:12px; border-radius:16px; transition:border-color .18s, transform .18s; } #fview .fchip:hover:not(:disabled) { border-color:var(--t-line2); background:var(--panel); }
+  #fview .fchip b { font-weight:600; } #fview .fchip small { font:500 12px "Fira Code",ui-monospace,monospace; }
+  #fview .fchip i { width:28px; height:28px; background:var(--accent); color:var(--t-on-accent); }
+  /* a meal and its foods */
+  #fview .fmeal { margin-top:12px; padding:4px 20px 6px; border-radius:18px; }
+  #fview .fmh { min-height:60px; }
+  #fview .fmt b { font-size:16px; font-weight:700; } #fview .fmk { font:600 15px "Fira Code",ui-monospace,monospace; }
+  #fview .fadd { width:40px; height:40px; background:var(--t-pill); border-color:color-mix(in srgb, var(--accent) 55%, transparent); color:var(--t-ink); font-size:20px; }
+  #fview .fadd:hover:not(:disabled) { background:color-mix(in srgb, var(--t-ink) 22%, transparent); }
+  #fview .fcopy { color:var(--t-ink); } #fview .fcopy:disabled { color:var(--ok); }
+  #fview .fday { border-radius:14px; border-left-color:var(--accent); background:var(--panel); }
+  #fview .fe { border-top-color:var(--line); } #fview .fe.editing { background:var(--t-surface2); }
+  #fview .fe .fk { font:500 13px "Fira Code",ui-monospace,monospace; }
+  #fview .fea button { min-height:36px; padding:2px 14px; border-radius:999px; }
+  #fview .fea button.danger { color:var(--err); } #fview .fea button.danger:hover:not(:disabled) { background:var(--err); border-color:var(--err); color:var(--bg); }
+  #fview .fmeal-row .fv { font:500 13px "Fira Code",ui-monospace,monospace; }
+  #fview .rtable { border-radius:14px; background:var(--panel); }
+  #fview table.rmetrics th, #fview table.rmetrics td { border-bottom-color:var(--line); }
+  #fview table.rmetrics tr.pick:hover td { background:var(--t-surface2); }
+  #fview table.rmetrics tr.sel td, #fview table.rmetrics tr.sel td.day { background:color-mix(in srgb, var(--accent) 18%, var(--panel)); }
+  #fview table.rmetrics tr.sel td.day { box-shadow:inset 3px 0 0 var(--accent); }
+  /* the trend charts: a card each, grid lines and bars read the palette */
+  #fview .rc { padding:14px 16px 10px; border-radius:18px; box-shadow:var(--card-shadow); }
+  #fview .rch b { font-size:13px; }
+  #fview .rc-grid { stroke:var(--line); }
+  /* the bar at the foot: search, the barcode, the AI */
+  #fdock { padding:10px clamp(12px,2.6vw,34px) calc(10px + env(safe-area-inset-bottom)); background:color-mix(in srgb, var(--bg) 92%, transparent); border-top:1px solid var(--line); backdrop-filter:blur(14px); }
+  #fdock .fdin { max-width:760px; gap:10px; }
+  #fdock .fdsearch { min-height:48px; border-radius:999px; background:var(--panel); border:1px solid var(--t-line2); color:var(--dim); font-size:15px; }
+  #fdock .fdsearch:hover:not(:disabled) { background:var(--panel); border-color:var(--dim); }
+  #fdock .fdbtn { width:48px; height:48px; background:var(--panel); border:1px solid var(--t-line2); color:var(--fg); }
+  #fdock .fdbtn.ai { background:var(--t-pill); border-color:var(--accent); color:var(--t-ink); }
+  body[data-view="food"] #toast { bottom:calc(84px + env(safe-area-inset-bottom)); }
+  /* the add sheet */
+  #fsheet { background:var(--bg); color:var(--fg); border-left:1px solid var(--line); }
+  #fsheet .fsh-head b { font-size:17px; font-weight:700; }
+  #fsheet .fsh-x { background:none; border:0; }
+  #fsheet .fsh-meals { gap:6px; padding:0 14px; }
+  #fsheet .fsh-meals button, #fsheet .fsh-meals button:first-child, #fsheet .fsh-meals button:last-child { border-radius:999px; }
+  #fsheet .fsh-meals button + button { margin-left:0; }
+  #fsheet .fsh-meals button[aria-pressed="true"] { background:var(--accent); border-color:var(--accent); color:var(--t-on-accent); }
+  #fsheet .fsh-tabs { gap:8px; padding:12px 14px; border-bottom-color:var(--line); }
+  #fsheet .fsh-tabs button { min-height:58px; background:var(--panel); border:1px solid var(--line); border-radius:14px; color:var(--dim); }
+  #fsheet .fsh-tabs button[aria-selected="true"] { background:var(--t-pill); border-color:var(--accent); color:var(--t-ink); }
+  #fsheet .fsh-body { padding:14px 14px 18px; }
+  #fsheet .fsh-foot { background:var(--panel); border-top-color:var(--line); padding-left:14px; padding-right:14px; }
+  #fsheet .fsh-foot .primary { min-height:44px; border-radius:999px; }
+  #fsheet .fr { padding:10px 14px; background:var(--panel); border:1px solid var(--line); border-radius:14px; }
+  #fsheet .fr:hover:not(:disabled) { background:var(--t-surface2); }
+  #fsheet .frec .fplus { background:var(--accent); color:var(--t-on-accent); }
+  #fsheet .fpick { background:var(--panel); border-left-color:var(--accent); border-radius:14px; }
+  #fsheet .frepl { background:var(--t-surface2); border-left-color:var(--accent); }
+  #fsheet :is(.flink, .fall) { color:var(--t-ink); background:none; border:0; } #fsheet .fcredit a { color:var(--t-ink); }
+  #fsheet .faibig { border-radius:14px; }
+  #fsheet .fsh-note { color:var(--warn); }
+  /* cards stand off the page: a firmer edge (the variables above), a lit top edge and a soft shadow; a section's label carries a rule */
+  :is(#tview, #fview) { --card-shadow:0 1px 0 rgba(255,255,255,.06) inset, 0 14px 30px -18px rgba(0,0,0,.95); }
+  body[data-theme="light"] :is(#tview, #fview) { --card-shadow:0 1px 0 #fff inset, 0 1px 2px rgba(60,40,10,.10), 0 14px 28px -18px rgba(60,40,10,.40); }
+  :is(#tview, #fview) :is(.tcard, .tfig, .fsum, .fcard, .fmeal, .fchip, .fday) { box-shadow:var(--card-shadow); }
+  #fbody > h3, .fth h3 { display:flex; align-items:center; gap:14px; color:var(--fg); }
+  #fbody > h3::after, .fth h3::after { content:""; flex:1; height:1px; background:var(--t-line2); }
+  .fth h3 { flex:1; min-width:0; }
+  @media (max-width:900px) { #fbar { padding:12px 12px 4px; gap:6px; } .fdaypick { padding:0 12px; font-size:14px; } #fdock { padding:8px 12px calc(8px + env(safe-area-inset-bottom)); } }
+  @media (max-width:700px) { #fview .fea button, #fview .fea select { min-height:40px; } #fview .fglance { gap:16px; } #fview .fring { width:120px; height:120px; } #fview .fmeal { padding:2px 14px 4px; } #fview .fsum, #fview .fcard { padding:16px; } }
+  @media (prefers-reduced-motion:reduce) { :is(#fview, #fsheet) *, :is(#fview, #fsheet) *::before { transition:none !important; animation:none !important; } }
+
   /* ── Navigation: a rail down the left side on a desktop, a strip of pills along the top on a phone ──
      The header keeps its parts (name, the views, the sync pill, the account); only where they sit and how they look changes.
-     On the Today view in its light theme the rail turns light with it (body[data-today-theme]). */
+     On a restyled view (Today, Food) in its light theme the rail turns light with it (body[data-theme]). */
   header { --nav-bg:#100c09; --nav-line:rgba(255,236,214,.10); --nav-fg:#fbf3ea; --nav-dim:#b3a698; --nav-active:#1e1814; --nav-hover:#17120e; --nav-accent:#ff9f2e; --nav-on-accent:#1a0d00;
     background:var(--nav-bg); border-color:var(--nav-line); color:var(--nav-fg); font-family:"Fira Sans",system-ui,sans-serif; }
-  body[data-view="today"][data-today-theme="light"] header { --nav-bg:#fbf8f2; --nav-line:rgba(40,24,8,.12); --nav-fg:#1d1610; --nav-dim:#5e5244; --nav-active:#efe7d8; --nav-hover:#f5efe4; --nav-accent:#d97706; --nav-on-accent:#1a0d00; }
+  body:is([data-view="today"], [data-view="food"])[data-theme="light"] header { --nav-bg:#fbf8f2; --nav-line:rgba(40,24,8,.12); --nav-fg:#1d1610; --nav-dim:#5e5244; --nav-active:#efe7d8; --nav-hover:#f5efe4; --nav-accent:#d97706; --nav-on-accent:#1a0d00; }
   header h1 { margin:0; font-size:0; line-height:0; }
   .brandmark { display:grid; place-items:center; width:38px; height:38px; border-radius:11px; background:var(--nav-accent); color:var(--nav-on-accent); }
   .brandmark svg { width:21px; height:21px; }
@@ -1353,27 +1465,30 @@
 <section id="fview">
   <div class="wbar" id="fbar">
     <select id="fProfile" title="Profile" hidden></select>
-    <button id="fPrev" title="Previous day" aria-label="Previous day">◀</button>
-    <div class="fdaypick"><span id="fDayLabel"></span><input type="date" id="fDate" aria-label="Day"></div>
-    <button id="fNext" title="Next day" aria-label="Next day">▶</button>
-    <button id="fToday" hidden>Today</button>
+    <div class="fnav">
+      <button id="fPrev" title="Previous day" aria-label="Previous day">◀</button>
+      <div class="fdaypick"><span id="fDayLabel"></span><input type="date" id="fDate" aria-label="Day"></div>
+      <button id="fNext" title="Next day" aria-label="Next day">▶</button>
+      <button id="fToday" hidden>Today</button>
+    </div>
+    <button id="fTheme" class="themebtn" type="button" aria-label="Switch to light theme" title="Switch to light theme"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><g class="sun"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></g><path class="moon" d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z"/></svg></button>
   </div>
   <div id="fNote" class="empty" hidden></div>
   <div id="fscroll"><div id="fbody"><div class="empty">Loading…</div></div></div>
   <div id="fdock" hidden><div class="fdin">
     <button id="fdSearch" class="fdsearch" type="button" title="Search a food, or tap one you logged lately"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="2.2"/><path d="M15.5 15.5 21 21" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg><span id="fdLabel">Add food</span></button>
     <button id="fdScan" class="fdbtn" type="button" title="Scan a barcode" aria-label="Scan a barcode"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7V4h3M18 4h3v3M21 17v3h-3M6 20H3v-3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M7 8v8M10 8v8M12.5 8v8M15 8v8M17 8v8" stroke="currentColor" stroke-width="1.6"/></svg></button>
-    <button id="fdAi" class="fdbtn ai" type="button" title="Describe or photograph what you ate" aria-label="Describe or photograph what you ate">✨</button>
+    <button id="fdAi" class="fdbtn ai" type="button" title="Describe or photograph what you ate" aria-label="Describe or photograph what you ate"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round" stroke-linecap="round"><path d="M10 4l1.9 5.1L17 11l-5.1 1.9L10 18l-1.9-5.1L3 11l5.1-1.9L10 4zM18.5 14l.9 2.4 2.4.9-2.4.9-.9 2.4-.9-2.4-2.4-.9 2.4-.9.9-2.4z"/></svg></button>
   </div></div>
 </section>
-<section id="tview" data-theme="dark">
+<section id="tview">
   <div class="wbar" id="tbar">
     <select id="tProfile" title="Garmin profile" hidden></select>
     <b id="tTitle"></b>
     <span id="tAsOf"></span>
     <span class="tspacer"></span>
     <button id="tSync" title="Fetch the latest from Garmin" hidden>↻ Sync</button>
-    <button id="tTheme" type="button" aria-label="Switch to light theme" title="Switch to light theme"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><g class="sun"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></g><path class="moon" d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z"/></svg></button>
+    <button id="tTheme" class="themebtn" type="button" aria-label="Switch to light theme" title="Switch to light theme"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><g class="sun"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></g><path class="moon" d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z"/></svg></button>
   </div>
   <div id="tNote" class="empty" hidden></div>
   <div id="tscroll"><div id="tbody"><div class="empty">Loading…</div></div></div>
@@ -5129,11 +5244,12 @@ function foodEntry(e, meal) {
 // tap logs one; a name or a barcode typed asks Open Food Facts), Scan (the camera reads a barcode), AI (words and photos estimated) and By hand.
 // It stays open after a food is added, for the next one, its foot saying where the meal and the day stand. A food logged is changed here too.
 
-const SHEET_MODES = [["find", "search", "Search"], ["scan", "scan", "Scan"], ["ai", "✨", "AI"], ["hand", "hand", "By hand"]];
+const SHEET_MODES = [["find", "search", "Search"], ["scan", "scan", "Scan"], ["ai", "ai", "AI"], ["hand", "hand", "By hand"]];
 /** The icons of the ways to add (the bar at the bottom has the same search and barcode), drawn in the text's colour. */
 const FOOD_ICONS = {
   search: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="2.2"/><path d="M15.5 15.5 21 21" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>',
   scan: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7V4h3M18 4h3v3M21 17v3h-3M6 20H3v-3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M7 8v8M10 8v8M12.5 8v8M15 8v8M17 8v8" stroke="currentColor" stroke-width="1.6"/></svg>',
+  ai: '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round" stroke-linecap="round"><path d="M10 4l1.9 5.1L17 11l-5.1 1.9L10 18l-1.9-5.1L3 11l5.1-1.9L10 4zM18.5 14l.9 2.4 2.4.9-2.4.9-.9 2.4-.9-2.4-2.4-.9 2.4-.9.9-2.4z"/></svg>',
   hand: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16v4z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="m13 7 4 4" stroke="currentColor" stroke-width="2"/></svg>',
 };
 
@@ -6060,22 +6176,32 @@ function todayAhead(ahead) {
   return card;
 }
 
-const TODAY_THEME_KEY = "todayTheme";
-/** The Today view's theme, dark or light: the saved choice, else dark (the rest of the editor is dark until it follows). */
-function setTodayTheme(theme, save) {
-  const light = theme === "light", btn = $("tTheme");
-  $("tview").dataset.theme = light ? "light" : "dark";
-  document.body.dataset.todayTheme = light ? "light" : "dark"; // the rail beside it follows on this view
-  btn.setAttribute("aria-label", light ? "Switch to dark theme" : "Switch to light theme");
-  btn.title = btn.getAttribute("aria-label");
-  if (save) { try { localStorage.setItem(TODAY_THEME_KEY, light ? "light" : "dark"); } catch { /* a private window keeps nothing: the choice lasts until the page closes */ } }
+const THEME_KEY = "viewTheme", OLD_THEME_KEY = "todayTheme";
+/**
+ * The theme of the views that have been restyled (Today and Food), dark or light, set on <body> so the rail beside them follows: the saved
+ * choice, else dark (the rest of the editor is dark until it follows). One choice for all of them, with a button in each view's bar.
+ */
+function setTheme(theme, save) {
+  const light = theme === "light";
+  document.body.dataset.theme = light ? "light" : "dark";
+  for (const btn of document.querySelectorAll(".themebtn")) {
+    btn.setAttribute("aria-label", light ? "Switch to dark theme" : "Switch to light theme");
+    btn.title = btn.getAttribute("aria-label");
+  }
+  if (save) { try { localStorage.setItem(THEME_KEY, light ? "light" : "dark"); } catch { /* a private window keeps nothing: the choice lasts until the page closes */ } }
+}
+
+function bindTheme() {
+  let saved = null;
+  try { saved = localStorage.getItem(THEME_KEY) || localStorage.getItem(OLD_THEME_KEY); } catch { /* no storage: dark */ }
+  setTheme(saved, false);
+  for (const btn of document.querySelectorAll(".themebtn")) btn.onclick = () => setTheme(document.body.dataset.theme === "light" ? "dark" : "light", true);
 }
 
 function bindTodayView() {
   $("vToday").onclick = () => setView("today");
   $("tSync").onclick = syncToday;
-  setTodayTheme((() => { try { return localStorage.getItem(TODAY_THEME_KEY); } catch { return null; } })(), false);
-  $("tTheme").onclick = () => setTodayTheme($("tview").dataset.theme === "light" ? "dark" : "light", true);
+  bindTheme();
   $("tProfile").onchange = (e) => { Object.assign(T, { profile: e.target.value, data: null, loaded: false, error: "", activitiesAt: 0 }); guard(loadToday)(); };
   // A page left open is looked at again later: the numbers have moved on, perhaps the date too.
   document.addEventListener("visibilitychange", () => { if (!document.hidden && document.body.dataset.view === "today" && Date.now() - T.shownAt > TODAY_RELOAD_MS) guard(loadToday)(); });

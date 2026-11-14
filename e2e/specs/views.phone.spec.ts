@@ -233,7 +233,7 @@ test.describe("Today on a phone", () => {
     await openView(alice, "today");
     await expect(alice.locator("#tbody")).not.toContainText("Loading…");
     await alice.locator("#tTheme").tap();
-    await expect(alice.locator("#tview")).toHaveAttribute("data-theme", "light");
+    await expect(alice.locator("body")).toHaveAttribute("data-theme", "light");
     await expect.poll(() => stickingOut(alice)).toEqual([]);
   });
 

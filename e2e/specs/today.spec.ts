@@ -227,7 +227,7 @@ test.describe("alice's day", () => {
 
   test("the theme button switches the view between dark and light, says what it will do, and the choice is kept", async ({ alice }) => {
     await openToday(alice);
-    const view = alice.locator("#tview"), button = alice.locator("#tTheme");
+    const view = alice.locator("body"), button = alice.locator("#tTheme");
     await expect(view).toHaveAttribute("data-theme", "dark");
     await expect(button).toHaveAttribute("aria-label", "Switch to light theme");
     const darkBg = await alice.locator("#tscroll").evaluate((el) => getComputedStyle(el).backgroundColor);
