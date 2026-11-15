@@ -36,6 +36,7 @@ async function oracle(admin: APIRequestContext, query = ""): Promise<Weight> {
 async function stub(page: Page, edit: (json: any) => void): Promise<void> {
   await page.route(/\/api\/weight\?/, async (route) => {
     const response = await route.fetch(), json = await response.json();
+    json.goalKg = null; // the goal the one test that sets one for real has on alice is not part of the states made here
     edit(json);
     await route.fulfill({ response, json });
   });
@@ -230,6 +231,7 @@ test.describe("where the weight is going", () => {
   });
 
   test("without a goal, offers to set one and draws none", async ({ alice }) => {
+    await stub(alice, () => undefined);
     await openWeight(alice);
     await expect(hero(alice).getByRole("button", { name: "Set a goal weight" })).toBeVisible();
     await expect(hero(alice).locator(".bchip")).toHaveCount(0);
@@ -238,6 +240,7 @@ test.describe("where the weight is going", () => {
 });
 
 test.describe("the goal, typed in the unit", () => {
+  test.describe.configure({ mode: "serial" }); // both set a goal on alice, and take it off again
   test("is set on the Weight tab in pounds, kept in kilograms, changed and removed", async ({ alice, admin }) => {
     test.setTimeout(90_000);
     const set = async (kg: number | null) => expect((await admin.post("/api/settings/goals", { data: { profile: "alice", action: "save", goals: { weightKg: kg } } })).ok()).toBeTruthy();
@@ -410,11 +413,11 @@ test.describe("the Data part", () => {
     await tab(alice, "Data").click();
     const [every, raw] = [alice.locator("#bbody details.racc").nth(0), alice.locator("#bbody details.racc").nth(1)];
     await expect(every).toHaveAttribute("open", "");
-    await expect(every.locator("summary b")).toHaveText("Every stored number");
-    await expect(every.locator("summary span")).toHaveText("45 days");
+    await expect(every.locator(":scope > summary b")).toHaveText("Every stored number");
+    await expect(every.locator(":scope > summary span")).toHaveText("45 days");
     await expect(alice.locator("#bbody table.rmetrics tbody tr")).toHaveCount(45);
     await expect(raw).not.toHaveAttribute("open", "");
-    await expect(raw.locator("summary b")).toHaveText(`Garmin's responses for ${label(today())}`);
+    await expect(raw.locator(":scope > summary b")).toHaveText(`Garmin's responses for ${label(today())}`);
   });
 
   test("a row picks the day and stays in the Data, where its responses are", async ({ alice }) => {
@@ -422,7 +425,7 @@ test.describe("the Data part", () => {
     await tab(alice, "Data").click();
     await alice.locator("#bbody table.rmetrics tbody tr", { has: alice.locator(`td.day:text-is("${label(daysAgo(3))}")`) }).click();
     await expect(tab(alice, "Data")).toHaveAttribute("aria-pressed", "true");
-    await expect(alice.locator("#bbody details.racc").nth(1).locator("summary b")).toHaveText(`Garmin's responses for ${label(daysAgo(3))}`);
+    await expect(alice.locator("#bbody details.racc").nth(1).locator(":scope > summary b")).toHaveText(`Garmin's responses for ${label(daysAgo(3))}`);
     await expect(alice.locator("#bbody tr.sel td.day")).toHaveText(label(daysAgo(3)));
   });
 });
@@ -511,21 +514,23 @@ test.describe("the look, in both themes", () => {
       await expect(alice.locator("body")).toHaveAttribute("data-theme", theme);
       await alice.evaluate(() => Promise.all(document.getAnimations().map((a) => a.finished.catch(() => null)))); // the colours have settled
       const low = await alice.evaluate(() => {
-        const lum = (css: string) => {
-          const unit = css.startsWith("color(srgb") ? 1 : 255;
-          const [r, g, b] = (css.match(/[\d.]+/g) ?? []).slice(0, 3).map(Number).map((v) => { const c = v / unit; return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; });
-          return 0.2126 * r + 0.7152 * g + 0.0722 * b;
-        };
-        const bgOf = (el: Element): string => {
-          for (let p: Element | null = el; p; p = p.parentElement) { const c = getComputedStyle(p).backgroundColor; if (!/rgba?\(\s*0,\s*0,\s*0,\s*0\s*\)|transparent/.test(c)) return c; }
-          return "rgb(0,0,0)";
+        // any CSS colour as red, green, blue and alpha, as the page's own canvas reads it (a mix of colours comes as color(srgb ...))
+        const px = (css: string): number[] => { const c = document.createElement("canvas"); c.width = c.height = 1; const g = c.getContext("2d")!; g.fillStyle = css; g.fillRect(0, 0, 1, 1); const d = g.getImageData(0, 0, 1, 1).data; return [d[0], d[1], d[2], d[3] / 255]; };
+        const lum = ([r, g, b]: number[]) => { const [x, y, z] = [r, g, b].map((v) => { const c = v / 255; return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; }); return 0.2126 * x + 0.7152 * y + 0.0722 * z; };
+        /** What the text sits on: the backgrounds from the page down to it, each blended over the one under it. */
+        const bgOf = (el: Element): number[] => {
+          const chain: number[][] = [];
+          for (let p: Element | null = el; p; p = p.parentElement) chain.push(px(getComputedStyle(p).backgroundColor));
+          let [r, g, b] = [0, 0, 0];
+          for (const [cr, cg, cb, a] of chain.reverse()) { r = cr * a + r * (1 - a); g = cg * a + g * (1 - a); b = cb * a + b * (1 - a); }
+          return [r, g, b];
         };
         const out: string[] = [];
         for (const sel of ["#bbody .bhero h2", "#bbody .bchip", "#bbody .brate", "#bbody .bsum", "#bbody .bkv small", "#bbody .bkv span", "#bbody .bnote", "#bstrip .fwd small", "#bstrip .fwk", "#bstrip .bdv", "#bbody .bburn .bbig b", "#bbody .bwk .lab small", "#bbody .bwk .avg", "#bTabs button", "#bUnits button", "#bbody .rch b", "#bbody .rcr", "#bbody .rcl"]) {
           for (const el of document.querySelectorAll(sel)) {
-            const [a, b] = [lum(getComputedStyle(el).color), lum(bgOf(el))];
+            const [a, b] = [lum(px(getComputedStyle(el).color)), lum(bgOf(el))];
             const ratio = (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
-            if (ratio < 4.5) out.push(`${sel} ${getComputedStyle(el).color} on ${bgOf(el)}: ${ratio.toFixed(2)}`);
+            if (ratio < 4.5) out.push(`${sel} ${getComputedStyle(el).color} on ${bgOf(el).map(Math.round)}: ${ratio.toFixed(2)}`);
           }
         }
         return out;

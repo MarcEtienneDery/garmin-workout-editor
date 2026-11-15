@@ -7670,7 +7670,7 @@ function goalsCard(d) {
       }
       return settingsPost("goals", { action: "save", goals: r.goals }, "Goals saved.");
     }, { cls: "primary", key: "goals:save" }),
-    sbtn("Clear all goals", () => settingsPost("goals", { action: "clear" }, "Goals cleared."), { key: "goals:clear", disabled: !count })
+    sbtn("Clear all goals", () => settingsPost("goals", { action: "clear" }, "Goals cleared."), { key: "goals:clear", disabled: !Object.keys(g.values).length }) // a weight goal alone is cleared here too
   );
   card.append(buttons);
   const msg = messageLine("goals"); if (msg) card.append(msg);
