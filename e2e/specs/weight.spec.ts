@@ -1,8 +1,8 @@
 /**
- * The Weight view: the last weigh-in, the trend, the count of weigh-ins and the calories burned, in pounds or kilograms (the
- * unit is remembered), the range, the charts, the table of every stored number, and Garmin's responses of the picked day. Reads
+ * The Weight view: the last weigh-in, the verdict of the line, the count of weigh-ins and the calories burned, in pounds or kilograms (the
+ * unit is remembered), the range, the chart, the table of every stored number (in the Data part), and Garmin's responses of the picked day. Reads
  * alice's data (read only) and checks the page against GET /api/weight (the oracle, read as admin). A fresh profile and the admin's
- * view of one cover the states alice does not have.
+ * view of one cover the states alice does not have. How it looks (the week, the parts, the goal, the states a stub makes) is weight-look.spec.ts.
  */
 import type { APIRequestContext, Locator, Page } from "@playwright/test";
 import { test, expect, openView, loginAs, ADMIN_TOKEN, daysAgo } from "../support/fixtures";
@@ -65,8 +65,16 @@ const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
 
 // ── the page ─────────────────────────────────────────────────────────────────────────────────────
 
-const figure = (page: Page, name: string) => page.locator("#bbody .rfig", { has: page.locator("small", { hasText: name }) });
+/** One of the three figures under the verdict: "Last weigh-in", "From your line", "Weigh-ins". */
+const figure = (page: Page, name: string) => page.locator("#bbody .bhero .bkv > div", { has: page.locator("small", { hasText: name }) });
+const verdict = (page: Page) => page.locator("#bbody .bhero");
 const chart = (page: Page, title: string) => page.locator("#bbody .rc", { has: page.locator("b", { hasText: title }) });
+const part = (page: Page, name: "Weight" | "Body" | "Data") => page.locator("#bTabs").getByRole("button", { name, exact: true });
+/** Opens the Data part, where the table of every stored number and Garmin's responses are. */
+async function openData(page: Page) {
+  await part(page, "Data").click();
+  await expect(table(page)).toBeVisible();
+}
 const table = (page: Page) => page.locator("#bbody table.rmetrics");
 const rows = (page: Page) => table(page).locator("tbody tr");
 const rowOf = (page: Page, day: string) => rows(page).filter({ has: page.locator(`td.day:text-is("${label(day)}")`) });
@@ -90,7 +98,7 @@ function cellOf(t: { heads: string[]; rows: Map<string, string[]> }, day: string
   return cells![at] ?? "";
 }
 
-/** Points a fraction of the way across a chart: the plot area starts at 40 of 600 and ends at 592, so 0.075 is its first day, 0.98 its last. */
+/** Points a fraction of the way across a chart (the weight chart is drawn 1,160 wide on this screen, its plot from 54 to 1,152): 0.06 is its first day, 0.985 its last. */
 async function aim(c: Locator, fraction: number): Promise<{ x: number; y: number }> {
   const svg = c.locator("svg.rcsvg");
   await svg.scrollIntoViewIfNeeded();
@@ -107,12 +115,10 @@ async function click(page: Page, c: Locator, fraction: number) {
   await page.mouse.click(x, y);
 }
 
-const CHARTS_LB = ["Weight (lb)", "Body fat (%)", "Muscle mass (lb)", "Calories burned (kcal)"];
-
 /** Opens the view and waits for its first answer to be drawn: the unit and range controls do nothing before it, as the person would find them. */
 async function openWeight(page: Page) {
   await openView(page, "weight");
-  await expect(figure(page, "Trend")).toBeVisible();
+  await expect(verdict(page)).toBeVisible();
 }
 
 // ── alice: a weigh-in every third day, 45 days stored ─────────────────────────────────────────────
@@ -137,38 +143,39 @@ test.describe("Weight view, alice (45 days stored, a weigh-in every third day)",
     await expect(figure(alice, "Last weigh-in").locator("b")).toHaveText(weightIn(data.body.latest!.kg, "lb"));
   });
 
-  test("the last weigh-in tile shows the latest weight, its day and its body fat", async ({ alice, admin }) => {
+  test("the last weigh-in figure shows the latest weight and its day", async ({ alice, admin }) => {
     const { body } = await weight(admin);
     await openWeight(alice);
     const tile = figure(alice, "Last weigh-in");
     await expect(tile.locator("b")).toHaveText(weightIn(body.latest!.kg, "lb"));
-    await expect(tile.locator("span")).toHaveText(`${short(body.latest!.day)} · ${fmt(body.latest!.bodyFatPercent, 1)} % fat`);
+    await expect(tile.locator("span")).toHaveText(label(body.latest!.day));
   });
 
-  test("the trend tile says how fast the weight is moving, and the change over the days", async ({ alice, admin }) => {
+  test("the verdict says how fast the weight is moving, and the change over the days", async ({ alice, admin }) => {
     const { body } = await weight(admin);
     expect(body.direction).toBe("gaining");
     await openWeight(alice);
-    const tile = figure(alice, "Trend");
-    await expect(tile.locator("b")).toHaveText(`${changeIn(body.perWeekKg!, "lb")} / week`);
-    await expect(tile.locator("span")).toHaveText(`gaining · ${changeIn(body.changeKg!, "lb")} from ${short(body.first!.day)} to ${short(body.latest!.day)}`);
+    await expect(verdict(alice).locator("h2")).toContainText("Gaining");
+    await expect(verdict(alice).locator(".brate")).toHaveText(`${changeIn(body.perWeekKg!, "lb")} / week`);
+    const span = Math.round((Date.parse(body.latest!.day) - Date.parse(body.first!.day)) / 86_400_000);
+    await expect(verdict(alice).locator(".bsum")).toContainText(`${changeIn(body.changeKg!, "lb")} over the ${span} days between your first and last weigh-in`);
   });
 
-  test("the weigh-ins tile counts the weigh-ins of the days shown", async ({ alice, admin }) => {
+  test("the weigh-ins figure counts the weigh-ins of the days shown", async ({ alice, admin }) => {
     const { body, days } = await weight(admin);
     await openWeight(alice);
-    await expect(figure(alice, "Weigh-ins").locator("b")).toHaveText(String(body.weighIns));
-    await expect(figure(alice, "Weigh-ins").locator("span")).toHaveText(`in ${days.length} days`);
+    await expect(figure(alice, "Weigh-ins").locator("b")).toHaveText(`${body.weighIns} of 60 days`);
     expect(body.weighIns).toBe(days.filter((d) => d.weightKg !== null).length);
   });
 
-  test("the burned-a-day tile averages the full days, which leaves today out", async ({ alice, admin }) => {
+  test("the burned-a-day card averages the full days, which leaves today out", async ({ alice, admin }) => {
     const { today, days } = await weight(admin);
     const full = days.filter((d) => d.day < today && typeof d.totalKcal === "number");
     const active = full.map((d) => d.activeKcal).filter((v): v is number => typeof v === "number");
     await openWeight(alice);
-    await expect(figure(alice, "Burned a day").locator("b")).toHaveText(`${fmt(mean(full.map((d) => d.totalKcal!)))} kcal`);
-    await expect(figure(alice, "Burned a day").locator("span")).toHaveText(`${fmt(mean(active))} active · ${full.length} full days`);
+    await expect(alice.locator("#bbody .bburn .bbig b")).toHaveText(fmt(mean(full.map((d) => d.totalKcal!))));
+    await expect(alice.locator("#bbody .bburn .blegend")).toContainText(`Active ${fmt(mean(active))}`);
+    await expect(alice.locator("#bbody .bburn .bfoot")).toContainText(`${full.length} full days`);
   });
 
   test("the figures in kilograms are the same weights, to one decimal", async ({ alice, admin }) => {
@@ -177,9 +184,9 @@ test.describe("Weight view, alice (45 days stored, a weigh-in every third day)",
     await unitButton(alice, "kg").click();
     await expect(unitButton(alice, "kg")).toHaveAttribute("aria-pressed", "true");
     await expect(figure(alice, "Last weigh-in").locator("b")).toHaveText(weightIn(body.latest!.kg, "kg"));
-    await expect(figure(alice, "Trend").locator("b")).toHaveText(`${changeIn(body.perWeekKg!, "kg")} / week`);
-    await expect(figure(alice, "Trend").locator("span")).toHaveText(`gaining · ${changeIn(body.changeKg!, "kg")} from ${short(body.first!.day)} to ${short(body.latest!.day)}`);
-    await expect(chart(alice, "Weight").locator("b")).toHaveText("Weight (kg)");
+    await expect(verdict(alice).locator(".brate")).toHaveText(`${changeIn(body.perWeekKg!, "kg")} / week`);
+    await expect(verdict(alice).locator(".bsum")).toContainText(`${changeIn(body.changeKg!, "kg")} over the`);
+    await expect(chart(alice, "Weigh-ins and trend").locator("b").first()).toHaveText("Weigh-ins and trend (kg)");
   });
 
   test("switching back to pounds converts the figures again", async ({ alice, admin }) => {
@@ -189,7 +196,7 @@ test.describe("Weight view, alice (45 days stored, a weigh-in every third day)",
     await unitButton(alice, "lb").click();
     await expect(unitButton(alice, "lb")).toHaveAttribute("aria-pressed", "true");
     await expect(figure(alice, "Last weigh-in").locator("b")).toHaveText(weightIn(body.latest!.kg, "lb"));
-    await expect(chart(alice, "Weight").locator("b")).toHaveText("Weight (lb)");
+    await expect(chart(alice, "Weigh-ins and trend").locator("b").first()).toHaveText("Weigh-ins and trend (lb)");
   });
 
   test("the chosen unit is kept across a reload", async ({ alice, admin }) => {
@@ -198,7 +205,7 @@ test.describe("Weight view, alice (45 days stored, a weigh-in every third day)",
     await unitButton(alice, "kg").click();
     await expect(alice.evaluate(() => localStorage.getItem("weightUnit"))).resolves.toBe("kg");
     await alice.reload({ waitUntil: "domcontentloaded" });
-    await expect(alice.locator("#bbody .rfig").first()).toBeVisible();
+    await expect(verdict(alice)).toBeVisible();
     await expect(unitButton(alice, "kg")).toHaveAttribute("aria-pressed", "true");
     await expect(figure(alice, "Last weigh-in").locator("b")).toHaveText(weightIn(body.latest!.kg, "kg"));
     await alice.evaluate(() => localStorage.removeItem("weightUnit"));
@@ -208,7 +215,7 @@ test.describe("Weight view, alice (45 days stored, a weigh-in every third day)",
     await openWeight(alice);
     await alice.evaluate(() => localStorage.setItem("weightUnit", "stone"));
     await alice.reload({ waitUntil: "domcontentloaded" });
-    await expect(alice.locator("#bbody .rfig").first()).toBeVisible();
+    await expect(verdict(alice)).toBeVisible();
     await expect(unitButton(alice, "lb")).toHaveAttribute("aria-pressed", "true");
     await expect(unitButton(alice, "kg")).toHaveAttribute("aria-pressed", "false");
     await alice.evaluate(() => localStorage.removeItem("weightUnit"));
@@ -217,6 +224,7 @@ test.describe("Weight view, alice (45 days stored, a weigh-in every third day)",
   test("every weigh-in in the table is its kilograms in pounds, to one decimal", async ({ alice, admin }) => {
     const { days } = await weight(admin);
     await openWeight(alice);
+    await openData(alice);
     await expect(rows(alice)).toHaveCount(45);
     const t = await readTable(alice);
     for (const d of days.filter((x) => x.weightKg !== null)) {
@@ -231,62 +239,60 @@ test.describe("Weight view, alice (45 days stored, a weigh-in every third day)",
     const { days } = await weight(admin);
     await openWeight(alice);
     await unitButton(alice, "kg").click();
+    await openData(alice);
     const t = await readTable(alice);
     for (const d of days.filter((x) => x.weightKg !== null).slice(-4)) {
       expect.soft(cellOf(t, d.day, "Weight"), d.day).toBe(weightIn(d.weightKg, "kg"));
       expect.soft(cellOf(t, d.day, "Muscle"), d.day).toBe(weightIn(d.muscleKg, "kg"));
     }
+    await unitButton(alice, "lb").click();
   });
 
-  test("the range of 14 days has the weigh-ins of the last two weeks, and their own trend", async ({ alice, admin }) => {
+  test("the range of 14 days has the weigh-ins of the last two weeks, and their own line", async ({ alice, admin }) => {
     const data = await weight(admin, "days=14");
     await openWeight(alice);
     await alice.locator("#bRange").selectOption("14");
+    await expect(figure(alice, "Weigh-ins").locator("b")).toHaveText(`${data.body.weighIns} of 14 days`);
+    await expect(verdict(alice).locator(".brate")).toHaveText(`${changeIn(data.body.perWeekKg!, "lb")} / week`);
+    await expect(verdict(alice).locator(".bsum")).toContainText(`${changeIn(data.body.changeKg!, "lb")} over the`);
+    await expect(chart(alice, "Weigh-ins and trend").locator("circle.rc-dot")).toHaveCount(data.body.weighIns);
+    await openData(alice);
     await expect(rows(alice)).toHaveCount(14);
-    await expect(figure(alice, "Weigh-ins").locator("b")).toHaveText(String(data.body.weighIns));
-    await expect(figure(alice, "Weigh-ins").locator("span")).toHaveText("in 14 days");
-    await expect(figure(alice, "Trend").locator("b")).toHaveText(`${changeIn(data.body.perWeekKg!, "lb")} / week`);
-    await expect(figure(alice, "Trend").locator("span")).toHaveText(`gaining · ${changeIn(data.body.changeKg!, "lb")} from ${short(data.body.first!.day)} to ${short(data.body.latest!.day)}`);
-    await expect(chart(alice, "Weight").locator("circle.rc-dot")).toHaveCount(data.body.weighIns);
   });
 
   test("the range of 30 days has its weigh-ins and no more rows", async ({ alice, admin }) => {
     const data = await weight(admin, "days=30");
     await openWeight(alice);
     await alice.locator("#bRange").selectOption("30");
-    await expect(rows(alice)).toHaveCount(30);
-    await expect(figure(alice, "Weigh-ins").locator("b")).toHaveText(String(data.body.weighIns));
-    await expect(figure(alice, "Weigh-ins").locator("span")).toHaveText("in 30 days");
     await expect(alice.locator("#bRange")).toHaveValue("30");
+    await expect(figure(alice, "Weigh-ins").locator("b")).toHaveText(`${data.body.weighIns} of 30 days`);
+    await openData(alice);
+    await expect(rows(alice)).toHaveCount(30);
   });
 
   test("60 and 90 days both show the 45 days stored, with all 15 weigh-ins", async ({ alice }) => {
     await openWeight(alice);
     await expect(alice.locator("#bRange")).toHaveValue("60");
+    await expect(figure(alice, "Weigh-ins").locator("b")).toHaveText("15 of 60 days");
+    await openData(alice);
     await expect(rows(alice)).toHaveCount(45);
-    await expect(figure(alice, "Weigh-ins").locator("b")).toHaveText("15");
     await alice.locator("#bRange").selectOption("90");
     await expect(rows(alice)).toHaveCount(45);
-    await expect(figure(alice, "Weigh-ins").locator("b")).toHaveText("15");
-    await expect(alice.locator("#bbody h3").first()).toHaveText("Trends, 45 days");
+    await expect(alice.locator("#bbody details.racc summary span").first()).toHaveText("45 days");
+    await part(alice, "Weight").click();
+    await expect(figure(alice, "Weigh-ins").locator("b")).toHaveText("15 of 90 days");
   });
 
-  test("the weight chart has a point per weigh-in and the charts are drawn under their titles", async ({ alice }) => {
+  test("the weight chart has a point per weigh-in, and the body charts are drawn under their titles in the Body part", async ({ alice }) => {
     await openWeight(alice);
-    await expect(alice.locator("#bbody .rc .rch b")).toHaveText(CHARTS_LB);
-    await expect(chart(alice, "Weight").locator("circle.rc-dot")).toHaveCount(15);
-    await expect(chart(alice, "Weight").locator("path.rc-line")).toHaveCount(1);
+    await expect(alice.locator("#bbody .rc .rch b")).toHaveText(["Weigh-ins and trend (lb)"]);
+    await expect(chart(alice, "Weigh-ins and trend").locator("circle.rc-dot")).toHaveCount(15);
+    await expect(chart(alice, "Weigh-ins and trend").locator("path.rc-line")).toHaveCount(0); // the weigh-ins are not joined: the line is the fitted one
+    await expect(chart(alice, "Weigh-ins and trend").locator("path.rc-ref")).toHaveCount(1);
+    await part(alice, "Body").click();
+    await expect(alice.locator("#bbody .rc .rch b")).toHaveText(["Fat mass and lean mass, change since the first weigh-in (lb)", "Body fat (%)", "Muscle mass (lb)"]);
     await expect(chart(alice, "Body fat").locator("circle.rc-dot")).toHaveCount(15);
     await expect(chart(alice, "Muscle mass").locator("circle.rc-dot")).toHaveCount(15);
-  });
-
-  test("the calories chart stacks the resting and the active burn of each day", async ({ alice }) => {
-    await openWeight(alice);
-    const burn = chart(alice, "Calories burned");
-    await expect(burn.locator("rect.rc-part.bmr")).toHaveCount(45);
-    await expect(burn.locator("rect.rc-part.active")).toHaveCount(45);
-    await expect(burn.locator(".rcl")).toContainText("At rest");
-    await expect(burn.locator(".rcl")).toContainText("Active");
   });
 
   test("the table lists each day's weight, fat, muscle, BMI and calories, and a day without a weigh-in shows dashes", async ({ alice, admin }) => {
@@ -296,6 +302,7 @@ test.describe("Weight view, alice (45 days stored, a weigh-in every third day)",
     const withoutWeighIn = days[days.length - 2];
     expect(withoutWeighIn.weightKg).toBeNull();
     await openWeight(alice);
+    await openData(alice);
     await expect(rows(alice).first().locator("td.day")).toHaveText(label(today));
     const t = await readTable(alice);
     expect.soft(cellOf(t,today, "Weight")).toBe(weightIn(latest.weightKg, "lb"));
@@ -310,52 +317,59 @@ test.describe("Weight view, alice (45 days stored, a weigh-in every third day)",
     expect.soft(cellOf(t,withoutWeighIn.day, "All day")).toBe(`${fmt(withoutWeighIn.totalKcal)} kcal`);
   });
 
-  test("hovering the weight chart reads the weigh-in of that day, and a day without one reads a dash", async ({ alice, admin }) => {
-    const { days } = await weight(admin);
+  test("hovering the weight chart reads the weigh-in of that day and how far it is from the line, and a day without one says so", async ({ alice, admin }) => {
+    const { days, today } = await weight(admin);
     const last = days[days.length - 1];
     await openWeight(alice);
-    const w = chart(alice, "Weight");
-    await hover(alice, w, 0.98);
-    await expect(w.locator(".rcr")).toHaveText(`${label(last.day)}: ${weightIn(last.weightKg, "lb")} · ${fmt(last.bodyFatPercent, 1)} % fat`);
-    await hover(alice, w, 0.075);
-    await expect(w.locator(".rcr")).toHaveText(`${label(days[0].day)}: –`);
+    const w = chart(alice, "Weigh-ins and trend");
+    await hover(alice, w, 0.985);
+    await expect(w.locator(".rcr")).toHaveText(new RegExp(`^${label(last.day)}: ${weightIn(last.weightKg, "lb")} · [+${MINUS}]?\\d+\\.\\d lb from the line$`));
+    await hover(alice, w, 0.06); // the first day of the 60: 45 are stored
+    await expect(w.locator(".rcr")).toHaveText(`${label(daysAgo(59))}: no weigh-in`);
+    expect(today).toBe(last.day);
   });
 
   test("leaving the chart goes back to the picked day, the latest weigh-in", async ({ alice, admin }) => {
     const { days, body } = await weight(admin);
     await openWeight(alice);
-    const w = chart(alice, "Weight");
-    await hover(alice, w, 0.075);
+    const w = chart(alice, "Weigh-ins and trend");
+    await hover(alice, w, 0.06);
     await alice.mouse.move(0, 0);
-    await expect(w.locator(".rcr")).toHaveText(`${label(body.latest!.day)}: ${weightIn(days[days.length - 1].weightKg, "lb")} · ${fmt(days[days.length - 1].bodyFatPercent, 1)} % fat`);
+    await expect(w.locator(".rcr")).toHaveText(new RegExp(`^${label(body.latest!.day)}: ${weightIn(days[days.length - 1].weightKg, "lb")} · `));
   });
 
-  test("a click on a weigh-in day picks it, marks its row and lists its Garmin responses", async ({ alice, admin }) => {
+  test("a click on a weigh-in day in the table picks it, marks its row and lists its Garmin responses", async ({ alice, admin }) => {
     const day = daysAgo(3); // the seed weighs alice in every third day back from today: 82,000 g less 40 g a day
     const oracle = await admin.get(`/api/wellness/raw?profile=alice&date=${day}&kind=weight`);
     expect(oracle.ok()).toBeTruthy();
     const stored = (await oracle.json()) as { data: unknown };
     await openWeight(alice);
+    await openData(alice);
     await rowOf(alice, day).click();
-    await expect(alice.locator("#bbody h3", { hasText: "Garmin's responses for" })).toHaveText(`Garmin's responses for ${label(day)}`);
+    await expect(part(alice, "Data")).toHaveAttribute("aria-pressed", "true"); // the part stays: the responses are here
+    const raw = alice.locator("#bbody details.racc").nth(1);
+    await expect(raw.locator("summary b").first()).toHaveText(`Garmin's responses for ${label(day)}`);
     await expect(rowOf(alice, day)).toHaveClass(/\bsel\b/);
-    const weighIn = alice.locator("#bbody details.rraw").first();
+    await raw.locator("summary").first().click();
+    const weighIn = raw.locator("details.rraw").first();
     await expect(weighIn.locator("summary b")).toHaveText("Weigh-in");
     await weighIn.locator("summary").click();
     await expect(weighIn.locator("pre")).toContainText('"weight": 81880');
     expect(JSON.parse((await weighIn.locator("pre").textContent()) ?? "null")).toEqual(stored.data);
   });
 
-  test("a click on a chart picks that day too", async ({ alice, admin }) => {
-    const { days } = await weight(admin);
+  test("a click on a chart picks that day too", async ({ alice }) => {
     await openWeight(alice);
-    await click(alice, chart(alice, "Body fat"), 0.075);
-    await expect(alice.locator("#bbody tr.sel td.day")).toHaveText(label(days[0].day));
-    await expect(alice.locator("#bbody h3", { hasText: "Garmin's responses for" })).toHaveText(`Garmin's responses for ${label(days[0].day)}`);
+    await click(alice, chart(alice, "Weigh-ins and trend"), 0.06);
+    await expect(alice.locator("#bstrip button.fwd[aria-current]")).toHaveAttribute("data-day", daysAgo(59));
+    await expect(chart(alice, "Weigh-ins and trend").locator(".rcr")).toContainText(label(daysAgo(59)));
+    await openData(alice);
+    await expect(alice.locator("#bbody details.racc").nth(1).locator("summary b").first()).toHaveText(`Garmin's responses for ${label(daysAgo(59))}`);
   });
 
   test("a day without a weigh-in lists its weigh-in as not stored", async ({ alice }) => {
     await openWeight(alice);
+    await openData(alice);
     await rowOf(alice, daysAgo(1)).click(); // a weigh-in is stored every third day back from today: not yesterday
     await expect(alice.locator("#bbody details.rraw.none")).toHaveCount(1);
     await expect(alice.locator("#bbody details.rraw.none summary b")).toHaveText("Weigh-in");
@@ -381,28 +395,31 @@ test.describe("Weight view, alice (45 days stored, a weigh-in every third day)",
 
   test("the Sync button and the profile picker are hidden for a profile without a Garmin login", async ({ alice }) => {
     await openWeight(alice);
-    await expect(figure(alice, "Trend")).toBeVisible();
+    await expect(figure(alice, "From your line")).toBeVisible();
     await expect(alice.locator("#bSync")).toBeHidden();
     await expect(alice.locator("#bProfile")).toBeHidden();
   });
 
-  test("no NaN, undefined or null on the view, in either unit, over every range, or on a picked day", async ({ alice }) => {
+  test("no NaN, undefined or null on any part, in either unit, over every range, or on a picked day", async ({ alice }) => {
     await openWeight(alice);
     for (const unit of ["lb", "kg"] as const) {
       await unitButton(alice, unit).click();
       for (const range of ["14", "30", "60", "90"]) {
         await alice.locator("#bRange").selectOption(range);
-        await expect(figure(alice, "Trend")).toBeVisible();
-        for (const pick of [null, daysAgo(4), daysAgo(3)]) { // a day without a weigh-in, and one with
-          if (pick) await rowOf(alice, pick).click();
-          await expect(alice.locator("#bbody .rfig").first()).toBeVisible();
+        for (const name of ["Weight", "Body", "Data"] as const) {
+          await part(alice, name).click();
+          await expect(part(alice, name)).toHaveAttribute("aria-pressed", "true");
+          if (name === "Data") for (const pick of [daysAgo(4), daysAgo(3)]) await rowOf(alice, pick).click(); // a day without a weigh-in, and one with
+          await expect(alice.locator("#bbody").getByText("Loading…")).toHaveCount(0);
           const text = (await alice.locator("#bbody").textContent()) ?? "";
           const svg = await alice.locator("#bbody svg").evaluateAll((els) => els.map((e) => e.outerHTML).join(""));
-          expect(text, `${unit}, ${range} days, ${pick ?? "latest"}`).not.toMatch(/NaN|undefined|null|Infinity/);
-          expect(svg, `${unit}, ${range} days, ${pick ?? "latest"}`).not.toMatch(/NaN|undefined|Infinity/);
+          expect(text, `${unit}, ${range} days, ${name}`).not.toMatch(/NaN|undefined|null|Infinity/);
+          expect(svg, `${unit}, ${range} days, ${name}`).not.toMatch(/NaN|undefined|Infinity/);
         }
+        await part(alice, "Weight").click();
       }
     }
+    await alice.evaluate(() => localStorage.removeItem("weightUnit"));
   });
 });
 
@@ -428,10 +445,11 @@ test.describe("Weight view, as the admin", () => {
   test("a profile with no weigh-ins says so, and offers no Sync", async ({ page, profile }) => {
     await loginAs(page, "admin", ADMIN_TOKEN);
     await page.goto("/#weight");
-    await expect(figure(page, "Trend")).toBeVisible();
+    await expect(figure(page, "From your line")).toBeVisible();
     await expect(page.locator("#bProfile")).toBeVisible();
     await page.locator("#bProfile").selectOption(profile.name);
-    await expect(page.locator("#bbody")).toHaveText("No weigh-ins are stored yet. Connect a Renpho scale or Garmin in Settings to get them.");
+    await expect(page.locator("#bbody .bempty h2")).toHaveText("No weigh-ins are stored yet");
+    await expect(page.locator("#bbody .bempty p")).toHaveText("Connect a Renpho scale or Garmin in Settings to get them.");
     await expect(page.locator("#bSync")).toBeHidden();
     await expect(page.locator("#bNote")).toBeHidden();
   });
@@ -440,11 +458,12 @@ test.describe("Weight view, as the admin", () => {
     await loginAs(page, "admin", ADMIN_TOKEN);
     await page.goto("/#weight");
     await page.locator("#bProfile").selectOption("alice");
+    await openData(page);
     await expect(rows(page)).toHaveCount(45);
     await page.locator("#bProfile").selectOption(profile.name);
     await expect(page.locator("#bbody")).toContainText("No weigh-ins are stored yet");
     await page.locator("#bProfile").selectOption("alice");
-    await expect(rows(page)).toHaveCount(45);
+    await expect(rows(page)).toHaveCount(45); // the part she was in
   });
 });
 
@@ -466,15 +485,19 @@ test.describe("Weight view, when the server fails", () => {
       failing ? route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ error: "Weights are unavailable" }) }) : route.continue(),
     );
     await openWeight(alice);
+    await openData(alice);
     await expect(rows(alice)).toHaveCount(45);
     failing = true;
     await alice.locator("#bRange").selectOption("14");
     await expect(alice.locator("#bNote")).toHaveText("Weights are unavailable");
     await expect(alice.locator("#bNote")).toHaveClass(/err/);
-    await expect(figure(alice, "Weigh-ins").locator("b")).toHaveText("15");
     await expect(rows(alice)).toHaveCount(45);
+    await part(alice, "Weight").click();
+    await expect(figure(alice, "Weigh-ins").locator("b")).toHaveText("15 of 60 days"); // what was drawn stays, and says the days it is of
     failing = false;
     await alice.locator("#bRange").selectOption("14");
+    await expect(figure(alice, "Weigh-ins").locator("b")).not.toHaveText("15 of 60 days");
+    await openData(alice);
     await expect(rows(alice)).toHaveCount(14);
     await expect(alice.locator("#bNote")).not.toHaveClass(/err/);
     await expect(alice.locator("#bNote")).toContainText(`${sync.days} days stored`);

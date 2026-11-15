@@ -5258,7 +5258,7 @@ function setCooldown(V, sync) {
 
 async function loadWellness(V) {
   await garminReady;
-  const run = ++V.run, sel = $(V.p + "Profile");
+  const run = ++V.run, sel = $(V.p + "Profile"), asked = V.range;
   fillProfiles(sel);
   sel.hidden = !(garmin.user && garmin.user.admin && garmin.profiles.length > 1);
   V.profile = V.profile || garmin.defaultProfile || garmin.profiles[0] || null;
@@ -5274,7 +5274,7 @@ async function loadWellness(V) {
     return;
   }
   if (run !== V.run) return;
-  V.data = d; V.error = ""; V.loaded = true;
+  V.data = d; V.shownRange = asked; V.error = ""; V.loaded = true; // shownRange: how many days the data is of (a failed refresh leaves the old data on screen with a new range asked for)
   setCooldown(V, d.sync);
   V.render();
   if (d.sync && d.sync.syncing) pollWellness(V);
@@ -5301,7 +5301,8 @@ async function syncWellness(V, quiet = false) {
 }
 
 async function reloadWellness(V) {
-  try { V.data = await api("GET", `${V.path}?${wellnessQuery(V)}`); setCooldown(V, V.data.sync); } catch { /* what is shown stays */ }
+  const asked = V.range;
+  try { V.data = await api("GET", `${V.path}?${wellnessQuery(V)}`); V.shownRange = asked; setCooldown(V, V.data.sync); } catch { /* what is shown stays */ }
 }
 
 /** While the background fill runs, look again every few seconds so the days appear as they are stored. */
@@ -5639,7 +5640,7 @@ function renderWeightWeek(d, show) {
   const bar = $("bweek"), strip = $("bstrip");
   bar.hidden = !show;
   strip.replaceChildren();
-  $("bPrev").disabled = !WtM.canStep(d, B.range, -1); $("bNext").disabled = !WtM.canStep(d, B.range, 1);
+  $("bPrev").disabled = !WtM.canStep(d, weightRange(), -1); $("bNext").disabled = !WtM.canStep(d, weightRange(), 1);
   if (!show) return;
   for (const w of WtM.weekStrip(d, B.unit)) {
     const b = mk("button", `fwd bwd bd-${w.state}` + (w.selected ? " sel" : "") + (w.today ? " today" : ""));
@@ -5764,13 +5765,16 @@ function weightIntake(c) {
   return card;
 }
 
+/** The days the Weight view's data is of: what the range select says once the answer is in. */
+const weightRange = () => B.shownRange || B.range;
+
 /** The pictures take the room they get: wide on a desktop, narrower on a phone, so the text stays readable. */
 const weightWide = () => innerWidth > 1100;
 
 /** The weigh-ins as dots, the line through them, the usual swing around it and the goal, over every day of the range. */
 function weightChart(d) {
   const wide = weightWide(), spec = { ...WtM.weightSpec(d, B.unit), width: wide ? 1160 : 400, height: wide ? 260 : 270, left: 54 };
-  const charts = TrendCharts.trends(WtM.fullDays(d, B.range), [spec], { selected: d.date, onPick: goWeightDay });
+  const charts = TrendCharts.trends(WtM.fullDays(d, weightRange()), [spec], { selected: d.date, onPick: goWeightDay });
   const note = mk("div", "bnote");
   note.append(mk("b", "", "Read the line, not the day. "), "One weigh-in moves a kilo or more with water and meals, so the rate comes from a straight line fitted through every weigh-in in the range.");
   charts.classList.add("bchart");
@@ -5782,7 +5786,7 @@ function weightChart(d) {
 function weightWeeks(d) {
   const card = mk("section", "bcard bweeks");
   card.append(mk("h2", "eyebrow", "By week · average and change from the week before"));
-  for (const r of WtM.byWeek(d, B.unit, B.range)) {
+  for (const r of WtM.byWeek(d, B.unit, weightRange())) {
     const row = mk("div", "bwk"), lab = mk("div", "lab", r.label), dl = mk("div", "dl"), bar = mk("i", r.fill < 0 ? "neg" : "pos");
     lab.append(mk("small", "", r.note));
     dl.setAttribute("role", "img"); dl.setAttribute("aria-label", r.deltaKg === null ? "no change to show" : `${r.change} from the week before`);
@@ -5819,7 +5823,7 @@ function weightSnapshot(rows) {
 
 /** The Weight part: the verdict, calories, the chart, the weeks and what the scale measured. */
 function weightMain(box, d) {
-  const h = WtM.hero(d, B.unit, B.range), grid = mk("div", "bgrid"), side = mk("div", "bcol"), burned = WtM.burned(d), intake = WtM.intakeCard(d, B.unit), snap = WtM.bodySnapshot(d, B.unit);
+  const h = WtM.hero(d, B.unit, weightRange()), grid = mk("div", "bgrid"), side = mk("div", "bcol"), burned = WtM.burned(d), intake = WtM.intakeCard(d, B.unit), snap = WtM.bodySnapshot(d, B.unit);
   if (burned) side.append(weightBurned(burned));
   if (intake) side.append(weightIntake(intake));
   grid.append(weightHero(h), side);
@@ -5853,7 +5857,7 @@ function weightBodyTab(box, d) {
   }
   const specs = WtM.bodySpecs(d, B.unit).map((s) => ({ ...s, width: s.id === "compare" ? (wide ? 1160 : 400) : wide ? 560 : 400, height: s.id === "compare" ? (wide ? 240 : 260) : wide ? 200 : 240, left: 54 }));
   const charts = mk("div", "bcharts");
-  charts.append(TrendCharts.trends(WtM.fullDays(d, B.range), specs, { selected: d.date, onPick: goWeightDay }));
+  charts.append(TrendCharts.trends(WtM.fullDays(d, weightRange()), specs, { selected: d.date, onPick: goWeightDay }));
   box.append(charts);
 }
 
@@ -5919,7 +5923,7 @@ function renderWeight() {
   if (!tabs.includes(B.tab)) B.tab = "weight";
   for (const [id, tab] of WEIGHT_TABS) { $(id).hidden = !tabs.includes(tab); $(id).setAttribute("aria-pressed", String(B.tab === tab)); }
   $("brangebar").hidden = false;
-  $("bRangeTitle").textContent = `${{ weight: "Trend", body: "Body", data: "Stored" }[B.tab]} · last ${B.range} days`;
+  $("bRangeTitle").textContent = `${{ weight: "Trend", body: "Body", data: "Stored" }[B.tab]} · last ${weightRange()} days`;
   if (!weighed) weightEmpty(box, false);
   else {
     $("bTabs").hidden = false; renderWeightWeek(d, true);

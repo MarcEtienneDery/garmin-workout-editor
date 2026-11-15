@@ -273,7 +273,7 @@ test.describe("Weight in mock mode", () => {
   test("Weight opens with its empty state, and no Sync button", async ({ gme }) => {
     const errors = watchErrors(gme);
     await openView(gme, "weight");
-    await expect(gme.locator("#bbody")).toContainText("No weigh-ins are stored yet.");
+    await expect(gme.locator("#bbody")).toContainText("No weigh-ins are stored yet");
     await expect(gme.locator("#bSync")).toBeHidden();
     await expect(gme.locator("#bbody button")).toHaveCount(0);
     expect(errors).toEqual([]);
@@ -295,20 +295,21 @@ test.describe("Weight in mock mode", () => {
     for (const value of ["14", "90", "30", "60"]) {
       await gme.locator("#bRange").selectOption(value);
       await expect(gme.locator("#bRange")).toHaveValue(value);
-      await expect(gme.locator("#bbody")).toContainText("No weigh-ins are stored yet.");
+      await expect(gme.locator("#bbody")).toContainText("No weigh-ins are stored yet");
     }
   });
 
   test("opening Weight asks Garmin for nothing", async ({ gme }) => {
     const calls = trackApi(gme);
     await openView(gme, "weight");
-    await expect(gme.locator("#bbody")).toContainText("No weigh-ins are stored yet.");
+    await expect(gme.locator("#bbody")).toContainText("No weigh-ins are stored yet");
     expect(calls.filter((c) => GARMIN_CALLS.test(c))).toEqual([]);
   });
 
   test("the empty state does not tell a Garmin profile to connect Garmin: mock mode is why nothing is fetched", async ({ gme }) => {
     await openView(gme, "weight");
-    await expect(gme.locator("#bbody")).toContainText("No weigh-ins are stored yet. Mock mode does not fetch them from Garmin.");
+    await expect(gme.locator("#bbody .bempty h2")).toHaveText("No weigh-ins are stored yet");
+    await expect(gme.locator("#bbody .bempty p")).toHaveText("Mock mode does not fetch them from Garmin.");
     await expect(gme.locator("#bbody")).not.toContainText("Connect a Renpho scale or Garmin");
   });
 });
@@ -363,7 +364,7 @@ test.describe("Walking the views in mock mode", () => {
       await expect(gme.locator("body")).toHaveAttribute("data-view", view);
     }
     await openView(gme, "weight");
-    await expect(gme.locator("#bbody")).toContainText("No weigh-ins are stored yet.");
+    await expect(gme.locator("#bbody")).toContainText("No weigh-ins are stored yet");
     await openView(gme, "workouts");
     await expect(gme.locator("#wNote")).toHaveText(REFUSAL);
   });

@@ -226,10 +226,10 @@ test.describe("the disposition of the Food view", () => {
     }
   });
 
-  test("the Weight view's charts keep their own size", async ({ alice }) => {
+  test("the Weight view's chart is drawn for the room it gets, as its own size and not the Food view's", async ({ alice }) => {
     await openView(alice, "weight");
     await expect(alice.locator("#bbody .rcsvg").first()).toBeVisible();
-    expect(await alice.locator("#bbody .rcsvg").first().getAttribute("viewBox")).toBe("0 0 600 124");
+    expect(await alice.locator("#bbody .rcsvg").first().getAttribute("viewBox")).toBe("0 0 1160 260");
   });
 });
 

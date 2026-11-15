@@ -186,10 +186,10 @@ test.describe("Weight on a phone", () => {
     await expect.poll(() => stickingOut(alice)).toEqual([]);
   });
 
-  test("the day's figures sit two to a row", async ({ alice }) => {
+  test("the figures under the verdict sit two to a row", async ({ alice }) => {
     await openView(alice, "weight");
-    await expect(alice.locator("#bbody .rfigs").first()).toBeVisible();
-    expect(await columnsOf(alice, "#bbody .rfigs")).toBe(2);
+    await expect(alice.locator("#bbody .bkv").first()).toBeVisible();
+    expect(await columnsOf(alice, "#bbody .bkv")).toBe(2);
   });
 
   test("the unit and range controls are at least 40 px tall", async ({ alice }) => {
