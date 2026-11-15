@@ -5918,7 +5918,11 @@ function renderWeight() {
   if (!d || !d.profile) { box.append(mk("div", "empty", "No Garmin profile is configured.")); return; }
   // The days of a range carry the scale's weigh-ins too, so a profile with only a Renpho scale has days and no Garmin row at all.
   const garminRows = !!(d.sync && d.sync.days), scaleOnly = !garminRows && d.days.length > 0;
-  if (!garminRows && !scaleOnly) { weightEmpty(box, true); return; }
+  if (!garminRows && !scaleOnly) { // nothing stored: the unit and the range stay, to look further back
+    $("brangebar").hidden = false; $("bRangeTitle").textContent = `Weigh-ins · last ${weightRange()} days`;
+    weightEmpty(box, true);
+    return;
+  }
   const tabs = WtM.tabs(d), weighed = d.body.weighIns > 0;
   if (!tabs.includes(B.tab)) B.tab = "weight";
   for (const [id, tab] of WEIGHT_TABS) { $(id).hidden = !tabs.includes(tab); $(id).setAttribute("aria-pressed", String(B.tab === tab)); }

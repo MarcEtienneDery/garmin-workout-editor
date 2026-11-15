@@ -439,7 +439,8 @@ test.describe("when there is nothing to draw", () => {
     await expect(card.locator("p")).toHaveText("Connect a Renpho scale or Garmin in Settings to get them.");
     await expect(alice.locator("#bTabs")).toBeHidden();
     await expect(alice.locator("#bweek")).toBeHidden();
-    await expect(alice.locator("#brangebar")).toBeHidden();
+    await expect(alice.locator("#bUnits")).toBeVisible(); // the unit and the range stay, to look further back
+    await expect(alice.locator("#bRange")).toBeVisible();
     await card.getByRole("button", { name: "Open Settings" }).click();
     await expect(alice.locator("body")).toHaveAttribute("data-view", "settings");
   });
