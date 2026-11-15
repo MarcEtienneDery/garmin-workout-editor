@@ -4,6 +4,7 @@
  */
 import { type BodyTrend, bodyTrend } from "./bodyTrend";
 import { BASELINE_DAYS, type Band, baselines, computeReadiness, dayIntensityMinutes, type Readiness } from "./readiness";
+import { nutritionDays } from "./nutrition";
 import { toWeighIn } from "./renphoFit";
 import { type DayMetrics, type SqliteStore, emptyDayMetrics } from "./store";
 import { addDays } from "./wellnessSync";
@@ -88,6 +89,25 @@ export function withScaleWeighIns(store: SqliteStore, profile: string, from: str
 export function bodyRange(store: SqliteStore, profile: string, from: string, to: string): { body: BodyTrend; days: BodyDay[] } {
   const days = withScaleWeighIns(store, profile, from, to, store.wellness.metrics(profile, from, to)).map(({ day, weightKg, bodyFatPercent, muscleKg, bmi, totalKcal, activeKcal, bmrKcal }) => ({ day, weightKg, bodyFatPercent, muscleKg, bmi, totalKcal, activeKcal, bmrKcal }));
   return { body: bodyTrend(days), days };
+}
+
+/** What was eaten against what Garmin counted as burned, over the days of a range that have both. */
+export interface IntakeVsBurn {
+  /** The finished days with food logged in them (today is unfinished, a day with nothing logged is unknown, not zero). */
+  loggedDays: number;
+  /** Of them, the days Garmin has a burn for: the averages below are of these and of no other day. */
+  days: number;
+  /** Calories eaten a day and calories burned a day, whole; null when no day has both. */
+  eatenKcal: number | null;
+  burnedKcal: number | null;
+}
+
+/** The calories eaten a day against the calories burned a day, on the finished days of `from` to `to` that have food logged and a burn stored. */
+export function intakeVsBurn(store: SqliteStore, profile: string, from: string, to: string, today: string): IntakeVsBurn {
+  const logged = nutritionDays(store, profile, from, to, today).filter((d) => d.day < today && d.entries > 0);
+  const both = logged.filter((d) => d.burnedKcal !== null);
+  const mean = (values: number[]) => Math.round(values.reduce((a, b) => a + b, 0) / values.length);
+  return { loggedDays: logged.length, days: both.length, eatenKcal: both.length ? mean(both.map((d) => d.kcal)) : null, burnedKcal: both.length ? mean(both.map((d) => d.burnedKcal as number)) : null };
 }
 
 export interface IntensityWeek {

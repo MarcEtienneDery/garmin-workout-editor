@@ -53,13 +53,26 @@ export const GOALS: readonly GoalField[] = [
 /** What the calorie goal follows, stored with the goals: the share of the day's active calories added to it, in whole percent. */
 export const BURN_KEY = "kcalBurnPct";
 
-/** What Settings and setGoals take beyond a goal: the calorie goal's share of the burn (`kind: "burn"`), listed right after the calories. Off unless the person turns it on. */
+/**
+ * The weight the person aims for, in kilograms, kept in the same JSON as the food goals and read by the Weight view. It is not a food goal: it is
+ * never measured against a day's food (goalProgress and goalList leave it out), and it is the last of the settings.
+ */
+export const WEIGHT_KEY = "weightKg";
+/** The lightest and heaviest weight goal that can be set, in kilograms: what the Weight view can draw a line for, not advice on what to aim for. */
+export const MIN_WEIGHT_GOAL_KG = 20, MAX_WEIGHT_GOAL_KG = 400;
+
+/** What Settings and setGoals take beyond a goal: the calorie goal's share of the burn (`kind: "burn"`), listed right after the calories, and the weight goal (`kind: "weight"`), last. Both are off unless the person sets them. */
 export interface SettingField extends Omit<GoalField, "unit" | "kind"> {
-  unit: GoalField["unit"] | "%";
-  kind: GoalKind | "burn";
+  unit: GoalField["unit"] | "%" | "kg";
+  kind: GoalKind | "burn" | "weight";
 }
 
-export const SETTING_FIELDS: readonly SettingField[] = [GOALS[0], { key: BURN_KEY, label: "Share of active calories", unit: "%", kind: "burn", max: 100 }, ...GOALS.slice(1)];
+export const SETTING_FIELDS: readonly SettingField[] = [
+  GOALS[0],
+  { key: BURN_KEY, label: "Share of active calories", unit: "%", kind: "burn", max: 100 },
+  ...GOALS.slice(1),
+  { key: WEIGHT_KEY, label: "Weight goal", unit: "kg", kind: "weight", max: MAX_WEIGHT_GOAL_KG },
+];
 
 /** A day within this share of a target (above or below) is on it. */
 export const TARGET_TOLERANCE = 0.1;
@@ -88,6 +101,11 @@ export function setGoals(store: SqliteStore, profile: string, patch: unknown, no
       continue;
     }
     const n = typeof value === "string" ? Number(value.trim().replace(",", ".")) : value;
+    if (field.kind === "weight") {
+      if (typeof n !== "number" || !Number.isFinite(n) || n < MIN_WEIGHT_GOAL_KG || n > MAX_WEIGHT_GOAL_KG) throw new NutritionError(`The weight goal must be a number of kilograms from ${MIN_WEIGHT_GOAL_KG} to ${MAX_WEIGHT_GOAL_KG} (leave it empty for no goal).`);
+      goals[key] = Math.round(n * 100) / 100;
+      continue;
+    }
     if (typeof n !== "number" || !Number.isFinite(n) || n <= 0 || n > field.max) throw new NutritionError(field.kind === "burn" ? `The share of the active calories added to the calorie goal must be a number from 1 to ${field.max} % (leave it empty for a fixed calorie goal).` : `The ${field.label.toLowerCase()} goal must be a number above 0 and at most ${field.max} ${field.unit} (leave it empty for no goal).`);
     goals[key] = field.key === "kcal" || field.kind === "burn" ? Math.round(n) : Math.round(n * 10) / 10;
   }

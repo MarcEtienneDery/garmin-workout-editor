@@ -1286,6 +1286,25 @@ describe("web plan editor", () => {
         expect(w.refreshWellness).not.toHaveBeenCalled(); // a read never calls Garmin
       });
 
+      it("sends the goal weight and the food eaten against the calories burned, for the Weight view", async () => {
+        addProfile("MED");
+        fill("MED", 20);
+        const none = (await call("GET", "/api/weight")).json;
+        expect(none.goalKg).toBeNull();
+        expect(none.intake).toEqual({ loggedDays: 0, days: 0, eatenKcal: null, burnedKcal: null });
+
+        expect((await call("POST", "/api/settings/goals", { action: "save", goals: { weightKg: 76.5 } })).status).toBe(200);
+        for (const back of [1, 2, 3]) store().nutrition.add("MED", [{ day: dayOf(back), meal: "lunch", name: "Lunch", kcal: 2000, proteinG: 0, carbsG: 0, fatG: 0 }], "test");
+        store().nutrition.add("MED", [{ day: dayOf(0), meal: "lunch", name: "Today", kcal: 300, proteinG: 0, carbsG: 0, fatG: 0 }], "test"); // today is unfinished
+        const out = (await call("GET", "/api/weight")).json;
+        expect(out.goalKg).toBe(76.5);
+        expect(out.intake).toEqual({ loggedDays: 3, days: 3, eatenKcal: 2000, burnedKcal: 2600 });
+        expect((await call("GET", "/api/weight?days=14")).json.goalKg).toBe(76.5);
+        expect((await call("POST", "/api/settings/goals", { action: "save", goals: { weightKg: 5 } })).status).toBe(400);
+        expect((await call("POST", "/api/settings/goals", { action: "save", goals: { weightKg: null } })).status).toBe(200);
+        expect((await call("GET", "/api/weight")).json.goalKg).toBeNull();
+      });
+
       it("shows the weigh-ins of a Renpho scale without Garmin, and leaves a day Garmin has its own weight for to Garmin", async () => {
         addProfile("SAM", undefined, false);
         const weigh = (id: string, back: number, kg: number, fat?: number) => {

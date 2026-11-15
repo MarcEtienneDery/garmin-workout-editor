@@ -93,7 +93,7 @@ import { fetchChartNow, fetchDetailsNow, refreshActivities, startBackgroundSync 
 import { diffPlanWorkout, extractWorkouts, validatePlanData } from "../mcp/tools/plans";
 import { MAX_SCAN_BYTES, activePlanDocs, isExportSnapshot } from "../shared/planDocs";
 import { refreshWellness, rereadWeighIns, startBackgroundWellness, wellnessSyncStatus } from "../mcp/tools/wellness";
-import { bodyRange, dayTrend, intensityWeek, readinessAt, readinessDays, wellnessRange } from "../shared/wellnessReport";
+import { bodyRange, dayTrend, intakeVsBurn, intensityWeek, readinessAt, readinessDays, wellnessRange } from "../shared/wellnessReport";
 import { SettingsError, createProfile, removeGarminLogin, removeRenpho, saveGarminLogin, savePrefs, saveRenpho, saveWebPassword, settingsView } from "../shared/accounts";
 import exerciseCategoryMap from "../exercise-category-map.json";
 import { recentFit, testRenphoLogin } from "../shared/renphoSync";
@@ -103,7 +103,7 @@ import { addDays, localToday } from "../shared/wellnessSync";
 import { FoodInputError, FoodSourceError, lookupBarcode, searchFoods } from "../shared/foodSearch";
 import { FoodAiError, type FoodAiErrorKind, estimateFoods, foodAiStatus } from "../shared/foodAi";
 import { MAX_ITEMS, MEALS, NutritionError, addFoods, averageOf, changeFood, copyFoods, deleteFoods, nutritionDays, parseDay, recentFoods } from "../shared/nutrition";
-import { getGoals, goalProgress, kcalGoalOf, setGoals } from "../shared/nutritionGoals";
+import { WEIGHT_KEY, getGoals, goalProgress, kcalGoalOf, setGoals } from "../shared/nutritionGoals";
 import {
   LIBRARY_LIMIT,
   type LibraryWorkout,
@@ -1383,7 +1383,8 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
       const range = bodyRange(store(), profile, addDays(today, -(days - 1)), today);
       // the day whose stored responses are listed: the one asked for, else the last weigh-in, else today
       const date = asked && /^\d{4}-\d{2}-\d{2}$/.test(asked) ? asked : range.body.latest?.day ?? today;
-      return send(res, 200, { profile, today, date, ...range, stored: store().wellness.rowsOfDay(profile, date), sync: wellnessSyncStatus(profile, days) });
+      // the goal weight (kg, null with none) and what the Food log says was eaten against what Garmin says was burned over these days, for the Weight view
+      return send(res, 200, { profile, today, date, ...range, goalKg: getGoals(store(), profile)[WEIGHT_KEY] ?? null, intake: intakeVsBurn(store(), profile, addDays(today, -(days - 1)), today, today), stored: store().wellness.rowsOfDay(profile, date), sync: wellnessSyncStatus(profile, days) });
     }
 
     case "GET /api/foods/search": {
