@@ -100,7 +100,7 @@ describe("the table of exercises", () => {
     const MACHINES = new Set(["INDOOR_ROW", "CALORIE_ROW"]); // a rowing machine sits in Garmin's ROW category
     const left: Record<string, string[]> = {};
     for (const [name, category] of Object.entries(map)) if (!MM.musclesOf(name) && !MACHINES.has(name) && !/STRETCH/.test(name)) (left[category] = left[category] || []).push(name);
-    const LIFTING = ["BENCH_PRESS", "ROW", "PULL_UP", "SHOULDER_PRESS", "CURL", "TRICEPS_EXTENSION", "FLYE", "SHRUG", "DEADLIFT", "SQUAT", "LUNGE", "LEG_CURL", "CALF_RAISE", "HIP_RAISE", "HYPEREXTENSION", "OLYMPIC_LIFT", "CORE", "CHOP", "SHOULDER_STABILITY", "PUSH_UP", "PLANK", "CRUNCH", "SIT_UP", "LEG_RAISE", "HIP_SWING", "HIP_STABILITY", "SLED", "SLEDGE_HAMMER", "TIRE", "JUMPING_JACK"];
+    const LIFTING = ["BENCH_PRESS", "ROW", "PULL_UP", "SHOULDER_PRESS", "CURL", "TRICEPS_EXTENSION", "FLYE", "SHRUG", "DEADLIFT", "SQUAT", "LUNGE", "LEG_CURL", "CALF_RAISE", "HIP_RAISE", "HYPEREXTENSION", "OLYMPIC_LIFT", "CORE", "CHOP", "SHOULDER_STABILITY", "PUSH_UP", "PLANK", "CRUNCH", "SIT_UP", "LEG_RAISE", "HIP_SWING", "HIP_STABILITY", "SLED", "SLEDGE_HAMMER", "TIRE", "BATTLE_ROPE"];
     for (const category of LIFTING) expect({ category, left: left[category] || [] }).toEqual({ category, left: [] });
   });
 });
