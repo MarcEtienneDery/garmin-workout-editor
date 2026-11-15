@@ -1047,6 +1047,21 @@ describe("web plan editor", () => {
         expect((await call("GET", "/api/nutrition?days=2")).json.days).toHaveLength(7);
       });
 
+      it("sends the week the day shown is in, Monday to Sunday, with each day's calories and goal, even for a day beyond the range of the charts", async () => {
+        addProfile("MED");
+        await call("POST", "/api/settings/goals", { profile: "MED", action: "save", goals: { kcal: 2000 } });
+        await call("POST", "/api/nutrition", { action: "add", day: dayOf(1), meal: "lunch", items: [rice] });
+        const view = (await call("GET", `/api/nutrition?date=${dayOf(1)}&days=7`)).json;
+        expect(view.week).toHaveLength(7);
+        expect(new Date(`${view.week[0].day}T00:00:00Z`).getUTCDay()).toBe(1); // a Monday
+        expect(view.week.map((d: any) => d.day)).toContain(dayOf(1));
+        expect(view.week.find((d: any) => d.day === dayOf(1))).toEqual({ day: dayOf(1), kcal: 200, entries: 1, kcalGoal: 2000 });
+        expect(view.week.filter((d: any) => d.entries === 0).every((d: any) => d.kcal === 0)).toBe(true); // a day with nothing is entries 0: the page says unknown
+        const old = (await call("GET", `/api/nutrition?date=${dayOf(200)}&days=7`)).json; // the charts' range does not reach it: the week is still there
+        expect(old.week).toHaveLength(7);
+        expect(old.week.map((d: any) => d.day)).toContain(dayOf(200));
+      });
+
       it("keeps each profile's food apart: a profile login acts as itself and cannot touch another's entries", async () => {
         addProfile("MED", "med-pw");
         addProfile("SAM", "sam-pw");

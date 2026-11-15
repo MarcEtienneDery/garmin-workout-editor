@@ -758,3 +758,145 @@ describe("the calorie chart's colours, summary and words", () => {
     expect(protein.summary(ds)).toBe("2 of 3 finished days reached 100 g");
   });
 });
+
+describe("the week strip", () => {
+  // 2026-10-12 is a Monday; TODAY (the 18th) is the Sunday that ends the week.
+  const week = (over: Record<string, any> = {}) => ["12", "13", "14", "15", "16", "17", "18"].map((d) => ({ day: `2026-10-${d}`, kcal: 0, entries: 0, kcalGoal: 2000, ...(over[d] || {}) }));
+  const view = (extra: Record<string, unknown> = {}) => ({ today: TODAY, date: TODAY, goals: { kcal: 2000 }, week: week({ 12: { kcal: 1500, entries: 3 }, 13: { kcal: 2300, entries: 4 }, 14: { kcal: 2100, entries: 2 }, 18: { kcal: 700, entries: 1 } }), ...extra });
+
+  it("is empty when the server sent no week", () => {
+    expect(NM.weekStrip({ today: TODAY, date: TODAY })).toEqual([]);
+    expect(NM.weekStrip(null)).toEqual([]);
+  });
+
+  it("gives seven days, Monday first, with their weekday and number", () => {
+    const strip = NM.weekStrip(view());
+    expect(strip.map((d: any) => `${d.weekday} ${d.number}`)).toEqual(["Mon 12", "Tue 13", "Wed 14", "Thu 15", "Fri 16", "Sat 17", "Sun 18"]);
+  });
+
+  it("tells a day over the goal from one on target, with 10 % to spare, and a day under the goal is on target", () => {
+    const states = NM.weekStrip(view()).map((d: any) => d.state);
+    expect(states.slice(0, 3)).toEqual(["ok", "over", "ok"]); // 1,500 under, 2,300 over, 2,100 within the 10 %
+  });
+
+  it("marks a day with nothing logged, a day not yet come, today and the day shown", () => {
+    const strip = NM.weekStrip(view({ today: "2026-10-15", date: "2026-10-13" }));
+    expect(strip[3].state).toBe("none"); // Thursday the 15th is today and nothing is logged
+    expect(strip[4].state).toBe("future");
+    expect(strip[3].today).toBe(true);
+    expect(strip[1].selected).toBe(true);
+    expect(strip.filter((d: any) => d.selected || d.today)).toHaveLength(2);
+  });
+
+  it("fills a day's bar up to its goal and no further, with none for a day that has nothing", () => {
+    const strip = NM.weekStrip(view());
+    expect(strip[0].pct).toBeCloseTo(0.75);
+    expect(strip[1].pct).toBe(1);
+    expect(strip[2].kcal).toBe(2100);
+    expect(strip[5].pct).toBeNull();
+    expect(strip[5].kcal).toBeNull();
+  });
+
+  it("has no bar and no over without a calorie goal", () => {
+    const strip = NM.weekStrip(view({ goals: {} }));
+    expect(strip.map((d: any) => d.pct)).toEqual(Array(7).fill(null));
+    expect(strip.map((d: any) => d.state)).toEqual(["ok", "ok", "ok", "none", "none", "none", "ok"]);
+  });
+
+  it("follows each day's own goal when the goal follows the burn", () => {
+    const strip = NM.weekStrip(view({ goals: { kcal: 2000, kcalBurnPct: 50 }, week: week({ 12: { kcal: 2300, entries: 3, kcalGoal: 2600 }, 13: { kcal: 2300, entries: 3, kcalGoal: 2000 } }) }));
+    expect([strip[0].state, strip[1].state]).toEqual(["ok", "over"]);
+  });
+
+  it("says each day in words, for a screen reader", () => {
+    const strip = NM.weekStrip(view());
+    expect(strip[0].label).toBe(`Monday 12 Oct, ${(1500).toLocaleString()} kcal`);
+    expect(strip[1].label).toBe(`Tuesday 13 Oct, ${(2300).toLocaleString()} kcal, over the goal`);
+    expect(strip[5].label).toBe("Saturday 17 Oct, nothing logged");
+    expect(NM.weekStrip(view({ today: "2026-10-15" }))[6].label).toBe("Sunday 18 Oct, not yet");
+  });
+});
+
+describe("the insights of a range", () => {
+  const finished = [
+    day({ day: "2026-10-12", kcal: 1800, proteinG: 120, burnedKcal: 2400, kcalGoal: 2000 }),
+    day({ day: "2026-10-13", kcal: 2400, proteinG: 90, burnedKcal: 2400, kcalGoal: 2000 }),
+    day({ day: "2026-10-14", kcal: 2000, proteinG: 130, burnedKcal: 2400, kcalGoal: 2000 }),
+    day({ day: "2026-10-15", kcal: 0, entries: 0, proteinG: null }),
+    day({ day: TODAY, kcal: 500, proteinG: 20, entries: 1, burnedKcal: 900, burnedSoFar: true }),
+  ];
+  const view = (extra: Record<string, unknown> = {}) => ({ today: TODAY, days: finished, goals: { kcal: 2000, proteinG: 100 }, ...extra });
+
+  it("is empty when no day is finished", () => {
+    expect(NM.insightTiles(view({ days: [finished[4]] }))).toEqual([]);
+    expect(NM.insightTiles({ today: TODAY })).toEqual([]);
+  });
+
+  it("averages the finished days, leaving out today and a day with nothing logged", () => {
+    const [average] = NM.insightTiles(view());
+    expect(average.label).toBe("Average · 3 days");
+    expect(average.value).toBe((2067).toLocaleString()); // (1,800 + 2,400 + 2,000) / 3
+    expect(average.note).toBe(`kcal a day · goal ${(2000).toLocaleString()}`);
+  });
+
+  it("counts the days on target (under the goal counts) and over it", () => {
+    const tile = NM.insightTiles(view()).find((t: any) => t.label === "On target");
+    expect(tile).toEqual({ label: "On target", value: "2 of 3", note: "days · 1 over the goal" }); // 2,400 is over, 1,800 and 2,000 are not
+    expect(NM.insightTiles(view({ days: [finished[0]] })).find((t: any) => t.label === "On target").note).toBe("days · none over the goal");
+  });
+
+  it("gives the protein average and how many days reached the goal, or only the average without a goal", () => {
+    const tile = NM.insightTiles(view()).find((t: any) => t.label === "Protein");
+    expect(tile.value).toBe("113 g");
+    expect(tile.note).toBe("a day · goal 100 · reached 2 of 3");
+    expect(NM.insightTiles(view({ goals: { kcal: 2000 } })).find((t: any) => t.label === "Protein").note).toBe("a day");
+  });
+
+  it("compares what was eaten with what Garmin counted as burned, from three days of it", () => {
+    const tile = NM.insightTiles(view()).find((t: any) => t.label === "Eaten vs burned");
+    expect(tile.value).toBe(NM.signed(-333)); // (−600 + 0 + −400) / 3
+    expect(tile.note).toBe("kcal a day, on average");
+    expect(NM.insightTiles(view({ days: finished.slice(0, 2) })).some((t: any) => t.label === "Eaten vs burned")).toBe(false);
+  });
+
+  it("has no calorie tiles without a calorie goal and no burn tile with fewer than three days of it", () => {
+    const labels = NM.insightTiles(view({ goals: {}, days: finished.slice(0, 2) })).map((t: any) => t.label);
+    expect(labels).toEqual(["Average · 2 days", "Protein"]);
+  });
+});
+
+describe("the pattern of the weekdays", () => {
+  // Two Mondays (1,500, 1,700), two Tuesdays (2,000, 2,200), two Wednesdays (1,900, 2,100), two Saturdays (2,800, 3,000), Sunday once.
+  const days = [
+    day({ day: "2026-10-05", kcal: 1500, proteinG: 120 }), day({ day: "2026-10-06", kcal: 2000, proteinG: 120 }), day({ day: "2026-10-07", kcal: 1900, proteinG: 120 }),
+    day({ day: "2026-10-10", kcal: 2800, proteinG: 60 }), day({ day: "2026-10-11", kcal: 2000, proteinG: 120 }),
+    day({ day: "2026-10-12", kcal: 1700, proteinG: 120 }), day({ day: "2026-10-13", kcal: 2200, proteinG: 120 }), day({ day: "2026-10-14", kcal: 2100, proteinG: 120 }),
+    day({ day: "2026-10-17", kcal: 3000, proteinG: 60 }), day({ day: TODAY, kcal: 100, entries: 1 }),
+  ];
+
+  it("is null with fewer than three weekdays that have two days", () => {
+    expect(NM.weekdayPattern({ today: TODAY, days: days.slice(0, 4) })).toBeNull();
+    expect(NM.weekdayPattern({ today: TODAY, days: [] })).toBeNull();
+    expect(NM.weekdayPattern({ today: TODAY })).toBeNull();
+  });
+
+  it("averages each weekday, Monday first, with null for a weekday that has a single day", () => {
+    const { rows } = NM.weekdayPattern({ today: TODAY, days });
+    expect(rows.map((r: any) => r.short)).toEqual(["M", "T", "W", "T", "F", "S", "S"]);
+    expect(rows.map((r: any) => r.kcal)).toEqual([1600, 2100, 2000, null, null, 2900, null]); // Sunday has only the 11th: today is not finished
+  });
+
+  it("says which weekday runs highest and which is lowest in protein", () => {
+    const { sentence, peak } = NM.weekdayPattern({ today: TODAY, days });
+    expect(sentence).toBe(`Saturdays average ${(2900).toLocaleString()} kcal, ${(1300).toLocaleString()} more than Mondays. Protein is lowest on Saturdays (60 g).`);
+    expect(peak).toBe(2900);
+  });
+
+  it("says nothing of a spread under 10 %, nor of a protein that is even", () => {
+    const even = [
+      day({ day: "2026-10-05", kcal: 2000 }), day({ day: "2026-10-06", kcal: 2050 }), day({ day: "2026-10-07", kcal: 2000 }),
+      day({ day: "2026-10-12", kcal: 2000 }), day({ day: "2026-10-13", kcal: 2050 }), day({ day: "2026-10-14", kcal: 2000 }),
+    ];
+    expect(NM.weekdayPattern({ today: TODAY, days: even }).sentence).toBe("");
+  });
+});

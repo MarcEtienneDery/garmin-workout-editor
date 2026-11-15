@@ -1130,6 +1130,12 @@ async function foodAiCall<T>(ask: () => Promise<T>): Promise<T> {
 }
 
 /** What the Food view shows: one day with its meals, the days of a range for the trend, the foods the form offers again, and whether the AI box works. */
+/** The calories of each day of the week (Monday to Sunday) that has `date`, with the day's goal: the totals only, the foods are in the day shown. */
+function weekOf(profile: string, date: string, today: string, goals: ReturnType<typeof getGoals>) {
+  const monday = addDays(date, -((new Date(`${date}T00:00:00Z`).getUTCDay() + 6) % 7));
+  return nutritionDays(store(), profile, monday, addDays(monday, 6), today).map(({ day, kcal, entries, activeKcal }) => ({ day, kcal, entries, kcalGoal: kcalGoalOf(goals, activeKcal) }));
+}
+
 function nutritionView(profile: string, asked: unknown, daysAsked: unknown) {
   const today = localToday(store(), profile);
   let date = today;
@@ -1150,6 +1156,8 @@ function nutritionView(profile: string, asked: unknown, daysAsked: unknown) {
     day,
     // the trend carries totals only (and each day's calorie goal, which follows the burn when the person set it so); the entries are in `day`
     days: days.map(({ meals, ...totals }) => ({ ...totals, kcalGoal: kcalGoalOf(goals, totals.activeKcal) })),
+    // the Monday-to-Sunday week the day shown is in, one entry for each day (the days after today have nothing): the strip of the week at the top of the Food view
+    week: weekOf(profile, date, today, goals),
     // the daily goals by key, and where the day shown stands against each (the meals' own totals are in `day`)
     goals,
     progress: goalProgress(goals, day, day.activeKcal),
