@@ -1,6 +1,7 @@
 /*
  * trendCharts.js — the pictures of the Recovery and Weight views: one small chart per measure over the days (a line with
- * Garmin's balanced range, a goal level, stacked parts (a part with a `weight` counts that many times in the bar), a range, bars), all sharing one hover cursor, and a click that picks the day.
+ * Garmin's balanced range, a goal level, stacked parts (a part with a `weight` counts that many times in the bar), a range, bars, or dots with
+ * a fitted line and a band around it and, if asked, a second series of dots with a line of its own), all sharing one hover cursor, and a click that picks the day.
  * Plain DOM and SVG, no library. What to draw comes from RecoveryModel / WeightModel, the scales from RecoveryModel; they have the tests.
  */
 (function (root) {
@@ -42,7 +43,7 @@
     const n = days.length, step = (W - LEFT - RIGHT) / Math.max(1, n), xAt = (i) => LEFT + step * (i + 0.5);
     const per = (fn) => days.map((d, i) => { const v = fn(d, i, days); return RM.valid(v) ? v : null; }); // a value may look at the days around it
     let values = [], include = [];
-    let totals = null, lows = null, highs = null, bandLo = null, bandHi = null, refs = null, vals = null;
+    let totals = null, lows = null, highs = null, bandLo = null, bandHi = null, refs = null, vals = null, vals2 = null, refs2 = null;
     const goal = spec.goal && RM.valid(spec.goal.value) ? spec.goal.value : null; // one level for every day (a daily goal)
     const goals = spec.goal && typeof spec.goal.values === "function" ? per(spec.goal.values) : null; // or a level of its own for each day (a goal that follows something of the day)
     if (spec.kind === "stack") {
@@ -55,6 +56,10 @@
     }
     if (spec.band) { bandLo = per((d) => spec.band(d)[0]); bandHi = per((d) => spec.band(d)[1]); include = include.concat(bandLo, bandHi); }
     if (spec.ref) { refs = per(spec.ref.value); include = include.concat(refs); }
+    if (spec.second) { // a second series of dots, with a line of its own (what a view that compares two things on one scale draws)
+      vals2 = per(spec.second.value); include = include.concat(vals2);
+      if (spec.second.ref) { refs2 = per(spec.second.ref.value); include = include.concat(refs2); }
+    }
     if (goal !== null) include = include.concat([goal]);
     if (goals) include = include.concat(goals);
 
@@ -88,6 +93,7 @@
       flush();
     }
     if (refs && refs.some((v) => v !== null)) svg.append(make("path", { class: "rc-ref", d: pathOf(refs.map((v, i) => (v === null ? null : [xAt(i), yAt(v)]))) }));
+    if (refs2 && refs2.some((v) => v !== null)) svg.append(make("path", { class: "rc-ref rc-ref2", d: pathOf(refs2.map((v, i) => (v === null ? null : [xAt(i), yAt(v)]))) }));
 
     const bw = Math.max(2, step * 0.7), used = new Set(); // `used`: the colours the bars came in, for the legend
     days.forEach((d, i) => {
@@ -107,7 +113,9 @@
       }
     });
     if (spec.kind === "line") svg.append(make("path", { class: "rc-line", d: pathOf(vals.map((v, i) => (v === null ? null : [xAt(i), yAt(v)])), spec.connect) }));
-    if (spec.kind === "line" || spec.kind === "range") vals.forEach((v, i) => { if (v !== null) svg.append(make("circle", { cx: xAt(i), cy: yAt(v), r: 2.4, class: "rc-dot" })); });
+    if (vals2) vals2.forEach((v, i) => { if (v !== null) svg.append(make("circle", { cx: xAt(i), cy: yAt(v), r: 2.4, class: "rc-dot rc-dot2" })); });
+    // dots only (`dots`): the weigh-ins are not joined; the one of the picked day is drawn larger
+    if (spec.kind === "line" || spec.kind === "range" || spec.kind === "dots") vals.forEach((v, i) => { if (v !== null) svg.append(make("circle", { cx: xAt(i), cy: yAt(v), r: spec.kind === "dots" && i === sel ? 4.5 : 2.4, class: "rc-dot" + (i === sel ? " sel" : "") })); });
 
     if (goal !== null) svg.append(make("line", { x1: LEFT, x2: W - RIGHT, y1: yAt(goal), y2: yAt(goal), class: "rc-goal" })); // over the bars, under the cursor
     if (goals && goals.some((v) => v !== null)) { // steps from day to day, broken where a day has no goal
@@ -133,7 +141,9 @@
 
     const legend = html("div", "rcl");
     const key = (cls, text) => { const s = html("span", "rck"), i = html("i", cls); s.append(i, text); legend.append(s); };
-    if (spec.band) key("sw-band", "Garmin's balanced range");
+    if (spec.kind === "dots") key("sw-dot", spec.dotLabel || "weigh-in");
+    if (spec.second) key("sw-dot2", spec.second.label);
+    if (spec.band) key("sw-band", spec.bandLabel || "Garmin's balanced range");
     if (spec.ref) key("sw-ref", spec.ref.label);
     if (goal !== null || (goals && goals.some((v) => v !== null))) key("sw-goal", spec.goal.label);
     for (const cls of used) if (spec.colorKeys && spec.colorKeys[cls]) key(`sw-${cls}`, spec.colorKeys[cls]); // a colour the bars came in, with its words

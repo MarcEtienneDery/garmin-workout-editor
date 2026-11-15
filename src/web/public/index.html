@@ -371,7 +371,7 @@
   @font-face { font-family:"Fira Code"; font-weight:400; font-display:swap; src:url(/fonts/fira-code-latin-400-normal.woff2) format("woff2"); }
   @font-face { font-family:"Fira Code"; font-weight:500; font-display:swap; src:url(/fonts/fira-code-latin-500-normal.woff2) format("woff2"); }
   @font-face { font-family:"Fira Code"; font-weight:600; font-display:swap; src:url(/fonts/fira-code-latin-600-normal.woff2) format("woff2"); }
-  :is(#tview, #fview, #fsheet, #cview, #moveMenu, #rview) {
+  :is(#tview, #fview, #fsheet, #cview, #moveMenu, #rview, #bview) {
     --bg:#070504; --panel:#1b1612; --t-surface2:#262019; --line:rgba(255,236,214,.15); --t-line2:rgba(255,236,214,.26);
     --fg:#fbf3ea; --dim:#b3a698; --t-faint:#968a7c;
     --accent:#ff9f2e; --t-on-accent:#1a0d00; --t-ink:#ff9f2e;
@@ -381,7 +381,7 @@
     --t-track:rgba(255,236,214,.09); --t-tint:rgba(0,0,0,.2); --t-glow:rgba(255,159,46,.3); --t-hero-glow:rgba(255,159,46,.12); --t-ok-bg:rgba(74,222,128,.18); --t-pill:rgba(255,159,46,.16);
     background:var(--bg); color:var(--fg); font:400 15px/1.5 "Fira Sans",system-ui,sans-serif; color-scheme:dark;
   }
-  body[data-theme="light"] :is(#tview, #fview, #fsheet, #cview, #moveMenu, #rview) {
+  body[data-theme="light"] :is(#tview, #fview, #fsheet, #cview, #moveMenu, #rview, #bview) {
     --bg:#e9e1d3; --panel:#ffffff; --t-surface2:#f4eee3; --line:rgba(40,24,8,.15); --t-line2:rgba(40,24,8,.28);
     --fg:#1d1610; --dim:#5e5244; --t-faint:#766a5b;
     --accent:#d97706; --t-on-accent:#1a0d00; --t-ink:#a24a05;
@@ -1055,17 +1055,17 @@
 
   /* ── Food view, in the new look: the palette of Today (the variables on #fview and on the add sheet, so both themes), Fira type, rounded cards ──
      Written over the rules above: the colours that were fixed greys read the variables now, and shapes are rounded. */
-  :where(#fview, #fsheet, #rview) button { background:var(--t-surface2); color:var(--fg); border-color:var(--t-line2); font-family:inherit; }
-  :where(#fview, #fsheet, #rview) button:hover:not(:disabled) { background:color-mix(in srgb, var(--fg) 8%, var(--t-surface2)); }
-  :is(#fview, #fsheet, #rview) button.primary { background:var(--accent); border-color:transparent; color:var(--t-on-accent); font-weight:700; }
-  :is(#fview, #fsheet, #rview) button.primary:hover:not(:disabled) { background:var(--accent); filter:brightness(1.08); }
-  :is(#fview, #fsheet, #rview) :is(input, select, textarea) { background:var(--t-surface2); color:var(--fg); border:1px solid var(--t-line2); border-radius:10px; font-family:inherit; }
-  :is(#fview, #fsheet, #rview) :is(input, select, textarea):focus-visible, :is(#fview, #fsheet, #rview) button:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+  :where(#fview, #fsheet, #rview, #bview) button { background:var(--t-surface2); color:var(--fg); border-color:var(--t-line2); font-family:inherit; }
+  :where(#fview, #fsheet, #rview, #bview) button:hover:not(:disabled) { background:color-mix(in srgb, var(--fg) 8%, var(--t-surface2)); }
+  :is(#fview, #fsheet, #rview, #bview) button.primary { background:var(--accent); border-color:transparent; color:var(--t-on-accent); font-weight:700; }
+  :is(#fview, #fsheet, #rview, #bview) button.primary:hover:not(:disabled) { background:var(--accent); filter:brightness(1.08); }
+  :is(#fview, #fsheet, #rview, #bview) :is(input, select, textarea) { background:var(--t-surface2); color:var(--fg); border:1px solid var(--t-line2); border-radius:10px; font-family:inherit; }
+  :is(#fview, #fsheet, #rview, #bview) :is(input, select, textarea):focus-visible, :is(#fview, #fsheet, #rview, #bview) button:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
   #fsheet .fform input[readonly] { background:transparent; color:var(--dim); }
   /* the bar: profile, the day (◀ a pill that opens the calendar ▶), Today, the theme */
   #fbar { display:flex; align-items:center; justify-content:stretch; gap:8px; padding:18px clamp(16px,2.6vw,34px) 6px; background:transparent; border-bottom:0; }
   #fbar #fProfile { flex:none; max-width:36%; margin-right:0; }
-  :is(#fview, #rview) .themebtn { border-radius:50%; background:transparent; border:1px solid var(--t-line2); }
+  :is(#fview, #rview, #bview) .themebtn { border-radius:50%; background:transparent; border:1px solid var(--t-line2); }
   #fPrev, #fNext { width:44px; min-width:44px; height:44px; padding:0; border-radius:50%; background:var(--panel); border:1px solid var(--line); font-size:13px; }
   #fPrev:disabled, #fNext:disabled { opacity:.4; }
   #fToday { min-height:44px; padding:0 18px; border-radius:999px; font-weight:600; }
@@ -1092,7 +1092,7 @@
   #fview .fgoalhint button { color:var(--t-ink); text-decoration:underline; }
   :is(#fview, #fsheet) .protein { --c:var(--t-sky); } :is(#fview, #fsheet) .carbs { --c:var(--accent); } :is(#fview, #fsheet) .fat { --c:var(--t-rose); }
   #fview :is(.rc-part, .sw-part).protein { fill:var(--t-sky); background:var(--t-sky); } #fview :is(.rc-part, .sw-part).carbs { fill:var(--accent); background:var(--accent); } #fview :is(.rc-part, .sw-part).fat { fill:var(--t-rose); background:var(--t-rose); }
-  :is(#fview, #rview) .rc-bar.protein { fill:var(--t-sky); }
+  :is(#fview, #rview, #bview) .rc-bar.protein { fill:var(--t-sky); }
   #fview .fnuts { border-top-color:var(--line); } #fview .fnbrief .st-ok, #fview .st-ok .fmn, #fview .st-ok .fhn { color:var(--ok); }
   /* the foods used lately */
   #fbody .fqh { font:500 11px "Fira Code",ui-monospace,monospace; letter-spacing:.12em; }
@@ -1114,15 +1114,15 @@
   #fview .fea button { min-height:36px; padding:2px 14px; border-radius:999px; }
   #fview .fea button.danger { color:var(--err); } #fview .fea button.danger:hover:not(:disabled) { background:var(--err); border-color:var(--err); color:var(--bg); }
   #fview .fmeal-row .fv { font:500 13px "Fira Code",ui-monospace,monospace; }
-  :is(#fview, #rview) .rtable { border-radius:14px; background:var(--panel); }
-  :is(#fview, #rview) table.rmetrics th, :is(#fview, #rview) table.rmetrics td { border-bottom-color:var(--line); }
-  :is(#fview, #rview) table.rmetrics tr.pick:hover td { background:var(--t-surface2); }
-  :is(#fview, #rview) table.rmetrics tr.sel td, :is(#fview, #rview) table.rmetrics tr.sel td.day { background:color-mix(in srgb, var(--accent) 18%, var(--panel)); }
-  :is(#fview, #rview) table.rmetrics tr.sel td.day { box-shadow:inset 3px 0 0 var(--accent); }
+  :is(#fview, #rview, #bview) .rtable { border-radius:14px; background:var(--panel); }
+  :is(#fview, #rview, #bview) table.rmetrics th, :is(#fview, #rview, #bview) table.rmetrics td { border-bottom-color:var(--line); }
+  :is(#fview, #rview, #bview) table.rmetrics tr.pick:hover td { background:var(--t-surface2); }
+  :is(#fview, #rview, #bview) table.rmetrics tr.sel td, :is(#fview, #rview, #bview) table.rmetrics tr.sel td.day { background:color-mix(in srgb, var(--accent) 18%, var(--panel)); }
+  :is(#fview, #rview, #bview) table.rmetrics tr.sel td.day { box-shadow:inset 3px 0 0 var(--accent); }
   /* the trend charts: a card each, grid lines and bars read the palette */
-  :is(#fview, #rview) .rc { padding:14px 16px 10px; border-radius:18px; box-shadow:var(--card-shadow); }
-  :is(#fview, #rview) .rch b { font-size:13px; }
-  :is(#fview, #rview) .rc-grid { stroke:var(--line); }
+  :is(#fview, #rview, #bview) .rc { padding:14px 16px 10px; border-radius:18px; box-shadow:var(--card-shadow); }
+  :is(#fview, #rview, #bview) .rch b { font-size:13px; }
+  :is(#fview, #rview, #bview) .rc-grid { stroke:var(--line); }
   /* the bar at the foot: search, the barcode, the AI */
   #fdock { padding:10px clamp(12px,2.6vw,34px) calc(10px + env(safe-area-inset-bottom)); background:color-mix(in srgb, var(--bg) 92%, transparent); border-top:1px solid var(--line); backdrop-filter:blur(14px); }
   #fdock .fdin { max-width:760px; gap:10px; }
@@ -1154,8 +1154,8 @@
   #fsheet .faibig { border-radius:14px; }
   #fsheet .fsh-note { color:var(--warn); }
   /* cards stand off the page: a firmer edge (the variables above), a lit top edge and a soft shadow; a section's label carries a rule */
-  :is(#tview, #fview, #cview, #moveMenu, #rview) { --card-shadow:0 1px 0 rgba(255,255,255,.06) inset, 0 14px 30px -18px rgba(0,0,0,.95); }
-  body[data-theme="light"] :is(#tview, #fview, #cview, #moveMenu, #rview) { --card-shadow:0 1px 0 #fff inset, 0 1px 2px rgba(60,40,10,.10), 0 14px 28px -18px rgba(60,40,10,.40); }
+  :is(#tview, #fview, #cview, #moveMenu, #rview, #bview) { --card-shadow:0 1px 0 rgba(255,255,255,.06) inset, 0 14px 30px -18px rgba(0,0,0,.95); }
+  body[data-theme="light"] :is(#tview, #fview, #cview, #moveMenu, #rview, #bview) { --card-shadow:0 1px 0 #fff inset, 0 1px 2px rgba(60,40,10,.10), 0 14px 28px -18px rgba(60,40,10,.40); }
   :is(#tview, #fview) :is(.tcard, .tfig, .fsum, .fcard, .fmeal, .fchip, .fday) { box-shadow:var(--card-shadow); }
   #fbody > h3, .fth h3 { display:flex; align-items:center; gap:14px; color:var(--fg); }
   #fbody > h3::after, .fth h3::after { content:""; flex:1; height:1px; background:var(--t-line2); }
@@ -1167,22 +1167,22 @@
   .fside > h3:first-child { position:absolute; width:1px; height:1px; margin:0; overflow:hidden; clip-path:inset(50%); } /* for a screen reader: the card says what it is */
   /* the trend charts: taller, one over another, with text that can be read */
   #fview .rcharts { grid-template-columns:repeat(auto-fit, minmax(340px, 1fr)); gap:14px; } /* one over another in the right column, two side by side when the page is one column */
-  :is(#fview, #rview) .rc { padding:16px 18px 12px; }
-  :is(#fview, #rview) .rch { flex-wrap:wrap; gap:2px 12px; margin-bottom:6px; }
-  :is(#fview, #rview) .rch b { font-size:14px; font-weight:700; }
-  :is(#fview, #rview) .rcr { font:500 12px "Fira Code",ui-monospace,monospace; color:var(--dim); white-space:normal; text-align:right; }
-  :is(#fview, #rview) :is(.rc-tick, .rc-x) { font:500 12px "Fira Code",ui-monospace,monospace; }
-  :is(#fview, #rview) .rc-sel { fill:color-mix(in srgb, var(--accent) 14%, transparent); }
-  :is(#fview, #rview) .rc-cursor { stroke:var(--dim); }
-  :is(#fview, #rview) .rc-bar { rx:2.5px; }
-  :is(#fview, #rview) .rc-ref { stroke:var(--t-teal); stroke-width:1.6; stroke-dasharray:none; } /* what was burned is a solid line, the goal stays dashed: the two cross */
-  :is(#fview, #rview) .rc-goal { stroke-width:1.5; opacity:.85; }
-  :is(#fview, #rview) .rcl { gap:4px 16px; margin-top:8px; font-size:12px; }
-  :is(#fview, #rview) .rck i.sw-ref { border-top:2px solid var(--t-teal); }
-  :is(#fview, #rview) .rc-bar.over { fill:var(--t-rose); } #fview .rck i.sw-over { background:var(--t-rose); } /* a day over the calorie goal */
-  :is(#fview, #rview) .rcs { margin:0 0 4px; color:var(--fg); font:500 12px "Fira Code",ui-monospace,monospace; text-wrap:balance; }
+  :is(#fview, #rview, #bview) .rc { padding:16px 18px 12px; }
+  :is(#fview, #rview, #bview) .rch { flex-wrap:wrap; gap:2px 12px; margin-bottom:6px; }
+  :is(#fview, #rview, #bview) .rch b { font-size:14px; font-weight:700; }
+  :is(#fview, #rview, #bview) .rcr { font:500 12px "Fira Code",ui-monospace,monospace; color:var(--dim); white-space:normal; text-align:right; }
+  :is(#fview, #rview, #bview) :is(.rc-tick, .rc-x) { font:500 12px "Fira Code",ui-monospace,monospace; }
+  :is(#fview, #rview, #bview) .rc-sel { fill:color-mix(in srgb, var(--accent) 14%, transparent); }
+  :is(#fview, #rview, #bview) .rc-cursor { stroke:var(--dim); }
+  :is(#fview, #rview, #bview) .rc-bar { rx:2.5px; }
+  :is(#fview, #rview, #bview) .rc-ref { stroke:var(--t-teal); stroke-width:1.6; stroke-dasharray:none; } /* what was burned is a solid line, the goal stays dashed: the two cross */
+  :is(#fview, #rview, #bview) .rc-goal { stroke-width:1.5; opacity:.85; }
+  :is(#fview, #rview, #bview) .rcl { gap:4px 16px; margin-top:8px; font-size:12px; }
+  :is(#fview, #rview, #bview) .rck i.sw-ref { border-top:2px solid var(--t-teal); }
+  :is(#fview, #rview, #bview) .rc-bar.over { fill:var(--t-rose); } #fview .rck i.sw-over { background:var(--t-rose); } /* a day over the calorie goal */
+  :is(#fview, #rview, #bview) .rcs { margin:0 0 4px; color:var(--fg); font:500 12px "Fira Code",ui-monospace,monospace; text-wrap:balance; }
   @media (max-width:1100px) { .fgrid { grid-template-columns:minmax(0,1fr); } }
-  @media (max-width:700px) { :is(#fview, #rview) :is(.rc-tick, .rc-x) { font-size:13px; } :is(#fview, #rview) .rc { padding:14px 14px 10px; } :is(#fview, #rview) .rcr { text-align:left; } }
+  @media (max-width:700px) { :is(#fview, #rview, #bview) :is(.rc-tick, .rc-x) { font-size:13px; } :is(#fview, #rview, #bview) .rc { padding:14px 14px 10px; } :is(#fview, #rview, #bview) .rcr { text-align:left; } }
   @media (max-width:900px) { #fbar { padding:12px 12px 4px; gap:6px; } .fdaypick { padding:0 12px; font-size:14px; } #fdock { padding:8px 12px calc(8px + env(safe-area-inset-bottom)); } }
   @media (max-width:700px) { #fview .fea button, #fview .fea select { min-height:40px; } #fview .fglance { gap:16px; } #fview .fring { width:120px; height:120px; } #fview .fmeal { padding:2px 14px 4px; } #fview .fsum, #fview .fcard { padding:16px; } }
   @media (prefers-reduced-motion:reduce) { :is(#fview, #fsheet) *, :is(#fview, #fsheet) *::before { transition:none !important; animation:none !important; } }
@@ -1199,7 +1199,7 @@
   #fTabs button, #fTabs button:first-child, #fTabs button:last-child { min-height:44px; margin:0; padding:0 22px; border:0; border-radius:999px; background:transparent; color:var(--dim); font-weight:600; }
   #fTabs button:hover:not(:disabled):not([aria-pressed="true"]) { background:var(--t-surface2); color:var(--fg); }
   #fTabs button[aria-pressed="true"] { background:var(--accent); color:var(--t-on-accent); }
-  :is(#fview, #rview) .themebtn { width:44px; min-width:44px; height:44px; padding:0; }
+  :is(#fview, #rview, #bview) .themebtn { width:44px; min-width:44px; height:44px; padding:0; }
   /* the week: a day each, its calories against its goal as a ring; ◀ ▶ step a day */
   #fweek { display:flex; align-items:center; gap:8px; max-width:1280px; padding:8px clamp(16px,2.6vw,34px) 2px; }
   #fweek[hidden] { display:none; }
@@ -1334,7 +1334,7 @@
   #rbody h3 { margin:0; font:500 11.5px "Fira Code",ui-monospace,monospace; letter-spacing:.14em; text-transform:uppercase; color:var(--fg); }
   #rview .rgrid { display:grid; grid-template-columns:minmax(0,1.55fr) minmax(0,1fr); gap:16px; align-items:start; margin-top:12px; }
   #rview .rcol { display:flex; flex-direction:column; gap:16px; min-width:0; } #rview .rcol > * { min-width:0; }
-  :is(#rview .rhero, #rview .rsigcard, #rview .rnight, #rview .rload, #rview .racc) { background:var(--panel); border:1px solid var(--line); border-radius:18px; box-shadow:var(--card-shadow); }
+  :is(#rview .rhero, #rview .rsigcard, #rview .rnight, #rview .rload, #rview .racc, #bview .racc) { background:var(--panel); border:1px solid var(--line); border-radius:18px; box-shadow:var(--card-shadow); }
   /* the verdict */
   #rview .rhero { --bc:var(--z-none); display:grid; grid-template-columns:250px minmax(0,1fr); gap:24px; align-items:center; padding:22px 24px; border-top:3px solid var(--bc); }
   #rview .rhero.b-go { --bc:var(--z-go); } #rview .rhero.b-plan { --bc:var(--z-plan); } #rview .rhero.b-back { --bc:var(--z-back); }
@@ -1405,17 +1405,17 @@
   #rview .rck i.sw-go { background:var(--z-go); } #rview .rck i.sw-plan { background:var(--z-plan); } #rview .rck i.sw-back { background:var(--z-back); }
   /* the data */
   .rstack { display:flex; flex-direction:column; gap:12px; margin-top:12px; }
-  #rview .racc { margin:0; padding:0; }
+  :is(#rview, #bview) .racc { margin:0; padding:0; }
   .racc > summary { display:flex; align-items:baseline; gap:12px; min-height:52px; padding:14px 22px; cursor:pointer; list-style:none; }
   .racc > summary::-webkit-details-marker { display:none; }
   .racc > summary b { font-size:15px; font-weight:700; } .racc > summary span { margin-right:auto; font:500 12px "Fira Code",ui-monospace,monospace; color:var(--dim); }
   .racc > summary::after { content:"▾"; margin-left:auto; color:var(--dim); } .racc[open] > summary::after { content:"▴"; }
   .racc > .rtable { margin:0 12px 12px; max-height:520px; }
-  #rview .rraw { margin:0; border:0; border-top:1px solid var(--line); border-radius:0; background:transparent; }
-  #rview .rraw > summary { min-height:52px; padding:13px 22px; align-items:center; cursor:pointer; } #rview .rraw > summary b { font-weight:600; } #rview .rraw > summary small { font:500 12px "Fira Code",ui-monospace,monospace; }
-  #rview .rraw.none > summary { cursor:default; }
-  #rview .rjson { margin:0; padding:12px 22px; background:var(--t-surface2); border-top:1px solid var(--line); color:var(--fg); }
-  #rview .rfoot { color:var(--dim); }
+  :is(#rview, #bview) .rraw { margin:0; border:0; border-top:1px solid var(--line); border-radius:0; background:transparent; }
+  :is(#rview, #bview) .rraw > summary { min-height:52px; padding:13px 22px; align-items:center; cursor:pointer; } #rview .rraw > summary b, #bview .rraw > summary b { font-weight:600; } :is(#rview, #bview) .rraw > summary small { font:500 12px "Fira Code",ui-monospace,monospace; }
+  :is(#rview, #bview) .rraw.none > summary { cursor:default; }
+  :is(#rview, #bview) .rjson { margin:0; padding:12px 22px; background:var(--t-surface2); border-top:1px solid var(--line); color:var(--fg); }
+  :is(#rview, #bview) .rfoot { color:var(--dim); }
   @media (max-width:1100px) { #rview .rgrid { grid-template-columns:minmax(0,1fr); } }
   @media (max-width:900px) {
     #rbar { padding:12px 12px 4px; gap:6px; }
@@ -1430,6 +1430,147 @@
     #rview .rcharts > .rc:first-child { grid-column:auto; }
   }
   @media (prefers-reduced-motion:reduce) { #rview *, #rview *::before { transition:none !important; animation:none !important; } }
+
+  /* ── Weight, in the new look: the palette of Today, Food and Recovery (both themes), the week of the day shown, three parts (the Weight, the Body, the Data) ──
+     The line is orange, the colour of what is picked; nothing is green or red until there is a goal to be toward or away from. */
+  #bview { --bw-fat:var(--t-rose); --bw-lean:var(--t-sky); }
+  #bscroll { background:var(--bg); }
+  #bbar { display:flex; flex-wrap:wrap; align-items:center; justify-content:flex-start; gap:8px 10px; max-width:1280px; padding:18px clamp(16px,2.6vw,34px) 6px; background:transparent; border-bottom:0; }
+  #bbar #bProfile { order:0; max-width:100%; }
+  #bTitle { order:1; flex:1 1 200px; min-width:0; margin:0; font-size:clamp(22px,2.6vw,30px); font-weight:700; letter-spacing:-.02em; line-height:44px; }
+  #bbar #bSync { order:2; min-height:44px; padding:0 18px; border-radius:999px; font-weight:600; background:var(--panel); border:1px solid var(--line); }
+  #bTabs { order:3; display:flex; padding:2px; gap:2px; background:var(--panel); border:1px solid var(--line); border-radius:999px; }
+  #bTabs[hidden] { display:none; }
+  #bTabs button, #bTabs button:first-child, #bTabs button:last-child { min-height:44px; margin:0; padding:0 20px; border:0; border-radius:999px; background:transparent; color:var(--dim); font-weight:600; }
+  #bTabs button[hidden] { display:none; }
+  #bTabs button:hover:not(:disabled):not([aria-pressed="true"]) { background:var(--t-surface2); color:var(--fg); }
+  #bTabs button[aria-pressed="true"] { background:var(--accent); color:var(--t-on-accent); }
+  #bbar #bTheme { order:4; }
+  /* the week: a day each, its weigh-in and how far it sat from the line; ◀ ▶ step a day */
+  #bweek { display:flex; align-items:center; gap:8px; max-width:1280px; padding:8px clamp(16px,2.6vw,34px) 2px; }
+  #bweek[hidden] { display:none; }
+  #bPrev, #bNext { flex:none; width:44px; min-width:44px; height:44px; padding:0; border-radius:50%; background:var(--panel); border:1px solid var(--line); font-size:13px; }
+  #bPrev:disabled, #bNext:disabled { opacity:.4; }
+  #bstrip { position:relative; flex:1 1 auto; min-width:0; display:grid; grid-template-columns:repeat(7, minmax(0,1fr)); gap:8px; }
+  .bwd { min-height:104px; }
+  .bwd .fwk { margin-top:4px; color:var(--fg); font:600 14px "Fira Code",ui-monospace,monospace; }
+  .bwd .bdv { font:500 11px "Fira Code",ui-monospace,monospace; color:var(--dim); min-height:1.2em; }
+  .bwd.bd-none .fwk { color:var(--dim); font-weight:500; }
+  #bNote { padding:6px clamp(16px,2.6vw,34px) 0; color:var(--dim); }
+  #brangebar { display:flex; flex-wrap:wrap; align-items:center; gap:10px 12px; max-width:1280px; padding:14px clamp(16px,2.6vw,34px) 0; }
+  #brangebar[hidden] { display:none; }
+  #brangebar h3 { flex:1 1 200px; min-width:0; display:flex; align-items:center; gap:14px; margin:0; font:500 11.5px "Fira Code",ui-monospace,monospace; letter-spacing:.14em; text-transform:uppercase; color:var(--fg); }
+  #brangebar h3::after { content:""; flex:1; height:1px; background:var(--t-line2); }
+  #bUnits { display:inline-flex; padding:2px; gap:2px; background:var(--panel); border:1px solid var(--line); border-radius:999px; }
+  #bUnits button, #bUnits button:first-child, #bUnits button:last-child { min-height:44px; min-width:52px; margin:0; padding:0 16px; border:0; border-radius:999px; background:transparent; color:var(--dim); font-weight:600; }
+  #bUnits button:hover:not(:disabled):not([aria-pressed="true"]) { background:var(--t-surface2); color:var(--fg); }
+  #bUnits button[aria-pressed="true"] { background:var(--accent); color:var(--t-on-accent); }
+  #bRange { min-height:44px; }
+  #bbody { max-width:1280px; margin:0; padding:12px clamp(16px,2.6vw,34px) 48px; }
+  #bbody .empty { color:var(--dim); }
+  #bview .eyebrow { font:500 11.5px "Fira Code",ui-monospace,monospace; letter-spacing:.14em; text-transform:uppercase; color:var(--dim); }
+  #bview .bcard { background:var(--panel); border:1px solid var(--line); border-radius:18px; box-shadow:var(--card-shadow); min-width:0; }
+  #bview .bgrid { display:grid; grid-template-columns:minmax(0,1.55fr) minmax(0,1fr); gap:16px; align-items:start; }
+  #bview .bcol { display:flex; flex-direction:column; gap:16px; min-width:0; } #bview .bcol > * { min-width:0; }
+  #bview .btwo { display:grid; grid-template-columns:minmax(0,1.3fr) minmax(0,1fr); gap:16px; margin-top:16px; align-items:start; } #bview .btwo.one { grid-template-columns:minmax(0,780px); }
+  /* where the weight is going */
+  #bview .bhero { display:grid; grid-template-columns:96px minmax(0,1fr); gap:22px; align-items:start; padding:22px 24px; }
+  .bglyph { width:96px; height:96px; display:grid; place-items:center; border-radius:50%; background:color-mix(in srgb, var(--accent) 14%, transparent); border:1px solid color-mix(in srgb, var(--accent) 45%, transparent); color:var(--t-ink); }
+  .bglyph svg { width:44px; height:44px; }
+  .bhero h2 { margin:4px 0 2px; font-size:clamp(32px,3.8vw,44px); line-height:1.05; font-weight:700; letter-spacing:-.03em; color:var(--t-ink); }
+  .bchip { display:inline-block; margin-left:12px; padding:3px 12px; border-radius:999px; vertical-align:middle; font:600 13px "Fira Sans",system-ui,sans-serif; letter-spacing:0; background:color-mix(in srgb, var(--ok) 18%, transparent); color:color-mix(in srgb, var(--ok) 60%, var(--fg)); }
+  .bchip.g-away { background:color-mix(in srgb, var(--warn) 20%, transparent); color:color-mix(in srgb, var(--warn) 55%, var(--fg)); }
+  .brate { font:600 clamp(22px,2.6vw,30px)/1.2 "Fira Code",ui-monospace,monospace; letter-spacing:-.03em; }
+  .brate small { font:500 15px "Fira Sans",system-ui,sans-serif; color:var(--dim); letter-spacing:0; }
+  .brate.na { font:500 16px/1.4 "Fira Sans",system-ui,sans-serif; color:var(--dim); letter-spacing:0; margin-top:2px; }
+  .bsum { margin:10px 0 14px; font-size:15.5px; text-wrap:pretty; }
+  .bkv { display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:10px; margin-top:6px; }
+  .bkv > div { padding:10px 12px; border-radius:12px; background:var(--t-surface2); }
+  .bkv small { display:block; color:var(--dim); font-size:12px; } .bkv b { display:block; margin:1px 0; font:600 16px "Fira Code",ui-monospace,monospace; letter-spacing:-.02em; } .bkv b i { font:400 13px "Fira Sans",system-ui,sans-serif; font-style:normal; color:var(--dim); letter-spacing:0; } .bkv span { font-size:12px; color:var(--dim); }
+  .bnote { margin-top:12px; padding:10px 14px; border-radius:12px; background:var(--t-surface2); font-size:13.5px; color:var(--dim); text-wrap:pretty; }
+  .bnote b { color:var(--fg); font-weight:600; }
+  .bgoal { display:flex; flex-wrap:wrap; align-items:center; gap:6px 12px; }
+  .bgoal .bnote { flex:1 1 280px; margin:0; }
+  #bview .bgoal button, #bview .bgoalform button { min-height:44px; padding:0 16px; border-radius:999px; font-weight:600; }
+  #bview .blink { background:none; border:0; color:var(--t-ink); padding:0 4px; min-height:44px; font-weight:600; }
+  #bview .blink:hover:not(:disabled) { background:none; text-decoration:underline; }
+  .bgoalform { display:flex; flex-wrap:wrap; align-items:center; gap:8px 10px; margin-top:12px; }
+  .bgoalform input { min-height:44px; width:9em; padding:0 12px; font:500 15px "Fira Code",ui-monospace,monospace; }
+  .bgoalform label { color:var(--dim); font-size:13.5px; }
+  /* calories */
+  #bview .bburn, #bview .bintake { padding:20px 22px; }
+  .bburn .bbig { display:flex; align-items:baseline; gap:10px; margin:6px 0 12px; } .bburn .bbig b { font:600 36px/1 "Fira Code",ui-monospace,monospace; letter-spacing:-.04em; } .bburn .bbig span { color:var(--dim); }
+  .bstages { display:flex; height:14px; border-radius:99px; overflow:hidden; gap:2px; background:var(--t-track); } .bstages i { display:block; height:100%; }
+  .bk-rest { background:var(--t-sky); } .bk-active { background:var(--accent); }
+  .blegend { display:flex; flex-wrap:wrap; gap:4px 14px; margin-top:10px; font-size:12.5px; color:var(--dim); } .blegend span { display:inline-flex; align-items:center; gap:6px; } .blegend i { display:inline-block; width:10px; height:10px; border-radius:3px; }
+  .bmini { display:grid; grid-template-columns:repeat(14, 1fr); gap:5px; align-items:end; height:96px; margin-top:16px; padding-top:4px; border-bottom:1px solid var(--line); }
+  .bmini span { display:flex; flex-direction:column-reverse; justify-content:flex-start; height:100%; gap:1px; } .bmini i { display:block; width:100%; border-radius:3px; }
+  .bfoot { margin-top:12px; font-size:12.5px; color:var(--dim); }
+  .bpair { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin:10px 0; } .bpair > div { padding:10px 12px; border-radius:12px; background:var(--t-surface2); } .bpair small { display:block; color:var(--dim); font-size:12px; } .bpair b { font:600 18px "Fira Code",ui-monospace,monospace; }
+  .bintake p { margin:0; font-size:13px; color:var(--dim); text-wrap:pretty; } .bintake p b { color:var(--fg); font-weight:600; }
+  /* the chart: dots, the line through them, the usual swing around it, the goal */
+  #bview .bchart { grid-template-columns:minmax(0,1fr); gap:0; margin-top:16px; }
+  #bview .bchart .rc { padding:18px 20px 14px; } #bview .bchart .rc .rch b { font-size:15px; }
+  #bview .rc-dot:not(.sel) { fill:var(--fg); opacity:.62; r:2.8px; } #bview .rc-dot.sel { fill:var(--panel); stroke:var(--accent); stroke-width:3; }
+  #bview .rc-ref { stroke:var(--accent); stroke-width:3; stroke-dasharray:none; stroke-linecap:round; stroke-linejoin:round; }
+  #bview .rc-band { fill:color-mix(in srgb, var(--accent) 20%, transparent); } #bview .rck i.sw-band { background:color-mix(in srgb, var(--accent) 28%, transparent); width:16px; }
+  #bview .rck i.sw-ref { border-top:3px solid var(--accent); } #bview .rck i.sw-dot { border-radius:50%; background:var(--fg); opacity:.62; }
+  #bview .rc-goal { stroke:var(--t-teal); stroke-width:1.8; stroke-dasharray:6 4; opacity:1; } #bview .rck i.sw-goal { border-top:2px dashed var(--t-teal); }
+  #bview .rc[data-chart="fat"] .rc-ref, #bview .rc[data-chart="compare"] .rc-ref { stroke:var(--bw-fat); } #bview .rc[data-chart="fat"] .rc-dot:not(.sel), #bview .rc[data-chart="compare"] .rc-dot:not(.sel):not(.rc-dot2) { fill:var(--bw-fat); opacity:.6; }
+  #bview .rc[data-chart="muscle"] .rc-ref, #bview .rc[data-chart="compare"] .rc-ref2 { stroke:var(--bw-lean); } #bview .rc[data-chart="muscle"] .rc-dot:not(.sel), #bview .rc-dot2 { fill:var(--bw-lean); opacity:.6; r:2.8px; }
+  #bview .rc[data-chart="compare"] .rck i.sw-dot { background:var(--bw-fat); } #bview .rck i.sw-dot2 { border-radius:50%; background:var(--bw-lean); opacity:.8; }
+  #bview .rc[data-chart="fat"] .rck i.sw-dot { background:var(--bw-fat); } #bview .rc[data-chart="muscle"] .rck i.sw-dot { background:var(--bw-lean); }
+  /* by week */
+  #bview .bweeks { padding:18px 20px 8px; } .bweeks h2, .bsnap h2 { margin:0 0 6px; }
+  .bwk { display:grid; grid-template-columns:minmax(0,1.2fr) minmax(0,.9fr) 78px minmax(0,1.3fr); gap:6px 14px; align-items:center; padding:10px 0; border-top:1px solid var(--line); font-size:13.5px; } .bwk:first-of-type { border-top:0; }
+  .bwk .lab { font-weight:600; } .bwk .lab small { display:block; font-weight:400; color:var(--dim); font-size:12px; }
+  .bwk .avg { font:600 14px "Fira Code",ui-monospace,monospace; text-align:right; } .bwk .ch { font:600 13px "Fira Code",ui-monospace,monospace; text-align:right; white-space:nowrap; } .bwk .ch.na { color:var(--dim); font-weight:500; }
+  .bwk .dl { display:grid; grid-template-columns:1fr 1fr; align-items:center; height:20px; position:relative; } .bwk .dl::before { content:""; position:absolute; left:50%; top:-4px; bottom:-4px; width:1px; background:var(--t-line2); }
+  .bwk .dl i { display:block; height:10px; border-radius:99px; } .bwk .dl .neg { justify-self:end; background:var(--t-sky); } .bwk .dl .pos { justify-self:start; background:var(--accent); }
+  /* what the scale measured */
+  #bview .bsnap { padding:18px 20px 12px; } .bsnap .bshead { display:flex; justify-content:space-between; align-items:baseline; gap:10px; }
+  #bview .bsnap .blink { display:inline-flex; align-items:center; }
+  .bsrow { display:grid; grid-template-columns:minmax(0,1fr) auto auto; gap:2px 14px; align-items:center; padding:12px 0; border-top:1px solid var(--line); }
+  .bsrow .nm { font-weight:600; } .bsrow .nm small { display:block; color:var(--dim); font-weight:400; font-size:12px; }
+  .bsrow .v { font:600 17px "Fira Code",ui-monospace,monospace; text-align:right; } .bsrow .v small { display:block; min-height:1.2em; font:500 11.5px "Fira Code",ui-monospace,monospace; color:var(--dim); }
+  .bsrow svg { width:84px; height:28px; } .bsrow svg polyline { fill:none; stroke-width:2; stroke-linejoin:round; stroke-linecap:round; }
+  .bs-fat { stroke:var(--bw-fat); } .bs-muscle { stroke:var(--bw-lean); } .bs-bmi { stroke:var(--t-faint); }
+  .btiles { display:grid; grid-template-columns:repeat(auto-fit, minmax(210px, 1fr)); gap:14px; }
+  .btile { padding:18px 20px; } .btile b { display:block; margin-top:4px; font:600 30px/1.15 "Fira Code",ui-monospace,monospace; letter-spacing:-.03em; } .btile span { color:var(--dim); font-size:13px; }
+  #bview .bcame { margin-top:14px; padding:20px 22px; }
+  .bcame .bars { display:flex; flex-direction:column; gap:12px; margin:14px 0 8px; }
+  .bcb { display:grid; grid-template-columns:96px minmax(0,1fr) 92px; gap:12px; align-items:center; }
+  .bcb .l { font-weight:600; } .bcb .l small { display:block; color:var(--dim); font-weight:400; font-size:12px; }
+  .bcb .t { position:relative; height:16px; border-radius:99px; background:var(--t-track); } .bcb .t::after { content:""; position:absolute; top:-4px; bottom:-4px; left:50%; width:1px; background:var(--t-line2); } .bcb .t i { position:absolute; top:0; bottom:0; border-radius:99px; }
+  .bcb .v { font:600 15px "Fira Code",ui-monospace,monospace; text-align:right; }
+  #bview .bcharts .rcharts { grid-template-columns:repeat(auto-fit, minmax(min(400px,100%), 1fr)); gap:14px; margin-top:14px; }
+  #bview .bcharts .rc[data-chart="compare"] { grid-column:1 / -1; }
+  /* the Data and the empty states */
+  #bview .bstack { display:flex; flex-direction:column; gap:12px; }
+  #bview .bempty { display:grid; justify-items:center; gap:14px; max-width:760px; margin:6px auto 0; padding:34px 28px; text-align:center; }
+  .bempty .ic { display:grid; place-items:center; width:84px; height:84px; border-radius:50%; background:var(--t-surface2); border:1px solid var(--t-line2); color:var(--dim); } .bempty .ic svg { width:40px; height:40px; }
+  .bempty h2 { margin:0; font-size:22px; letter-spacing:-.02em; } .bempty p { margin:0; max-width:52ch; color:var(--dim); text-wrap:pretty; }
+  #bview .bempty button.primary { min-height:48px; padding:0 24px; border-radius:999px; }
+  .bghost { width:100%; max-width:520px; opacity:.55; } .bghost svg { display:block; width:100%; height:auto; }
+  @media (max-width:1100px) { #bview .bgrid, #bview .btwo, #bview .btwo.one { grid-template-columns:minmax(0,1fr); } }
+  @media (max-width:900px) {
+    #bbar { padding:12px 12px 4px; gap:6px; }
+    #bTabs { flex:1 1 auto; } #bTabs button { flex:1 1 0; padding:0 10px; }
+    #bweek { padding:8px 12px 2px; gap:6px; }
+    #bstrip { display:flex; overflow-x:auto; scroll-snap-type:x proximity; scrollbar-width:none; } #bstrip::-webkit-scrollbar { display:none; }
+    .bwd { flex:0 0 78px; scroll-snap-align:center; }
+    #brangebar { padding:12px 12px 0; } #brangebar h3 { flex:1 1 100%; } #bUnits { flex:1 1 0; } #bUnits button { flex:1; } #bRange { flex:1 1 0; }
+    #bNote { padding:6px 12px 0; } #bbody { padding:10px 12px 32px; }
+    #bview .bhero { grid-template-columns:minmax(0,1fr); gap:14px; padding:18px; }
+    .bglyph { width:64px; height:64px; } .bglyph svg { width:30px; height:30px; }
+    .bkv { grid-template-columns:repeat(2, minmax(0,1fr)); } .bkv > div:last-child { grid-column:1 / -1; }
+    #bview .bburn, #bview .bintake, #bview .bweeks, #bview .bsnap, #bview .bcame { padding-left:16px; padding-right:16px; }
+    .bcb { grid-template-columns:minmax(0,1fr) auto; gap:6px 12px; } .bcb .t { grid-column:1 / -1; grid-row:2; }
+    .btile b { font-size:24px; } .btiles { grid-template-columns:repeat(2, minmax(0,1fr)); gap:10px; } .btile { padding:14px 16px; } .btile:last-child:nth-child(odd) { grid-column:1 / -1; }
+    .bwk { grid-template-columns:minmax(0,1fr) auto; gap:4px 12px; } .bwk .ch { grid-column:1; grid-row:2; text-align:left; } .bwk .dl { grid-column:2; grid-row:2; min-width:0; width:130px; } .bwk .avg { grid-column:2; grid-row:1; }
+    #bview .bchart .rc { padding:14px 14px 10px; } #bview .bcharts .rc[data-chart="compare"] { grid-column:auto; }
+  }
+  @media (prefers-reduced-motion:reduce) { #bview *, #bview *::before { transition:none !important; animation:none !important; } }
 
   /* ── Calendar, in the new look: the palette of Today and Food (both themes), a month as one paper card, the side as cards ── */
   :where(#cview, #moveMenu) button { background:var(--t-surface2); color:var(--fg); border-color:var(--t-line2); font-family:inherit; }
@@ -1552,7 +1693,7 @@
      On a restyled view (Today, Food) in its light theme the rail turns light with it (body[data-theme]). */
   header { --nav-bg:#100c09; --nav-line:rgba(255,236,214,.10); --nav-fg:#fbf3ea; --nav-dim:#b3a698; --nav-active:#1e1814; --nav-hover:#17120e; --nav-accent:#ff9f2e; --nav-on-accent:#1a0d00;
     background:var(--nav-bg); border-color:var(--nav-line); color:var(--nav-fg); font-family:"Fira Sans",system-ui,sans-serif; }
-  body:is([data-view="today"], [data-view="food"], [data-view="calendar"], [data-view="recovery"])[data-theme="light"] header { --nav-bg:#fbf8f2; --nav-line:rgba(40,24,8,.12); --nav-fg:#1d1610; --nav-dim:#5e5244; --nav-active:#efe7d8; --nav-hover:#f5efe4; --nav-accent:#d97706; --nav-on-accent:#1a0d00; }
+  body:is([data-view="today"], [data-view="food"], [data-view="calendar"], [data-view="recovery"], [data-view="weight"])[data-theme="light"] header { --nav-bg:#fbf8f2; --nav-line:rgba(40,24,8,.12); --nav-fg:#1d1610; --nav-dim:#5e5244; --nav-active:#efe7d8; --nav-hover:#f5efe4; --nav-accent:#d97706; --nav-on-accent:#1a0d00; }
   header h1 { margin:0; font-size:0; line-height:0; }
   .brandmark { display:grid; place-items:center; width:38px; height:38px; border-radius:11px; background:var(--nav-accent); color:var(--nav-on-accent); }
   .brandmark svg { width:21px; height:21px; }
@@ -1832,15 +1973,26 @@
 <section id="bview">
   <div class="wbar" id="bbar">
     <select id="bProfile" title="Garmin profile" hidden></select>
-    <select id="bRange" title="How many days the charts and the table show">
-      <option value="14">14 days</option><option value="30">30 days</option><option value="60" selected>60 days</option><option value="90">90 days</option>
-    </select>
+    <h2 id="bTitle">Weight</h2>
+    <button id="bSync" title="Fetch the latest from Garmin, new weigh-ins included" hidden>↻ Sync</button>
+    <div id="bTabs" class="btabs" role="group" aria-label="What the view shows" hidden><button id="bTabW" type="button" aria-pressed="true">Weight</button><button id="bTabB" type="button" aria-pressed="false" hidden>Body</button><button id="bTabD" type="button" aria-pressed="false">Data</button></div>
+    <button id="bTheme" class="themebtn" type="button" aria-label="Switch to light theme" title="Switch to light theme"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><g class="sun"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></g><path class="moon" d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z"/></svg></button>
+  </div>
+  <div id="bweek" hidden>
+    <button id="bPrev" title="Previous day" aria-label="Previous day">◀</button>
+    <div id="bstrip" role="group" aria-label="The week"></div>
+    <button id="bNext" title="Next day" aria-label="Next day">▶</button>
+  </div>
+  <div id="bNote" class="empty" hidden></div>
+  <div id="brangebar" hidden>
+    <h3 id="bRangeTitle"></h3>
     <div class="seg" id="bUnits" role="group" aria-label="Unit of weight">
       <button data-unit="lb" aria-pressed="true">lb</button><button data-unit="kg" aria-pressed="false">kg</button>
     </div>
-    <button id="bSync" title="Fetch the latest from Garmin, new weigh-ins included" hidden>↻ Sync</button>
+    <select id="bRange" title="How many days the charts and the table show" aria-label="How many days the charts and the table show">
+      <option value="14">14 days</option><option value="30">30 days</option><option value="60" selected>60 days</option><option value="90">90 days</option>
+    </select>
   </div>
-  <div id="bNote" class="empty" hidden></div>
   <div id="bscroll"><div id="bbody"><div class="empty">Loading…</div></div></div>
 </section>
 <section id="fview">
@@ -5085,7 +5237,7 @@ const wellnessView = (name, prefix, path, range, render, extra = {}) => ({ name,
 const backFromToday = (d) => (d && d.today && d.date ? Math.max(0, Math.round((Date.parse(d.today) - Date.parse(d.date)) / 86_400_000)) : 0);
 const R = wellnessView("recovery", "r", "/api/wellness", 30, () => renderRecovery(), { span: (V) => backFromToday(V.data) + V.range, activitiesAt: 0, activitiesBusy: false, tab: "verdict", tableOpen: true, rawOpen: false });
 const storedUnit = () => { try { return localStorage.getItem("weightUnit") === "kg" ? "kg" : "lb"; } catch { return "lb"; } };
-const B = wellnessView("weight", "b", "/api/weight", 60, () => renderWeight(), { unit: storedUnit(), span: (V) => V.range });
+const B = wellnessView("weight", "b", "/api/weight", 60, () => renderWeight(), { unit: storedUnit(), span: (V) => V.range, tab: "weight", tableOpen: true, rawOpen: false, goalEdit: false, goalFocus: false });
 const wellnessQuery = (V) => `${V.profile ? `profile=${encodeURIComponent(V.profile)}&` : ""}${V.date ? `date=${V.date}&` : ""}days=${V.range}`;
 
 /** The Sync button: off while a sync runs, and until the minute after the last time Garmin was asked is over (V.coolUntil, from the server's cooldownMs). */
@@ -5473,6 +5625,282 @@ function bindRecoveryView() {
   $("rProfile").onchange = (e) => { R.profile = e.target.value; R.date = null; R.data = null; R.loaded = false; R.refreshed = false; R.raw.clear(); R.open.clear(); R.error = ""; guard(loadRecovery)(); };
 }
 
+const WEIGHT_TABS = [["bTabW", "weight"], ["bTabB", "body"], ["bTabD", "data"]];
+
+/** Another day (null: the last weigh-in), from the week, the arrows, a chart or a row of the table: the part of the view stays. */
+function goWeightDay(date) {
+  B.date = date;
+  return guard(loadWeight)();
+}
+const pickWeightDay = goWeightDay;
+
+/** The week of the day shown: a button a day with its weigh-in and how far it sat from the line; a day to come cannot be opened. */
+function renderWeightWeek(d, show) {
+  const bar = $("bweek"), strip = $("bstrip");
+  bar.hidden = !show;
+  strip.replaceChildren();
+  $("bPrev").disabled = !WtM.canStep(d, B.range, -1); $("bNext").disabled = !WtM.canStep(d, B.range, 1);
+  if (!show) return;
+  for (const w of WtM.weekStrip(d, B.unit)) {
+    const b = mk("button", `fwd bwd bd-${w.state}` + (w.selected ? " sel" : "") + (w.today ? " today" : ""));
+    b.type = "button"; b.dataset.day = w.day; b.disabled = w.state === "future";
+    b.setAttribute("aria-label", w.label);
+    if (w.selected) b.setAttribute("aria-current", "date");
+    b.append(mk("small", "", w.weekday), mk("b", "", String(w.number)), mk("span", "fwk", w.text), mk("span", "bdv", w.delta));
+    b.onclick = () => goWeightDay(w.day);
+    strip.append(b);
+  }
+  const sel = strip.querySelector(".sel");
+  if (sel && strip.scrollWidth > strip.clientWidth) strip.scrollLeft = sel.offsetLeft - (strip.clientWidth - sel.offsetWidth) / 2;
+}
+
+/** The arrow of the verdict: down, up or along. */
+function weightGlyph(dir) {
+  const d = { losing: "M5 7l14 10M19 17v-7M19 17h-7", gaining: "M5 17L19 7M19 7v7M19 7h-7", steady: "M4 12h16M15 7l5 5-5 5" }[dir] || "M4 12h16M15 7l5 5-5 5";
+  const svg = svgEl("svg", { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", "stroke-width": 2.2, "stroke-linecap": "round", "stroke-linejoin": "round", "aria-hidden": "true" });
+  svg.append(svgEl("path", { d }));
+  return svg;
+}
+
+/** Keep the goal weight (kg; null removes it) with the profile's goals, and draw the view again with it. */
+const saveWeightGoal = guard(async (kg) => {
+  try { await api("POST", "/api/settings/goals", { profile: B.profile, action: "save", goals: { weightKg: kg } }); }
+  catch (e) { toast(e.message, 6000); return; }
+  B.goalEdit = false;
+  await reloadWellness(B);
+  renderWeight();
+});
+
+/** The goal under the verdict: what it is and where the line stands against it, with Change and Remove; or a way to set one; or the box to type it in. */
+function weightGoalBox(goal) {
+  const box = mk("div", "bgoalbox");
+  if (B.goalEdit) {
+    const form = mk("form", "bgoalform"), input = mk("input"), label = mk("label", "", `Goal weight (${B.unit})`);
+    input.id = "bGoalInput"; input.inputMode = "decimal"; input.autocomplete = "off"; input.value = WtM.weightInput(goal ? goal.kg : null, B.unit); label.htmlFor = input.id;
+    const save = mk("button", "primary", "Save goal"), cancel = mk("button", "", "Cancel");
+    save.type = "submit"; cancel.type = "button";
+    form.onsubmit = (e) => {
+      e.preventDefault();
+      const kg = WtM.parseWeight(input.value, B.unit);
+      if (Number.isNaN(kg)) { toast(`Type the goal weight as a number of ${B.unit === "lb" ? "pounds" : "kilograms"}.`, 5000); return; }
+      saveWeightGoal(kg);
+    };
+    cancel.onclick = () => { B.goalEdit = false; renderWeight(); };
+    form.append(label, input, save, cancel);
+    box.append(form);
+    if (B.goalFocus) { B.goalFocus = false; setTimeout(() => { input.focus(); input.select(); }, 0); }
+    return box;
+  }
+  if (!goal) {
+    const set = mk("button", "blink", "Set a goal weight");
+    set.type = "button"; set.onclick = () => { B.goalEdit = true; B.goalFocus = true; renderWeight(); };
+    box.append(set);
+    return box;
+  }
+  const row = mk("div", "bgoal"), note = mk("div", "bnote");
+  note.append("Goal ", mk("b", "", goal.value));
+  if (goal.togo) note.append(` · your last weigh-in is ${goal.togo} it.`);
+  if (goal.line) note.append(` ${goal.line}`);
+  const change = mk("button", "blink", "Change"), remove = mk("button", "blink", "Remove");
+  change.type = remove.type = "button";
+  change.onclick = () => { B.goalEdit = true; B.goalFocus = true; renderWeight(); };
+  remove.onclick = () => saveWeightGoal(null);
+  row.append(note, change, remove);
+  box.append(row);
+  return box;
+}
+
+/** Where the weight is going: the verdict, the rate a week, what the line says, three figures, where the line will be, and the goal. */
+function weightHero(h) {
+  const card = mk("section", "bcard bhero"), glyph = mk("div", "bglyph"), body = mk("div"), title = mk("h2", "", h.title), rate = mk("div", "brate" + (h.rate.kind === "none" ? " na" : ""));
+  glyph.append(weightGlyph(h.dir || "steady"));
+  if (h.goal && h.goal.chip) title.append(mk("span", `bchip g-${h.goal.state}`, h.goal.chip));
+  rate.append(h.rate.text);
+  if (h.rate.per) rate.append(" ", mk("small", "", h.rate.per));
+  const kv = mk("div", "bkv");
+  for (const f of h.tiles) {
+    const tile = mk("div"), value = mk("b", "", f.value);
+    if (f.of) value.append(" ", mk("i", "", f.of));
+    tile.append(mk("small", "", f.label), value, mk("span", "", f.note));
+    kv.append(tile);
+  }
+  body.append(mk("div", "eyebrow", "Where your weight is going"), title, rate, mk("p", "bsum", h.summary), kv);
+  if (h.projection) { const proj = mk("div", "bnote"); proj.append("If the line holds: about ", mk("b", "", h.projection.value), " in four weeks."); body.append(proj); }
+  body.append(weightGoalBox(h.goal));
+  card.append(glyph, body);
+  return card;
+}
+
+/** What Garmin counts as burned a day: split into at rest and active, with the last two weeks as bars. */
+function weightBurned(b) {
+  const card = mk("section", "bcard bburn"), big = mk("div", "bbig"), stages = mk("div", "bstages");
+  big.append(mk("b", "", b.total.toLocaleString()), mk("span", "", "kcal"));
+  card.append(mk("div", "eyebrow", "Burned a day"), big);
+  if (b.active !== null) {
+    stages.setAttribute("role", "img"); stages.setAttribute("aria-label", `${b.rest.toLocaleString()} at rest, ${b.active.toLocaleString()} active`);
+    for (const [cls, v] of [["bk-rest", b.rest], ["bk-active", b.active]]) { const i = mk("i", cls); i.style.width = `${(v / b.total) * 100}%`; stages.append(i); }
+    const legend = mk("div", "blegend");
+    for (const [cls, label] of [["bk-rest", `At rest ${b.rest.toLocaleString()}`], ["bk-active", `Active ${b.active.toLocaleString()}`]]) { const s = mk("span"), i = mk("i", cls); s.append(i, label); legend.append(s); }
+    card.append(stages, legend);
+  }
+  const mini = mk("div", "bmini");
+  mini.setAttribute("role", "img"); mini.setAttribute("aria-label", `Calories burned, the last ${b.bars.length} full days`);
+  for (const x of b.bars) {
+    const col = mk("span"), rest = mk("i", "bk-rest"), active = mk("i", "bk-active");
+    col.title = x.label; rest.style.height = `${(x.rest / (b.max * 1.1)) * 100}%`; active.style.height = `${(x.active / (b.max * 1.1)) * 100}%`;
+    col.append(rest, active);
+    mini.append(col);
+  }
+  card.append(mini, mk("div", "bfoot", b.foot));
+  return card;
+}
+
+/** The calories eaten (the Food log) against the calories burned (Garmin), and what the two say a week by the numbers. */
+function weightIntake(c) {
+  const card = mk("section", "bcard bintake"), pair = mk("div", "bpair"), p = mk("p");
+  for (const [label, value] of [["Eaten (Food log)", c.eaten], ["Burned", c.burned]]) { const x = mk("div"); x.append(mk("small", "", label), mk("b", "", value.toLocaleString())); pair.append(x); }
+  for (const s of c.parts) p.append(s.strong ? mk("b", "", s.t) : document.createTextNode(s.t));
+  card.append(mk("div", "eyebrow", "Eaten vs burned"), pair, p);
+  return card;
+}
+
+/** The pictures take the room they get: wide on a desktop, narrower on a phone, so the text stays readable. */
+const weightWide = () => innerWidth > 1100;
+
+/** The weigh-ins as dots, the line through them, the usual swing around it and the goal, over every day of the range. */
+function weightChart(d) {
+  const wide = weightWide(), spec = { ...WtM.weightSpec(d, B.unit), width: wide ? 1160 : 400, height: wide ? 260 : 270, left: 54 };
+  const charts = TrendCharts.trends(WtM.fullDays(d, B.range), [spec], { selected: d.date, onPick: goWeightDay });
+  const note = mk("div", "bnote");
+  note.append(mk("b", "", "Read the line, not the day. "), "One weigh-in moves a kilo or more with water and meals, so the rate comes from a straight line fitted through every weigh-in in the range.");
+  charts.classList.add("bchart");
+  charts.querySelector(".rc").append(note);
+  return charts;
+}
+
+/** The weeks one by one: the average weigh-in, how many there were, and a bar for the change from the week before. */
+function weightWeeks(d) {
+  const card = mk("section", "bcard bweeks");
+  card.append(mk("h2", "eyebrow", "By week · average and change from the week before"));
+  for (const r of WtM.byWeek(d, B.unit, B.range)) {
+    const row = mk("div", "bwk"), lab = mk("div", "lab", r.label), dl = mk("div", "dl"), bar = mk("i", r.fill < 0 ? "neg" : "pos");
+    lab.append(mk("small", "", r.note));
+    dl.setAttribute("role", "img"); dl.setAttribute("aria-label", r.deltaKg === null ? "no change to show" : `${r.change} from the week before`);
+    if (r.deltaKg !== null && r.fill !== 0) { bar.style.width = `${Math.abs(r.fill) * 100}%`; if (r.fill < 0) dl.append(bar, mk("span")); else dl.append(mk("span"), bar); }
+    row.append(lab, mk("div", "avg", r.avg), mk("div", "ch" + (r.deltaKg === null ? " na" : ""), r.change), dl);
+    card.append(row);
+  }
+  return card;
+}
+
+/** A small picture of a measure: the line through its (smoothed) values, drawn in its own colour. */
+function weightSpark(values, cls) {
+  const W = 84, H = 28, svg = svgEl("svg", { viewBox: `0 0 ${W} ${H}`, "aria-hidden": "true" });
+  if (values.length < 2) return svg;
+  const lo = Math.min(...values), span = Math.max(...values) - lo || 1;
+  svg.append(svgEl("polyline", { class: cls, points: values.map((v, k) => `${((k / (values.length - 1)) * (W - 4) + 2).toFixed(1)},${(H - 3 - ((v - lo) / span) * (H - 6)).toFixed(1)}`).join(" ") }));
+  return svg;
+}
+
+/** What the scale measured, in three lines, with a way to the Body tab. */
+function weightSnapshot(rows) {
+  const card = mk("section", "bcard bsnap"), head = mk("div", "bshead"), more = mk("button", "blink", "See body ›");
+  more.type = "button"; more.onclick = () => { B.tab = "body"; renderWeight(); };
+  head.append(mk("h2", "eyebrow", "Body, from the scale"), more);
+  card.append(head);
+  for (const r of rows) {
+    const row = mk("div", "bsrow"), nm = mk("div", "nm", r.label), v = mk("div", "v", r.value);
+    nm.append(mk("small", "", r.day)); v.append(mk("small", "", r.change || " "));
+    row.append(nm, v, weightSpark(r.spark, { bodyFatPercent: "bs-fat", muscleKg: "bs-muscle", bmi: "bs-bmi" }[r.key]));
+    card.append(row);
+  }
+  return card;
+}
+
+/** The Weight part: the verdict, calories, the chart, the weeks and what the scale measured. */
+function weightMain(box, d) {
+  const h = WtM.hero(d, B.unit, B.range), grid = mk("div", "bgrid"), side = mk("div", "bcol"), burned = WtM.burned(d), intake = WtM.intakeCard(d, B.unit), snap = WtM.bodySnapshot(d, B.unit);
+  if (burned) side.append(weightBurned(burned));
+  if (intake) side.append(weightIntake(intake));
+  grid.append(weightHero(h), side);
+  if (!side.childNodes.length) grid.style.gridTemplateColumns = "minmax(0,1fr)";
+  const two = mk("div", "btwo" + (snap ? "" : " one"));
+  two.append(weightWeeks(d));
+  if (snap) two.append(weightSnapshot(snap));
+  box.append(grid, weightChart(d), two);
+}
+
+/** The Body part: fat, muscle and BMI, where the change came from, and the pictures of it. */
+function weightBodyTab(box, d) {
+  const tiles = mk("div", "btiles"), c = WtM.came(d, B.unit), wide = weightWide();
+  for (const f of WtM.bodyTiles(d, B.unit)) { const tile = mk("div", "bcard btile"); tile.append(mk("div", "eyebrow", f.label), mk("b", "", f.value), mk("span", "", f.note)); tiles.append(tile); }
+  box.append(tiles);
+  if (c) {
+    const card = mk("section", "bcard bcame"), bars = mk("div", "bars"), note = mk("div", "bnote");
+    for (const r of c.rows) {
+      const row = mk("div", "bcb"), l = mk("div", "l", r.label), t = mk("div", "t"), i = mk("i");
+      l.append(mk("small", "", r.sub));
+      i.style.background = { "Fat mass": "var(--bw-fat)", "Lean mass": "var(--bw-lean)", Weight: "var(--accent)" }[r.label];
+      if (r.frac < 0) { i.style.right = "50%"; i.style.width = `${Math.abs(r.frac) * 50}%`; } else { i.style.left = "50%"; i.style.width = `${r.frac * 50}%`; }
+      t.append(i);
+      row.append(l, t, mk("div", "v", r.text));
+      bars.append(row);
+    }
+    if (c.line) note.append(mk("b", "", `${c.line} `));
+    note.append("Each is a straight line fitted through the days the scale measured both. Scale body fat is an estimate from a small current through the body, and moves with water: read the direction over weeks, not one reading.");
+    card.append(mk("div", "eyebrow", "Where the change came from"), bars, note);
+    box.append(card);
+  }
+  const specs = WtM.bodySpecs(d, B.unit).map((s) => ({ ...s, width: s.id === "compare" ? (wide ? 1160 : 400) : wide ? 560 : 400, height: s.id === "compare" ? (wide ? 240 : 260) : wide ? 200 : 240, left: 54 }));
+  const charts = mk("div", "bcharts");
+  charts.append(TrendCharts.trends(WtM.fullDays(d, B.range), specs, { selected: d.date, onPick: goWeightDay }));
+  box.append(charts);
+}
+
+/** The Data part: every stored number of the range, and Garmin's own responses for the day, each a card that opens. */
+function weightData(box, d, garminRows) {
+  const stack = mk("div", "rstack bstack"), every = mk("details", "racc"), sum = mk("summary");
+  every.open = B.tableOpen;
+  sum.append(mk("b", "", "Every stored number"), mk("span", "", `${d.days.length} days`));
+  every.append(sum, metricsTable(d.days, WtM.GROUPS, (f, day) => WtM.cell(f, day, B.unit), d.date, pickWeightDay));
+  every.ontoggle = () => { B.tableOpen = every.open; };
+  stack.append(every);
+  if (garminRows) {
+    const raw = mk("details", "racc"), rawSum = mk("summary");
+    raw.open = B.rawOpen;
+    rawSum.append(mk("b", "", `Garmin's responses for ${RM.dayLabel(d.date)}`), mk("span", "", `${d.stored.filter((s) => WtM.KINDS.some((k) => k.kind === s.kind)).length} of ${WtM.KINDS.length} stored`));
+    raw.append(rawSum, renderRawResponses(B, d, WtM.KINDS));
+    raw.ontoggle = () => { B.rawOpen = raw.open; };
+    stack.append(raw);
+  }
+  box.append(stack);
+}
+
+const WEIGHT_SCALE_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="3"/><path d="M8 8h8M12 8v3"/></svg>';
+const WEIGHT_GHOST = '<svg viewBox="0 0 520 150"><g stroke="var(--t-line2)" stroke-dasharray="4 5"><line x1="10" x2="510" y1="30" y2="30"/><line x1="10" x2="510" y1="75" y2="75"/><line x1="10" x2="510" y1="120" y2="120"/></g><line x1="20" y1="40" x2="500" y2="104" stroke="var(--accent)" stroke-width="3" stroke-dasharray="2 8" stroke-linecap="round"/>' + Array.from({ length: 22 }, (_, k) => `<circle cx="${28 + k * 21.5}" cy="${(42 + k * 2.9 + Math.sin(k * 2.1) * 9).toFixed(1)}" r="3.2" fill="var(--t-faint)" opacity=".7"/>`).join("") + "</svg>";
+
+/** No weigh-ins: why, and what to do about it. `stored`: nothing is stored at all; else there are days, with no weigh-in among them. */
+function weightEmpty(box, stored) {
+  const card = mk("section", "bcard bempty"), ic = mk("div", "ic"), ghost = mk("div", "bghost"), info = garmin.profileInfo[B.profile] || {}, on = garminOn(B.profile);
+  let title, text, cta = null;
+  if (stored) {
+    title = "No weigh-ins are stored yet";
+    if (on) { text = "Garmin is connected. The first fetch brings the weigh-ins of the last 60 days, and what the scale measured with them."; cta = ["Fetch the last 60 days from Garmin", () => syncWellness(B, false)]; }
+    else if (info.renpho) { text = "The scale's weigh-ins arrive when the Renpho sync runs: check it in Settings."; cta = ["Open Settings", () => setView("settings")]; }
+    else if (garmin.mock) text = "Mock mode does not fetch them from Garmin.";
+    else { text = "Connect a Renpho scale or Garmin in Settings to get them."; cta = ["Open Settings", () => setView("settings")]; }
+  } else {
+    title = "No weigh-in in these days";
+    text = on ? "Nothing was weighed in these days. Press Sync after a new one, or look further back." : "Nothing was weighed in these days. Look further back with the range.";
+    if (on) cta = ["Sync", () => syncWellness(B, false)];
+  }
+  ic.innerHTML = WEIGHT_SCALE_ICON; ghost.innerHTML = WEIGHT_GHOST; ghost.setAttribute("aria-hidden", "true");
+  card.append(ic, mk("h2", "", title), mk("p", "", text));
+  if (cta) { const b = mk("button", "primary", cta[0]); b.type = "button"; b.onclick = guard(cta[1]); card.append(b); }
+  card.append(ghost);
+  box.append(card);
+}
+
 function renderWeight() {
   const box = $("bbody"), d = B.data;
   renderWellnessNote(B);
@@ -5480,40 +5908,33 @@ function renderWeight() {
   $("bUnits").querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.unit === B.unit)));
   const keep = $("bscroll").scrollTop;
   box.replaceChildren();
+  $("bTabs").hidden = true; $("brangebar").hidden = true; renderWeightWeek(d, false);
   if (!B.loaded) { box.append(mk("div", "empty", "Loading…")); return; }
   if (B.error && !d) { box.append(mk("div", "msg err", B.error)); return; }
   if (!d || !d.profile) { box.append(mk("div", "empty", "No Garmin profile is configured.")); return; }
   // The days of a range carry the scale's weigh-ins too, so a profile with only a Renpho scale has days and no Garmin row at all.
   const garminRows = !!(d.sync && d.sync.days), scaleOnly = !garminRows && d.days.length > 0;
-  if (!garminRows && !scaleOnly) {
-    const info = garmin.profileInfo[B.profile] || {};
-    box.append(mk("div", "empty", garminOn(B.profile) ? "No weigh-ins are stored yet." : info.renpho ? "No weigh-ins are stored yet. The scale's arrive when the Renpho sync runs: check it in Settings." : garmin.mock ? "No weigh-ins are stored yet. Mock mode does not fetch them from Garmin." : "No weigh-ins are stored yet. Connect a Renpho scale or Garmin in Settings to get them."));
-    if (garminOn(B.profile)) { const b = mk("button", "primary", "Fetch the last 60 days from Garmin"); b.onclick = guard(() => syncWellness(B, false)); box.append(b); }
-    return;
-  }
-  const figs = mk("div", "rfigs");
-  for (const f of WtM.figures(d, B.unit)) { const tile = mk("div", "rfig"); tile.append(mk("small", "", f.label), mk("b", "", f.value), mk("span", "", f.note)); figs.append(tile); }
-  box.append(figs);
-  if (!d.body.weighIns) box.append(mk("div", "empty", garminOn(B.profile) ? "No weigh-in in these days. Press Sync after a new one." : "No weigh-in in these days."));
-  box.append(mk("h3", "", `Trends, ${d.days.length} days`));
-  box.append(TrendCharts.trends(d.days, WtM.charts(d.days, B.unit), { selected: d.date, onPick: pickWeightDay }));
-  box.append(mk("h3", "", "Every stored number"));
-  box.append(metricsTable(d.days, WtM.GROUPS, (f, day) => WtM.cell(f, day, B.unit), d.date, pickWeightDay));
-  if (garminRows) {
-    box.append(mk("h3", "", `Garmin's responses for ${RM.dayLabel(d.date)}`));
-    box.append(renderRawResponses(B, d, WtM.KINDS));
+  if (!garminRows && !scaleOnly) { weightEmpty(box, true); return; }
+  const tabs = WtM.tabs(d), weighed = d.body.weighIns > 0;
+  if (!tabs.includes(B.tab)) B.tab = "weight";
+  for (const [id, tab] of WEIGHT_TABS) { $(id).hidden = !tabs.includes(tab); $(id).setAttribute("aria-pressed", String(B.tab === tab)); }
+  $("brangebar").hidden = false;
+  $("bRangeTitle").textContent = `${{ weight: "Trend", body: "Body", data: "Stored" }[B.tab]} · last ${B.range} days`;
+  if (!weighed) weightEmpty(box, false);
+  else {
+    $("bTabs").hidden = false; renderWeightWeek(d, true);
+    if (B.tab === "body") weightBodyTab(box, d); else if (B.tab === "data") weightData(box, d, garminRows); else weightMain(box, d);
   }
   box.append(aboutFoot("weight", "The trend is a straight line through the weigh-ins shown: one weigh-in moves a kilo or more with water and meals." + (garminRows ? " Calories burned are Garmin's estimate from the watch. " + syncRule(false) : " The numbers are the scale's, as Renpho sent them.")));
   $("bscroll").scrollTop = keep;
 }
 
-function pickWeightDay(day) {
-  B.date = day;
-  guard(loadWeight)();
-}
-
 function bindWeightView() {
   $("vWeight").onclick = () => setView("weight");
+  for (const [id, tab] of WEIGHT_TABS) $(id).onclick = () => { if (B.tab !== tab) { B.tab = tab; $("bscroll").scrollTop = 0; renderWeight(); } };
+  matchMedia("(max-width: 1100px)").addEventListener("change", () => { if (document.body.dataset.view === "weight" && B.loaded) renderWeight(); }); // the charts are drawn for the room they get
+  $("bPrev").onclick = () => B.data && goWeightDay(RM.addDays(B.data.date, -1)); // from the day shown
+  $("bNext").onclick = () => B.data && goWeightDay(RM.addDays(B.data.date, 1));
   $("bRange").onchange = (e) => { B.range = Number(e.target.value); guard(loadWeight)(); };
   $("bUnits").querySelectorAll("button").forEach((b) => b.onclick = () => {
     B.unit = b.dataset.unit;
@@ -5521,7 +5942,7 @@ function bindWeightView() {
     renderWeight();
   });
   $("bSync").onclick = guard(() => syncWellness(B, false));
-  $("bProfile").onchange = (e) => { Object.assign(B, { profile: e.target.value, date: null, data: null, loaded: false, refreshed: false, error: "" }); B.raw.clear(); B.open.clear(); guard(loadWeight)(); };
+  $("bProfile").onchange = (e) => { Object.assign(B, { profile: e.target.value, date: null, data: null, loaded: false, refreshed: false, error: "", goalEdit: false }); B.raw.clear(); B.open.clear(); guard(loadWeight)(); };
 }
 
 // ── Food ─────────────────────────────────────────────────────────────────
@@ -5736,7 +6157,7 @@ function foodSummary(d) {
   const follows = NM.goalLine(d);
   if (follows) lines.append(mk("div", "fburn", follows));
   card.append(lines);
-  if (!Object.keys(d.goals).length) {
+  if (!Object.keys(d.goals).filter((key) => key !== "weightKg").length) { // the weight to aim for is not a goal of the day
     const hint = mk("div", "fgoalhint", "Set daily goals to follow your progress through the day. "), go = mk("button", "", "Open Settings");
     go.type = "button"; go.onclick = () => setView("settings");
     hint.append(go);
@@ -7206,7 +7627,7 @@ function garminCard(d) {
  * the field says which. They are what the Food view measures the day against and what an assistant sees through the MCP.
  */
 function goalsCard(d) {
-  const g = d.goals, card = mk("div", "scard"), count = Object.keys(g.values).filter((key) => key !== "kcalBurnPct").length;
+  const g = d.goals, card = mk("div", "scard"), count = Object.keys(g.values).filter((key) => key !== "kcalBurnPct" && key !== "weightKg").length;
   card.append(...scardHead("Nutrition goals", mk("span", "chip " + (count ? "ok" : ""), count ? `${count} set` : "none set"), help("goals", "What the Food view measures each day against; an assistant sees them through the MCP and can set them. One number a day: leave a field empty for no goal. Protein, fiber and the minerals are minimums, sodium, sugars and the fats maximums, and calories, carbs and fat targets (within 10 %).", "the nutrition goals")));
   const form = mk("div", "sform"), inputs = {};
   const group = (name) => { const h = mk("div", "sgl", name); form.append(h); };
@@ -7215,6 +7636,12 @@ function goalsCard(d) {
   g.fields.forEach((f, i) => {
     if (i === 0) group("Calories and macros");
     if (f.key === "fiberG") group("Nutrients");
+    if (f.kind === "weight") { // the weight to aim for is kept in kilograms and typed and shown in the unit the Weight view uses
+      group("Weight");
+      inputs[f.key] = sfield(form, `Weight goal (${B.unit})`, "goal_" + f.key, { value: WtM.weightInput(g.values[f.key], B.unit), placeholder: "no goal" });
+      inputs[f.key].inputMode = "decimal";
+      return;
+    }
     if (f.kind === "burn") {
       form.append(stoggle(burnOn(), "Add the calories I burn to the calorie goal", "Adds a share of the day's active calories (what Garmin counts above resting) to the calorie goal, so a training day lets you eat more. It grows as the watch counts, and stays as set on a day with no burn from Garmin.", (on) => { S.draft.goal_burnOn = on; renderSettings(); }, { key: "burn", about: "adding the calories burned" }));
       if (!burnOn()) return;
@@ -7222,7 +7649,8 @@ function goalsCard(d) {
     inputs[f.key] = sfield(form, `${f.label} (${f.unit})`, "goal_" + f.key, { value: g.values[f.key] === undefined ? (f.kind === "burn" ? "100" : "") : String(g.values[f.key]), placeholder: NM.kindLabel(f.kind) });
     inputs[f.key].inputMode = "decimal";
   });
-  const texts = () => Object.fromEntries(g.fields.map((f) => [f.key, f.kind === "burn" && !burnOn() ? "" : S.draft["goal_" + f.key] ?? (g.values[f.key] === undefined ? (f.kind === "burn" ? "100" : "") : String(g.values[f.key]))]));
+  const initial = (f) => (f.kind === "weight" ? WtM.weightInput(g.values[f.key], B.unit) : g.values[f.key] === undefined ? (f.kind === "burn" ? "100" : "") : String(g.values[f.key]));
+  const texts = () => Object.fromEntries(g.fields.map((f) => [f.key, f.kind === "burn" && !burnOn() ? "" : S.draft["goal_" + f.key] ?? initial(f)]));
   const note = mk("div", "sline dim");
   const sum = () => { note.textContent = SetM.macroGoalsNote(texts()); note.hidden = !note.textContent; };
   sum();
@@ -7233,6 +7661,9 @@ function goalsCard(d) {
     sbtn("Save goals", () => {
       const r = SetM.goalsPatch(texts(), g.fields, g.values);
       if (r.error) { S.msg.goals = { ok: false, text: r.error }; renderSettings(); return; }
+      if (typeof r.goals.weightKg === "number") { // typed in the unit, kept in kilograms; a weight left as it was is not sent, or the round trip through the unit would move it
+        if (texts().weightKg === initial(g.fields.find((f) => f.kind === "weight"))) delete r.goals.weightKg; else r.goals.weightKg = WtM.parseWeight(texts().weightKg, B.unit);
+      }
       return settingsPost("goals", { action: "save", goals: r.goals }, "Goals saved.");
     }, { cls: "primary", key: "goals:save" }),
     sbtn("Clear all goals", () => settingsPost("goals", { action: "clear" }, "Goals cleared."), { key: "goals:clear", disabled: !count })
