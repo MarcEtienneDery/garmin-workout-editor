@@ -304,9 +304,11 @@ test.describe("on a wide screen, in both themes", () => {
     await openFood(alice);
     for (const theme of ["dark", "light"]) {
       if (theme === "light") await alice.locator("#fTheme").click();
+      await alice.evaluate(() => Promise.all(document.getAnimations().map((a) => a.finished.catch(() => null)))); // the colours have settled
       const low = await alice.evaluate(() => {
         const lum = (css: string) => {
-          const [r, g, b] = (css.match(/[\d.]+/g) ?? []).slice(0, 3).map(Number).map((v) => { const c = v / 255; return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; });
+          const unit = css.startsWith("color(srgb") ? 1 : 255; // a mix of colours is given as 0 to 1
+          const [r, g, b] = (css.match(/[\d.]+/g) ?? []).slice(0, 3).map(Number).map((v) => { const c = v / unit; return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; });
           return 0.2126 * r + 0.7152 * g + 0.0722 * b;
         };
         const bgOf = (el: Element): string => {
@@ -335,7 +337,9 @@ test("the part of the view chosen stays while the page is open, on another view 
   await openView(me, "food");
   await expect(me.locator("#fbody .fmeal").first()).toBeVisible();
   await tab(me, "Insights").click();
-  await openView(me, "today");
-  await openView(me, "food");
+  await me.locator("#vToday").click(); // in the page: another address would load it again
+  await expect(me.locator("body")).toHaveAttribute("data-view", "today");
+  await me.locator("#vFood").click();
+  await expect(me.locator("body")).toHaveAttribute("data-view", "food");
   await expect(tab(me, "Insights")).toHaveAttribute("aria-pressed", "true"); // the part chosen stays while the page is open
 });
