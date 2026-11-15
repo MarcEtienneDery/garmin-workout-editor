@@ -7,7 +7,7 @@
  * Each test checks the whole view with `opened`, so a panel that opens anywhere else fails it too. Open Food Facts is never reached.
  */
 import { test, expect, openView, today, daysAgo, loginAs, ADMIN_TOKEN, type Page, type APIRequestContext } from "../support/fixtures";
-import { labelOf, nutrients, openSheet, sheetClose, sheetTab } from "../support/food";
+import { everyDay, labelOf, nutrients, openInsights, openSheet, pickMeal, sheetClose, sheetTab } from "../support/food";
 
 const OATMEAL = { name: "Oatmeal", kcal: 300, proteinG: 10, carbsG: 54, fatG: 5, nutrients: { fiberG: 4 } };
 const BANANA = { name: "Banana", kcal: 105, proteinG: 1, carbsG: 27, fatG: 0 };
@@ -56,8 +56,6 @@ const row = (page: Page, meal: string, name: string) => section(page, meal).loca
 const searchBox = (page: Page) => page.locator("#fsh").getByRole("searchbox", { name: "Search a food" });
 const form = (page: Page) => page.locator("#fsh form.fform");
 const picker = (page: Page) => page.locator("#fsh .fpick");
-/** The quick-add strip's meal, and its card for a food. */
-const stripMeal = (page: Page) => page.locator("#fbody .fquick").getByRole("combobox", { name: "The meal a tap adds to" });
 
 /** Opens the Food view and waits until its day has loaded. */
 async function openFood(page: Page) {
@@ -206,7 +204,7 @@ test.describe("Food: the sheet opens when asked, and shuts as a dialog does", ()
     await seed(profile.api, daysAgo(1), "breakfast", [OATMEAL]);
     await openFood(me);
     await nutrients(me);
-    await stripMeal(me).selectOption("breakfast");
+    await pickMeal(me, "breakfast");
     await me.locator("#fbody .fquick").getByRole("button", { name: "Add Oatmeal to Breakfast" }).click();
     await expect(section(me, "breakfast").locator(".fe .fn")).toHaveText(["Oatmeal"]);
     await openIs(me, ["nutrients"]);
@@ -298,6 +296,8 @@ test.describe("Food: another day (or profile) starts with nothing open", () => {
     await seed(profile.api, daysAgo(2), "lunch", [BANANA]);
     await openFood(me);
     await openRow(me, "breakfast", "Oatmeal");
+    await openInsights(me);
+    await everyDay(me);
     await me.locator(".rmetrics tbody tr", { has: me.locator("td.day", { hasText: labelOf(daysAgo(2)) }) }).click();
     await expect(me.locator("#fDate")).toHaveValue(daysAgo(2));
     await expect(section(me, "lunch").locator(".fe .fn")).toHaveText(["Banana"]);
@@ -323,7 +323,7 @@ test.describe("Food: another day (or profile) starts with nothing open", () => {
     await seed(profile.api, daysAgo(1), "breakfast", [OATMEAL]);
     await openFood(me);
     await expect(me.locator("#fdLabel")).toHaveText("Add food to Lunch");
-    await stripMeal(me).selectOption("snack");
+    await pickMeal(me, "snack");
     await expect(me.locator("#fdLabel")).toHaveText("Add food to Snacks");
     await me.locator("#fPrev").click();
     await expect(me.locator("#fDate")).toHaveValue(daysAgo(1));

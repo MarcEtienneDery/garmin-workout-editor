@@ -1077,7 +1077,6 @@
   /* the bar: profile, the day (◀ a pill that opens the calendar ▶), Today, the theme */
   #fbar { display:flex; align-items:center; justify-content:stretch; gap:8px; padding:18px clamp(16px,2.6vw,34px) 6px; background:transparent; border-bottom:0; }
   #fbar #fProfile { flex:none; max-width:36%; margin-right:0; }
-  .fnav { flex:1 1 auto; min-width:0; display:flex; align-items:center; justify-content:center; gap:8px; }
   #fview .themebtn { border-radius:50%; background:transparent; border:1px solid var(--t-line2); }
   #fPrev, #fNext { width:44px; min-width:44px; height:44px; padding:0; border-radius:50%; background:var(--panel); border:1px solid var(--line); font-size:13px; }
   #fPrev:disabled, #fNext:disabled { opacity:.4; }
@@ -1199,6 +1198,115 @@
   @media (max-width:900px) { #fbar { padding:12px 12px 4px; gap:6px; } .fdaypick { padding:0 12px; font-size:14px; } #fdock { padding:8px 12px calc(8px + env(safe-area-inset-bottom)); } }
   @media (max-width:700px) { #fview .fea button, #fview .fea select { min-height:40px; } #fview .fglance { gap:16px; } #fview .fring { width:120px; height:120px; } #fview .fmeal { padding:2px 14px 4px; } #fview .fsum, #fview .fcard { padding:16px; } }
   @media (prefers-reduced-motion:reduce) { :is(#fview, #fsheet) *, :is(#fview, #fsheet) *::before { transition:none !important; animation:none !important; } }
+
+  /* ── Food, reworked: a week to pick the day from, the Log and the Insights, a card to add a food, the meals as cards ── */
+  #fbar { flex-wrap:wrap; justify-content:flex-start; gap:8px 10px; max-width:1280px; }
+  #fbar #fProfile { order:0; max-width:100%; }
+  #fbar .fdaypick { order:1; flex:1 1 260px; justify-content:flex-start; min-height:44px; padding:0; background:none; border:0; border-radius:12px; font-size:clamp(22px,2.6vw,30px); font-weight:700; letter-spacing:-.02em; }
+  #fbar .fdaypick:hover { background:none; } #fbar .fdaypick:hover #fDayLabel { color:var(--t-ink); }
+  #fbar .fdaypick:focus-within { outline:2px solid var(--accent); outline-offset:2px; }
+  #fbar #fDayLabel span { color:var(--fg); } #fbar .fdaypick::after { font-size:14px; }
+  #fbar #fToday { order:2; } #fTabs { order:3; } #fbar #fTheme { order:4; }
+  #fTabs { display:flex; padding:2px; gap:2px; background:var(--panel); border:1px solid var(--line); border-radius:999px; }
+  #fTabs button, #fTabs button:first-child, #fTabs button:last-child { min-height:44px; margin:0; padding:0 22px; border:0; border-radius:999px; background:transparent; color:var(--dim); font-weight:600; }
+  #fTabs button:hover:not(:disabled):not([aria-pressed="true"]) { background:var(--t-surface2); color:var(--fg); }
+  #fTabs button[aria-pressed="true"] { background:var(--accent); color:var(--t-on-accent); }
+  #fview .themebtn { width:44px; min-width:44px; height:44px; padding:0; }
+  /* the week: a day each, its calories against its goal as a ring; ◀ ▶ step a day */
+  #fweek { display:flex; align-items:center; gap:8px; max-width:1280px; padding:8px clamp(16px,2.6vw,34px) 2px; }
+  #fweek[hidden] { display:none; }
+  #fstrip { position:relative; flex:1 1 auto; min-width:0; display:grid; grid-template-columns:repeat(7, minmax(0,1fr)); gap:8px; }
+  .fwd { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; min-width:0; min-height:92px; padding:9px 4px 8px; background:var(--panel); border:1px solid var(--line); border-radius:16px; color:var(--fg); box-shadow:var(--card-shadow); transition:border-color .18s, background .18s; }
+  .fwd small { font:500 11px "Fira Code",ui-monospace,monospace; letter-spacing:.12em; text-transform:uppercase; color:var(--dim); }
+  .fwd b { font:700 17px/1.1 "Fira Sans",system-ui,sans-serif; }
+  .fwd .fwk { font:500 12px "Fira Code",ui-monospace,monospace; color:var(--dim); }
+  .fwring { width:30px; height:30px; } .fwring circle { fill:none; stroke-width:4; } .fwring .trk { stroke:var(--t-track); } .fwring .arc { stroke:var(--accent); stroke-linecap:round; } .fwring .arc.over { stroke:var(--t-rose); }
+  .fwd.st-over .fwk { color:var(--err); font-weight:600; }
+  .fwd:hover:not(:disabled):not(.sel) { background:var(--t-surface2); border-color:var(--t-line2); }
+  .fwd.sel, .fwd.sel:hover { border-color:var(--accent); background:color-mix(in srgb, var(--accent) 10%, var(--panel)); box-shadow:0 0 0 1px var(--accent), var(--card-shadow); }
+  .fwd.today b::after { content:""; display:inline-block; width:6px; height:6px; margin:0 0 3px 5px; border-radius:50%; background:var(--accent); }
+  .fwd:disabled { opacity:.5; cursor:default; }
+  /* the Log's left column: the card to add a food, then the meals */
+  #fview .fgrid > *, #fview .fcol > * { min-width:0; }
+  .faddcard { margin-top:12px; padding:16px; min-width:0; display:flex; flex-direction:column; gap:12px; background:var(--panel); border:1px solid var(--line); border-radius:18px; box-shadow:var(--card-shadow); }
+  .faddcard #fdock { position:static; padding:0; background:none; border:0; backdrop-filter:none; }
+  .faddcard #fdock .fdin { max-width:none; }
+  .fpills { display:flex; flex-wrap:wrap; gap:8px; }
+  .fpill { min-height:44px; padding:0 18px; border-radius:999px; font-weight:600; background:transparent; border:1px solid var(--t-line2); color:var(--fg); }
+  .fpill[aria-pressed="true"], #fview .fpill[aria-pressed="true"]:hover:not(:disabled) { background:var(--accent); border-color:var(--accent); color:var(--t-on-accent); }
+  #fbody .fquick { margin:0; }
+  #fbody .fqh { display:flex; align-items:center; gap:10px; font:500 11px "Fira Code",ui-monospace,monospace; letter-spacing:.12em; color:var(--dim); text-transform:uppercase; }
+  #fbody .fqh .flink { margin-left:auto; background:none; border:0; min-height:44px; padding:0 4px; }
+  #fview .fqchips { flex-wrap:wrap; margin:0; padding:8px 0 0; overflow:visible; }
+  #fview .fchip { width:auto; max-width:100%; min-height:44px; display:flex; align-items:center; gap:10px; padding:4px 6px 4px 16px; border-radius:999px; background:var(--t-surface2); box-shadow:none; }
+  #fview .fchip b { grid-column:auto; min-height:0; display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:200px; font-weight:600; line-height:1.3; }
+  #fview .fchip small { flex:none; }
+  #fview .fchip i { flex:none; width:32px; height:32px; font-size:20px; }
+  /* a meal as a card: its head, the split of its calories, its foods, a button to add one; a meal with nothing in it is a line */
+  #fview .fmeal { padding:6px 20px 8px; }
+  #fview .fmt { display:flex; flex-wrap:wrap; align-items:baseline; gap:2px 10px; } #fview .fmt span { flex:1 0 100%; }
+  #fview .fhere { padding:1px 9px; border-radius:99px; background:var(--t-pill); color:var(--t-ink); font:600 11px "Fira Sans",system-ui,sans-serif; font-style:normal; letter-spacing:.02em; }
+  #fview .fmeal.here { border-color:var(--accent); box-shadow:0 0 0 1px var(--accent), var(--card-shadow); }
+  .fmside { display:flex; flex-direction:column; align-items:flex-end; gap:1px; text-align:right; }
+  .fmsh { font:500 12px "Fira Code",ui-monospace,monospace; color:var(--dim); white-space:nowrap; }
+  #fview .fmsplit { margin:2px 0 8px; height:8px; }
+  #fview .fmeal > .fadd { display:flex; align-items:center; width:100%; height:auto; min-height:48px; padding:0 2px; border:0; border-top:1px solid var(--line); border-radius:0; background:none; color:var(--t-ink); font-size:14px; font-weight:600; text-align:left; justify-content:flex-start; }
+  #fview .fmeal > .fadd:hover:not(:disabled) { background:none; text-decoration:underline; }
+  #fview .fmeal.slim { padding:0 20px; }
+  #fview .fmeal.slim .fmh { min-height:52px; }
+  #fview .fmeal.slim .fmt { flex-wrap:nowrap; } #fview .fmeal.slim .fmt span { flex:0 1 auto; color:var(--dim); } #fview .fmeal.slim .fmt b { flex:none; font-size:15px; }
+  #fview .fmeal.slim .fadd { width:auto; min-width:44px; height:44px; padding:0 14px; border-radius:999px; background:none; border-color:transparent; color:var(--t-ink); font-size:14px; font-weight:600; }
+  #fview .fmeal.slim .fadd:hover:not(:disabled) { background:var(--t-pill); }
+  #fview .fmeal.slim.here { padding-bottom:4px; } #fview .fmeal.slim.here .fmt { flex-wrap:wrap; }
+  /* what the day came to: it stays in view on a wide screen while the meals are scrolled */
+  #fview .fside { position:sticky; top:8px; }
+  #fview .fside .fsum { margin-top:12px; }
+  #fview .fsum > .fleg { margin:14px 0 0; }
+  /* the Insights */
+  .fth { display:flex; align-items:center; gap:14px; margin-top:14px; }
+  #fbody .fth h3 { margin:0; }
+  #fbody .fth + .itiles, #fbody .fth + .fnote { margin-top:12px; } #fbody .itiles + .fnote { margin:10px 2px 0; }
+  #fbody .fth .frange { flex:none; min-height:44px; }
+  .itiles { display:grid; grid-template-columns:repeat(auto-fit, minmax(210px, 1fr)); gap:14px; margin-top:12px; }
+  .itile { display:flex; flex-direction:column; gap:3px; padding:18px 20px; background:var(--panel); border:1px solid var(--line); border-radius:18px; box-shadow:var(--card-shadow); }
+  .itile small { font:500 11px "Fira Code",ui-monospace,monospace; letter-spacing:.12em; text-transform:uppercase; color:var(--dim); }
+  .itile b { font:600 30px/1.15 "Fira Code",ui-monospace,monospace; letter-spacing:-.03em; }
+  .itile span { color:var(--dim); font-size:13px; }
+  #fview .rcharts { grid-template-columns:repeat(auto-fit, minmax(min(400px,100%), 1fr)); margin-top:12px; }
+  #fview .rcharts > .fwdcard { display:flex; flex-direction:column; margin:0; padding:16px 18px 14px; }
+  #fview .fwdcard h4 { margin-bottom:6px; }
+  .fwdplot { position:relative; flex:1 1 auto; display:grid; grid-template-columns:repeat(7, minmax(0,1fr)); align-items:end; gap:10px; min-height:140px; margin-top:12px; border-bottom:1px solid var(--line); }
+  .fwdcol { display:flex; align-items:flex-end; justify-content:center; height:100%; }
+  .fwdbar { display:block; width:min(34px,70%); min-height:2px; border-radius:6px 6px 2px 2px; background:var(--accent); } .fwdbar.over { background:var(--t-rose); }
+  .fwdlabels { display:grid; grid-template-columns:repeat(7, minmax(0,1fr)); gap:10px; padding-top:6px; text-align:center; }
+  .fwdlabels small { font:500 12px "Fira Code",ui-monospace,monospace; color:var(--dim); }
+  .fwdgoal { position:absolute; left:0; right:0; z-index:1; height:0; border-top:1.5px dashed var(--dim); pointer-events:none; }
+  .fwdkey { display:flex; flex-wrap:wrap; gap:4px 16px; margin-top:10px; font-size:12px; color:var(--fg); }
+  .fwdkey span { display:inline-flex; align-items:center; gap:6px; }
+  .fwdkey i { display:inline-block; width:12px; height:0; border-top:2px dashed var(--dim); } .fwdkey i.sw-over { height:10px; border:0; border-radius:2px; background:var(--t-rose); }
+  .fwdsay { margin:14px 0 0; padding:12px 14px; border-radius:12px; background:var(--t-surface2); font-size:14px; text-wrap:pretty; }
+  details.fevery { margin-top:16px; background:var(--panel); border:1px solid var(--line); border-radius:18px; box-shadow:var(--card-shadow); }
+  details.fevery > summary { display:flex; align-items:baseline; gap:12px; min-height:52px; padding:14px 22px; cursor:pointer; list-style:none; }
+  details.fevery > summary::-webkit-details-marker { display:none; }
+  details.fevery > summary b { font-size:15px; font-weight:700; } details.fevery > summary span { margin-right:auto; font:500 12px "Fira Code",ui-monospace,monospace; color:var(--dim); }
+  details.fevery > summary::after { content:"▾"; margin-left:auto; color:var(--dim); } details.fevery[open] > summary::after { content:"▴"; }
+  details.fevery > .rtable { margin:0 12px 12px; }
+  @media (max-width:1100px) {
+    #fview .fgrid { display:flex; flex-direction:column; align-items:stretch; }
+    #fview .fgrid .fcol { display:contents; }
+    #fview .fgrid .fday { order:0; } #fview .fgrid .fsum { order:1; } #fview .fgrid .faddcard { order:2; } #fview .fgrid .fmeal { order:3; }
+    #fview .fside { position:static; }
+  }
+  @media (max-width:900px) {
+    #fbar #fToday { margin-left:auto; } #fTabs { flex:1 1 auto; } #fTabs button { flex:1 1 0; padding:0 10px; }
+    #fweek { padding:8px 12px 2px; gap:6px; }
+    #fstrip { display:flex; overflow-x:auto; scroll-snap-type:x proximity; scrollbar-width:none; } #fstrip::-webkit-scrollbar { display:none; }
+    .fwd { flex:0 0 66px; scroll-snap-align:center; }
+    .faddcard { padding:14px; }
+    .fpills { flex-wrap:nowrap; overflow-x:auto; scrollbar-width:none; } .fpills::-webkit-scrollbar { display:none; } .fpill { flex:0 0 auto; padding:0 16px; }
+    #fview .fqchips { flex-wrap:nowrap; overflow-x:auto; scrollbar-width:none; margin:0 -14px; padding:8px 14px 2px; } #fview .fqchips::-webkit-scrollbar { display:none; } #fview .fchip { flex:none; }
+    .itiles { grid-template-columns:repeat(2, minmax(0,1fr)); gap:10px; } .itile { padding:14px 16px; } .itile:last-child:nth-child(odd) { grid-column:1 / -1; } .itile b { font-size:22px; } .itile span { font-size:12px; }
+  }
 
   /* ── Calendar, in the new look: the palette of Today and Food (both themes), a month as one paper card, the side as cards ── */
   :where(#cview, #moveMenu) button { background:var(--t-surface2); color:var(--fg); border-color:var(--t-line2); font-family:inherit; }
@@ -1610,13 +1718,15 @@
 <section id="fview">
   <div class="wbar" id="fbar">
     <select id="fProfile" title="Profile" hidden></select>
-    <div class="fnav">
-      <button id="fPrev" title="Previous day" aria-label="Previous day">◀</button>
-      <div class="fdaypick"><span id="fDayLabel"></span><input type="date" id="fDate" aria-label="Day"></div>
-      <button id="fNext" title="Next day" aria-label="Next day">▶</button>
-      <button id="fToday" hidden>Today</button>
-    </div>
+    <div class="fdaypick"><span id="fDayLabel"></span><input type="date" id="fDate" aria-label="Day"></div>
+    <button id="fToday" hidden>Today</button>
+    <div id="fTabs" class="ftabs" role="group" aria-label="What the view shows"><button id="fTabLog" type="button" aria-pressed="true">Log</button><button id="fTabIns" type="button" aria-pressed="false">Insights</button></div>
     <button id="fTheme" class="themebtn" type="button" aria-label="Switch to light theme" title="Switch to light theme"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><g class="sun"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></g><path class="moon" d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z"/></svg></button>
+  </div>
+  <div id="fweek" hidden>
+    <button id="fPrev" title="Previous day" aria-label="Previous day">◀</button>
+    <div id="fstrip" role="group" aria-label="The week"></div>
+    <button id="fNext" title="Next day" aria-label="Next day">▶</button>
   </div>
   <div id="fNote" class="empty" hidden></div>
   <div id="fscroll"><div id="fbody"><div class="empty">Loading…</div></div></div>
@@ -5134,7 +5244,7 @@ const NM = NutritionModel;
 // the foods of past days this page copied to today; editing: the food changed by hand (the form), pick.editing: by quantity (the picker), replacing:
 // by another food (the search); fresh: the foods just written, which flash once where they land; nutrients: the summary shows every nutrient; startAi: #food/ai was the address, the sheet opens on the AI once loaded
 // ai: text and photos ({ id, url, mediaType, data }) to be estimated; result: { rows, note } of the last estimate, the rows being checked before they are logged; busy: what is under way ("Estimating…"); error: why it failed
-const F = { profile: null, date: startFood.day, range: 30, data: null, error: "", run: 0, loaded: false, busy: false, meal: null, sheet: { open: false, mode: "find", focus: false, note: "" }, find: null, draft: NM.EMPTY_DRAFT(), editing: null, pick: null, open: new Set(), copied: new Set(), fresh: new Set(), freshTimer: 0, replacing: null, nutrients: false, startAi: startFood.ai, ai: { text: "", photos: [], result: null, busy: "", error: "", run: 0 } };
+const F = { profile: null, date: startFood.day, range: 30, data: null, error: "", run: 0, loaded: false, busy: false, meal: null, sheet: { open: false, mode: "find", focus: false, note: "" }, find: null, draft: NM.EMPTY_DRAFT(), editing: null, pick: null, open: new Set(), copied: new Set(), fresh: new Set(), freshTimer: 0, replacing: null, nutrients: false, tab: "log", all: false, startAi: startFood.ai, ai: { text: "", photos: [], result: null, busy: "", error: "", run: 0 } };
 const RECENT_SHOWN = 8, QUICK_SHOWN = 10;
 const foodQuery = () => `${F.profile ? `profile=${encodeURIComponent(F.profile)}&` : ""}${F.date ? `date=${F.date}&` : ""}days=${F.range}`;
 /** The meal a food goes in: the one chosen, else the one the hour suggests. */
@@ -5325,6 +5435,7 @@ function foodSummary(d) {
   }
   glance.append(foodRing(d), macs);
   card.append(glance);
+  if (d.day.entries) card.append(macroLegend(d.day));
   const lines = mk("div", "fsumlines");
   lines.append(mk("div", "fhn", ring.line));
   const burn = NM.burnLine(d);
@@ -5367,28 +5478,17 @@ function foodNutrients(d) {
   return box;
 }
 
-function foodBreakdown(d) {
-  const meals = mk("section", "fcard");
-  meals.append(mk("h4", "", "Calories by meal"));
-  for (const m of NM.mealBars(d)) {
-    const row = mk("div", "fmeal-row");
-    const track = mk("div", "fb");
-    if (m.logged) { const bar = fmeter(m.segments.map((x) => ({ ...x, width: x.width * m.width / 100 })), { label: `${m.label}: ${m.value}` }); track.append(bar); }
-    row.append(mk("span", "", m.label), track, mk("span", "fv", m.value), mk("span", "fmn", m.logged ? `${m.note}${m.share !== null ? ` · ${m.share} % ${m.shareOf}` : ""}` : m.note));
-    meals.append(row);
+/** The meals to add to, as pills: the one chosen is the meal the bar, the foods used lately and the sheet add to. */
+function mealPills() {
+  const box = mk("div", "fpills"), meal = targetMeal();
+  box.setAttribute("role", "group"); box.setAttribute("aria-label", "The meal a tap adds to");
+  for (const m of Object.keys(NM.MEAL_LABELS)) {
+    const b = mk("button", "fpill", NM.mealLabel(m));
+    b.type = "button"; b.setAttribute("aria-pressed", String(m === meal));
+    b.onclick = () => chooseMeal(m);
+    box.append(b);
   }
-  if (d.day.entries) meals.append(macroLegend(d.day));
-  return meals;
-}
-
-/** A select of the four meals, on the meal the food goes in; choosing one makes it the meal the strip and the sheet add to. */
-function mealSelect(cls, label) {
-  const sel = mk("select", cls);
-  sel.setAttribute("aria-label", label);
-  for (const m of Object.keys(NM.MEAL_LABELS)) sel.add(new Option(NM.mealLabel(m), m));
-  sel.value = targetMeal();
-  sel.onchange = () => chooseMeal(sel.value);
-  return sel;
+  return box;
 }
 
 function chooseMeal(meal) {
@@ -5398,12 +5498,12 @@ function chooseMeal(meal) {
   renderFood();
 }
 
-/** The foods used lately, the ones of the meal first, as cards that log one in a tap; the sheet has all of them and a search. */
+/** The foods used lately, the ones of the meal first, as pills that log one in a tap; the sheet has all of them and a search. */
 function foodQuick(d) {
   const meal = targetMeal(), list = NM.recentFor(d.recent, meal, "").slice(0, QUICK_SHOWN);
-  const box = mk("section", "fquick"), head = mk("div", "fqh"), strip = mk("div", "fqchips"), all = mk("button", "flink", "All foods ›");
   if (!list.length) return null;
-  head.append(mk("span", "", "Quick add to"), mealSelect("fqmeal", "The meal a tap adds to"));
+  const box = mk("div", "fquick"), head = mk("div", "fqh"), strip = mk("div", "fqchips"), all = mk("button", "flink", "All foods ›");
+  head.append(mk("span", "", `Log again · ${NM.mealLabel(meal)}`));
   all.type = "button"; all.onclick = () => openSheet("find", { meal });
   head.append(all);
   for (const r of list) {
@@ -5427,54 +5527,142 @@ function foodDayLabel(d) {
   box.append(mk("span", "", RM.dayLabel(d.date)));
 }
 
-/** The bar at the bottom: the search (the sheet opens on it, the cursor in its box), the barcode and the AI, into the meal the hour suggests or the one chosen. */
+/** The bar at the bottom of a phone, and on a wide screen the top of the card to add a food: the search (the sheet opens on it, the cursor in its box), the barcode and the AI, into the meal the hour suggests or the one chosen. */
+const FDOCK = $("fdock"), FDOCK_HOME = $("fview");
 function renderDock() {
-  const dock = $("fdock"), d = F.data;
-  dock.hidden = !(d && d.profile);
+  const d = F.data;
+  FDOCK.hidden = !(d && d.profile && F.loaded && F.tab === "log");
   $("fdLabel").textContent = `Add food to ${NM.mealLabel(targetMeal())}`;
+}
+/** The dock lives in the add card on a wide screen (`card`), at the foot of the view on a phone and when there is no card. */
+function placeDock(card) {
+  if (card && !mobileQuery.matches) card.prepend(FDOCK);
+  else if (FDOCK.parentNode !== FDOCK_HOME) FDOCK_HOME.append(FDOCK);
+}
+
+/** A ring of a day's calories against its goal, small, for the week strip: the arc is the share of the goal, rose when the day was over it. */
+function weekRing(w) {
+  const R = 13, C = 2 * Math.PI * R, svg = svgEl("svg", { viewBox: "0 0 34 34", class: "fwring", "aria-hidden": "true" });
+  svg.append(svgEl("circle", { class: "trk", cx: 17, cy: 17, r: R }));
+  if (w.pct !== null) svg.append(svgEl("circle", { class: "arc" + (w.state === "over" ? " over" : ""), cx: 17, cy: 17, r: R, "stroke-dasharray": `${Math.max(0.01, w.pct) * C} ${C}`, transform: "rotate(-90 17 17)" }));
+  else if (w.state === "ok") svg.append(svgEl("circle", { class: "arc", cx: 17, cy: 17, r: R, "stroke-dasharray": `${C} ${C}`, transform: "rotate(-90 17 17)" })); // eaten, with no goal to measure it by
+  return svg;
+}
+
+/** The week of the day shown: a button a day with what it came to against its goal; a day to come cannot be opened. */
+function renderWeek(d) {
+  const bar = $("fweek"), strip = $("fstrip");
+  bar.hidden = !(F.loaded && d && d.profile);
+  strip.replaceChildren();
+  if (bar.hidden) return;
+  for (const w of NM.weekStrip(d)) {
+    const b = mk("button", `fwd st-${w.state}` + (w.selected ? " sel" : "") + (w.today ? " today" : ""));
+    b.type = "button"; b.dataset.day = w.day; b.disabled = w.state === "future";
+    b.setAttribute("aria-label", w.label);
+    if (w.selected) b.setAttribute("aria-current", "date");
+    b.append(mk("small", "", w.weekday), mk("b", "", String(w.number)), weekRing(w), mk("span", "fwk", w.text));
+    b.onclick = () => goFoodDay(w.day);
+    strip.append(b);
+  }
+  const sel = strip.querySelector(".sel");
+  if (sel && strip.scrollWidth > strip.clientWidth) strip.scrollLeft = sel.offsetLeft - (strip.clientWidth - sel.offsetWidth) / 2;
 }
 
 function renderFood() {
   const box = $("fbody"), d = F.data, note = $("fNote");
+  placeDock(null);
   $("fDate").value = d && d.date ? d.date : "";
   foodDayLabel(d);
   $("fNext").disabled = !(d && d.date && d.date < d.today);
   $("fToday").hidden = !(d && d.date && d.date < d.today);
+  for (const [id, tab] of [["fTabLog", "log"], ["fTabIns", "insights"]]) $(id).setAttribute("aria-pressed", String(F.tab === tab));
   note.className = "empty err"; note.textContent = F.error; note.hidden = !F.error;
   const keep = $("fscroll").scrollTop, typing = keptFocus();
   box.replaceChildren();
-  renderDock();
+  box.dataset.tab = F.tab;
+  renderDock(); renderWeek(d);
   if (!F.loaded) { box.append(mk("div", "empty", "Loading…")); return; }
   if (F.error && !d) { box.append(mk("div", "msg err", F.error)); return; }
   if (!d || !d.profile) { box.append(mk("div", "empty", "No Garmin profile is configured.")); return; }
+  if (F.tab === "insights") foodInsights(box, d); else foodLog(box, d);
+  box.append(aboutFoot("food", "Calories and macros are estimates. A day with nothing logged is unknown, not zero. A nutrient counts only the foods that state it: “≥” means some do not. Search and barcode foods come from Open Food Facts, made by its users: check the package when it matters. " + aiWho(d.ai) + (NM.hasBurn(d) ? " Burned is the watch's count: today's is so far. The food log stays here; Garmin cannot store it." : " The food log stays here.")));
+  $("fscroll").scrollTop = keep;
+  renderSheet(typing);
+}
 
-  // The day (what was eaten, quick add, the meals) is the left column and what to learn from it (the breakdown, the trends) the right one on a wide
-  // screen; on a phone they follow each other. The table of every day runs under both.
-  const main = mk("div", "fcol fmain"), side = mk("div", "fcol fside"), grid = mk("div", "fgrid");
+/**
+ * The Log: the day to add to and eat from on the left (the search and the meal to add to, the foods used lately, the meals), what the day came to on
+ * the right (the calories, the macros, the nutrients). On a phone they follow each other, the summary first.
+ */
+function foodLog(box, d) {
+  const main = mk("div", "fcol fmain"), side = mk("div", "fcol fside"), grid = mk("div", "fgrid"), add = mk("section", "faddcard");
   // a past day can be logged again today, all of it, a meal or a food at a time
   if (d.date < d.today && d.day.entries) {
     const bar = mk("div", "fday"), ids = d.day.meals.flatMap((m) => m.entries.map((e) => e.id));
     bar.append(mk("span", "", `${RM.dayLabel(d.date)}: ${NM.foods(d.day.entries)}`), copyButton(ids, NM.foods, "Copy the day to today"));
     main.append(bar);
   }
-  main.append(foodSummary(d));
+  add.append(mealPills());
   const quick = foodQuick(d);
-  if (quick) main.append(quick);
-  for (const block of d.day.meals) main.append(foodMeal(block));
-
-  side.append(mk("h3", "", "Breakdown"), foodBreakdown(d));
-  const trends = mk("div", "fth");
-  trends.append(mk("h3", "", "Trends"), foodRangeSelect());
-  side.append(trends);
-  if (d.average) side.append(mk("div", "fnote", NM.averageNote(d.average)));
-  side.append(TrendCharts.trends(NM.chartDays(d.days), NM.charts(d), { selected: d.date, onPick: pickFoodDay, width: 480, height: 168, left: 46 }));
+  if (quick) add.append(quick);
+  main.append(add);
+  const bars = Object.fromEntries(NM.mealBars(d).map((m) => [m.meal, m]));
+  for (const block of d.day.meals) main.append(foodMeal(block, bars[block.meal]));
+  side.append(foodSummary(d));
   grid.append(main, side);
   box.append(grid);
-  box.append(mk("h3", "", "Every day"));
-  box.append(metricsTable(d.days, NM.groupsFor(d), NM.cell, d.date, pickFoodDay));
-  box.append(aboutFoot("food", "Calories and macros are estimates. A day with nothing logged is unknown, not zero. A nutrient counts only the foods that state it: “≥” means some do not. Search and barcode foods come from Open Food Facts, made by its users: check the package when it matters. " + aiWho(d.ai) + (NM.hasBurn(d) ? " Burned is the watch's count: today's is so far. The food log stays here; Garmin cannot store it." : " The food log stays here.")));
-  $("fscroll").scrollTop = keep;
-  renderSheet(typing);
+  placeDock(add);
+}
+
+/** The calories of each weekday as bars (the goal a dashed line, a weekday over it in rose), and in words what stands out. */
+function weekdayCard(pattern, goal) {
+  const card = mk("section", "fcard fwdcard"), plot = mk("div", "fwdplot"), labels = mk("div", "fwdlabels"), top = Math.max(pattern.peak, goal || 0, 1);
+  card.append(mk("h4", "", "Your usual week"));
+  plot.setAttribute("role", "img");
+  plot.setAttribute("aria-label", "Calories by weekday: " + pattern.rows.filter((r) => r.kcal !== null).map((r) => `${r.name} ${r.kcal.toLocaleString()}`).join(", "));
+  for (const r of pattern.rows) {
+    const col = mk("div", "fwdcol"), bar = mk("i", "fwdbar" + (goal && r.kcal !== null && r.kcal > goal * (1 + NM.TARGET_TOLERANCE) ? " over" : ""));
+    bar.style.height = r.kcal === null ? "0" : `${(r.kcal / top) * 100}%`;
+    col.title = r.kcal === null ? `${r.plural}: too few days` : `${r.plural}: ${r.kcal.toLocaleString()} kcal on average (${r.n} days)`;
+    col.append(bar);
+    plot.append(col);
+    labels.append(mk("small", "", r.short));
+  }
+  const key = mk("div", "fwdkey");
+  if (goal) {
+    const line = mk("div", "fwdgoal");
+    line.style.bottom = `${(goal / top) * 100}%`;
+    plot.append(line);
+    const sw = mk("span"); sw.append(mk("i", "sw-goal"), `Goal ${goal.toLocaleString()} kcal`); key.append(sw);
+    if (pattern.rows.some((r) => r.kcal !== null && r.kcal > goal * (1 + NM.TARGET_TOLERANCE))) { const over = mk("span"); over.append(mk("i", "sw-over"), "Over the goal"); key.append(over); }
+  }
+  card.append(plot, labels);
+  if (key.childNodes.length) card.append(key);
+  if (pattern.sentence) card.append(mk("p", "fwdsay", pattern.sentence));
+  return card;
+}
+
+/** The Insights: what the days of the range add up to, how the weekdays differ, the trends, and under them the table of every day. */
+function foodInsights(box, d) {
+  const head = mk("div", "fth"), tiles = NM.insightTiles(d);
+  head.append(mk("h3", "", "Trends"), foodRangeSelect());
+  box.append(head);
+  if (tiles.length) {
+    const row = mk("div", "itiles");
+    for (const t of tiles) { const tile = mk("div", "itile"); tile.append(mk("small", "", t.label), mk("b", "", t.value), mk("span", "", t.note)); row.append(tile); }
+    box.append(row);
+  } else box.append(mk("div", "fnote", "Nothing to add up yet: a finished day with food logged in it shows here."));
+  if (d.average) box.append(mk("div", "fnote", NM.averageNote(d.average)));
+  const pattern = NM.weekdayPattern(d), wide = innerWidth > 1100;
+  const charts = TrendCharts.trends(NM.chartDays(d.days), NM.charts(d), { selected: d.date, onPick: goFoodDay, width: wide ? 560 : 480, height: wide ? 180 : 168, left: 46 });
+  if (pattern) charts.prepend(weekdayCard(pattern, d.goals && d.goals.kcal && !d.goals.kcalBurnPct ? d.goals.kcal : null)); // the weekdays and the charts are one grid, two across
+  box.append(charts);
+  const every = mk("details", "fevery"), sum = mk("summary");
+  every.open = F.all;
+  sum.append(mk("b", "", "Every day"), mk("span", "", `${d.days.length} days`));
+  every.append(sum, metricsTable(d.days, NM.groupsFor(d), NM.cell, d.date, pickFoodDay));
+  every.ontoggle = () => { F.all = every.open; };
+  box.append(every);
 }
 
 /** The box being typed in (the search, the words for the AI, a field of the form): drawn again with the rest, it keeps the focus and the caret. */
@@ -5495,19 +5683,33 @@ function restoreFocus(kept) {
 
 // ── A meal ───────────────────────────────────────────────────────────────
 
-function foodMeal(block) {
-  const sec = mk("section", "fmeal"), head = mk("div", "fmh"), title = mk("div", "fmt"), n = block.entries.length;
+/**
+ * A meal: its calories, its macros and the share of the day's goal it is, a bar of what the calories are made of, its foods and a button to add one.
+ * A meal with nothing in it is a single line, unless it is the one being added to, which says so.
+ */
+function foodMeal(block, bar) {
+  const n = block.entries.length, here = block.meal === targetMeal();
+  const sec = mk("section", "fmeal" + (n ? "" : " slim") + (here ? " here" : "")), head = mk("div", "fmh"), title = mk("div", "fmt");
   sec.dataset.meal = block.meal;
-  title.append(mk("b", "", NM.mealLabel(block.meal)), mk("span", "", n ? NM.macros(block.totals) : "Nothing logged"));
+  title.append(mk("b", "", NM.mealLabel(block.meal)));
+  if (here) title.append(mk("em", "fhere", "adding here"));
+  title.append(mk("span", "", n ? NM.macros(block.totals) : "Nothing logged"));
   head.append(title);
-  if (n) head.append(mk("span", "fmk", NM.kcal(block.totals.kcal)));
+  if (n) {
+    const side = mk("div", "fmside");
+    side.append(mk("span", "fmk", NM.kcal(block.totals.kcal)));
+    if (bar && bar.share !== null) side.append(mk("span", "fmsh", `${bar.share} % ${bar.shareOf}`));
+    head.append(side);
+  }
   if (n && F.data.date < F.data.today) head.append(copyButton(block.entries.map((e) => e.id), (k) => `${NM.mealLabel(block.meal)} (${NM.foods(k)})`));
-  const add = mk("button", "fadd", "+");
+  const add = mk("button", "fadd", n ? `+ Add to ${NM.mealLabel(block.meal)}` : "+ Add");
   add.type = "button"; add.title = `Add a food to ${NM.mealLabel(block.meal)}`; add.setAttribute("aria-label", add.title);
   add.onclick = () => openSheet("find", { meal: block.meal });
-  head.append(add);
+  if (!n) head.append(add);
   sec.append(head);
+  if (n && bar && bar.segments.length) sec.append(fmeter(bar.segments.map((x) => ({ ...x })), { cls: "fmsplit", label: `${NM.mealLabel(block.meal)}: ${bar.note}` }));
   for (const e of block.entries) sec.append(foodEntry(e, block.meal));
+  if (n) sec.append(add);
   return sec;
 }
 
@@ -6267,15 +6469,26 @@ function aiRow(row, result, paint) {
   return el;
 }
 
+/** A day picked in the table of every day: it opens in the Log, where its foods are. (A day picked in a chart stays in the Insights: the charts show it.) */
 function pickFoodDay(day) {
+  F.tab = "log";
   F.date = day === (F.data && F.data.today) ? null : day;
   stopChanging();
   guard(loadFood)();
 }
 
+/** Another day (null is today), from the bar, the week or the arrows; the part of the view stays. */
+function goFoodDay(date) {
+  F.date = date && F.data && date >= F.data.today ? null : date;
+  stopChanging(); F.pick = null;
+  return guard(loadFood)();
+}
+
 function bindFoodView() {
   $("vFood").onclick = () => setView("food");
-  const go = (date) => { F.date = date && F.data && date >= F.data.today ? null : date; stopChanging(); F.pick = null; return guard(loadFood)(); };
+  const go = goFoodDay;
+  for (const [id, tab] of [["fTabLog", "log"], ["fTabIns", "insights"]]) $(id).onclick = () => { if (F.tab !== tab) { F.tab = tab; $("fscroll").scrollTop = 0; renderFood(); } };
+  mobileQuery.addEventListener("change", () => { if (document.body.dataset.view === "food" && F.loaded) renderFood(); }); // the bar to add a food moves from the card to the foot of the screen and back
   $("fPrev").onclick = () => F.data && go(RM.addDays(F.date || F.data.today, -1)); // from the day asked for, which the drawn one trails while an answer is awaited
   $("fNext").onclick = () => F.data && go(RM.addDays(F.date || F.data.today, 1)); // from the day asked for, which the drawn one trails while an answer is awaited
   $("fToday").onclick = () => go(null);

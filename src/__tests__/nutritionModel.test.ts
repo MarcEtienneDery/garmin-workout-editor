@@ -793,6 +793,7 @@ describe("the week strip", () => {
     expect(strip[0].pct).toBeCloseTo(0.75);
     expect(strip[1].pct).toBe(1);
     expect(strip[2].kcal).toBe(2100);
+    expect(strip.map((d: any) => d.text)).toEqual([(1500).toLocaleString(), (2300).toLocaleString(), (2100).toLocaleString(), "–", "–", "–", (700).toLocaleString()]);
     expect(strip[5].pct).toBeNull();
     expect(strip[5].kcal).toBeNull();
   });

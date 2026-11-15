@@ -5,7 +5,7 @@
  * the search is answered by page.route.
  */
 import { test, expect, openView, daysAgo, today, type Locator, type Page, type Profile } from "../support/fixtures";
-import { dayButton, sheet, sheetTab } from "../support/food";
+import { dayButton, openInsights, pickMeal, sheet, sheetTab } from "../support/food";
 
 /** What sticks out past the phone's width, as shown: an element is cut at the edge of any box above it that clips its content. */
 async function stickingOut(page: Page): Promise<string[]> {
@@ -158,7 +158,7 @@ test.describe("the day at a glance", () => {
   test("the quick-add strip is a row of cards that scrolls sideways, each at least 44 px tall, and one tap logs a food", async ({ me, profile }) => {
     await logFoods(profile, "lunch", Array.from({ length: 6 }, (_, i) => ({ name: `Lunch ${i + 1}`, kcal: 300 + i })), daysAgo(1));
     await openFood(me);
-    await me.locator("#fbody .fquick").getByRole("combobox", { name: "The meal a tap adds to" }).selectOption("lunch");
+    await pickMeal(me, "lunch");
     const chips = me.locator("#fbody .fquick .fchip");
     await expect(chips).toHaveCount(6);
     for (const h of await heights(chips)) expect(h).toBeGreaterThanOrEqual(44);
@@ -463,13 +463,14 @@ test.describe("nothing opens that was not tapped open", () => {
 });
 
 test.describe("the page on a phone", () => {
-  test("the food view fits the width: the summary, the meals, the breakdown and the trends", async ({ alice }) => {
+  test("the food view fits the width: the summary, the meals and the Insights", async ({ alice }) => {
     await openFood(alice);
     await expect(alice.locator("#fbody .fmeal").first()).toBeVisible();
-    await expect(alice.locator("#fbody h3", { hasText: "Breakdown" })).toBeVisible();
     await expect.poll(() => stickingOut(alice)).toEqual([]);
     const w = await alice.evaluate(() => ({ scroll: document.documentElement.scrollWidth, client: document.documentElement.clientWidth }));
     expect(w.scroll).toBeLessThanOrEqual(w.client);
+    await openInsights(alice);
+    await expect.poll(() => stickingOut(alice)).toEqual([]);
   });
 });
 
@@ -480,7 +481,7 @@ test.describe("the new look on a phone", () => {
       if (theme === "light") await alice.locator("#fTheme").tap();
       await expect(alice.locator("body")).toHaveAttribute("data-theme", theme);
       const small = await alice.evaluate(() =>
-        [...document.querySelectorAll<HTMLElement>("#fbar button, #fbar .fdaypick, #fdock button")].filter((el) => el.offsetParent !== null).map((el) => [el.id || el.className, Math.round(el.getBoundingClientRect().height)] as const).filter(([, h]) => h < 44),
+        [...document.querySelectorAll<HTMLElement>("#fbar button, #fbar .fdaypick, #fweek button, #fdock button")].filter((el) => el.offsetParent !== null).map((el) => [el.id || el.className, Math.round(el.getBoundingClientRect().height)] as const).filter(([, h]) => h < 44),
       );
       expect(small, `${theme}: controls under 44 px`).toEqual([]);
       await expect.poll(() => stickingOut(alice)).toEqual([]);
@@ -503,6 +504,7 @@ test.describe("the new look on a phone", () => {
 test.describe("the charts on a phone", () => {
   test("their text is readable as shown, no scale label is cut off, and they are one over another", async ({ alice }) => {
     await openFood(alice);
+    await openInsights(alice);
     const charts = await alice.evaluate(() =>
       [...document.querySelectorAll<SVGSVGElement>("#fbody .rcsvg")].map((svg) => {
         const box = svg.getBoundingClientRect(), scale = box.width / svg.viewBox.baseVal.width;
@@ -513,12 +515,5 @@ test.describe("the charts on a phone", () => {
     expect(charts.length).toBeGreaterThanOrEqual(2);
     for (const c of charts) { expect(c.minFontPx).toBeGreaterThanOrEqual(9); expect(c.cutOff).toBe(0); }
     expect(new Set(charts.map((c) => c.left)).size).toBe(1);
-  });
-
-  test("the breakdown and the trends come after the meals, in one column", async ({ alice }) => {
-    await openFood(alice);
-    const tops = await alice.evaluate(() => ["#fbody .fsum", "#fbody .fmeal:last-of-type", "#fbody .fside .fcard", "#fbody .rcharts .rc", "#fbody .rtable"].map((s) => Math.round(document.querySelector(s)!.getBoundingClientRect().top)));
-    expect(tops).toEqual([...tops].sort((a, b) => a - b));
-    await expect.poll(() => stickingOut(alice)).toEqual([]);
   });
 });

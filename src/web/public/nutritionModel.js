@@ -180,7 +180,7 @@
       const state = future ? "future" : !logged ? "none" : over ? "over" : "ok";
       const when = `${WEEKDAY_NAMES[wd]} ${Number(w.day.slice(8))} ${MONTH_SHORT[Number(w.day.slice(5, 7)) - 1]}`;
       return {
-        day: w.day, weekday: WEEKDAY_NAMES[wd].slice(0, 3), number: Number(w.day.slice(8)), kcal: logged ? w.kcal : null, state,
+        day: w.day, weekday: WEEKDAY_NAMES[wd].slice(0, 3), number: Number(w.day.slice(8)), kcal: logged ? w.kcal : null, text: logged ? num(w.kcal) : "–", state,
         pct: known ? Math.min(1, w.kcal / goal) : null, today: w.day === view.today, selected: w.day === view.date,
         label: `${when}, ${future ? "not yet" : logged ? `${num(w.kcal)} kcal${over ? ", over the goal" : ""}` : "nothing logged"}`,
       };

@@ -8,7 +8,7 @@
 import { type APIRequestContext, type Locator } from "@playwright/test";
 import { type Profile, test as base, expect as baseExpect, today, daysAgo, daysAhead, loginAs, ADMIN_TOKEN, PASSWORD } from "../support/fixtures";
 import {
-  type Meal, byHandForm, dayButton, dayLine, enterByHand, fillForm, labelOf, meal, mealKcal, mealMacros, nutrientRow, nutrients, openFood, openRow, ringBig, ringSmall,
+  type Meal, byHandForm, dayButton, dayLine, enterByHand, everyDay, fillForm, labelOf, meal, mealKcal, mealMacros, nutrientRow, nutrients, openFood, openInsights, openRow, part, ringBig, ringSmall,
   rowOf, sheet, sheetForm, sheetMeal, summary, toast,
 } from "../support/food";
 
@@ -170,14 +170,19 @@ test.describe("Food log: days", () => {
 
   test("a day in the Every day table opens when it is clicked", async ({ alice }) => {
     await openFood(alice);
+    await openInsights(alice);
+    await everyDay(alice);
     const row = alice.locator(".rmetrics tbody tr", { has: alice.locator("td.day", { hasText: labelOf(daysAgo(4)) }) });
     await row.click();
     await expect(alice.locator("#fDate")).toHaveValue(daysAgo(4));
+    await expect(part(alice, "Log")).toHaveAttribute("aria-pressed", "true"); // a day picked in the table opens in the Log
     await expect(dayLine(alice)).toHaveText("1,695 kcal eaten · goal 2,200 kcal");
   });
 
   test("the range picker shows 30 days by default, and 14 or 90 when it is changed", async ({ alice }) => {
     await openFood(alice);
+    await openInsights(alice);
+    await everyDay(alice);
     const rows = alice.locator(".rmetrics tbody tr");
     await expect(rows).toHaveCount(30);
     await expect(alice.locator("#fbody .frange")).toHaveValue("30");
@@ -275,6 +280,8 @@ test.describe("Food log: today when nothing is logged", () => {
     await expect(dayLine(me)).toContainText("Nothing logged");
     await expect(me.locator("#fbody .fburn")).toHaveCount(0);
     await expect(me.locator("#fbody .fgoalhint")).toContainText("Set daily goals to follow your progress through the day.");
+    await openInsights(me);
+    await everyDay(me);
     await expect(me.locator(".rmetrics th.g")).toHaveText(["Eaten", "Nutrients"]);
   });
 });
@@ -536,7 +543,7 @@ test.describe("Food log: entering a food by hand", () => {
     await expect(summary(me).locator(".fmr.carbs .fv")).toHaveText("60 g");
     await expect(summary(me).locator(".fmr.fat .fv")).toHaveText("18 g");
     // the shares of the macros' calories are under the meals, with the calories of each meal
-    await expect(me.locator("#fbody .fcard .fleg span")).toHaveText(["Protein 20 %", "Carbs 48 %", "Fat 32 %"]);
+    await expect(me.locator("#fbody .fsum .fleg span")).toHaveText(["Protein 20 %", "Carbs 48 %", "Fat 32 %"]);
   });
 
   test("the form is empty again after a food is added", async ({ me }) => {
@@ -609,6 +616,8 @@ test.describe("Food log: optional nutrients", () => {
     const calcium = nutrientRow(me, "Calcium");
     await expect(calcium.locator(".fv")).toHaveText("–");
     await expect(calcium.locator(".fmn")).toHaveText("no food states it");
+    await openInsights(me);
+    await everyDay(me);
     await expect(me.locator(".rmetrics tbody tr").first().locator("td").nth(5)).toHaveText("≥ 8 g");
   });
 
@@ -1084,7 +1093,7 @@ test.describe("Food log: the day's totals and alice's past days", () => {
     await expect(ringBig(alice)).toHaveText("505");
     await expect(ringSmall(alice)).toHaveText("kcal left");
     await expect(dayLine(alice)).toHaveText("1,695 kcal eaten · goal 2,200 kcal");
-    await expect(alice.locator("#fbody .fcard .fleg span")).toHaveText(["Protein 25 %", "Carbs 47 %", "Fat 28 %"]);
+    await expect(alice.locator("#fbody .fsum .fleg span")).toHaveText(["Protein 25 %", "Carbs 47 %", "Fat 28 %"]);
     await expect(card.locator(".fmr.protein .fv")).toHaveText("103 / 130 g");
     await expect(card.locator(".fmr.carbs .fv")).toHaveText("199 / 250 g");
     await expect(card.locator(".fmr.fat .fv")).toHaveText("52 / 70 g");
@@ -1098,6 +1107,8 @@ test.describe("Food log: the day's totals and alice's past days", () => {
       await expect(alice.locator("#fDate")).toHaveValue(daysAgo(back));
       await expect(dayLine(alice)).toHaveText("1,695 kcal eaten · goal 2,200 kcal");
     }
+    await openInsights(alice);
+    await everyDay(alice);
     const row = alice.locator(".rmetrics tbody tr", { has: alice.locator("td.day", { hasText: labelOf(daysAgo(1)) }) });
     await expect(row.locator("td").nth(1)).toHaveText("1,695 kcal");
     await expect(row.locator("td").nth(2)).toHaveText("103 g");
@@ -1109,6 +1120,7 @@ test.describe("Food log: the day's totals and alice's past days", () => {
 
   test("alice's average is of the five days that have food", async ({ alice }) => {
     await openFood(alice);
+    await openInsights(alice);
     await expect(alice.locator("#fbody .fnote", { hasText: "Average of 5 logged days: 1,695 kcal · P 103 · C 199 · F 52" })).toBeVisible();
   });
 });

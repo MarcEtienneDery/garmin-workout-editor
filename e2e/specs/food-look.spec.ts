@@ -4,7 +4,7 @@
  * of the controls. alice's food is read only.
  */
 import { test, expect, openView, daysAgo, type APIRequestContext, type Page } from "../support/fixtures";
-import { labelOf, openFood, sheet, sheetTab } from "../support/food";
+import { labelOf, openFood, openInsights, sheet, sheetTab } from "../support/food";
 
 test.describe.configure({ timeout: 60_000 });
 
@@ -126,7 +126,7 @@ test.describe("the controls", () => {
     for (const theme of ["dark", "light"]) {
       if (theme === "light") await alice.locator("#fTheme").click();
       const small = await alice.evaluate(() =>
-        [...document.querySelectorAll<HTMLElement>("#fbar button, #fbar .fdaypick, #fdock button")].filter((el) => el.offsetParent !== null).map((el) => [el.id || el.className, Math.round(el.getBoundingClientRect().height)] as const).filter(([, h]) => h < 44),
+        [...document.querySelectorAll<HTMLElement>("#fbar button, #fbar .fdaypick, #fweek button, #fdock button")].filter((el) => el.offsetParent !== null).map((el) => [el.id || el.className, Math.round(el.getBoundingClientRect().height)] as const).filter(([, h]) => h < 44),
       );
       expect(small, `${theme}: controls under 44 px`).toEqual([]);
     }
@@ -160,26 +160,36 @@ const chartText = (page: Page) =>
   );
 
 test.describe("the disposition of the Food view", () => {
-  test("on a wide screen the day is the left column and the breakdown and the trends are the right one, level with the summary", async ({ alice }) => {
+  test("on a wide screen the Log is two columns: the card to add and the meals on the left, the day at a glance on the right, level with the card", async ({ alice }) => {
     await alice.setViewportSize({ width: 1360, height: 860 });
     await openFood(alice);
     const at = (selector: string) => alice.locator(selector).first().evaluate((el) => { const r = el.getBoundingClientRect(); return { left: r.left, right: r.right, top: r.top, bottom: r.bottom }; });
-    const [main, side, summary, breakdown, chart] = [await at(".fmain"), await at(".fside"), await at("#fbody .fsum"), await at("#fbody .fside .fcard"), await at("#fbody .rcharts .rc")];
+    const [main, side, summary, add, meal] = [await at(".fmain"), await at(".fside"), await at("#fbody .fsum"), await at("#fbody .faddcard"), await at("#fbody .fmeal")];
     expect(main.right).toBeLessThanOrEqual(side.left);
-    expect(summary.left).toBeGreaterThanOrEqual(main.left - 1);
-    expect(Math.abs(summary.top - breakdown.top)).toBeLessThan(8);
-    expect(chart.left).toBeGreaterThanOrEqual(side.left - 1);
-    expect(chart.right).toBeLessThanOrEqual(side.right + 1);
-    const table = await at("#fbody .rtable");
-    expect(table.top).toBeGreaterThan(Math.max(main.bottom, side.bottom) - 1); // the table runs under both
+    expect(add.left).toBeGreaterThanOrEqual(main.left - 1);
+    expect(summary.left).toBeGreaterThanOrEqual(side.left - 1);
+    expect(Math.abs(summary.top - add.top)).toBeLessThan(8);
+    expect(meal.top).toBeGreaterThan(add.bottom - 1); // the meals come under the card to add
   });
 
-  test("below 1100 px it is one column again, in the order of the page: the meals, then the breakdown, then the trends", async ({ alice }) => {
+  test("the Insights are tiles over charts two across (the weekdays among them), with the table of every day under them, in the width of the page", async ({ alice }) => {
+    await alice.setViewportSize({ width: 1360, height: 860 });
+    await openFood(alice);
+    await openInsights(alice);
+    const at = (selector: string) => alice.locator(selector).first().evaluate((el) => { const r = el.getBoundingClientRect(); return { left: r.left, right: r.right, top: r.top, bottom: r.bottom }; });
+    const [tile, chart, table] = [await at("#fbody .itile"), await at("#fbody .rcharts .rc"), await at("#fbody details.fevery")];
+    expect(chart.top).toBeGreaterThan(tile.bottom - 1);
+    expect(table.top).toBeGreaterThan(chart.bottom - 1);
+    const lefts = await alice.locator("#fbody .rcharts .rc").evaluateAll((els) => els.map((el) => Math.round(el.getBoundingClientRect().left)));
+    expect(new Set(lefts).size).toBe(2);
+  });
+
+  test("below 1100 px the Log is one column again, in the order of the page: the day at a glance, the card to add, the meals", async ({ alice }) => {
     await alice.setViewportSize({ width: 1000, height: 800 });
     await openFood(alice);
-    const tops = await alice.evaluate(() => ["#fbody .fsum", "#fbody .fmeal:last-of-type", "#fbody .fside .fcard", "#fbody .rcharts .rc", "#fbody .rtable"].map((s) => Math.round(document.querySelector(s)!.getBoundingClientRect().top)));
+    const tops = await alice.evaluate(() => ["#fbody .fsum", "#fbody .faddcard", "#fbody .fmeal:last-of-type"].map((s) => Math.round(document.querySelector(s)!.getBoundingClientRect().top)));
     expect(tops).toEqual([...tops].sort((a, b) => a - b));
-    const left = await alice.evaluate(() => ["#fbody .fsum", "#fbody .fside .fcard"].map((s) => Math.round(document.querySelector(s)!.getBoundingClientRect().left)));
+    const left = await alice.evaluate(() => ["#fbody .fsum", "#fbody .faddcard", "#fbody .fmeal"].map((s) => Math.round(document.querySelector(s)!.getBoundingClientRect().left)));
     expect(new Set(left).size).toBe(1);
   });
 
@@ -187,6 +197,7 @@ test.describe("the disposition of the Food view", () => {
     for (const width of [1360, 1000]) {
       await alice.setViewportSize({ width, height: 860 });
       await openFood(alice);
+      await openInsights(alice);
       const charts = await chartText(alice);
       expect(charts.length).toBeGreaterThanOrEqual(2);
       for (const c of charts) {
@@ -199,19 +210,20 @@ test.describe("the disposition of the Food view", () => {
   test("the calorie scale stops where the data does: not a full step above the highest line", async ({ alice }) => {
     await alice.setViewportSize({ width: 1360, height: 860 });
     await openFood(alice);
+    await openInsights(alice);
     const [eaten] = await chartText(alice);
     const top = Math.max(...eaten.ticks.map((t) => Number(t.replace(/,/g, ""))));
     expect(top).toBeLessThanOrEqual(3500);
   });
 
-  test("two charts sit side by side when the page is one column and there is room, and one over another in the right column", async ({ alice }) => {
-    await alice.setViewportSize({ width: 1000, height: 800 });
-    await openFood(alice);
-    const lefts = await alice.locator("#fbody .rcharts .rc").evaluateAll((els) => els.map((el) => Math.round(el.getBoundingClientRect().left)));
-    expect(new Set(lefts).size).toBe(2);
-    await alice.setViewportSize({ width: 1360, height: 860 });
-    const wide = await alice.locator("#fbody .rcharts .rc").evaluateAll((els) => els.map((el) => Math.round(el.getBoundingClientRect().left)));
-    expect(new Set(wide).size).toBe(1);
+  test("the charts sit two across on a wide screen and when the page is narrower, and one over another when there is no room for two", async ({ alice }) => {
+    for (const width of [1360, 1000]) {
+      await alice.setViewportSize({ width, height: 800 });
+      await openFood(alice);
+      await openInsights(alice);
+      const lefts = await alice.locator("#fbody .rcharts .rc").evaluateAll((els) => els.map((el) => Math.round(el.getBoundingClientRect().left)));
+      expect(new Set(lefts).size, `${width}px`).toBe(2);
+    }
   });
 
   test("the Recovery view's charts keep their own size", async ({ alice }) => {
@@ -239,20 +251,22 @@ test.describe("the goal on the charts", () => {
   test("a day over the calorie goal is drawn in another colour, with its words in the legend and the hover", async ({ me, profile }) => {
     await logThreeDays(profile.api);
     await openFood(me);
+    await openInsights(me);
     await expect(calories(me).locator("svg .rc-bar")).toHaveCount(3);
     await expect(calories(me).locator("svg .rc-bar.over")).toHaveCount(1);
     await expect(calories(me).locator(".rcl")).toContainText("Over the goal");
     const fills = async (selector: string) => calories(me).locator(selector).first().evaluate((el) => getComputedStyle(el).fill);
     expect(await fills("svg .rc-bar.over")).not.toBe(await fills("svg .rc-bar:not(.over)"));
-    await me.locator("#fbody .rmetrics tr.pick", { hasText: labelOf(daysAgo(3)) }).click();
+    await me.locator("#fDate").fill(daysAgo(3));
     await expect(calories(me).locator(".rcr")).toContainText("over the goal");
-    await me.locator("#fbody .rmetrics tr.pick", { hasText: labelOf(daysAgo(2)) }).click();
+    await me.locator("#fDate").fill(daysAgo(2));
     await expect(calories(me).locator(".rcr")).not.toContainText("over the goal");
   });
 
   test("says in a line how many finished days were on target (a day under the goal is) and over, and how many reached the protein goal", async ({ me, profile }) => {
     await logThreeDays(profile.api);
     await openFood(me);
+    await openInsights(me);
     await expect(calories(me).locator(".rcs")).toHaveText("2 of 3 finished days on target · 1 over");
     await expect(protein(me).locator(".rcs")).toHaveText("2 of 3 finished days reached 100 g");
   });
@@ -263,6 +277,7 @@ test.describe("the goal on the charts", () => {
     const today = await profile.api.post("/api/nutrition", { data: { action: "add", day: daysAgo(0), meal: "lunch", items: [{ name: "Big lunch", proteinG: 100, carbsG: 300, fatG: 70 }] } });
     expect(today.ok()).toBeTruthy();
     await openFood(me);
+    await openInsights(me);
     await expect(calories(me).locator("svg .rc-bar")).toHaveCount(1);
     await expect(calories(me).locator("svg .rc-bar.over")).toHaveCount(1); // the bar is drawn in its colour, as it will be if the day ends so
     await expect(calories(me).locator(".rcs")).toHaveCount(0); // but today is not counted, so there is nothing to say
@@ -272,6 +287,7 @@ test.describe("the goal on the charts", () => {
     const res = await profile.api.post("/api/nutrition", { data: { action: "add", day: daysAgo(2), meal: "lunch", items: [{ name: "Lunch", proteinG: 100, carbsG: 300, fatG: 70 }] } });
     expect(res.ok()).toBeTruthy();
     await openFood(me);
+    await openInsights(me);
     await expect(calories(me).locator("svg .rc-bar")).toHaveCount(1);
     await expect(calories(me).locator("svg .rc-bar.over")).toHaveCount(0);
     await expect(calories(me).locator(".rcs")).toHaveCount(0);
@@ -281,6 +297,7 @@ test.describe("the goal on the charts", () => {
   test("the over colour is told from the others in both themes, and the lines of words keep their contrast", async ({ me, profile }) => {
     await logThreeDays(profile.api);
     await openFood(me);
+    await openInsights(me);
     for (const theme of ["dark", "light"]) {
       if (theme === "light") await me.locator("#fTheme").click();
       const over = await calories(me).locator("svg .rc-bar.over").evaluate((el) => getComputedStyle(el).fill);
