@@ -338,18 +338,6 @@
   #rscroll, #bscroll, #fscroll, #sscroll, #tscroll { flex:1; min-height:0; overflow:auto; overscroll-behavior:contain; }
   #rbody, #bbody, #fbody, #sbody, #tbody { max-width:1040px; margin:0 auto; padding:12px 16px 32px; }
   #rbody h3, #bbody h3, #fbody h3, #sbody h3, #tbody h3 { margin:22px 0 8px; font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--dim); }
-  .rready { display:grid; grid-template-columns:auto minmax(0,1fr); gap:4px 20px; align-items:center; padding:14px 16px; background:var(--panel); border:1px solid var(--line); border-left:4px solid var(--c); border-radius:4px; }
-  .rready.go { --c:var(--ok); } .rready.plan { --c:var(--accent); } .rready.back { --c:var(--warn); } .rready.unknown { --c:var(--dim); }
-  .rband { font-size:22px; font-weight:600; color:var(--c); line-height:1.2; }
-  .rscore { font-size:30px; font-weight:600; line-height:1.1; } .rscore small { margin-left:4px; font-size:12px; font-weight:400; color:var(--dim); }
-  .rwhen { color:var(--dim); } .rwhen .chip { margin-left:6px; }
-  .rsug { grid-column:1 / -1; margin:8px 0 0; line-height:1.5; }
-  .rsigs { grid-column:1 / -1; display:grid; grid-template-columns:auto minmax(0,9em) minmax(0,auto) minmax(0,1fr); gap:6px 12px; align-items:baseline; margin-top:10px; padding-top:10px; border-top:1px solid var(--line); }
-  .rsigs .nm { font-weight:600; } .rsigs .val { white-space:nowrap; } .rsigs .why { color:var(--dim); }
-  .rsigs .why small { display:block; }
-  .pip { align-self:center; width:10px; height:10px; border-radius:50%; background:#8b8b8b; }
-  .pip.m2 { background:#e0393c; } .pip.m1 { background:#e0883c; } .pip.p1 { background:#6cc08b; } .pip.p2 { background:var(--ok); }
-  .rmiss { grid-column:1 / -1; margin-top:6px; color:var(--dim); font-size:12px; }
   .rcharts { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
   .rc { background:var(--panel); border:1px solid var(--line); border-radius:4px; padding:8px 10px 6px; min-width:0; }
   .rch { display:flex; gap:8px; align-items:baseline; justify-content:space-between; }
@@ -383,7 +371,7 @@
   @font-face { font-family:"Fira Code"; font-weight:400; font-display:swap; src:url(/fonts/fira-code-latin-400-normal.woff2) format("woff2"); }
   @font-face { font-family:"Fira Code"; font-weight:500; font-display:swap; src:url(/fonts/fira-code-latin-500-normal.woff2) format("woff2"); }
   @font-face { font-family:"Fira Code"; font-weight:600; font-display:swap; src:url(/fonts/fira-code-latin-600-normal.woff2) format("woff2"); }
-  :is(#tview, #fview, #fsheet, #cview, #moveMenu) {
+  :is(#tview, #fview, #fsheet, #cview, #moveMenu, #rview) {
     --bg:#070504; --panel:#1b1612; --t-surface2:#262019; --line:rgba(255,236,214,.15); --t-line2:rgba(255,236,214,.26);
     --fg:#fbf3ea; --dim:#b3a698; --t-faint:#968a7c;
     --accent:#ff9f2e; --t-on-accent:#1a0d00; --t-ink:#ff9f2e;
@@ -393,7 +381,7 @@
     --t-track:rgba(255,236,214,.09); --t-tint:rgba(0,0,0,.2); --t-glow:rgba(255,159,46,.3); --t-hero-glow:rgba(255,159,46,.12); --t-ok-bg:rgba(74,222,128,.18); --t-pill:rgba(255,159,46,.16);
     background:var(--bg); color:var(--fg); font:400 15px/1.5 "Fira Sans",system-ui,sans-serif; color-scheme:dark;
   }
-  body[data-theme="light"] :is(#tview, #fview, #fsheet, #cview, #moveMenu) {
+  body[data-theme="light"] :is(#tview, #fview, #fsheet, #cview, #moveMenu, #rview) {
     --bg:#e9e1d3; --panel:#ffffff; --t-surface2:#f4eee3; --line:rgba(40,24,8,.15); --t-line2:rgba(40,24,8,.28);
     --fg:#1d1610; --dim:#5e5244; --t-faint:#766a5b;
     --accent:#d97706; --t-on-accent:#1a0d00; --t-ink:#a24a05;
@@ -1067,17 +1055,17 @@
 
   /* ── Food view, in the new look: the palette of Today (the variables on #fview and on the add sheet, so both themes), Fira type, rounded cards ──
      Written over the rules above: the colours that were fixed greys read the variables now, and shapes are rounded. */
-  :where(#fview, #fsheet) button { background:var(--t-surface2); color:var(--fg); border-color:var(--t-line2); font-family:inherit; }
-  :where(#fview, #fsheet) button:hover:not(:disabled) { background:color-mix(in srgb, var(--fg) 8%, var(--t-surface2)); }
-  :is(#fview, #fsheet) button.primary { background:var(--accent); border-color:transparent; color:var(--t-on-accent); font-weight:700; }
-  :is(#fview, #fsheet) button.primary:hover:not(:disabled) { background:var(--accent); filter:brightness(1.08); }
-  :is(#fview, #fsheet) :is(input, select, textarea) { background:var(--t-surface2); color:var(--fg); border:1px solid var(--t-line2); border-radius:10px; font-family:inherit; }
-  :is(#fview, #fsheet) :is(input, select, textarea):focus-visible, :is(#fview, #fsheet) button:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+  :where(#fview, #fsheet, #rview) button { background:var(--t-surface2); color:var(--fg); border-color:var(--t-line2); font-family:inherit; }
+  :where(#fview, #fsheet, #rview) button:hover:not(:disabled) { background:color-mix(in srgb, var(--fg) 8%, var(--t-surface2)); }
+  :is(#fview, #fsheet, #rview) button.primary { background:var(--accent); border-color:transparent; color:var(--t-on-accent); font-weight:700; }
+  :is(#fview, #fsheet, #rview) button.primary:hover:not(:disabled) { background:var(--accent); filter:brightness(1.08); }
+  :is(#fview, #fsheet, #rview) :is(input, select, textarea) { background:var(--t-surface2); color:var(--fg); border:1px solid var(--t-line2); border-radius:10px; font-family:inherit; }
+  :is(#fview, #fsheet, #rview) :is(input, select, textarea):focus-visible, :is(#fview, #fsheet, #rview) button:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
   #fsheet .fform input[readonly] { background:transparent; color:var(--dim); }
   /* the bar: profile, the day (◀ a pill that opens the calendar ▶), Today, the theme */
   #fbar { display:flex; align-items:center; justify-content:stretch; gap:8px; padding:18px clamp(16px,2.6vw,34px) 6px; background:transparent; border-bottom:0; }
   #fbar #fProfile { flex:none; max-width:36%; margin-right:0; }
-  #fview .themebtn { border-radius:50%; background:transparent; border:1px solid var(--t-line2); }
+  :is(#fview, #rview) .themebtn { border-radius:50%; background:transparent; border:1px solid var(--t-line2); }
   #fPrev, #fNext { width:44px; min-width:44px; height:44px; padding:0; border-radius:50%; background:var(--panel); border:1px solid var(--line); font-size:13px; }
   #fPrev:disabled, #fNext:disabled { opacity:.4; }
   #fToday { min-height:44px; padding:0 18px; border-radius:999px; font-weight:600; }
@@ -1104,7 +1092,7 @@
   #fview .fgoalhint button { color:var(--t-ink); text-decoration:underline; }
   :is(#fview, #fsheet) .protein { --c:var(--t-sky); } :is(#fview, #fsheet) .carbs { --c:var(--accent); } :is(#fview, #fsheet) .fat { --c:var(--t-rose); }
   #fview :is(.rc-part, .sw-part).protein { fill:var(--t-sky); background:var(--t-sky); } #fview :is(.rc-part, .sw-part).carbs { fill:var(--accent); background:var(--accent); } #fview :is(.rc-part, .sw-part).fat { fill:var(--t-rose); background:var(--t-rose); }
-  #fview .rc-bar.protein { fill:var(--t-sky); }
+  :is(#fview, #rview) .rc-bar.protein { fill:var(--t-sky); }
   #fview .fnuts { border-top-color:var(--line); } #fview .fnbrief .st-ok, #fview .st-ok .fmn, #fview .st-ok .fhn { color:var(--ok); }
   /* the foods used lately */
   #fbody .fqh { font:500 11px "Fira Code",ui-monospace,monospace; letter-spacing:.12em; }
@@ -1126,15 +1114,15 @@
   #fview .fea button { min-height:36px; padding:2px 14px; border-radius:999px; }
   #fview .fea button.danger { color:var(--err); } #fview .fea button.danger:hover:not(:disabled) { background:var(--err); border-color:var(--err); color:var(--bg); }
   #fview .fmeal-row .fv { font:500 13px "Fira Code",ui-monospace,monospace; }
-  #fview .rtable { border-radius:14px; background:var(--panel); }
-  #fview table.rmetrics th, #fview table.rmetrics td { border-bottom-color:var(--line); }
-  #fview table.rmetrics tr.pick:hover td { background:var(--t-surface2); }
-  #fview table.rmetrics tr.sel td, #fview table.rmetrics tr.sel td.day { background:color-mix(in srgb, var(--accent) 18%, var(--panel)); }
-  #fview table.rmetrics tr.sel td.day { box-shadow:inset 3px 0 0 var(--accent); }
+  :is(#fview, #rview) .rtable { border-radius:14px; background:var(--panel); }
+  :is(#fview, #rview) table.rmetrics th, :is(#fview, #rview) table.rmetrics td { border-bottom-color:var(--line); }
+  :is(#fview, #rview) table.rmetrics tr.pick:hover td { background:var(--t-surface2); }
+  :is(#fview, #rview) table.rmetrics tr.sel td, :is(#fview, #rview) table.rmetrics tr.sel td.day { background:color-mix(in srgb, var(--accent) 18%, var(--panel)); }
+  :is(#fview, #rview) table.rmetrics tr.sel td.day { box-shadow:inset 3px 0 0 var(--accent); }
   /* the trend charts: a card each, grid lines and bars read the palette */
-  #fview .rc { padding:14px 16px 10px; border-radius:18px; box-shadow:var(--card-shadow); }
-  #fview .rch b { font-size:13px; }
-  #fview .rc-grid { stroke:var(--line); }
+  :is(#fview, #rview) .rc { padding:14px 16px 10px; border-radius:18px; box-shadow:var(--card-shadow); }
+  :is(#fview, #rview) .rch b { font-size:13px; }
+  :is(#fview, #rview) .rc-grid { stroke:var(--line); }
   /* the bar at the foot: search, the barcode, the AI */
   #fdock { padding:10px clamp(12px,2.6vw,34px) calc(10px + env(safe-area-inset-bottom)); background:color-mix(in srgb, var(--bg) 92%, transparent); border-top:1px solid var(--line); backdrop-filter:blur(14px); }
   #fdock .fdin { max-width:760px; gap:10px; }
@@ -1166,8 +1154,8 @@
   #fsheet .faibig { border-radius:14px; }
   #fsheet .fsh-note { color:var(--warn); }
   /* cards stand off the page: a firmer edge (the variables above), a lit top edge and a soft shadow; a section's label carries a rule */
-  :is(#tview, #fview, #cview, #moveMenu) { --card-shadow:0 1px 0 rgba(255,255,255,.06) inset, 0 14px 30px -18px rgba(0,0,0,.95); }
-  body[data-theme="light"] :is(#tview, #fview, #cview, #moveMenu) { --card-shadow:0 1px 0 #fff inset, 0 1px 2px rgba(60,40,10,.10), 0 14px 28px -18px rgba(60,40,10,.40); }
+  :is(#tview, #fview, #cview, #moveMenu, #rview) { --card-shadow:0 1px 0 rgba(255,255,255,.06) inset, 0 14px 30px -18px rgba(0,0,0,.95); }
+  body[data-theme="light"] :is(#tview, #fview, #cview, #moveMenu, #rview) { --card-shadow:0 1px 0 #fff inset, 0 1px 2px rgba(60,40,10,.10), 0 14px 28px -18px rgba(60,40,10,.40); }
   :is(#tview, #fview) :is(.tcard, .tfig, .fsum, .fcard, .fmeal, .fchip, .fday) { box-shadow:var(--card-shadow); }
   #fbody > h3, .fth h3 { display:flex; align-items:center; gap:14px; color:var(--fg); }
   #fbody > h3::after, .fth h3::after { content:""; flex:1; height:1px; background:var(--t-line2); }
@@ -1179,22 +1167,22 @@
   .fside > h3:first-child { position:absolute; width:1px; height:1px; margin:0; overflow:hidden; clip-path:inset(50%); } /* for a screen reader: the card says what it is */
   /* the trend charts: taller, one over another, with text that can be read */
   #fview .rcharts { grid-template-columns:repeat(auto-fit, minmax(340px, 1fr)); gap:14px; } /* one over another in the right column, two side by side when the page is one column */
-  #fview .rc { padding:16px 18px 12px; }
-  #fview .rch { flex-wrap:wrap; gap:2px 12px; margin-bottom:6px; }
-  #fview .rch b { font-size:14px; font-weight:700; }
-  #fview .rcr { font:500 12px "Fira Code",ui-monospace,monospace; color:var(--dim); white-space:normal; text-align:right; }
-  #fview .rc-tick, #fview .rc-x { font:500 12px "Fira Code",ui-monospace,monospace; }
-  #fview .rc-sel { fill:color-mix(in srgb, var(--accent) 14%, transparent); }
-  #fview .rc-cursor { stroke:var(--dim); }
-  #fview .rc-bar { rx:2.5px; }
-  #fview .rc-ref { stroke:var(--t-teal); stroke-width:1.6; stroke-dasharray:none; } /* what was burned is a solid line, the goal stays dashed: the two cross */
-  #fview .rc-goal { stroke-width:1.5; opacity:.85; }
-  #fview .rcl { gap:4px 16px; margin-top:8px; font-size:12px; }
-  #fview .rck i.sw-ref { border-top:2px solid var(--t-teal); }
-  #fview .rc-bar.over { fill:var(--t-rose); } #fview .rck i.sw-over { background:var(--t-rose); } /* a day over the calorie goal */
-  #fview .rcs { margin:0 0 4px; color:var(--fg); font:500 12px "Fira Code",ui-monospace,monospace; text-wrap:balance; }
+  :is(#fview, #rview) .rc { padding:16px 18px 12px; }
+  :is(#fview, #rview) .rch { flex-wrap:wrap; gap:2px 12px; margin-bottom:6px; }
+  :is(#fview, #rview) .rch b { font-size:14px; font-weight:700; }
+  :is(#fview, #rview) .rcr { font:500 12px "Fira Code",ui-monospace,monospace; color:var(--dim); white-space:normal; text-align:right; }
+  :is(#fview, #rview) :is(.rc-tick, .rc-x) { font:500 12px "Fira Code",ui-monospace,monospace; }
+  :is(#fview, #rview) .rc-sel { fill:color-mix(in srgb, var(--accent) 14%, transparent); }
+  :is(#fview, #rview) .rc-cursor { stroke:var(--dim); }
+  :is(#fview, #rview) .rc-bar { rx:2.5px; }
+  :is(#fview, #rview) .rc-ref { stroke:var(--t-teal); stroke-width:1.6; stroke-dasharray:none; } /* what was burned is a solid line, the goal stays dashed: the two cross */
+  :is(#fview, #rview) .rc-goal { stroke-width:1.5; opacity:.85; }
+  :is(#fview, #rview) .rcl { gap:4px 16px; margin-top:8px; font-size:12px; }
+  :is(#fview, #rview) .rck i.sw-ref { border-top:2px solid var(--t-teal); }
+  :is(#fview, #rview) .rc-bar.over { fill:var(--t-rose); } #fview .rck i.sw-over { background:var(--t-rose); } /* a day over the calorie goal */
+  :is(#fview, #rview) .rcs { margin:0 0 4px; color:var(--fg); font:500 12px "Fira Code",ui-monospace,monospace; text-wrap:balance; }
   @media (max-width:1100px) { .fgrid { grid-template-columns:minmax(0,1fr); } }
-  @media (max-width:700px) { #fview .rc-tick, #fview .rc-x { font-size:13px; } #fview .rc { padding:14px 14px 10px; } #fview .rcr { text-align:left; } }
+  @media (max-width:700px) { :is(#fview, #rview) :is(.rc-tick, .rc-x) { font-size:13px; } :is(#fview, #rview) .rc { padding:14px 14px 10px; } :is(#fview, #rview) .rcr { text-align:left; } }
   @media (max-width:900px) { #fbar { padding:12px 12px 4px; gap:6px; } .fdaypick { padding:0 12px; font-size:14px; } #fdock { padding:8px 12px calc(8px + env(safe-area-inset-bottom)); } }
   @media (max-width:700px) { #fview .fea button, #fview .fea select { min-height:40px; } #fview .fglance { gap:16px; } #fview .fring { width:120px; height:120px; } #fview .fmeal { padding:2px 14px 4px; } #fview .fsum, #fview .fcard { padding:16px; } }
   @media (prefers-reduced-motion:reduce) { :is(#fview, #fsheet) *, :is(#fview, #fsheet) *::before { transition:none !important; animation:none !important; } }
@@ -1211,7 +1199,7 @@
   #fTabs button, #fTabs button:first-child, #fTabs button:last-child { min-height:44px; margin:0; padding:0 22px; border:0; border-radius:999px; background:transparent; color:var(--dim); font-weight:600; }
   #fTabs button:hover:not(:disabled):not([aria-pressed="true"]) { background:var(--t-surface2); color:var(--fg); }
   #fTabs button[aria-pressed="true"] { background:var(--accent); color:var(--t-on-accent); }
-  #fview .themebtn { width:44px; min-width:44px; height:44px; padding:0; }
+  :is(#fview, #rview) .themebtn { width:44px; min-width:44px; height:44px; padding:0; }
   /* the week: a day each, its calories against its goal as a ring; ◀ ▶ step a day */
   #fweek { display:flex; align-items:center; gap:8px; max-width:1280px; padding:8px clamp(16px,2.6vw,34px) 2px; }
   #fweek[hidden] { display:none; }
@@ -1307,6 +1295,141 @@
     #fview .fqchips { flex-wrap:nowrap; overflow-x:auto; scrollbar-width:none; margin:0 -14px; padding:8px 14px 2px; } #fview .fqchips::-webkit-scrollbar { display:none; } #fview .fchip { flex:none; }
     .itiles { grid-template-columns:repeat(2, minmax(0,1fr)); gap:10px; } .itile { padding:14px 16px; } .itile:last-child:nth-child(odd) { grid-column:1 / -1; } .itile b { font-size:22px; } .itile span { font-size:12px; }
   }
+
+  /* ── Recovery, in the new look: the palette of Today and Food (both themes), a week of verdicts, three parts (the Verdict, the Trends, the Data) ──
+     Green is Go harder, blue As planned, rose Back off; the orange stays the colour of what is picked. */
+  #rview { --rs-deep:#8b8cf5; --rs-rem:#c084fc; --z-go:var(--ok); --z-plan:var(--t-sky); --z-back:var(--t-rose); --z-none:var(--t-faint); }
+  body[data-theme="light"] #rview { --rs-deep:#5b5cd6; --rs-rem:#9333ea; }
+  #rscroll { background:var(--bg); }
+  #rbar { display:flex; flex-wrap:wrap; align-items:center; justify-content:flex-start; gap:8px 10px; max-width:1280px; padding:18px clamp(16px,2.6vw,34px) 6px; background:transparent; border-bottom:0; }
+  #rbar #rProfile { order:0; max-width:100%; }
+  .rdaypick { order:1; position:relative; flex:1 1 260px; min-width:0; display:flex; align-items:center; gap:6px; min-height:44px; font-size:clamp(22px,2.6vw,30px); font-weight:700; letter-spacing:-.02em; white-space:nowrap; overflow:hidden; border-radius:12px; }
+  .rdaypick:hover #rDayLabel { color:var(--t-ink); } .rdaypick:focus-within { outline:2px solid var(--accent); outline-offset:2px; }
+  .rdaypick::after { content:"▾"; color:var(--dim); font-size:14px; }
+  #rDayLabel { overflow:hidden; text-overflow:ellipsis; } #rDayLabel b { font-weight:700; flex:none; }
+  #rDate { position:absolute; inset:0; width:100%; height:100%; margin:0; padding:0; border:0; opacity:0; cursor:pointer; }
+  #rbar #rRange { order:2; min-height:44px; }
+  #rbar #rToday { order:2; min-height:44px; padding:0 18px; border-radius:999px; font-weight:600; }
+  #rbar #rSync { order:2; min-height:44px; padding:0 18px; border-radius:999px; font-weight:600; background:var(--panel); border:1px solid var(--line); }
+  #rTabs { order:3; display:flex; padding:2px; gap:2px; background:var(--panel); border:1px solid var(--line); border-radius:999px; }
+  #rTabs[hidden] { display:none; }
+  #rTabs button, #rTabs button:first-child, #rTabs button:last-child { min-height:44px; margin:0; padding:0 20px; border:0; border-radius:999px; background:transparent; color:var(--dim); font-weight:600; }
+  #rTabs button:hover:not(:disabled):not([aria-pressed="true"]) { background:var(--t-surface2); color:var(--fg); }
+  #rTabs button[aria-pressed="true"] { background:var(--accent); color:var(--t-on-accent); }
+  #rbar #rTheme { order:4; }
+  /* the week: a day each, its score as a ring in the colour of its zone and the words of its band; ◀ ▶ step a day */
+  #rweek { display:flex; align-items:center; gap:8px; max-width:1280px; padding:8px clamp(16px,2.6vw,34px) 2px; }
+  #rweek[hidden] { display:none; }
+  #rPrev, #rNext { flex:none; width:44px; min-width:44px; height:44px; padding:0; border-radius:50%; background:var(--panel); border:1px solid var(--line); font-size:13px; }
+  #rPrev:disabled, #rNext:disabled { opacity:.4; }
+  #rstrip { position:relative; flex:1 1 auto; min-width:0; display:grid; grid-template-columns:repeat(7, minmax(0,1fr)); gap:8px; }
+  .rwd { min-height:104px; }
+  .rwd .fwk { color:var(--fg); font-weight:600; }
+  .rwd .rwn { white-space:nowrap; font:500 10.5px "Fira Code",ui-monospace,monospace; letter-spacing:.02em; text-transform:none; color:var(--dim); min-height:1.2em; }
+  .fwring .arc.z-go { stroke:var(--z-go); } .fwring .arc.z-plan { stroke:var(--z-plan); } .fwring .arc.z-back { stroke:var(--z-back); }
+  .rwd.rd-back .fwk { color:var(--err); }
+  #rNote { padding:6px clamp(16px,2.6vw,34px) 0; color:var(--dim); }
+  #rbody { max-width:1280px; margin:0; padding:10px clamp(16px,2.6vw,34px) 48px; }
+  #rbody .empty { color:var(--dim); }
+  #rbody h3 { margin:0; font:500 11.5px "Fira Code",ui-monospace,monospace; letter-spacing:.14em; text-transform:uppercase; color:var(--fg); }
+  #rview .rgrid { display:grid; grid-template-columns:minmax(0,1.55fr) minmax(0,1fr); gap:16px; align-items:start; margin-top:12px; }
+  #rview .rcol { display:flex; flex-direction:column; gap:16px; min-width:0; } #rview .rcol > * { min-width:0; }
+  :is(#rview .rhero, #rview .rsigcard, #rview .rnight, #rview .rload, #rview .racc) { background:var(--panel); border:1px solid var(--line); border-radius:18px; box-shadow:var(--card-shadow); }
+  /* the verdict */
+  #rview .rhero { --bc:var(--z-none); display:grid; grid-template-columns:250px minmax(0,1fr); gap:24px; align-items:center; padding:22px 24px; border-top:3px solid var(--bc); }
+  #rview .rhero.b-go { --bc:var(--z-go); } #rview .rhero.b-plan { --bc:var(--z-plan); } #rview .rhero.b-back { --bc:var(--z-back); }
+  #rview .rhero:not(:has(.rgauge)) { grid-template-columns:minmax(0,1fr); }
+  .rgauge { position:relative; width:250px; max-width:100%; }
+  .rgauge svg { display:block; width:100%; height:auto; overflow:visible; }
+  .rgauge .gz { fill:none; stroke-width:16; opacity:.3; } .rgauge .gz.on { opacity:1; }
+  .rgauge .gz.z-go { stroke:var(--z-go); } .rgauge .gz.z-plan { stroke:var(--z-plan); } .rgauge .gz.z-back { stroke:var(--z-back); }
+  .rgauge .gtick50 { stroke:var(--fg); stroke-width:1.5; opacity:.6; }
+  .rgauge .gmark { fill:var(--panel); stroke-width:4; } .rgauge .gmark.z-go { stroke:var(--z-go); } .rgauge .gmark.z-plan { stroke:var(--z-plan); } .rgauge .gmark.z-back { stroke:var(--z-back); }
+  .rgauge .rmid { position:absolute; left:0; right:0; bottom:6px; text-align:center; }
+  .rgauge .rmid b { display:block; font:600 56px/1 "Fira Code",ui-monospace,monospace; letter-spacing:-.05em; }
+  .rgauge .rmid span { font-size:12.5px; color:var(--dim); }
+  .rverdict .eyebrow, #rview .eyebrow { font:500 11.5px "Fira Code",ui-monospace,monospace; letter-spacing:.14em; text-transform:uppercase; color:var(--dim); }
+  .rband { margin:6px 0 8px; font-size:clamp(34px,4.2vw,46px); line-height:1.05; font-weight:700; letter-spacing:-.03em; color:var(--bc); }
+  .rchips { display:flex; flex-wrap:wrap; gap:8px; }
+  .chipx { display:inline-flex; align-items:center; padding:2px 10px; border-radius:999px; background:var(--t-surface2); border:1px solid var(--line); font-size:12.5px; font-weight:500; color:var(--dim); }
+  .rsug { margin:12px 0 14px; font-size:17px; line-height:1.5; text-wrap:pretty; }
+  .rchange { padding:12px 14px; border-radius:14px; background:var(--t-surface2); font-size:13.5px; color:var(--dim); }
+  .rchange b { color:var(--fg); font-weight:600; }
+  /* each signal against the person's own normal */
+  #rview .rsigcard { padding:20px 22px 8px; }
+  .rsigcard .rhead { display:flex; flex-wrap:wrap; justify-content:space-between; align-items:baseline; gap:4px 12px; margin-bottom:4px; }
+  .rsigcard .rhead h2 { margin:0; } .rsigcard .rhead small { color:var(--dim); font-size:12.5px; }
+  .rsig { padding:14px 0; border-top:1px solid var(--line); } .rsig:first-of-type { border-top:0; }
+  .rsig .r1 { display:flex; flex-wrap:wrap; justify-content:space-between; align-items:baseline; gap:4px 12px; }
+  .rsig .nm { font-weight:600; } .rsig .nm em { margin-left:8px; font-size:11px; font-style:normal; font-weight:600; letter-spacing:.04em; color:var(--dim); }
+  .rsig .val { margin-left:auto; max-width:100%; text-align:right; font:600 14.5px "Fira Code",ui-monospace,monospace; }
+  .meter { display:grid; grid-template-columns:repeat(5, 1fr); gap:4px; margin:9px 0 8px; }
+  .meter i { height:8px; border-radius:99px; background:var(--t-track); }
+  .meter i.on { background:var(--c); }
+  .s-m2 { --c:var(--t-rose); } .s-m1 { --c:var(--warn); } .s-z { --c:var(--t-faint); } .s-p1, .s-p2 { --c:var(--ok); }
+  .rsig .why { font-size:13.5px; } .rsig .base { font-size:12.5px; color:var(--dim); }
+  .rmiss { padding:12px 14px; border-radius:14px; background:var(--t-surface2); font-size:13px; color:var(--dim); }
+  /* last night and the load before */
+  #rview .rnight, #rview .rload { padding:20px 22px; }
+  .rnight .rbig { display:flex; align-items:baseline; gap:10px; margin:6px 0 12px; } .rnight .rbig b { font:600 40px/1 "Fira Code",ui-monospace,monospace; letter-spacing:-.04em; } .rnight .rbig span { color:var(--dim); }
+  .rstages { display:flex; height:14px; border-radius:99px; overflow:hidden; gap:2px; background:var(--t-track); } .rstages i { display:block; height:100%; }
+  .st-deep { background:var(--rs-deep); } .st-rem { background:var(--rs-rem); } .st-light { background:var(--t-sky); } .st-awake { background:var(--accent); }
+  .rlegend { display:flex; flex-wrap:wrap; gap:4px 14px; margin-top:10px; font-size:12.5px; color:var(--dim); } .rlegend span { display:inline-flex; align-items:center; gap:6px; } .rlegend i { display:inline-block; width:10px; height:10px; border-radius:3px; }
+  .rneed { --c:var(--warn); margin:14px 0 4px; font-size:13px; } .rneed.n-ok { --c:var(--ok); } .rneed.n-short { --c:var(--t-rose); }
+  .rneed .nl { display:flex; justify-content:space-between; gap:8px; } .rneed .t { position:relative; height:8px; margin-top:8px; border-radius:99px; background:var(--t-track); } .rneed .t i { position:absolute; inset:0 auto 0 0; border-radius:99px; background:var(--c); }
+  .rkv { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:14px; } .rkv > div { padding:10px 12px; border-radius:12px; background:var(--t-surface2); } .rkv small { display:block; color:var(--dim); font-size:12px; } .rkv b { font:600 17px "Fira Code",ui-monospace,monospace; }
+  .rbullet { --c:var(--t-sky); margin:14px 0 2px; } .rbullet.l-light { --c:var(--ok); } .rbullet.l-heavy { --c:var(--warn); } .rbullet.l-veryheavy { --c:var(--t-rose); }
+  .rbullet .l { display:flex; justify-content:space-between; gap:8px; font-size:13.5px; } .rbullet .l b { font:600 14px "Fira Code",ui-monospace,monospace; white-space:nowrap; }
+  .rbullet .t { position:relative; height:12px; margin-top:8px; border-radius:99px; background:var(--t-track); } .rbullet .t i { position:absolute; inset:0 auto 0 0; border-radius:99px; background:var(--c); }
+  .rbullet .t u { position:absolute; top:-4px; bottom:-4px; left:50%; width:2px; border-radius:1px; background:var(--fg); opacity:.85; }
+  .rbullet .n { display:flex; justify-content:space-between; gap:8px; margin-top:6px; font-size:12px; color:var(--dim); }
+  /* the trends */
+  .rth { display:flex; align-items:center; gap:14px; margin:14px 0 12px; } .rth h3 { flex:1; min-width:0; display:flex; align-items:center; gap:14px; } .rth h3::after { content:""; flex:1; height:1px; background:var(--t-line2); }
+  #rview .rth select { flex:none; min-height:44px; }
+  #rview .rcharts { grid-template-columns:repeat(auto-fit, minmax(min(400px,100%), 1fr)); gap:14px; }
+  #rview .rcharts > .rc:first-child { grid-column:1 / -1; }
+  #rview .rc-line { stroke-width:2.2; } #rview .rc-dot { r:2.6px; }
+  #rview .rc[data-chart="hrv"] .rc-line { stroke:var(--t-sky); } #rview .rc[data-chart="hrv"] .rc-dot { fill:var(--t-sky); }
+  #rview .rc[data-chart="rhr"] .rc-line { stroke:var(--t-rose); } #rview .rc[data-chart="rhr"] .rc-dot { fill:var(--t-rose); }
+  #rview .rc[data-chart="resp"] .rc-line { stroke:var(--t-teal); } #rview .rc[data-chart="resp"] .rc-dot { fill:var(--t-teal); }
+  #rview .rc[data-chart="bb"] .rc-dot { fill:var(--t-sky); } #rview .rc[data-chart="steps"] .rc-bar { fill:var(--t-sky); }
+  #rview .rc-band { fill:color-mix(in srgb, var(--t-teal) 20%, transparent); } #rview .rck i.sw-band { background:color-mix(in srgb, var(--t-teal) 45%, transparent); }
+  #rview .rc-ref { stroke:var(--dim); stroke-width:1.4; stroke-dasharray:5 3; } #rview .rck i.sw-ref { border-top:2px dashed var(--dim); }
+  #rview .rc-goal { stroke:var(--fg); }
+  #rview .rc-range { stroke:var(--t-sky); opacity:.5; } #rview .rck i.sw-range { background:var(--t-sky); opacity:.5; }
+  #rview :is(.rc-part, .sw-part).deep { fill:var(--rs-deep); background:var(--rs-deep); } #rview :is(.rc-part, .sw-part).rem { fill:var(--rs-rem); background:var(--rs-rem); }
+  #rview :is(.rc-part, .sw-part).light { fill:var(--t-sky); background:var(--t-sky); } #rview :is(.rc-part, .sw-part).awake { fill:var(--accent); background:var(--accent); }
+  #rview :is(.rc-part, .sw-part).moderate { fill:var(--ok); background:var(--ok); } #rview :is(.rc-part, .sw-part).vigorous { fill:var(--t-rose); background:var(--t-rose); }
+  #rview .rc-bar.s0 { fill:var(--ok); } #rview .rc-bar.s1 { fill:var(--t-sky); } #rview .rc-bar.s2 { fill:var(--warn); } #rview .rc-bar.s3 { fill:var(--t-rose); }
+  #rview .rc-bar.go { fill:var(--z-go); } #rview .rc-bar.plan { fill:var(--z-plan); } #rview .rc-bar.back { fill:var(--z-back); }
+  #rview .rck i.sw-go { background:var(--z-go); } #rview .rck i.sw-plan { background:var(--z-plan); } #rview .rck i.sw-back { background:var(--z-back); }
+  /* the data */
+  .rstack { display:flex; flex-direction:column; gap:12px; margin-top:12px; }
+  #rview .racc { margin:0; padding:0; }
+  .racc > summary { display:flex; align-items:baseline; gap:12px; min-height:52px; padding:14px 22px; cursor:pointer; list-style:none; }
+  .racc > summary::-webkit-details-marker { display:none; }
+  .racc > summary b { font-size:15px; font-weight:700; } .racc > summary span { margin-right:auto; font:500 12px "Fira Code",ui-monospace,monospace; color:var(--dim); }
+  .racc > summary::after { content:"▾"; margin-left:auto; color:var(--dim); } .racc[open] > summary::after { content:"▴"; }
+  .racc > .rtable { margin:0 12px 12px; max-height:520px; }
+  #rview .rraw { margin:0; border:0; border-top:1px solid var(--line); border-radius:0; background:transparent; }
+  #rview .rraw > summary { min-height:52px; padding:13px 22px; align-items:center; cursor:pointer; } #rview .rraw > summary b { font-weight:600; } #rview .rraw > summary small { font:500 12px "Fira Code",ui-monospace,monospace; }
+  #rview .rraw.none > summary { cursor:default; }
+  #rview .rjson { margin:0; padding:12px 22px; background:var(--t-surface2); border-top:1px solid var(--line); color:var(--fg); }
+  #rview .rfoot { color:var(--dim); }
+  @media (max-width:1100px) { #rview .rgrid { grid-template-columns:minmax(0,1fr); } }
+  @media (max-width:900px) {
+    #rbar { padding:12px 12px 4px; gap:6px; }
+    #rbar #rToday { margin-left:auto; } #rTabs { flex:1 1 auto; } #rTabs button { flex:1 1 0; padding:0 10px; }
+    #rweek { padding:8px 12px 2px; gap:6px; }
+    #rstrip { display:flex; overflow-x:auto; scroll-snap-type:x proximity; scrollbar-width:none; } #rstrip::-webkit-scrollbar { display:none; }
+    .rwd { flex:0 0 82px; scroll-snap-align:center; }
+    #rNote { padding:6px 12px 0; } #rbody { padding:8px 12px 32px; }
+    #rview .rhero { grid-template-columns:minmax(0,1fr); gap:14px; padding:18px; justify-items:center; text-align:center; }
+    #rview .rverdict { width:100%; } #rview .rchips { justify-content:center; } #rview .rchange { text-align:left; }
+    #rview .rsigcard, #rview .rnight, #rview .rload { padding-left:16px; padding-right:16px; }
+    #rview .rcharts > .rc:first-child { grid-column:auto; }
+  }
+  @media (prefers-reduced-motion:reduce) { #rview *, #rview *::before { transition:none !important; animation:none !important; } }
 
   /* ── Calendar, in the new look: the palette of Today and Food (both themes), a month as one paper card, the side as cards ── */
   :where(#cview, #moveMenu) button { background:var(--t-surface2); color:var(--fg); border-color:var(--t-line2); font-family:inherit; }
@@ -1429,7 +1552,7 @@
      On a restyled view (Today, Food) in its light theme the rail turns light with it (body[data-theme]). */
   header { --nav-bg:#100c09; --nav-line:rgba(255,236,214,.10); --nav-fg:#fbf3ea; --nav-dim:#b3a698; --nav-active:#1e1814; --nav-hover:#17120e; --nav-accent:#ff9f2e; --nav-on-accent:#1a0d00;
     background:var(--nav-bg); border-color:var(--nav-line); color:var(--nav-fg); font-family:"Fira Sans",system-ui,sans-serif; }
-  body:is([data-view="today"], [data-view="food"], [data-view="calendar"])[data-theme="light"] header { --nav-bg:#fbf8f2; --nav-line:rgba(40,24,8,.12); --nav-fg:#1d1610; --nav-dim:#5e5244; --nav-active:#efe7d8; --nav-hover:#f5efe4; --nav-accent:#d97706; --nav-on-accent:#1a0d00; }
+  body:is([data-view="today"], [data-view="food"], [data-view="calendar"], [data-view="recovery"])[data-theme="light"] header { --nav-bg:#fbf8f2; --nav-line:rgba(40,24,8,.12); --nav-fg:#1d1610; --nav-dim:#5e5244; --nav-active:#efe7d8; --nav-hover:#f5efe4; --nav-accent:#d97706; --nav-on-accent:#1a0d00; }
   header h1 { margin:0; font-size:0; line-height:0; }
   .brandmark { display:grid; place-items:center; width:38px; height:38px; border-radius:11px; background:var(--nav-accent); color:var(--nav-on-accent); }
   .brandmark svg { width:21px; height:21px; }
@@ -1689,14 +1812,19 @@
 <section id="rview">
   <div class="wbar" id="rbar">
     <select id="rProfile" title="Garmin profile" hidden></select>
-    <button id="rPrev" title="Previous day" aria-label="Previous day">◀</button>
-    <input type="date" id="rDate" aria-label="Day">
-    <button id="rNext" title="Next day" aria-label="Next day">▶</button>
-    <button id="rToday">Today</button>
-    <select id="rRange" title="How many days the charts and the table show">
+    <div class="rdaypick"><span id="rDayLabel"></span><input type="date" id="rDate" aria-label="Day"></div>
+    <button id="rToday" hidden>Today</button>
+    <button id="rSync" title="Fetch the latest from Garmin" hidden>↻ Sync</button>
+    <div id="rTabs" class="rtabs" role="group" aria-label="What the view shows" hidden><button id="rTabV" type="button" aria-pressed="true">Verdict</button><button id="rTabT" type="button" aria-pressed="false">Trends</button><button id="rTabD" type="button" aria-pressed="false">Data</button></div>
+    <button id="rTheme" class="themebtn" type="button" aria-label="Switch to light theme" title="Switch to light theme"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><g class="sun"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></g><path class="moon" d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z"/></svg></button>
+    <select id="rRange" title="How many days the charts and the table show" aria-label="How many days the charts and the table show" hidden>
       <option value="14">14 days</option><option value="30" selected>30 days</option><option value="60">60 days</option><option value="90">90 days</option>
     </select>
-    <button id="rSync" title="Fetch the latest from Garmin" hidden>↻ Sync</button>
+  </div>
+  <div id="rweek" hidden>
+    <button id="rPrev" title="Previous day" aria-label="Previous day">◀</button>
+    <div id="rstrip" role="group" aria-label="The week"></div>
+    <button id="rNext" title="Next day" aria-label="Next day">▶</button>
   </div>
   <div id="rNote" class="empty" hidden></div>
   <div id="rscroll"><div id="rbody"><div class="empty">Loading…</div></div></div>
@@ -4955,11 +5083,10 @@ const syncRule = (activities) => `Sync fetches today again (at most once a minut
 const wellnessView = (name, prefix, path, range, render, extra = {}) => ({ name, p: prefix, path, render, profile: null, date: null, range, data: null, error: "", run: 0, refreshed: false, polling: false, busy: false, lookingUp: false, coolUntil: 0, coolTimer: 0, syncTitle: "", note: "", raw: new Map(), open: new Set(), loaded: false, ...extra });
 /** How many days back from today a view shows (its day and range), so that its Sync fills in all of them. */
 const backFromToday = (d) => (d && d.today && d.date ? Math.max(0, Math.round((Date.parse(d.today) - Date.parse(d.date)) / 86_400_000)) : 0);
-const R = wellnessView("recovery", "r", "/api/wellness", 30, () => renderRecovery(), { span: (V) => backFromToday(V.data) + V.range, activitiesAt: 0, activitiesBusy: false });
+const R = wellnessView("recovery", "r", "/api/wellness", 30, () => renderRecovery(), { span: (V) => backFromToday(V.data) + V.range, activitiesAt: 0, activitiesBusy: false, tab: "verdict", tableOpen: true, rawOpen: false });
 const storedUnit = () => { try { return localStorage.getItem("weightUnit") === "kg" ? "kg" : "lb"; } catch { return "lb"; } };
 const B = wellnessView("weight", "b", "/api/weight", 60, () => renderWeight(), { unit: storedUnit(), span: (V) => V.range });
 const wellnessQuery = (V) => `${V.profile ? `profile=${encodeURIComponent(V.profile)}&` : ""}${V.date ? `date=${V.date}&` : ""}days=${V.range}`;
-const SIGNAL_NAMES = { hrv: "HRV", restingHr: "Resting heart rate", sleep: "Sleep", bodyBattery: "Body Battery", stress: "Stress yesterday", load: "Training load" };
 
 /** The Sync button: off while a sync runs, and until the minute after the last time Garmin was asked is over (V.coolUntil, from the server's cooldownMs). */
 function syncButton(V) {
@@ -5053,63 +5180,226 @@ function renderWellnessNote(V) {
   note.hidden = !(error || parts.length);
 }
 
+// ── The Recovery view ───────────────────────────────────────────────────
+// Three parts under the week of the day shown (a ring and a score for how recovered each day was): the Verdict (the band and what to do, the
+// signals each against the person's own normal, last night, the load before the day), the Trends (the readiness and the measures it is made
+// of, over 14 to 90 days) and the Data (every stored number, Garmin's own responses). The logic is recoveryModel.js.
+
+const RRANGE = $("rRange"), RRANGE_HOME = $("rbar");
+const RECOVERY_TABS = [["rTabV", "verdict"], ["rTabT", "trends"], ["rTabD", "data"]];
+
+/** The day shown in the bar: "Today · Sun 15 Nov", "Yesterday · Sat 14 Nov", "Thu 12 Nov". */
+function recoveryDayLabel(d) {
+  const box = $("rDayLabel");
+  box.replaceChildren();
+  if (!d || !d.date) return;
+  const word = d.date === d.today ? "Today" : d.date === RM.addDays(d.today, -1) ? "Yesterday" : "";
+  if (word) box.append(mk("b", "", word), " · ");
+  box.append(mk("span", "", RM.dayLabel(d.date)));
+}
+
+/** A small ring of a day's score, in the colour of its zone. */
+function recoveryRing(w) {
+  const r = 13, c = 2 * Math.PI * r, svg = svgEl("svg", { viewBox: "0 0 34 34", class: "fwring", "aria-hidden": "true" });
+  svg.append(svgEl("circle", { class: "trk", cx: 17, cy: 17, r }));
+  if (w.score !== null) svg.append(svgEl("circle", { class: `arc z-${w.zone}`, cx: 17, cy: 17, r, "stroke-dasharray": `${Math.max(0.01, w.score / 100) * c} ${c}`, transform: "rotate(-90 17 17)" }));
+  return svg;
+}
+
+/** The week of the day shown: a button a day with how recovered it was; a day to come cannot be opened. */
+function renderRecoveryWeek(d) {
+  const bar = $("rweek"), strip = $("rstrip");
+  bar.hidden = !(R.loaded && d && d.profile); // a profile with nothing stored has its days too, all without a verdict
+  strip.replaceChildren();
+  if (bar.hidden) return;
+  for (const w of RM.weekStrip(d)) {
+    const b = mk("button", `fwd rwd rd-${w.zone}` + (w.selected ? " sel" : "") + (w.today ? " today" : ""));
+    b.type = "button"; b.dataset.day = w.day; b.disabled = w.zone === "future";
+    b.setAttribute("aria-label", w.label);
+    if (w.selected) b.setAttribute("aria-current", "date");
+    b.append(mk("small", "", w.weekday), mk("b", "", String(w.number)), recoveryRing(w), mk("span", "fwk", w.text), mk("small", "rwn", w.name));
+    b.onclick = () => goRecoveryDay(w.day);
+    strip.append(b);
+  }
+  const sel = strip.querySelector(".sel");
+  if (sel && strip.scrollWidth > strip.clientWidth) strip.scrollLeft = sel.offsetLeft - (strip.clientWidth - sel.offsetWidth) / 2;
+}
+
+/** Another day (null is today), from the bar, the week, the arrows or a chart; the part of the view stays. */
+function goRecoveryDay(date) {
+  R.date = date && R.data && date >= R.data.today ? null : date;
+  return guard(loadRecovery)();
+}
+
+/** A day picked in the table of every stored number: it opens in the Verdict, where its readiness is. */
+function pickRecoveryDay(day) {
+  R.tab = "verdict";
+  goRecoveryDay(day);
+}
+
 function renderRecovery() {
-  const box = $("rbody");
-  $("rDate").value = R.data && R.data.date ? R.data.date : "";
-  $("rNext").disabled = !(R.data && R.data.date && R.data.date < R.data.today);
+  const box = $("rbody"), d = R.data;
+  if (RRANGE.parentNode !== RRANGE_HOME) RRANGE_HOME.append(RRANGE); // the range sits with the trends: home before the body is cleared
+  $("rDate").value = d && d.date ? d.date : "";
+  recoveryDayLabel(d);
+  $("rNext").disabled = !(d && d.date && d.date < d.today);
+  $("rToday").hidden = !(d && d.date && d.date < d.today);
   $("rRange").value = String(R.range);
+  for (const [id, tab] of RECOVERY_TABS) $(id).setAttribute("aria-pressed", String(R.tab === tab));
   renderWellnessNote(R);
   const keep = $("rscroll").scrollTop;
   box.replaceChildren();
-  const d = R.data;
+  box.dataset.tab = R.tab;
+  const hasData = !!(R.loaded && d && d.profile && d.sync && d.sync.days);
+  RRANGE.hidden = !(R.loaded && d && d.profile && !hasData); // with days stored it is the Trends' own; with none there are no trends, and it stays in the bar
+  $("rTabs").hidden = !hasData;
+  renderRecoveryWeek(d);
   if (!R.loaded) { box.append(mk("div", "empty", "Loading…")); return; }
   if (R.error && !d) { box.append(mk("div", "msg err", R.error)); return; }
   if (!d || !d.profile) { box.append(mk("div", "empty", "No Garmin profile is configured.")); return; }
-  if (!d.sync || !d.sync.days) {
+  if (!hasData) {
     box.append(mk("div", "empty", garminOn(R.profile) ? "No health data is stored yet." : garmin.mock ? "No health data is stored yet. Mock mode does not fetch it from Garmin." : "No health data is stored yet, and Garmin is not connected for this profile to fetch it."));
     if (garminOn(R.profile)) { const b = mk("button", "primary", "Fetch the last 60 days from Garmin"); b.onclick = guard(() => syncWellness(R, false)); box.append(b); }
     return;
   }
-
-  renderReadiness(box, d);
-  box.append(mk("h3", "", `Trends, ${d.days.length} days`));
-  box.append(TrendCharts.trends(d.days, RM.CHARTS, { selected: d.date, onPick: pickRecoveryDay }));
-  box.append(mk("h3", "", "Every stored number"));
-  box.append(metricsTable(d.days, RM.GROUPS, RM.cell, d.date, pickRecoveryDay));
-  box.append(mk("h3", "", `Garmin's responses for ${RM.dayLabel(d.date)}`));
-  box.append(renderRawResponses(R, d, RM.KINDS));
+  if (R.tab === "trends") recoveryTrends(box, d); else if (R.tab === "data") recoveryData(box, d); else recoveryVerdict(box, d);
   box.append(aboutFoot("recovery", "The band is a heuristic from watch data to adjust training, not medical advice; its thresholds are in src/shared/readiness.ts. A day's sleep and HRV are the night before. " + syncRule(true)));
   $("rscroll").scrollTop = keep;
 }
 
-function pickRecoveryDay(day) {
-  R.date = day === (R.data && R.data.today) ? null : day;
-  guard(loadRecovery)();
+/** The half circle of the score: its three zones (the one the score is in at full strength), a tick at a normal day and a marker at the score. */
+function recoveryGauge(g) {
+  const CX = 125, CY = 125, R0 = 100, at = (v, r = R0) => { const a = Math.PI * (1 - v / 100); return [CX + r * Math.cos(a), CY - r * Math.sin(a)]; };
+  const box = mk("div", "rgauge"), svg = svgEl("svg", { viewBox: "0 0 250 140", role: "img", "aria-label": g.label });
+  for (const z of g.zones) {
+    const [x1, y1] = at(z.from + 0.8), [x2, y2] = at(z.to - 0.8);
+    svg.append(svgEl("path", { class: `gz z-${z.cls}` + (z.cls === g.zone ? " on" : ""), d: `M${x1} ${y1} A${R0} ${R0} 0 0 1 ${x2} ${y2}` }));
+  }
+  const [t1x, t1y] = at(50, R0 + 14), [t2x, t2y] = at(50, R0 - 14), [mx, my] = at(g.at * 100);
+  svg.append(svgEl("line", { class: "gtick50", x1: t1x, y1: t1y, x2: t2x, y2: t2y }), svgEl("circle", { class: `gmark z-${g.zone}`, cx: mx, cy: my, r: 12 }));
+  const mid = mk("div", "rmid");
+  mid.append(mk("b", "", String(g.score)), mk("span", "", "of 100 · a normal day is 50"));
+  box.append(svg, mid);
+  return box;
 }
 
-function renderReadiness(box, d) {
-  const r = d.readiness, info = RM.bandInfo(r.band);
-  const card = mk("div", "rready " + info.cls);
-  const left = mk("div"); left.append(mk("div", "rband", info.label));
-  if (r.score !== null) { const s = mk("div", "rscore", String(r.score)); s.append(mk("small", "", "/ 100")); left.append(s); }
-  const right = mk("div", "rwhen");
-  right.append(`${RM.dayLabel(d.date)}${d.date === d.today ? " (today)" : ""}`, mk("span", "chip", `${r.confidence} confidence`));
-  card.append(left, right, mk("p", "rsug", r.suggestion));
-  if (r.signals.length) {
-    const grid = mk("div", "rsigs");
-    for (const s of r.signals) {
-      const why = mk("div", "why", s.reason);
-      if (s.baseline) why.append(mk("small", "", s.baseline));
-      grid.append(mk("i", "pip " + RM.pip(s.score)), mk("div", "nm", SIGNAL_NAMES[s.name] || s.name), mk("div", "val", s.value), why);
-    }
-    card.append(grid);
+/** The verdict of the day: the band and what to do, what would change it. */
+function recoveryHero(d, r, info) {
+  const card = mk("section", `rhero b-${info.cls}`), g = RM.gauge(r), v = mk("div", "rverdict"), band = mk("h2", "rband", info.label), chips = mk("div", "rchips");
+  band.id = "rband"; card.setAttribute("aria-labelledby", "rband");
+  if (g) card.append(recoveryGauge(g));
+  chips.append(mk("span", "chipx", `${r.confidence} confidence`));
+  const total = r.signals.length + r.missing.length;
+  if (r.signals.length) chips.append(mk("span", "chipx", `${r.signals.length} of ${total} signals counted`));
+  v.append(mk("div", "eyebrow", `Readiness · ${RM.dayLabel(d.date)}${d.date === d.today ? " (today)" : ""}`), band, chips, mk("p", "rsug", r.suggestion));
+  const change = RM.changeLine(r);
+  if (change.length) {
+    const line = mk("div", "rchange");
+    for (const s of change) line.append(s.strong ? mk("b", "", s.text) : document.createTextNode(s.text));
+    v.append(line);
   }
-  if (r.load) {
-    const l = r.load;
-    card.append(mk("div", "rmiss", `Load, 3 days before: ${l.sessions} session${l.sessions === 1 ? "" : "s"}, ${RM.num(l.acute)} units${l.usual !== null ? ` against ${RM.num(l.usual)} usual` : ""}${l.intensity ? `, and ${RM.num(l.intensity.acute)} intensity minutes${l.intensity.usual !== null ? ` against ${RM.num(l.intensity.usual)} usual` : ""} (all day, recorded or not)` : ""}${l.hoursSinceHard !== null ? `; last hard session ${l.hoursSinceHard} h before the day` : ""}.`));
+  card.append(v);
+  return card;
+}
+
+/** The signals of the day, each a five-step meter of where it stands against the person's own normal, with its value, its reason and its baseline. */
+function recoverySignals(r) {
+  const card = mk("section", "rsigcard"), head = mk("div", "rhead");
+  head.append(mk("h2", "eyebrow", "Why · each signal against your own normal"), mk("small", "", "worse for training ← → better"));
+  card.append(head);
+  for (const s of RM.signalRows(r)) {
+    const row = mk("div", `rsig s-${s.meter.pip}`), top = mk("div", "r1"), name = mk("span", "nm", s.name), meter = mk("div", "meter");
+    if (s.most) name.append(mk("em", "", "COUNTS MOST"));
+    top.append(name, mk("span", "val", s.value));
+    meter.setAttribute("role", "img"); meter.setAttribute("aria-label", s.meter.label);
+    for (const on of s.meter.steps) meter.append(mk("i", on ? "on" : ""));
+    row.append(top, meter, mk("div", "why", s.reason));
+    if (s.baseline) row.append(mk("div", "base", s.baseline));
+    card.append(row);
   }
-  if (r.missing.length) card.append(mk("div", "rmiss", "Not counted: " + r.missing.map((m) => m.replace(/^(\w+): /, (_, k) => `${SIGNAL_NAMES[k] || k}: `)).join("; ") + "."));
-  box.append(card);
+  return card;
+}
+
+/** Last night: the time slept and its score, the stages, how much of the need it was. */
+function recoveryNight(c) {
+  const card = mk("section", "rnight"), big = mk("div", "rbig"), stages = mk("div", "rstages"), legend = mk("div", "rlegend");
+  big.append(mk("b", "", c.time));
+  if (c.score !== null) big.append(mk("span", "", `score ${c.score}`));
+  stages.setAttribute("role", "img"); stages.setAttribute("aria-label", c.stages.map((s) => `${s.label} ${s.text}`).join(", "));
+  for (const s of c.stages) {
+    const seg = mk("i", `st-${s.cls}`); seg.style.width = `${s.width}%`; stages.append(seg);
+    const key = mk("span"); key.append(mk("i", `st-${s.cls}`), `${s.label} ${s.text}`); legend.append(key);
+  }
+  card.append(mk("h2", "eyebrow", "Last night"), big, stages, legend);
+  if (c.pct !== null) {
+    const need = mk("div", `rneed n-${c.cls}`), line = mk("div", "nl"), track = mk("div", "t"), fill = mk("i");
+    fill.style.width = `${c.fill}%`; track.append(fill);
+    line.append(mk("span", "", `${c.pct} % of the sleep you need`), mk("span", "mono", `need ${c.need}`));
+    need.append(line, track);
+    card.append(need);
+  }
+  const kv = mk("div", "rkv");
+  for (const [label, value] of [["Awakenings", c.wakings], ["Stress asleep", c.stress]]) if (value !== null) { const cell = mk("div"); cell.append(mk("small", "", label), mk("b", "", String(value))); kv.append(cell); }
+  if (kv.childNodes.length) card.append(kv);
+  return card;
+}
+
+/** The load before the day: each bar against the usual (a tick halfway: the track is twice the usual), then the last hard session. */
+function recoveryLoad(l) {
+  const card = mk("section", "rload");
+  card.append(mk("h2", "eyebrow", "Training load"));
+  for (const b of l.bars) {
+    const box = mk("div", `rbullet l-${b.cls}`), line = mk("div", "l"), track = mk("div", "t"), note = mk("div", "n");
+    line.append(mk("span", "", b.label), mk("b", "", b.value));
+    if (b.fill !== null) { const fill = mk("i"); fill.style.width = `${b.fill}%`; track.append(fill, mk("u")); track.setAttribute("role", "img"); track.setAttribute("aria-label", `${b.label}: ${b.pct} % of your usual`); }
+    note.append(mk("span", "", b.pct === null ? "" : `${b.pct} % of your usual`), mk("span", "", b.usual));
+    box.append(line, track, note);
+    card.append(box);
+  }
+  const kv = mk("div", "rkv");
+  for (const [label, value] of [["Last hard session", l.hard], ["Sessions, 3 days", String(l.sessions)]]) { const cell = mk("div"); cell.append(mk("small", "", label), mk("b", "", value)); kv.append(cell); }
+  card.append(kv);
+  return card;
+}
+
+/** The Verdict: the day's readiness and why, last night and the load before. */
+function recoveryVerdict(box, d) {
+  const r = d.readiness, info = RM.bandInfo(r.band), day = d.days.find((x) => x.day === d.date);
+  const grid = mk("div", "rgrid"), main = mk("div", "rcol rmain"), side = mk("div", "rcol rside");
+  main.append(recoveryHero(d, r, info));
+  if (r.signals.length) main.append(recoverySignals(r));
+  const night = RM.sleepCard(day), load = RM.loadBars(r), missing = RM.notCounted(r);
+  if (night) side.append(recoveryNight(night));
+  if (load) side.append(recoveryLoad(load));
+  if (missing) side.append(mk("div", "rmiss", missing));
+  grid.append(main);
+  if (side.childNodes.length) grid.append(side);
+  box.append(grid);
+}
+
+/** The Trends: the readiness and the measures it is made of, over the range picked at the top. */
+function recoveryTrends(box, d) {
+  const head = mk("div", "rth"), wide = innerWidth > 1100;
+  head.append(mk("h3", "", `Trends, ${d.days.length} days`), RRANGE);
+  RRANGE.hidden = false;
+  box.append(head);
+  const specs = RM.TRENDS.map((s, i) => (i === 0 && wide ? { ...s, width: 1160, height: 190, left: 50 } : s)); // the readiness takes the width of the page
+  box.append(TrendCharts.trends(RM.chartDays(d), specs, { selected: d.date, onPick: goRecoveryDay, width: wide ? 560 : 480, height: wide ? 180 : 168, left: 50 }));
+}
+
+/** The Data: every stored number of the range, and Garmin's own responses for the day, each a card that opens. */
+function recoveryData(box, d) {
+  const stack = mk("div", "rstack"), every = mk("details", "racc"), sum = mk("summary"), raw = mk("details", "racc"), rawSum = mk("summary");
+  every.open = R.tableOpen;
+  sum.append(mk("b", "", "Every stored number"), mk("span", "", `${d.days.length} days`));
+  every.append(sum, metricsTable(d.days, RM.GROUPS, RM.cell, d.date, pickRecoveryDay));
+  every.ontoggle = () => { R.tableOpen = every.open; };
+  raw.open = R.rawOpen;
+  rawSum.append(mk("b", "", `Garmin's responses for ${RM.dayLabel(d.date)}`), mk("span", "", `${d.stored.filter((s) => RM.KINDS.some((k) => k.kind === s.kind)).length} of ${RM.KINDS.length} stored`));
+  raw.append(rawSum, renderRawResponses(R, d, RM.KINDS));
+  raw.ontoggle = () => { R.rawOpen = raw.open; };
+  stack.append(every, raw);
+  box.append(stack);
 }
 
 /** One row per day, newest first, one column per stored number in groups (cellOf says how one reads); a click picks the day. */
@@ -5165,11 +5455,14 @@ function renderRawResponses(V, d, kinds) {
 
 function bindRecoveryView() {
   $("vRecovery").onclick = () => setView("recovery");
-  const go = (date) => { R.date = date && R.data && date >= R.data.today ? null : date; return guard(loadRecovery)(); };
-  $("rPrev").onclick = () => R.data && go(RM.addDays(R.date || R.data.today, -1)); // from the day asked for, which the drawn one trails while an answer is awaited
-  $("rNext").onclick = () => R.data && go(RM.addDays(R.date || R.data.today, 1)); // from the day asked for, which the drawn one trails while an answer is awaited
-  $("rToday").onclick = () => go(null);
-  $("rDate").onchange = (e) => e.target.value && go(e.target.value);
+  for (const [id, tab] of RECOVERY_TABS) $(id).onclick = () => { if (R.tab !== tab) { R.tab = tab; $("rscroll").scrollTop = 0; renderRecovery(); } };
+  mobileQuery.addEventListener("change", () => { if (document.body.dataset.view === "recovery" && R.loaded) renderRecovery(); }); // the charts are drawn for the room they get
+  $("rPrev").onclick = () => R.data && goRecoveryDay(RM.addDays(R.date || R.data.today, -1)); // from the day asked for, which the drawn one trails while an answer is awaited
+  $("rNext").onclick = () => R.data && goRecoveryDay(RM.addDays(R.date || R.data.today, 1)); // from the day asked for, which the drawn one trails while an answer is awaited
+  $("rToday").onclick = () => goRecoveryDay(null);
+  $("rDate").onchange = (e) => e.target.value && goRecoveryDay(e.target.value);
+  // the day's name is the box: a tap opens the browser's calendar, where it has one to open
+  $("rDate").onclick = (e) => { try { e.target.showPicker(); } catch { /* the browser opens its own, or has none */ } };
   $("rRange").onchange = (e) => { R.range = Number(e.target.value); guard(loadRecovery)(); };
   $("rSync").onclick = guard(async () => {
     await syncWellness(R, false);

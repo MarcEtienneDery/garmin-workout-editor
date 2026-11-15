@@ -33,6 +33,7 @@
   function chart(days, spec, { selected, onHover, onPick, width = DEFAULT_W, height = DEFAULT_H, left = DEFAULT_LEFT }) {
     const W = width, H = height, LEFT = left; // `left` is room for the labels of the scale
     const card = html("div", "rc"), head = html("div", "rch"), readout = html("span", "rcr");
+    if (spec.id) card.dataset.chart = spec.id; // for a view to colour a chart of its own
     head.append(html("b", "", spec.title + (spec.unit ? ` (${spec.unit})` : "")), readout);
     card.append(head);
     const summary = spec.summary ? spec.summary(days) : ""; // a line of words under the title: how the days stood against the goal
@@ -160,7 +161,7 @@
     const cards = [];
     const hover = (i) => cards.forEach((c) => c.setCursor(i));
     for (const spec of specs) {
-      const c = chart(days, spec, { selected, onHover: hover, onPick, width, height, left });
+      const c = chart(days, spec, { selected, onHover: hover, onPick, width: spec.width || width, height: spec.height || height, left: spec.left || left }); // a spec may ask for a drawing of its own size (one that takes the whole width)
       cards.push(c);
       box.append(c.el);
     }

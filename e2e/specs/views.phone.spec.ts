@@ -147,6 +147,7 @@ test.describe("Recovery on a phone", () => {
   test("the charts stack one to a row, and each drawing scales to its box", async ({ alice }) => {
     await openView(alice, "recovery");
     await expect(alice.locator("#rbody")).not.toContainText("Loading…");
+    await alice.locator("#rTabT").tap();
     await expect(alice.locator("#rbody .rc svg.rcsvg").first()).toBeVisible();
     expect(await columnsOf(alice, "#rbody .rcharts")).toBe(1);
     const ok = await alice.locator("#rbody .rc").evaluateAll((cards) =>
@@ -162,6 +163,7 @@ test.describe("Recovery on a phone", () => {
 
   test("the stored numbers scroll inside their own box, not the page", async ({ alice }) => {
     await openView(alice, "recovery");
+    await alice.locator("#rTabD").tap();
     const table = alice.locator("#rbody .rtable").first();
     await expect(table).toBeVisible();
     await expect(table).toHaveCSS("overflow-x", "auto");

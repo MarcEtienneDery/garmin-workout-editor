@@ -226,10 +226,10 @@ test.describe("the disposition of the Food view", () => {
     }
   });
 
-  test("the Recovery view's charts keep their own size", async ({ alice }) => {
-    await openView(alice, "recovery");
-    await expect(alice.locator("#rbody .rcsvg").first()).toBeVisible();
-    expect(await alice.locator("#rbody .rcsvg").first().getAttribute("viewBox")).toBe("0 0 600 124");
+  test("the Weight view's charts keep their own size", async ({ alice }) => {
+    await openView(alice, "weight");
+    await expect(alice.locator("#bbody .rcsvg").first()).toBeVisible();
+    expect(await alice.locator("#bbody .rcsvg").first().getAttribute("viewBox")).toBe("0 0 600 124");
   });
 });
 
