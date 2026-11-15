@@ -143,7 +143,12 @@ test.describe("month grid", () => {
     const dimmed = alice.locator("#cgrid .cday.out");
     await expect(dimmed).toHaveCount(shape.weeks * 7 - shape.days);
     // a month that starts on a Monday and fills its last week has no neighbouring days to dim
-    if (shape.weeks * 7 - shape.days > 0) await expect(dimmed.first()).toHaveCSS("background-color", "rgb(26, 26, 26)");
+    if (shape.weeks * 7 - shape.days > 0) {
+      const background = (selector: string) => alice.locator(selector).first().evaluate((el) => getComputedStyle(el).backgroundColor);
+      expect(await background("#cgrid .cday.out")).not.toBe(await background("#cgrid .cday:not(.out)")); // a neighbouring day has a shade of its own
+      const number = (selector: string) => alice.locator(selector).first().evaluate((el) => getComputedStyle(el).color);
+      expect(await number("#cgrid .cday.out .dnum")).not.toBe(await number("#cgrid .cday:not(.out) .dnum")); // and a dimmer number
+    }
     // the first cell of a grid that starts mid-week is the last days of the month before
     if (shape.lead > 0) await expect(alice.locator("#cgrid .cday").first()).toHaveClass(/out/);
   });

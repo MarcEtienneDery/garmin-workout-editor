@@ -148,7 +148,7 @@ test.describe("the rail", () => {
     expect(foot).toBeLessThan(40);
   });
 
-  test("turns light with the Today view's light theme, and is dark again on any other view", async ({ alice }) => {
+  test("turns light with the light theme on a restyled view (Today), and is dark again on a view that is not restyled yet (Plans)", async ({ alice }) => {
     await openView(alice, "today");
     const bg = () => alice.locator("header").evaluate((el) => getComputedStyle(el).backgroundColor);
     const dark = await bg();
@@ -156,8 +156,8 @@ test.describe("the rail", () => {
     await expect(alice.locator("body")).toHaveAttribute("data-theme", "light");
     const light = await bg();
     expect(light).not.toBe(dark);
-    await alice.locator("#vCalendar").click();
-    await isOn(alice, "calendar");
+    await alice.locator("#vPlans").click();
+    await isOn(alice, "plans");
     expect(await bg()).toBe(dark);
     await alice.locator("#vToday").click();
     await isOn(alice, "today");

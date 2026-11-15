@@ -383,7 +383,7 @@
   @font-face { font-family:"Fira Code"; font-weight:400; font-display:swap; src:url(/fonts/fira-code-latin-400-normal.woff2) format("woff2"); }
   @font-face { font-family:"Fira Code"; font-weight:500; font-display:swap; src:url(/fonts/fira-code-latin-500-normal.woff2) format("woff2"); }
   @font-face { font-family:"Fira Code"; font-weight:600; font-display:swap; src:url(/fonts/fira-code-latin-600-normal.woff2) format("woff2"); }
-  :is(#tview, #fview, #fsheet) {
+  :is(#tview, #fview, #fsheet, #cview, #moveMenu) {
     --bg:#070504; --panel:#1b1612; --t-surface2:#262019; --line:rgba(255,236,214,.15); --t-line2:rgba(255,236,214,.26);
     --fg:#fbf3ea; --dim:#b3a698; --t-faint:#968a7c;
     --accent:#ff9f2e; --t-on-accent:#1a0d00; --t-ink:#ff9f2e;
@@ -393,7 +393,7 @@
     --t-track:rgba(255,236,214,.09); --t-tint:rgba(0,0,0,.2); --t-glow:rgba(255,159,46,.3); --t-hero-glow:rgba(255,159,46,.12); --t-ok-bg:rgba(74,222,128,.18); --t-pill:rgba(255,159,46,.16);
     background:var(--bg); color:var(--fg); font:400 15px/1.5 "Fira Sans",system-ui,sans-serif; color-scheme:dark;
   }
-  body[data-theme="light"] :is(#tview, #fview, #fsheet) {
+  body[data-theme="light"] :is(#tview, #fview, #fsheet, #cview, #moveMenu) {
     --bg:#e9e1d3; --panel:#ffffff; --t-surface2:#f4eee3; --line:rgba(40,24,8,.15); --t-line2:rgba(40,24,8,.28);
     --fg:#1d1610; --dim:#5e5244; --t-faint:#766a5b;
     --accent:#d97706; --t-on-accent:#1a0d00; --t-ink:#a24a05;
@@ -1167,8 +1167,8 @@
   #fsheet .faibig { border-radius:14px; }
   #fsheet .fsh-note { color:var(--warn); }
   /* cards stand off the page: a firmer edge (the variables above), a lit top edge and a soft shadow; a section's label carries a rule */
-  :is(#tview, #fview) { --card-shadow:0 1px 0 rgba(255,255,255,.06) inset, 0 14px 30px -18px rgba(0,0,0,.95); }
-  body[data-theme="light"] :is(#tview, #fview) { --card-shadow:0 1px 0 #fff inset, 0 1px 2px rgba(60,40,10,.10), 0 14px 28px -18px rgba(60,40,10,.40); }
+  :is(#tview, #fview, #cview, #moveMenu) { --card-shadow:0 1px 0 rgba(255,255,255,.06) inset, 0 14px 30px -18px rgba(0,0,0,.95); }
+  body[data-theme="light"] :is(#tview, #fview, #cview, #moveMenu) { --card-shadow:0 1px 0 #fff inset, 0 1px 2px rgba(60,40,10,.10), 0 14px 28px -18px rgba(60,40,10,.40); }
   :is(#tview, #fview) :is(.tcard, .tfig, .fsum, .fcard, .fmeal, .fchip, .fday) { box-shadow:var(--card-shadow); }
   #fbody > h3, .fth h3 { display:flex; align-items:center; gap:14px; color:var(--fg); }
   #fbody > h3::after, .fth h3::after { content:""; flex:1; height:1px; background:var(--t-line2); }
@@ -1200,12 +1200,68 @@
   @media (max-width:700px) { #fview .fea button, #fview .fea select { min-height:40px; } #fview .fglance { gap:16px; } #fview .fring { width:120px; height:120px; } #fview .fmeal { padding:2px 14px 4px; } #fview .fsum, #fview .fcard { padding:16px; } }
   @media (prefers-reduced-motion:reduce) { :is(#fview, #fsheet) *, :is(#fview, #fsheet) *::before { transition:none !important; animation:none !important; } }
 
+  /* ── Calendar, in the new look: the palette of Today and Food (both themes), a month as one paper card, the side as cards ── */
+  :where(#cview, #moveMenu) button { background:var(--t-surface2); color:var(--fg); border-color:var(--t-line2); font-family:inherit; }
+  :where(#cview, #moveMenu) button:hover:not(:disabled) { background:color-mix(in srgb, var(--fg) 8%, var(--t-surface2)); }
+  :is(#cview, #moveMenu) button.primary { background:var(--accent); border-color:transparent; color:var(--t-on-accent); font-weight:700; }
+  :is(#cview, #moveMenu) :is(button, input):focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+  #cview { grid-template-columns:minmax(0,1fr) 340px; gap:0 16px; padding-right:16px; }
+  #cbar { gap:8px; padding:18px 0 10px 16px; background:transparent; border-bottom:0; }
+  #cTitle { min-width:0; flex:1 1 auto; font-size:clamp(22px,2.6vw,30px); font-weight:700; letter-spacing:-.02em; }
+  #cPrev, #cNext, #cRefresh, #cview .themebtn { width:44px; min-width:44px; height:44px; padding:0; border-radius:50%; background:var(--panel); border:1px solid var(--line); }
+  #cToday { min-height:44px; padding:0 18px; border-radius:999px; font-weight:600; }
+  #cModes { padding:2px; gap:2px; background:var(--panel); border:1px solid var(--line); border-radius:999px; }
+  #cModes button, #cModes button:first-child, #cModes button:last-child { min-height:44px; margin:0; padding:0 16px; border:0; border-radius:999px; background:transparent; color:var(--dim); font-weight:600; }
+  #cModes button:hover:not(:disabled):not([aria-pressed="true"]) { background:var(--t-surface2); color:var(--fg); }
+  #cModes button[aria-pressed="true"] { background:var(--accent); color:var(--t-on-accent); }
+  #cNote { padding:0 16px; color:var(--dim); }
+  /* the month is one card that scrolls inside itself, its row of weekdays staying on top */
+  #cscroll { margin:0 0 16px 16px; padding:0; background:var(--panel); border:1px solid var(--line); border-radius:18px; box-shadow:var(--card-shadow); }
+  #cdow { position:sticky; top:0; z-index:4; background:var(--panel); border-bottom:1px solid var(--line); }
+  #cdow span { padding:10px 4px; font:500 11px "Fira Code",ui-monospace,monospace; letter-spacing:.12em; }
+  #cgrid { margin:-1px 0 0 -1px; border:0; }
+  #cview .cday { padding:5px 6px; font-size:13px; }
+  #cview .cday:hover { background:var(--t-surface2); }
+  #cview .cday.out { background:color-mix(in srgb, var(--t-surface2) 55%, transparent); color:var(--dim); }
+  #cview .cday .dnum { min-width:24px; line-height:22px; border-radius:12px; font:500 12.5px "Fira Code",ui-monospace,monospace; white-space:nowrap; }
+  #cview .cday.today .dnum { background:var(--accent); color:var(--t-on-accent); font-weight:600; }
+  .cbar { border-radius:6px; font-weight:500; } .cband { border-radius:6px; }
+  body[data-theme="light"] #cview .cbar.window, body[data-theme="light"] #cview .citem .sw.window { border-color:var(--c); }
+  /* the side: the day, the plans and the types, a card each */
+  #cside { background:transparent; display:flex; flex-direction:column; gap:12px; padding:18px 0 16px; }
+  .ccard { padding:16px 18px; background:var(--panel); border:1px solid var(--line); border-radius:18px; box-shadow:var(--card-shadow); }
+  .ccard:has(> h2[hidden]) { display:none; }
+  #cside h2 { margin:0 0 10px; padding:0; font:500 11.5px "Fira Code",ui-monospace,monospace; letter-spacing:.14em; text-transform:uppercase; color:var(--dim); }
+  #cside .cblock { padding:0; }
+  #cview .clabel { padding:10px 0 2px; font:500 11px "Fira Code",ui-monospace,monospace; letter-spacing:.12em; }
+  #cview .citem { padding:8px 4px; border-bottom-color:var(--line); }
+  #cview .citem:last-child { border-bottom:0; }
+  #cview .citem[role="button"]:hover { background:var(--t-surface2); }
+  #cview .citem button { min-height:36px; padding:0 14px; border-radius:999px; }
+  #cview .citem small { font-size:12.5px; }
+  /* moving a workout: the menu and the chip dragged */
+  #moveMenu { padding:16px; background:var(--panel); border:1px solid var(--t-line2); border-radius:18px; box-shadow:0 22px 44px -14px rgba(0,0,0,.65); font-size:14px; }
+  #moveMenu #mvTitle { font:500 11.5px "Fira Code",ui-monospace,monospace; letter-spacing:.12em; text-transform:uppercase; color:var(--dim); }
+  #moveMenu button { min-height:44px; padding:0 18px; border-radius:999px; font-weight:600; }
+  #moveMenu #mvDate { min-height:44px; background:var(--t-surface2); color:var(--fg); color-scheme:inherit; border:1px solid var(--t-line2); border-radius:10px; }
+  .cghost { border-radius:8px; }
+  @media (max-width:900px) {
+    #cview { padding-right:0; }
+    #cbar { padding:12px 12px 8px; background:var(--bg); }
+    #cscroll { margin:0 12px 12px; }
+    #cdow { position:static; }
+    #cview .cday { padding:5px 3px; } #cview .cday .dnum { min-width:0; padding:0 3px; font-size:11.5px; }
+    #cside { padding:0 12px 24px; border-top:0; }
+    #moveMenu { padding:16px 16px calc(16px + env(safe-area-inset-bottom)); border-radius:18px 18px 0 0; }
+  }
+  @media (prefers-reduced-motion:reduce) { #cview *, #moveMenu * { transition:none !important; } }
+
   /* ── Navigation: a rail down the left side on a desktop, a strip of pills along the top on a phone ──
      The header keeps its parts (name, the views, the sync pill, the account); only where they sit and how they look changes.
      On a restyled view (Today, Food) in its light theme the rail turns light with it (body[data-theme]). */
   header { --nav-bg:#100c09; --nav-line:rgba(255,236,214,.10); --nav-fg:#fbf3ea; --nav-dim:#b3a698; --nav-active:#1e1814; --nav-hover:#17120e; --nav-accent:#ff9f2e; --nav-on-accent:#1a0d00;
     background:var(--nav-bg); border-color:var(--nav-line); color:var(--nav-fg); font-family:"Fira Sans",system-ui,sans-serif; }
-  body:is([data-view="today"], [data-view="food"])[data-theme="light"] header { --nav-bg:#fbf8f2; --nav-line:rgba(40,24,8,.12); --nav-fg:#1d1610; --nav-dim:#5e5244; --nav-active:#efe7d8; --nav-hover:#f5efe4; --nav-accent:#d97706; --nav-on-accent:#1a0d00; }
+  body:is([data-view="today"], [data-view="food"], [data-view="calendar"])[data-theme="light"] header { --nav-bg:#fbf8f2; --nav-line:rgba(40,24,8,.12); --nav-fg:#1d1610; --nav-dim:#5e5244; --nav-active:#efe7d8; --nav-hover:#f5efe4; --nav-accent:#d97706; --nav-on-accent:#1a0d00; }
   header h1 { margin:0; font-size:0; line-height:0; }
   .brandmark { display:grid; place-items:center; width:38px; height:38px; border-radius:11px; background:var(--nav-accent); color:var(--nav-on-accent); }
   .brandmark svg { width:21px; height:21px; }
@@ -1401,6 +1457,7 @@
         <button data-mode="workouts" aria-pressed="false" title="Which workout is scheduled when">Workouts</button>
       </div>
       <button id="cRefresh" title="Reload the plans">↻</button>
+      <button id="cTheme" class="themebtn" type="button" aria-label="Switch to light theme" title="Switch to light theme"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><g class="sun"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></g><path class="moon" d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z"/></svg></button>
     </div>
     <div id="cNote" class="empty" hidden></div>
     <div id="cscroll">
@@ -1409,12 +1466,9 @@
     </div>
   </div>
   <aside id="cside">
-    <h2 id="cDayTitle">Day</h2>
-    <div class="cblock" id="cDay"></div>
-    <h2 id="cLegendTitle">Plans</h2>
-    <div class="cblock" id="cLegend"></div>
-    <h2 id="cTypesTitle">Workout types</h2>
-    <div class="cblock" id="cTypes"></div>
+    <section class="ccard"><h2 id="cDayTitle">Day</h2><div class="cblock" id="cDay"></div></section>
+    <section class="ccard"><h2 id="cLegendTitle">Plans</h2><div class="cblock" id="cLegend"></div></section>
+    <section class="ccard"><h2 id="cTypesTitle">Workout types</h2><div class="cblock" id="cTypes"></div></section>
   </aside>
 </section>
 <section id="aview">

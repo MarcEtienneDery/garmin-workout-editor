@@ -282,3 +282,26 @@ test.describe("Settings on a phone", () => {
     await expect(change).toBeVisible();
   });
 });
+
+test.describe("the Calendar's new look on a phone", () => {
+  test("the bar fits with its theme button, the month is a card that does not scroll by itself, and nothing goes sideways in either theme", async ({ alice }) => {
+    await openView(alice, "calendar");
+    await expect(alice.locator("#cgrid .cday").first()).toBeVisible();
+    for (const theme of ["dark", "light"]) {
+      if (theme === "light") await alice.locator("#cTheme").tap();
+      await expect(alice.locator("body")).toHaveAttribute("data-theme", theme);
+      expect(await alice.locator("#cdow").evaluate((el) => getComputedStyle(el).position)).toBe("static");
+      await expect.poll(() => stickingOut(alice)).toEqual([]);
+      const small = await alice.evaluate(() => [...document.querySelectorAll<HTMLElement>("#cbar button")].filter((el) => el.offsetParent !== null).map((el) => [el.id || el.dataset.mode || "", Math.round(el.getBoundingClientRect().height)] as const).filter(([, h]) => h < 44));
+      expect(small, `${theme}: controls under 44 px`).toEqual([]);
+    }
+  });
+
+  test("the first of a month shows its whole name and number, such as Dec 1, in a cell", async ({ alice }) => {
+    await openView(alice, "calendar");
+    const label = alice.locator("#cgrid .cday .dnum", { hasText: /^[A-Z][a-z]{2} 1$/ }).first();
+    await expect(label).toBeVisible();
+    const fits = await label.evaluate((el) => { const cell = el.closest(".cday")!.getBoundingClientRect(), r = el.getBoundingClientRect(); return r.left >= cell.left - 0.5 && r.right <= cell.right + 0.5 && r.height < 30; });
+    expect(fits).toBe(true);
+  });
+});
