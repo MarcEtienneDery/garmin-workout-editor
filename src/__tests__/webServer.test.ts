@@ -488,11 +488,20 @@ describe("web plan editor", () => {
       keep("MED", item(1, "2026-08-01", "running"), item(2, "2026-08-03", "strength_training"));
       const [strength, run] = (await call("GET", "/api/activities")).json.activities;
       expect(run).toEqual({
-        id: "1", date: "2026-08-01", time: "08:30", type: "running", name: "Activity 1", km: 10, seconds: 3000, paceSec: 313,
+        id: "1", date: "2026-08-01", time: "08:30", type: "running", name: "Activity 1", km: 10, seconds: 3000, paceSec: 313, speedKph: null,
         avgHr: 149, maxHr: 171, effect: "TEMPO", aerobic: 3.4, elevation: null, calories: 640, sets: null, reps: null, workoutId: "777", detailed: false,
       });
       expect(strength).toEqual(expect.objectContaining({ type: "strength_training", km: null, paceSec: null, sets: 18, reps: 96 }));
       expect(JSON.stringify((await call("GET", "/api/activities")).json)).not.toMatch(/activityTypeDTO|startTimeGMT/);
+    });
+
+    it("gives a ride its average speed in km/h, and no other activity", async () => {
+      addProfile("MED");
+      keep("MED", item(1, "2026-08-01", "running"), item(2, "2026-08-02", "cycling", { averageSpeed: 7.5 }), item(3, "2026-08-03", "strength_training"));
+      const by = Object.fromEntries((await call("GET", "/api/activities")).json.activities.map((r: any) => [r.id, r]));
+      expect(by["2"].speedKph).toBe(27);
+      expect(by["1"].speedKph).toBeNull();
+      expect(by["3"].speedKph).toBeNull();
     });
 
     it("says how far the sync is", async () => {
@@ -545,6 +554,10 @@ describe("web plan editor", () => {
       expect(await max(4)).toEqual({ "Dumbbell Curl": { oneRm: 40, weight: 30, reps: 10, date: "2026-08-01" } });
       const bench = (await call("GET", "/api/activities/stats")).json.stats.strength.exercises.find((e: any) => e.name === "Barbell Bench Press");
       expect(bench.best).toEqual((await max(3))["Barbell Bench Press"]); // Stats agrees
+      expect(bench.history).toEqual([{ date: "2026-01-01", oneRm: 300 }, { date: "2026-07-01", oneRm: 247.5 }, { date: "2026-08-01", oneRm: 240 }, { date: "2026-09-01", oneRm: 400 }]); // the sparkline's points
+      const strength = (await call("GET", "/api/activities/stats")).json.stats.strength;
+      expect(strength.recent.map((s: any) => s.date)).toEqual(["2026-07-01", "2026-08-01", "2026-08-01", "2026-09-01"]); // the January session is over 120 days before the newest
+      expect(strength.recent[2].exercises).toEqual([{ name: "Dumbbell Curl", sets: 1 }]);
 
       // a training plan with benchmarks is not read: it changes nothing
       seed("data/MED/training-plan.json", { strengthBenchmarks: { BARBELL_BENCH_PRESS: { oneRepMax: 266 } } });

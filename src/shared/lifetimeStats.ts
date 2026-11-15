@@ -8,7 +8,7 @@
  * Distances are meters, times seconds, loads pounds, dates the strings of the rows (YYYY-MM-DD; local time).
  */
 import { slimStored } from "../activityExporter";
-import { type BestLift, bestLifts, expandSets, liftSets } from "./oneRepMax";
+import { type BestLift, bestLifts, epley, expandSets, liftSets } from "./oneRepMax";
 import type { ActivityTable, LifetimeRow } from "./store/activities";
 import type { ExerciseSet } from "./types";
 
@@ -35,7 +35,12 @@ export interface RunStats {
   biggestMonth: { month: string; meters: number; runs: number } | null;
   /** The fastest time over each distance the watch timed inside a run, shortest distance first. */
   efforts: (Effort & { meters: number; seconds: number })[];
-  vo2max: { latest: { value: number; date: string } | null; best: { value: number; date: string } | null };
+  vo2max: {
+    latest: { value: number; date: string } | null;
+    best: { value: number; date: string } | null;
+    /** Every day a run stated a VO2max, oldest first (the last of a day when there were two), for the chart over time. */
+    series: { date: string; value: number }[];
+  };
 }
 
 export interface ExerciseStats {
@@ -54,7 +59,18 @@ export interface ExerciseStats {
   heaviest: { weight: number; reps: number; date: string } | null;
   firstDate: string;
   lastDate: string;
+  /** The best estimated one-rep max of each session that can say, oldest first (a sparkline of the lift over time). */
+  history: { date: string; oneRm: number }[];
 }
+
+/** One strength session's exercises and the sets of each, for the muscles a period trained. */
+export interface RecentSession {
+  date: string;
+  exercises: { name: string; sets: number }[];
+}
+
+/** How far before the latest session the sessions kept for the muscle map reach: more than the longest period the page shows (12 weeks). */
+export const RECENT_DAYS = 120;
 
 export interface StrengthStats {
   sessions: number;
@@ -66,6 +82,8 @@ export interface StrengthStats {
   volume: number;
   detailed: number;
   exercises: ExerciseStats[];
+  /** The sessions with details of the last RECENT_DAYS days before the newest one, oldest first, with their sets per exercise. */
+  recent: RecentSession[];
 }
 
 export interface YearStats {
@@ -131,6 +149,7 @@ function runStats(rows: LifetimeRow[], splits: LifetimeInput["splits"]): RunStat
 
   let longest: RunStats["longest"] = null, bestPace: RunStats["bestPace"] = null, biggestClimb: RunStats["biggestClimb"] = null;
   let latest: { value: number; date: string } | null = null, bestVo2: { value: number; date: string } | null = null;
+  const series: { date: string; value: number }[] = [];
   const weeks = new Map<string, { meters: number; runs: number }>(), months = new Map<string, { meters: number; runs: number }>();
   for (const r of runs) { // oldest first
     const m = r.distance ?? 0, s = r.duration ?? 0, date = day(r.startLocal);
@@ -143,6 +162,7 @@ function runStats(rows: LifetimeRow[], splits: LifetimeInput["splits"]): RunStat
     if (r.vo2 !== null && r.vo2 > 0) {
       latest = { value: r.vo2, date };
       if (!bestVo2 || r.vo2 > bestVo2.value) bestVo2 = { value: r.vo2, date };
+      if (series.length && series[series.length - 1].date === date) series[series.length - 1].value = r.vo2; else series.push({ date, value: r.vo2 });
     }
     for (const [map, key] of [[weeks, mondayOf(date)], [months, date.slice(0, 7)]] as const) {
       const g = map.get(key) ?? { meters: 0, runs: 0 };
@@ -168,7 +188,7 @@ function runStats(rows: LifetimeRow[], splits: LifetimeInput["splits"]): RunStat
     biggestWeek: week ? { start: week[0], meters: Math.round(week[1].meters), runs: week[1].runs } : null,
     biggestMonth: month ? { month: month[0], meters: Math.round(month[1].meters), runs: month[1].runs } : null,
     efforts: [...fastest.values()].sort((a, b) => a.meters - b.meters),
-    vo2max: { latest, best: bestVo2 },
+    vo2max: { latest, best: bestVo2, series },
   };
 }
 
@@ -179,22 +199,31 @@ function strengthStats(rows: LifetimeRow[], lifts: LifetimeInput["lifts"]): Stre
   const by = new Map<string, ExerciseStats>();
   let volume = 0, detailed = 0;
   const ordered = [...lifts].sort((x, y) => x.date.localeCompare(y.date)); // oldest first
+  const sessionsDone: RecentSession[] = [];
   for (const a of ordered) {
     const sets = liftSets(a.sets);
     if (!sets.length) continue;
     detailed++;
-    const done = new Set<string>();
+    const done = new Set<string>(), best = new Map<string, number>(), counts = new Map<string, number>();
     for (const x of sets) {
       let e = by.get(x.exerciseName);
-      if (!e) by.set(x.exerciseName, (e = { name: x.exerciseName, sessions: 0, sets: 0, reps: 0, volume: 0, best: null, heaviest: null, firstDate: a.date, lastDate: a.date }));
+      if (!e) by.set(x.exerciseName, (e = { name: x.exerciseName, sessions: 0, sets: 0, reps: 0, volume: 0, best: null, heaviest: null, firstDate: a.date, lastDate: a.date, history: [] }));
       if (!done.has(x.exerciseName)) { done.add(x.exerciseName); e.sessions++; }
       for (const s of expandSets(x)) {
         e.sets++; e.reps += s.reps; e.volume += s.reps * s.weight;
+        counts.set(x.exerciseName, (counts.get(x.exerciseName) ?? 0) + 1);
+        const est = epley(s.weight, s.reps);
+        if (est !== null && est > (best.get(x.exerciseName) ?? 0)) best.set(x.exerciseName, est);
         if (s.weight > 0 && (!e.heaviest || s.weight > e.heaviest.weight || (s.weight === e.heaviest.weight && s.reps >= e.heaviest.reps))) e.heaviest = { weight: s.weight, reps: s.reps, date: a.date };
       }
       e.lastDate = a.date;
     }
+    for (const [name, oneRm] of best) by.get(name)!.history.push({ date: a.date, oneRm: Math.round(oneRm * 10) / 10 });
+    sessionsDone.push({ date: a.date, exercises: [...counts].map(([name, n]) => ({ name, sets: n })) });
   }
+  const newest = sessionsDone.length ? sessionsDone[sessionsDone.length - 1].date : null;
+  const since = newest ? new Date(Date.parse(`${newest}T00:00:00Z`) - RECENT_DAYS * 86_400_000).toISOString().slice(0, 10) : null;
+  const recent = since ? sessionsDone.filter((s) => s.date >= since) : [];
   const best = bestLifts(ordered);
   const exercises = [...by.values()].map((e) => ({ ...e, volume: Math.round(e.volume), best: best[e.name] ?? null }));
   for (const e of exercises) volume += e.volume;
@@ -202,7 +231,7 @@ function strengthStats(rows: LifetimeRow[], lifts: LifetimeInput["lifts"]): Stre
   return {
     sessions: sessions.length, seconds: Math.round(sessions.reduce((a, r) => a + (r.duration ?? 0), 0)),
     sets: sessions.reduce((a, r) => a + (r.sets ?? 0), 0), reps: sessions.reduce((a, r) => a + (r.reps ?? 0), 0),
-    volume, detailed, exercises,
+    volume, detailed, exercises, recent,
   };
 }
 

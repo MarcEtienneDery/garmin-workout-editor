@@ -672,6 +672,7 @@ function activityRow(a: Omit<ActivitySummary, "detailed"> & { detailed?: boolean
     km: a.distance ? +(a.distance / 1000).toFixed(2) : null,
     seconds: a.duration ? Math.round(a.duration) : null,
     paceSec: a.type === "running" && a.speed && a.speed > 0 ? Math.round(1000 / a.speed) : null,
+    speedKph: a.type === "cycling" && a.speed && a.speed > 0 ? Math.round(a.speed * 36) / 10 : null,
     avgHr: a.avgHr ? Math.round(a.avgHr) : null,
     maxHr: a.maxHr ? Math.round(a.maxHr) : null,
     effect: a.trainingEffectLabel,
