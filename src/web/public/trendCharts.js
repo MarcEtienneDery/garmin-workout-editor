@@ -35,6 +35,8 @@
     const card = html("div", "rc"), head = html("div", "rch"), readout = html("span", "rcr");
     head.append(html("b", "", spec.title + (spec.unit ? ` (${spec.unit})` : "")), readout);
     card.append(head);
+    const summary = spec.summary ? spec.summary(days) : ""; // a line of words under the title: how the days stood against the goal
+    if (summary) card.append(html("div", "rcs", summary));
 
     const n = days.length, step = (W - LEFT - RIGHT) / Math.max(1, n), xAt = (i) => LEFT + step * (i + 0.5);
     const per = (fn) => days.map((d, i) => { const v = fn(d, i, days); return RM.valid(v) ? v : null; }); // a value may look at the days around it
@@ -86,7 +88,7 @@
     }
     if (refs && refs.some((v) => v !== null)) svg.append(make("path", { class: "rc-ref", d: pathOf(refs.map((v, i) => (v === null ? null : [xAt(i), yAt(v)]))) }));
 
-    const bw = Math.max(2, step * 0.7);
+    const bw = Math.max(2, step * 0.7), used = new Set(); // `used`: the colours the bars came in, for the legend
     days.forEach((d, i) => {
       if (spec.kind === "stack") {
         let acc = 0;
@@ -96,7 +98,9 @@
           acc += v;
         }
       } else if (spec.kind === "bars" && vals[i] !== null) {
-        svg.append(make("rect", { x: xAt(i) - bw / 2, y: yAt(vals[i]), width: bw, height: Math.max(0, yAt(Math.max(sc.min, 0)) - yAt(vals[i])), class: `rc-bar ${spec.color ? spec.color(d) : ""}` }));
+        const colour = spec.color ? spec.color(d) : "";
+        if (colour) used.add(colour);
+        svg.append(make("rect", { x: xAt(i) - bw / 2, y: yAt(vals[i]), width: bw, height: Math.max(0, yAt(Math.max(sc.min, 0)) - yAt(vals[i])), class: `rc-bar ${colour}` }));
       } else if (spec.kind === "range" && lows[i] !== null && highs[i] !== null) {
         svg.append(make("line", { x1: xAt(i), x2: xAt(i), y1: yAt(lows[i]), y2: yAt(highs[i]), class: "rc-range" }));
       }
@@ -131,6 +135,7 @@
     if (spec.band) key("sw-band", "Garmin's balanced range");
     if (spec.ref) key("sw-ref", spec.ref.label);
     if (goal !== null || (goals && goals.some((v) => v !== null))) key("sw-goal", spec.goal.label);
+    for (const cls of used) if (spec.colorKeys && spec.colorKeys[cls]) key(`sw-${cls}`, spec.colorKeys[cls]); // a colour the bars came in, with its words
     if (spec.kind === "stack") for (const p of spec.parts) key(`sw-part ${p.cls}`, p.label);
     if (spec.kind === "range") key("sw-range", "low to high of the day, dot on waking");
     if (legend.childNodes.length) card.append(legend);

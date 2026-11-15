@@ -3,7 +3,7 @@ const NM = require("../web/public/nutritionModel.js");
 import { MAX_PHOTOS, MAX_TEXT, MIN_TEXT } from "../shared/foodAi";
 import { NUTRIENTS } from "../shared/nutrients";
 import { MEALS, parseProduct, totalsOf } from "../shared/nutrition";
-import { goalProgress } from "../shared/nutritionGoals";
+import { TARGET_TOLERANCE, goalProgress } from "../shared/nutritionGoals";
 
 const TODAY = "2026-10-18";
 const day = (over: Record<string, unknown> = {}) => ({ day: "2026-10-17", kcal: 2000, proteinG: 150, carbsG: 200, fatG: 44, entries: 5, burnedKcal: 2500, burnedSoFar: false, netKcal: -500, ...over });
@@ -694,5 +694,67 @@ describe("a calorie goal that follows the burn", () => {
     expect(eaten.read(day())).toBe(`${(2000).toLocaleString()} kcal · burned ${(2500).toLocaleString()}`);
     expect(NM.charts({ burn: true, goals: { kcal: 2200 } })[0].goal).toEqual({ label: `Goal ${(2200).toLocaleString()} kcal`, value: 2200 }); // fixed: one level
     expect(NM.charts({ burn: true, goals: { kcalBurnPct: 50 } })[0].goal).toBeUndefined(); // a share of nothing
+  });
+});
+
+describe("where a day stands against a goal, as the cards say it", () => {
+  it("uses the server's tolerance", () => {
+    expect(NM.TARGET_TOLERANCE).toBe(TARGET_TOLERANCE);
+  });
+
+  it("gives the same state as the server for a floor, a ceiling and an aim, at and around every edge", () => {
+    const goals = { kcal: 2000, proteinG: 100, sodiumMg: 2300 };
+    const differs: string[] = [];
+    for (const ratio of [0, 0.5, 0.89, 0.9, 0.91, 0.999, 1, 1.0001, 1.09, 1.1, 1.11, 2]) {
+      const totals = { entries: 1, kcal: 2000 * ratio, proteinG: 100 * ratio, carbsG: 0, fatG: 0, nutrients: { sodiumMg: { amount: 2300 * ratio, foods: 1 } } } as any;
+      const by = Object.fromEntries(goalProgress(goals, totals).map((r) => [r.key, r.state]));
+      if (NM.standing("target", 2000 * ratio, 2000) !== by.kcal) differs.push(`an aim at ${ratio}`);
+      if (NM.standing("min", 100 * ratio, 100) !== by.proteinG) differs.push(`a floor at ${ratio}`);
+      if (NM.standing("max", 2300 * ratio, 2300) !== by.sodiumMg) differs.push(`a ceiling at ${ratio}`);
+    }
+    expect(differs).toEqual([]);
+  });
+});
+
+describe("the calorie chart's colours, summary and words", () => {
+  const goals = { kcal: 2000 };
+  const days = [day({ day: "2026-10-12", kcal: 1500 }), day({ day: "2026-10-13", kcal: 2000 }), day({ day: "2026-10-14", kcal: 2150 }), day({ day: "2026-10-15", kcal: 2300 }), day({ day: "2026-10-16", kcal: null, entries: 0 }), day({ day: TODAY, kcal: 900 })];
+  const [eaten, , protein] = NM.charts({ burn: true, today: TODAY, goals: { ...goals, proteinG: 100 } });
+
+  it("colours a day over the goal beyond the tolerance, and no other", () => {
+    expect(days.map((d) => eaten.color(d))).toEqual(["", "", "", "over", "", ""]); // 2,150 is within 10 % of 2,000, 2,300 is over
+    expect(eaten.colorKeys).toEqual({ over: "Over the goal" });
+  });
+
+  it("counts the finished days on target (under the goal counts) and over, leaving out a day with nothing logged and today, which is not over", () => {
+    expect(eaten.summary(days)).toBe("3 of 4 finished days on target · 1 over"); // 1,500 is under the goal, which counts as on target
+  });
+
+  it("leaves out the part that is none, and says nothing when there is no finished day", () => {
+    expect(eaten.summary([days[0], days[1], days[2]])).toBe("3 of 3 finished days on target");
+    expect(eaten.summary([days[5]])).toBe("");
+  });
+
+  it("says in the hover that a day was over the goal", () => {
+    expect(eaten.read(days[3])).toBe(`${(2300).toLocaleString()} kcal · burned ${(2500).toLocaleString()} · over the goal`);
+    expect(eaten.read(days[2])).toBe(`${(2150).toLocaleString()} kcal · burned ${(2500).toLocaleString()}`);
+  });
+
+  it("has none of it without a calorie goal", () => {
+    const [none] = NM.charts({ burn: true, today: TODAY, goals: {} });
+    expect(none.color).toBeUndefined();
+    expect(none.summary).toBeUndefined();
+    expect(none.read(days[3])).toBe(`${(2300).toLocaleString()} kcal · burned ${(2500).toLocaleString()}`);
+  });
+
+  it("follows the day's own goal when the goal follows the burn", () => {
+    const [follow] = NM.charts({ burn: true, today: TODAY, goals: { kcal: 2000, kcalBurnPct: 50 } });
+    expect(follow.color(day({ kcal: 2300, kcalGoal: 2600 }))).toBe(""); // 2,300 against 2,600: under
+    expect(follow.color(day({ kcal: 2300, kcalGoal: 2000 }))).toBe("over");
+  });
+
+  it("counts the days that reached the protein goal", () => {
+    const ds = [day({ day: "2026-10-12", proteinG: 120 }), day({ day: "2026-10-13", proteinG: 100 }), day({ day: "2026-10-14", proteinG: 99 }), day({ day: "2026-10-15", proteinG: null }), day({ day: TODAY, proteinG: 10 })];
+    expect(protein.summary(ds)).toBe("2 of 3 finished days reached 100 g");
   });
 });

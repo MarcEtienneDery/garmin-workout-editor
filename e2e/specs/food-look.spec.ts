@@ -3,8 +3,8 @@
  * by the summary, the meals and the add sheet, the rail following the theme, the AI marked with an icon and not an emoji, and the sizes
  * of the controls. alice's food is read only.
  */
-import { test, expect, openView, type Page } from "../support/fixtures";
-import { openFood, sheet, sheetTab } from "../support/food";
+import { test, expect, openView, daysAgo, type APIRequestContext, type Page } from "../support/fixtures";
+import { labelOf, openFood, sheet, sheetTab } from "../support/food";
 
 test.describe.configure({ timeout: 60_000 });
 
@@ -218,5 +218,76 @@ test.describe("the disposition of the Food view", () => {
     await openView(alice, "recovery");
     await expect(alice.locator("#rbody .rcsvg").first()).toBeVisible();
     expect(await alice.locator("#rbody .rcsvg").first().getAttribute("viewBox")).toBe("0 0 600 124");
+  });
+});
+
+/** Three finished days against a 2,000 kcal / 100 g protein goal: over it, on it and under it (under counts as on target). */
+async function logThreeDays(api: APIRequestContext): Promise<void> {
+  const goals = await api.post("/api/settings/goals", { data: { action: "save", goals: { kcal: 2000, proteinG: 100 } } });
+  expect(goals.ok()).toBeTruthy();
+  const days: [number, { proteinG: number; carbsG: number; fatG: number }][] = [[3, { proteinG: 100, carbsG: 300, fatG: 70 }], [2, { proteinG: 100, carbsG: 250, fatG: 67 }], [1, { proteinG: 80, carbsG: 150, fatG: 40 }]];
+  for (const [back, macros] of days) {
+    const res = await api.post("/api/nutrition", { data: { action: "add", day: daysAgo(back), meal: "lunch", items: [{ name: `Day ${back}`, ...macros }] } });
+    expect(res.ok()).toBeTruthy();
+  }
+}
+
+test.describe("the goal on the charts", () => {
+  const calories = (page: Page) => page.locator("#fbody .rcharts .rc").filter({ hasText: "Calories eaten" });
+  const protein = (page: Page) => page.locator("#fbody .rcharts .rc").filter({ hasText: /^Protein \(g\)/ });
+
+  test("a day over the calorie goal is drawn in another colour, with its words in the legend and the hover", async ({ me, profile }) => {
+    await logThreeDays(profile.api);
+    await openFood(me);
+    await expect(calories(me).locator("svg .rc-bar")).toHaveCount(3);
+    await expect(calories(me).locator("svg .rc-bar.over")).toHaveCount(1);
+    await expect(calories(me).locator(".rcl")).toContainText("Over the goal");
+    const fills = async (selector: string) => calories(me).locator(selector).first().evaluate((el) => getComputedStyle(el).fill);
+    expect(await fills("svg .rc-bar.over")).not.toBe(await fills("svg .rc-bar:not(.over)"));
+    await me.locator("#fbody .rmetrics tr.pick", { hasText: labelOf(daysAgo(3)) }).click();
+    await expect(calories(me).locator(".rcr")).toContainText("over the goal");
+    await me.locator("#fbody .rmetrics tr.pick", { hasText: labelOf(daysAgo(2)) }).click();
+    await expect(calories(me).locator(".rcr")).not.toContainText("over the goal");
+  });
+
+  test("says in a line how many finished days were on target (a day under the goal is) and over, and how many reached the protein goal", async ({ me, profile }) => {
+    await logThreeDays(profile.api);
+    await openFood(me);
+    await expect(calories(me).locator(".rcs")).toHaveText("2 of 3 finished days on target · 1 over");
+    await expect(protein(me).locator(".rcs")).toHaveText("2 of 3 finished days reached 100 g");
+  });
+
+  test("does not count today, which is not over, and the line says nothing when no finished day has food", async ({ me, profile }) => {
+    const goals = await profile.api.post("/api/settings/goals", { data: { action: "save", goals: { kcal: 2000 } } });
+    expect(goals.ok()).toBeTruthy();
+    const today = await profile.api.post("/api/nutrition", { data: { action: "add", day: daysAgo(0), meal: "lunch", items: [{ name: "Big lunch", proteinG: 100, carbsG: 300, fatG: 70 }] } });
+    expect(today.ok()).toBeTruthy();
+    await openFood(me);
+    await expect(calories(me).locator("svg .rc-bar")).toHaveCount(1);
+    await expect(calories(me).locator("svg .rc-bar.over")).toHaveCount(1); // the bar is drawn in its colour, as it will be if the day ends so
+    await expect(calories(me).locator(".rcs")).toHaveCount(0); // but today is not counted, so there is nothing to say
+  });
+
+  test("has neither the colour nor the line without a calorie goal", async ({ me, profile }) => {
+    const res = await profile.api.post("/api/nutrition", { data: { action: "add", day: daysAgo(2), meal: "lunch", items: [{ name: "Lunch", proteinG: 100, carbsG: 300, fatG: 70 }] } });
+    expect(res.ok()).toBeTruthy();
+    await openFood(me);
+    await expect(calories(me).locator("svg .rc-bar")).toHaveCount(1);
+    await expect(calories(me).locator("svg .rc-bar.over")).toHaveCount(0);
+    await expect(calories(me).locator(".rcs")).toHaveCount(0);
+    await expect(calories(me).getByText("Over the goal")).toHaveCount(0);
+  });
+
+  test("the over colour is told from the others in both themes, and the lines of words keep their contrast", async ({ me, profile }) => {
+    await logThreeDays(profile.api);
+    await openFood(me);
+    for (const theme of ["dark", "light"]) {
+      if (theme === "light") await me.locator("#fTheme").click();
+      const over = await calories(me).locator("svg .rc-bar.over").evaluate((el) => getComputedStyle(el).fill);
+      const normal = await calories(me).locator("svg .rc-bar:not(.over)").first().evaluate((el) => getComputedStyle(el).fill);
+      expect(over, `${theme}: over against the other bars`).not.toBe(normal);
+      const text = await style(me, "#fbody .rcs", "color"), card = await style(me, "#fbody .rc", "background-color");
+      expect(await contrast(me, text, card), `${theme}: the line of words`).toBeGreaterThanOrEqual(7);
+    }
   });
 });
