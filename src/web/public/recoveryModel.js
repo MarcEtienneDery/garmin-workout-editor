@@ -184,5 +184,163 @@
     },
   ];
 
-  return { intensityMinutes, rollingMean, addDays, dayLabel, shortDay, bandInfo, BANDS, pip, num, hm, hours, size, KINDS, compactJson, GROUPS, cell, niceStep, scale, stressClass, CHARTS, valid };
+  // ── The verdict ─────────────────────────────────────────────────────────
+
+  /**
+   * Where the score's zones start (the score is 50 + 50 × the weighted mean of the signals, so these are the server's thresholds in
+   * src/shared/readiness.ts, BACK_OFF_AT -0.25 and GO_HARDER_AT 0.4, which a test compares): a score under 37.5 is Back off, from 70 Go harder.
+   */
+  const BACK_OFF_SCORE = 37.5, GO_HARDER_SCORE = 70;
+  /** The signals that must be at normal or better for Go harder. */
+  const CORE = ["hrv", "restingHr", "sleep"];
+  const SIGNAL_NAMES = { hrv: "HRV", restingHr: "Resting heart rate", sleep: "Sleep", bodyBattery: "Body Battery", stress: "Stress yesterday", load: "Training load" };
+  const signalName = (key) => SIGNAL_NAMES[key] || key;
+  const lower = (s) => s.charAt(0).toLowerCase() + s.slice(1);
+
+  /** The zone a score is in: "back", "plan" or "go"; "" when there is no score. */
+  const zoneOf = (score) => (!valid(score) ? "" : score < BACK_OFF_SCORE ? "back" : score >= GO_HARDER_SCORE ? "go" : "plan");
+
+  /**
+   * The seven days of the week the day shown is in, Monday first, for the strip: each with its score and band (`zone`: back, plan, go, or
+   * none when the day cannot be judged; future for a day to come), its weekday and number, whether it is today or the day shown, and the
+   * words a screen reader says. `data` is what GET /api/wellness sends ({ week, date, today }).
+   */
+  function weekStrip(data) {
+    if (!data || !Array.isArray(data.week)) return [];
+    return data.week.map((w) => {
+      const wd = new Date(msOf(w.day)).getUTCDay(), future = w.day > data.today;
+      const zone = future ? "future" : valid(w.score) ? BANDS[w.band] ? BANDS[w.band].cls : "" : "none";
+      const info = bandInfo(w.band), name = zone === "future" || zone === "none" ? "" : info.label.toLowerCase();
+      const when = `${DOW[wd]} ${Number(w.day.slice(8, 10))} ${MON[Number(w.day.slice(5, 7)) - 1]}`;
+      return {
+        day: w.day, weekday: DOW[wd], number: Number(w.day.slice(8, 10)), band: w.band, score: valid(w.score) ? w.score : null, zone, name,
+        text: valid(w.score) && !future ? String(w.score) : "–", today: w.day === data.today, selected: w.day === data.date,
+        label: `${when}, ${future ? "not yet" : valid(w.score) ? `${name}, ${w.score} of 100` : "no verdict"}`,
+      };
+    });
+  }
+
+  /**
+   * What the gauge draws: the score's place on the half circle (0 to 1), the three zones with where each ends, and the one the score is in.
+   * Null when the day has no score.
+   */
+  function gauge(readiness) {
+    if (!readiness || !valid(readiness.score)) return null;
+    const score = Math.max(0, Math.min(100, readiness.score));
+    return {
+      score: readiness.score, at: score / 100, zone: zoneOf(readiness.score),
+      zones: [{ cls: "back", from: 0, to: BACK_OFF_SCORE }, { cls: "plan", from: BACK_OFF_SCORE, to: GO_HARDER_SCORE }, { cls: "go", from: GO_HARDER_SCORE, to: 100 }],
+      label: `Score ${readiness.score} of 100, in the ${bandInfo(readiness.band).label} zone`,
+    };
+  }
+
+  /** Words and emphasis for a line: [{ text, strong }], so the page puts them in without building HTML. */
+  const seg = (text, strong = false) => ({ text, strong });
+
+  /** "HRV, resting heart rate and sleep" for the names of some core signals. */
+  const nameList = (keys) => {
+    const names = keys.map((k, i) => (i === 0 ? signalName(k) : lower(signalName(k))));
+    return names.length < 2 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+  };
+
+  /**
+   * What it would take to be in another band, as a line the page shows under the verdict: segments of words, some strong. Go harder needs a
+   * score of 70 and HRV, resting heart rate and sleep at normal or better (and not a low confidence); Back off is under 37.5 or an HRV well
+   * below its range, whatever the rest says. Empty when the day cannot be judged.
+   */
+  function changeLine(readiness) {
+    if (!readiness || !valid(readiness.score) || !Array.isArray(readiness.signals)) return [];
+    const { band, score, signals, confidence } = readiness;
+    const below = signals.filter((s) => CORE.includes(s.name) && s.score < 0).map((s) => s.name);
+    const hrvLow = signals.some((s) => s.name === "hrv" && s.score <= -2);
+    const toGo = Math.ceil(GO_HARDER_SCORE - score), toBack = score - (Math.ceil(BACK_OFF_SCORE) - 1); // Back off is a score of 37 or less
+    if (band === "go-harder") {
+      return [seg("Holding Go harder", true), seg(` takes a score of ${GO_HARDER_SCORE} or more and ${nameList(CORE)} all at normal or better. One hard session, then it reads the load again.`)];
+    }
+    if (band === "back-off") {
+      const byScore = score < BACK_OFF_SCORE, out = [];
+      if (hrvLow) out.push(seg("HRV well below your range", true), seg(" sets Back off whatever the rest says. "));
+      out.push(seg("As planned", true), seg(` comes back${byScore ? ` at a score of ${Math.ceil(BACK_OFF_SCORE)} (${Math.ceil(BACK_OFF_SCORE) - score} more)` : ""}${hrvLow ? `${byScore ? " once" : " when"} HRV is back in your range` : ""}.`));
+      return out;
+    }
+    const out = [seg("Go harder", true)];
+    if (toGo > 0) out.push(seg(` needs a score of ${GO_HARDER_SCORE} (${toGo} more)${below.length || confidence === "low" ? "" : " with HRV, resting heart rate and sleep at normal or better"}`));
+    else out.push(seg(below.length || confidence === "low" ? ` needs more than the score (it is enough at ${score})` : ` is within reach: the score is enough at ${score}`));
+    if (below.length) out.push(seg(`${toGo > 0 ? ", and " : ": "}${lower(nameList(below))} ${below.length === 1 ? "has" : "have"} to reach normal`));
+    if (confidence === "low") out.push(seg(`${toGo > 0 || below.length ? ", and " : ": "}more signals are needed to be sure`));
+    out.push(seg(". "), seg("Back off", true), seg(` starts under ${Math.ceil(BACK_OFF_SCORE)} (${toBack} less), or if HRV falls well below your range.`));
+    return out;
+  }
+
+  /** The five steps of a signal's meter, worst first: which one the signal is on ("on"), and its class. */
+  function signalMeter(signal) {
+    const score = Math.max(-2, Math.min(2, Math.round(signal.score)));
+    return { steps: [-2, -1, 0, 1, 2].map((s) => s === score), pip: pip(score), label: `${signalName(signal.name)}: ${["well below", "below", "at", "above", "well above"][score + 2]} your normal` };
+  }
+
+  /** The rows of the signals of the day: its name and value, the meter, the reason and the baseline; the signal that counts most is marked. */
+  function signalRows(readiness) {
+    if (!readiness || !Array.isArray(readiness.signals)) return [];
+    const top = Math.max(0, ...readiness.signals.map((s) => s.weight || 0));
+    return readiness.signals.map((s) => ({ key: s.name, name: signalName(s.name), value: s.value, reason: s.reason, baseline: s.baseline, score: s.score, meter: signalMeter(s), most: top > 0 && s.weight === top && readiness.signals.some((o) => o.weight < top) }));
+  }
+
+  /** What the day left out, as a line ("Not counted: HRV: no HRV for the night."); "" when everything was counted. */
+  function notCounted(readiness) {
+    if (!readiness || !Array.isArray(readiness.missing) || !readiness.missing.length) return "";
+    return "Not counted: " + readiness.missing.map((m) => m.replace(/^(\w+): /, (_, k) => `${signalName(k)}: `)).join("; ") + ".";
+  }
+
+  /**
+   * The load before the day as bars: the sessions (units against the usual) and Garmin's intensity minutes against theirs, each a fill on a
+   * track that is twice the usual, a tick at the usual, and a `cls` for how heavy (light up to 70 % of the usual, heavy from 130 %, very from
+   * 160 %, as the server scores them). Null without a load.
+   */
+  function loadBars(readiness) {
+    const l = readiness && readiness.load;
+    if (!l) return null;
+    const kind = (ratio) => (!valid(ratio) ? "usual" : ratio >= 1.6 ? "veryheavy" : ratio >= 1.3 ? "heavy" : ratio <= 0.7 ? "light" : "usual");
+    const bar = (label, value, ratio, usual) => ({ label, value, ratio: valid(ratio) ? ratio : null, pct: valid(ratio) ? Math.round(ratio * 100) : null, fill: valid(ratio) ? Math.min(100, (ratio / 2) * 100) : null, cls: kind(ratio), usual: valid(usual) ? `usual ${num(usual)}` : "no usual to compare with yet" });
+    const bars = [bar(`Last 3 days · ${l.sessions} session${l.sessions === 1 ? "" : "s"}`, `${num(l.acute)} units`, l.ratio, l.usual)];
+    if (l.intensity) bars.push(bar("Intensity minutes, last 3 days", `${num(l.intensity.acute)} min`, l.intensity.ratio, l.intensity.usual));
+    return {
+      bars, sessions: l.sessions,
+      hard: valid(l.hoursSinceHard) ? `${num(Math.round(l.hoursSinceHard))} h ago` : "none in 3 days",
+    };
+  }
+
+  /** What was slept last night, for its card: the time, the score, the stages as shares of the stages, and how much of the need it was; null with no sleep stored. */
+  function sleepCard(day) {
+    if (!day || !valid(day.sleepSeconds) || day.sleepSeconds <= 0) return null;
+    const parts = [["deep", "Deep", day.deepSeconds], ["rem", "REM", day.remSeconds], ["light", "Light", day.lightSeconds], ["awake", "Awake", day.awakeSeconds]].filter(([, , s]) => valid(s) && s > 0);
+    const total = parts.reduce((a, p) => a + p[2], 0);
+    const need = valid(day.sleepNeedMinutes) && day.sleepNeedMinutes > 0 ? day.sleepNeedMinutes * 60 : null;
+    const pct = need ? Math.round((day.sleepSeconds / need) * 100) : null;
+    return {
+      time: hm(day.sleepSeconds), score: valid(day.sleepScore) ? day.sleepScore : null,
+      stages: parts.map(([cls, label, s]) => ({ cls, label, text: hm(s), width: (s / total) * 100 })),
+      pct, fill: pct === null ? null : Math.min(100, pct), cls: pct === null ? "" : pct >= 95 ? "ok" : pct >= 80 ? "warn" : "short", need: need ? (need % 3600 === 0 ? `${need / 3600} h` : hm(need)) : null,
+      wakings: valid(day.awakeCount) ? day.awakeCount : null, stress: valid(day.sleepStress) ? day.sleepStress : null,
+    };
+  }
+
+  // ── The readiness chart ──────────────────────────────────────────────────
+
+  /** The days of a range with each one's readiness merged in (readinessScore, readinessBand), for the charts. */
+  function chartDays(data) {
+    const by = new Map(((data && data.readinessDays) || []).map((r) => [r.day, r]));
+    return ((data && data.days) || []).map((d) => { const r = by.get(d.day); return { ...d, readinessScore: r && valid(r.score) ? r.score : null, readinessBand: r ? r.band : "unknown" }; });
+  }
+
+  /** A bar for each day's score, in the colour of its band, with the normal day (50) as the reference. */
+  const READINESS_CHART = {
+    id: "readiness", title: "Readiness", unit: "score", kind: "bars", min: 0, max: 100, ticks: 4, value: (d) => d.readinessScore,
+    color: (d) => (valid(d.readinessScore) ? zoneOf(d.readinessScore) : ""), colorKeys: { back: "Back off", plan: "As planned", go: "Go harder" },
+    goal: { value: 50, label: "A normal day, 50" },
+    read: (d) => (valid(d.readinessScore) ? `${d.readinessScore} · ${bandInfo(d.readinessBand).label.toLowerCase()}` : "no verdict"),
+  };
+  /** The charts of the Trends: the readiness first, then the measures it is made of. */
+  const TRENDS = [READINESS_CHART, ...CHARTS];
+
+  return { intensityMinutes, rollingMean, addDays, dayLabel, shortDay, bandInfo, BANDS, pip, num, hm, hours, size, KINDS, compactJson, GROUPS, cell, niceStep, scale, stressClass, CHARTS, valid, BACK_OFF_SCORE, GO_HARDER_SCORE, SIGNAL_NAMES, signalName, zoneOf, weekStrip, gauge, changeLine, signalMeter, signalRows, notCounted, loadBars, sleepCard, chartDays, READINESS_CHART, TRENDS };
 });
