@@ -581,7 +581,8 @@ interface CalendarPlan {
    */
   start: string | null;
   end: string | null;
-  workouts: { index: number; workoutName: string; workoutType?: string; workoutId?: number | string; dates: string[] }[];
+  /** `workout` is the whole workout, for the page to draw its profile and total its steps (the week view of the Calendar). */
+  workouts: { index: number; workoutName: string; workoutType?: string; workoutId?: number | string; dates: string[]; workout: Record<string, unknown> }[];
 }
 
 /** Every plan this login can reach with its dates: workout-plans/ and data/<profile>/ (export snapshots are copies of Garmin's list, not plans; archived plans are put away). */
@@ -595,7 +596,7 @@ function calendarPlans(who: Principal): CalendarPlan[] {
     if (!plan) continue;
     const workouts = plan.list.flatMap((w, index) =>
       isWorkout(w)
-        ? [{ index, workoutName: w.workoutName, workoutType: w.workoutType, workoutId: hasId(w.workoutId) ? w.workoutId : undefined, dates: scheduledDates(w) }]
+        ? [{ index, workoutName: w.workoutName, workoutType: w.workoutType, workoutId: hasId(w.workoutId) ? w.workoutId : undefined, dates: scheduledDates(w), workout: w as Record<string, unknown> }]
         : []
     );
     const weekStart = isoDate(plan.data.weekStart) ? plan.data.weekStart : undefined;
@@ -605,6 +606,20 @@ function calendarPlans(who: Principal): CalendarPlan[] {
   }
   // dated plans in calendar order, the undated ones last
   return plans.sort((a, b) => Number(a.start === null) - Number(b.start === null) || (a.start ?? "").localeCompare(b.start ?? "") || a.path.localeCompare(b.path));
+}
+
+/**
+ * "<workoutId>|<date>" for each stored activity of the profile that was started from a Garmin workout (the same workout id): the plans'
+ * workouts that were done, and on what day. A login that resolves to no profile has none. Reads the database only.
+ */
+function doneWorkouts(who: Principal, requested: unknown): string[] {
+  let profile: string;
+  try {
+    profile = profileFor(who, "", requested);
+  } catch {
+    return [];
+  }
+  return store().activities.summaries(profile, 600).map(activityRow).flatMap((a) => (hasId(a.workoutId) ? [`${a.workoutId}|${a.date}`] : []));
 }
 
 // ── Pace from your runs: what the workout picture times steps with when the workout names no pace ──
@@ -1607,7 +1622,7 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
 
     case "GET /api/calendar":
       // Read from the stored plans alone, so it works without a Garmin profile and in mock mode.
-      return send(res, 200, { plans: calendarPlans(who) });
+      return send(res, 200, { plans: calendarPlans(who), done: doneWorkouts(who, url.searchParams.get("profile")) });
 
     case "GET /api/garmin/workout": {
       requireGarmin(who);

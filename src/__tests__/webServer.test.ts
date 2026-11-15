@@ -242,6 +242,26 @@ describe("web plan editor", () => {
       ]);
     });
 
+    it("gives each workout whole, so the week view can draw its profile and total its steps", async () => {
+      const steps = [{ stepType: "warmup", endCondition: "time", endConditionValue: 600 }, { stepType: "interval", endCondition: "distance", endConditionValue: 2000 }];
+      seed("workout-plans/b.json", { workouts: [run("Tempo", "2026-08-01", { steps })] });
+      const [tempo] = byPath(await calendar(), "workout-plans/b.json").workouts;
+      expect(tempo.workout).toEqual(expect.objectContaining({ workoutName: "Tempo", workoutType: "running", steps }));
+    });
+
+    it("says which workouts were done: the ids of the activities the profile started from a workout, with their days", async () => {
+      addProfile("MED");
+      const act = (id: number, day: string, extra: Record<string, unknown> = {}) => toNewActivity({ activityId: id, activityName: `Activity ${id}`, activityType: { typeKey: "running" }, startTimeGMT: `${day} 12:00:00`, startTimeLocal: `${day} 08:30:00`, distance: 5000, duration: 1500, ...extra } as any)!;
+      store().activities.insertNew("MED", [act(9001, "2026-08-01", { workoutId: 777 }), act(9002, "2026-08-02")]);
+      const done = (await call("GET", "/api/calendar")).json.done;
+      expect(done).toContain("777|2026-08-01");
+      expect(done).toHaveLength(1); // a run started from nothing is not a done workout
+    });
+
+    it("says none are done for a login with no profile to look at", async () => {
+      expect((await call("GET", "/api/calendar")).json.done).toEqual([]);
+    });
+
     it("widens a plan's span beyond weekStart and weekEnd with its scheduled dates", async () => {
       seed("workout-plans/hm.json", { weekStart: "2026-07-27", weekEnd: "2026-08-02", workouts: [run("Early", "2026-07-20"), run("Late", ["2026-08-16", "2026-09-20"]), run("Undated")] });
       expect(byPath(await calendar(), "workout-plans/hm.json")).toEqual(expect.objectContaining({ weekStart: "2026-07-27", weekEnd: "2026-08-02", start: "2026-07-20", end: "2026-09-20" }));

@@ -5,7 +5,7 @@
  * that no other spec's data lands on its months.
  */
 import type { APIRequestContext, Locator, Page } from "@playwright/test";
-import { test, expect, openView, type Profile } from "../support/fixtures";
+import { test, expect, openView, monthView, type Profile } from "../support/fixtures";
 
 // The Monaco editor of the page: the top-level `editor` of the page's own script.
 declare const editor: any;
@@ -44,6 +44,7 @@ async function savedDates(api: APIRequestContext, path: string): Promise<unknown
 
 /** Open the Calendar on the month of the profile's plan, by its row in the legend; `mode` is pressed first. */
 async function openOnPlan(page: Page, plan: string, month: string, mode?: "workouts") {
+  await monthView(page);
   await openView(page, "calendar");
   await expect(page.locator("#cNote")).not.toContainText("Loading", { timeout: 20_000 });
   await page.locator("#cLegend .citem", { hasText: plan }).click(); // the plans' legend is not shown in Workouts mode

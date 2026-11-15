@@ -4,7 +4,7 @@
  * use dates in 2031, so no other spec's data lands on their months.
  */
 import type { APIRequestContext, Locator, Page } from "@playwright/test";
-import { test, expect, openView, loginAs, today, daysAgo, daysAhead, mondayOf, PASSWORD, chooseEditMode } from "../support/fixtures";
+import { test, expect, openView, monthView, loginAs, today, daysAgo, daysAhead, mondayOf, PASSWORD, chooseEditMode } from "../support/fixtures";
 
 // The machine is shared by every spec run at once: a page can take many seconds to answer, so each test has more than the default 30 s.
 test.describe.configure({ timeout: 60_000 });
@@ -50,6 +50,7 @@ async function expectSpans(bar: Locator, from: Locator, to: Locator) {
 
 /** Open the Calendar view and wait until the plans have arrived (the page's own "Loading…" note has gone); `mode` is then pressed. */
 async function openCalendar(page: Page, mode?: "both" | "plans" | "workouts"): Promise<void> {
+  await monthView(page);
   await openView(page, "calendar");
   for (let attempt = 0; attempt < 3; attempt++) {
     await expect(page.locator("#cNote")).not.toContainText("Loading", { timeout: 20_000 });
@@ -215,7 +216,7 @@ test.describe("month grid", () => {
     await goToMonthOf(alice, "2025-06-16");
     await cellOf(alice, "2025-06-16").click({ position: { x: 6, y: 6 } });
     await expect(alice.locator("#cDayTitle")).toHaveText(longLabel("2025-06-16"));
-    await expect(alice.locator("#cDay")).toHaveText("Nothing on this day.");
+    await expect(alice.locator("#cDay .empty")).toHaveText("Nothing on this day.");
   });
 
   test("a day can be selected from the keyboard", async ({ alice }) => {
@@ -755,7 +756,7 @@ test.describe("empty states", () => {
     await openCalendar(page, "plans");
     await expect(page.locator("#cNote")).toHaveText("No plan has dates yet: give it a weekStart / weekEnd, or its workouts a scheduledDate.");
     await expect(page.locator("#cLegend")).toHaveText("No plans.");
-    await expect(page.locator("#cDay")).toHaveText("Nothing on this day.");
+    await expect(page.locator("#cDay .empty")).toHaveText("Nothing on this day.");
   });
 
   test("with no plans at all, the Workouts mode says no workout has a date yet", async ({ page }) => {

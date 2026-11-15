@@ -1210,10 +1210,10 @@
   #cTitle { min-width:0; flex:1 1 auto; font-size:clamp(22px,2.6vw,30px); font-weight:700; letter-spacing:-.02em; }
   #cPrev, #cNext, #cRefresh, #cview .themebtn { width:44px; min-width:44px; height:44px; padding:0; border-radius:50%; background:var(--panel); border:1px solid var(--line); }
   #cToday { min-height:44px; padding:0 18px; border-radius:999px; font-weight:600; }
-  #cModes { padding:2px; gap:2px; background:var(--panel); border:1px solid var(--line); border-radius:999px; }
-  #cModes button, #cModes button:first-child, #cModes button:last-child { min-height:44px; margin:0; padding:0 16px; border:0; border-radius:999px; background:transparent; color:var(--dim); font-weight:600; }
-  #cModes button:hover:not(:disabled):not([aria-pressed="true"]) { background:var(--t-surface2); color:var(--fg); }
-  #cModes button[aria-pressed="true"] { background:var(--accent); color:var(--t-on-accent); }
+  :is(#cModes, #cViews) { padding:2px; gap:2px; background:var(--panel); border:1px solid var(--line); border-radius:999px; }
+  :is(#cModes, #cViews) button, :is(#cModes, #cViews) button:first-child, :is(#cModes, #cViews) button:last-child { min-height:44px; margin:0; padding:0 16px; border:0; border-radius:999px; background:transparent; color:var(--dim); font-weight:600; }
+  :is(#cModes, #cViews) button:hover:not(:disabled):not([aria-pressed="true"]) { background:var(--t-surface2); color:var(--fg); }
+  :is(#cModes, #cViews) button[aria-pressed="true"] { background:var(--accent); color:var(--t-on-accent); }
   #cNote { padding:0 16px; color:var(--dim); }
   /* the month is one card that scrolls inside itself, its row of weekdays staying on top */
   #cscroll { margin:0 0 16px 16px; padding:0; background:var(--panel); border:1px solid var(--line); border-radius:18px; box-shadow:var(--card-shadow); }
@@ -1239,6 +1239,60 @@
   #cview .citem[role="button"]:hover { background:var(--t-surface2); }
   #cview .citem button { min-height:36px; padding:0 14px; border-radius:999px; }
   #cview .citem small { font-size:12.5px; }
+  /* the week view: what the week adds up to, and a column for each day with a card for each workout */
+  #cview.wk #cscroll { background:transparent; border:0; border-radius:0; box-shadow:none; padding:0 2px 4px 0; }
+  .cwsum { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)) minmax(0,1.5fr); gap:12px; }
+  .cws { display:flex; flex-direction:column; gap:2px; min-width:0; padding:14px 16px; background:var(--panel); border:1px solid var(--line); border-radius:18px; box-shadow:var(--card-shadow); }
+  .cws small { font:500 11px "Fira Code",ui-monospace,monospace; letter-spacing:.12em; text-transform:uppercase; color:var(--dim); }
+  .cws b { font:600 24px/1.15 "Fira Code",ui-monospace,monospace; letter-spacing:-.03em; white-space:nowrap; }
+  .cws > span { color:var(--dim); font-size:12.5px; }
+  .cwbars { display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:6px; height:60px; margin-top:6px; }
+  .cwbar { display:grid; grid-template-rows:minmax(0,1fr) auto; gap:3px; justify-items:center; }
+  .cwbar i { align-self:end; width:100%; max-width:22px; height:var(--h); border-radius:4px 4px 2px 2px; background:color-mix(in srgb, var(--accent) 50%, transparent); }
+  .cwbar.today i { background:var(--accent); } .cwbar.none i { background:var(--t-track); }
+  .cwload .cwbar span { font:500 10px "Fira Code",ui-monospace,monospace; color:var(--dim); }
+  .cwboard { display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:10px; margin-top:12px; align-items:start; }
+  .wday { display:flex; flex-direction:column; gap:8px; min-width:0; min-height:clamp(300px, 52vh, 520px); padding:8px; background:var(--panel); border:1px solid var(--line); border-radius:18px; box-shadow:var(--card-shadow); }
+  .wday.today { border-color:color-mix(in srgb, var(--accent) 60%, var(--line)); background:linear-gradient(180deg, color-mix(in srgb, var(--accent) 9%, var(--panel)), var(--panel) 45%); }
+  .wday.sel { border-color:var(--accent); }
+  .wday.drop { background:color-mix(in srgb, var(--accent) 16%, var(--panel)); outline:2px dashed var(--accent); outline-offset:-2px; }
+  .wdh { display:grid; grid-template-columns:auto minmax(0,1fr); grid-template-areas:"n d" "t t"; align-items:baseline; gap:2px 8px; min-height:44px; padding:6px 6px 8px; background:none; border:0; border-bottom:1px solid var(--line); border-radius:10px 10px 0 0; color:var(--fg); text-align:left; cursor:pointer; }
+  .wdn { grid-area:n; font:500 11px "Fira Code",ui-monospace,monospace; letter-spacing:.12em; text-transform:uppercase; color:var(--dim); }
+  .wdd { grid-area:d; justify-self:start; font:700 20px/1.2 "Fira Sans",system-ui,sans-serif; }
+  .wday.today .wdd { padding:0 9px; border-radius:12px; background:var(--accent); color:var(--t-on-accent); }
+  .wdt { grid-area:t; font:500 11px "Fira Code",ui-monospace,monospace; color:var(--dim); } .wdt:empty { display:none; }
+  .wdl { display:flex; flex-direction:column; gap:8px; min-width:0; }
+  .wcard { position:relative; display:flex; flex-direction:column; gap:4px; min-width:0; padding:10px 10px 8px 12px; background:var(--t-surface2); border:1px solid var(--line); border-left:4px solid var(--c); border-radius:12px; cursor:pointer; transition:transform .18s, border-color .18s; }
+  .wcard:hover { transform:translateY(-1px); border-color:var(--t-line2); border-left-color:var(--c); }
+  .wcard.sel { outline:2px solid var(--accent); outline-offset:1px; }
+  .wcard.done { background:color-mix(in srgb, var(--ok) 9%, var(--t-surface2)); }
+  .wcard.lifted { opacity:.35; }
+  .wday.past .wcard:not(.done) { opacity:.8; }
+  .wct { display:flex; align-items:center; gap:6px; padding-right:24px; font:500 10.5px "Fira Code",ui-monospace,monospace; letter-spacing:.1em; text-transform:uppercase; color:var(--dim); }
+  .wdone { color:var(--ok); font:700 13px "Fira Sans",system-ui,sans-serif; letter-spacing:0; }
+  .wcn { font-size:14px; line-height:1.25; overflow-wrap:anywhere; }
+  .wcm { font:500 12px "Fira Code",ui-monospace,monospace; color:var(--dim); }
+  .wcg { margin-top:2px; } .wcg .wv-chart.mini { height:34px; margin:0; gap:2px; } .wcg .wv-seg { min-width:2px; border-radius:3px 3px 1px 1px; }
+  .wcp { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:11.5px; color:var(--dim); }
+  .wcp i { display:inline-block; width:8px; height:8px; margin-right:5px; border-radius:2px; background:var(--pc); }
+  .wcmv { position:absolute; top:4px; right:4px; width:28px; min-height:28px; height:28px; padding:0; border-radius:50%; font-size:16px; line-height:1; opacity:0; transition:opacity .15s; }
+  .wcard:hover .wcmv, .wcard:focus-within .wcmv { opacity:1; }
+  .wrest { margin:auto 0; padding:28px 0; text-align:center; font-size:13px; color:var(--dim); border:1px dashed var(--line); border-radius:12px; }
+  /* the side of the week: the workout picked, in full */
+  .wdet { display:flex; flex-direction:column; gap:8px; }
+  .wdtt { font-size:20px; line-height:1.2; letter-spacing:-.01em; }
+  .wdsub, .wdsteps { color:var(--dim); font-size:13px; }
+  .wdmeta { font:500 13px "Fira Code",ui-monospace,monospace; }
+  .wdplan { display:flex; align-items:center; gap:6px; color:var(--dim); font-size:13px; } .wdplan i { width:10px; height:10px; border-radius:2px; background:var(--pc); }
+  .wdgraph .wv-chart { height:96px; }
+  .wdact { display:flex; flex-wrap:wrap; gap:8px; margin-top:4px; } .wdact button { min-height:44px; padding:0 18px; border-radius:999px; font-weight:600; }
+  .cwlink { margin:0 0 6px; min-height:36px; padding:0 14px; border-radius:999px; font-size:13px; }
+  @media (max-width:1180px) and (min-width:901px) {
+    #cview.wk { display:block; height:100%; overflow:auto; padding-right:0; }
+    #cview.wk #cmain, #cview.wk #cscroll { display:block; overflow:visible; }
+    #cview.wk #cscroll { margin:0 16px 16px; }
+    #cview.wk #cside { display:grid; grid-template-columns:repeat(auto-fit, minmax(300px, 1fr)); gap:12px; padding:0 16px 24px; align-items:start; }
+  }
   /* moving a workout: the menu and the chip dragged */
   #moveMenu { padding:16px; background:var(--panel); border:1px solid var(--t-line2); border-radius:18px; box-shadow:0 22px 44px -14px rgba(0,0,0,.65); font-size:14px; }
   #moveMenu #mvTitle { font:500 11.5px "Fira Code",ui-monospace,monospace; letter-spacing:.12em; text-transform:uppercase; color:var(--dim); }
@@ -1247,6 +1301,12 @@
   .cghost { border-radius:8px; }
   @media (max-width:900px) {
     #cview { padding-right:0; }
+    .cwsum { grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; } .cws { padding:12px; } .cws b { font-size:19px; } .cws > span { font-size:11.5px; } .cwload { grid-column:1 / -1; }
+    #cview.wk #cscroll { margin:0 12px 12px; }
+    .cwboard { display:flex; flex-direction:column; align-items:stretch; gap:10px; }
+    .wday { min-height:0; padding:10px 12px; scroll-margin-top:150px; }
+    .wcmv { top:0; right:0; width:44px; height:44px; min-height:44px; opacity:1; background:transparent; border:0; font-size:20px; }
+    .wct { padding-right:36px; }
     #cbar { padding:12px 12px 8px; background:var(--bg); }
     #cscroll { margin:0 12px 12px; }
     #cdow { position:static; }
@@ -1451,6 +1511,10 @@
       <button id="cToday">Today</button>
       <button id="cNext" title="Next month" aria-label="Next month">▶</button>
       <b id="cTitle" aria-live="polite"></b>
+      <div class="seg" id="cViews" role="group" aria-label="How the calendar is laid out">
+        <button data-view="week" aria-pressed="true" title="One week, day by day, with what it adds up to">Week</button>
+        <button data-view="month" aria-pressed="false" title="The month, with each plan across it">Month</button>
+      </div>
       <div class="seg" id="cModes" role="group" aria-label="What the calendar shows">
         <button data-mode="both" aria-pressed="true" title="Each plan across its span, with its workouts on their days">Both</button>
         <button data-mode="plans" aria-pressed="false" title="Where each plan is scheduled">Plans</button>
@@ -1461,6 +1525,10 @@
     </div>
     <div id="cNote" class="empty" hidden></div>
     <div id="cscroll">
+      <div id="cweek" hidden>
+        <section id="cwSum" class="cwsum" aria-label="The week in numbers"></section>
+        <div id="cwBoard" class="cwboard"></div>
+      </div>
       <div id="cdow"></div>
       <div id="cgrid"></div>
     </div>
@@ -3072,6 +3140,7 @@ function pacerFor(profile) {
         if (RUNS.get(key)) {
           if (view === "plans") { renderOutline(); if (P.sel === null && !$("pform").contains(document.activeElement)) renderPlanForm(); }
           else if (view === "today") renderToday();
+          else if (view === "calendar") renderCalendar();
           else if (W.detail) renderDetail();
         }
         // a form's estimate and its ⓘ, also when there are too few runs to learn from: that part only, never a field being used
@@ -3432,7 +3501,8 @@ const cloneRow = async (d) => {
 // /api/calendar gives each plan's span (weekStart / weekEnd widened by every scheduledDate) and the dates of its workouts.
 // This is what the files say, not what Garmin's own calendar holds. Dates are YYYY-MM-DD strings and double as day keys;
 // the grid is built with UTC arithmetic so a date never slips a day, and weeks run Monday to Sunday.
-const C = { mode: "both", month: null, selected: null, plans: [], byDate: new Map(), loaded: false, error: "", run: 0 };
+const CAL_VIEW_KEY = "calendarView";
+const C = { view: (() => { try { return localStorage.getItem(CAL_VIEW_KEY) === "month" ? "month" : "week"; } catch { return "week"; } })(), mode: "both", month: null, week: null, selected: null, sel: null, plans: [], done: new Set(), byDate: new Map(), loaded: false, error: "", run: 0 };
 const DAY_MS = 864e5;
 const TYPE_COLORS = { running: "#2a7d63", strength_training: "#3a68b0", cycling: "#8f6d27", swimming: "#23808f", cardio: "#9a4a73", other: "#666666" };
 const typeColor = (t) => TYPE_COLORS[t] || TYPE_COLORS.other;
@@ -3467,7 +3537,7 @@ const openPlanAt = guard((path, w) => openPlanWorkout(path, w));
 async function loadCalendar() {
   await sessionReady;
   const run = ++C.run;
-  C.month = C.month || todayIso().slice(0, 7); C.selected = C.selected || todayIso();
+  C.month = C.month || todayIso().slice(0, 7); C.selected = C.selected || todayIso(); C.week = C.week || mondayOf(C.selected);
   if (!C.loaded) renderCalendar();
   let r;
   try { r = await api("GET", "/api/calendar"); }
@@ -3475,6 +3545,7 @@ async function loadCalendar() {
   if (run !== C.run) return;
   const order = r.plans.map((p) => p.path).sort(); // a plan keeps its colour whatever else is added
   C.plans = r.plans.map((p) => ({ ...p, name: planName(p.path), ...planColors(order.indexOf(p.path)) }));
+  C.done = new Set(r.done || []);
   indexCalendar();
   C.loaded = true; C.error = "";
   renderCalendar();
@@ -3501,8 +3572,213 @@ function indexCalendar() {
 
 function gotoMonth(month) { C.month = month; renderCalendar(); }
 
+// ── The week view: seven days, each workout a card with its profile, what the week adds up to, and the done ones ticked ──
+const mondayOf = (iso) => isoOf(msOf(iso) - ((new Date(msOf(iso)).getUTCDay() + 6) % 7) * DAY_MS);
+const addDaysIso = (iso, n) => isoOf(msOf(iso) + n * DAY_MS);
+const weekDays = (monday) => Array.from({ length: 7 }, (_, i) => addDaysIso(monday, i));
+
+/** Show the week that starts on `monday`: the day picked stays in it (today, or the Monday, when it would be outside). */
+function gotoWeek(monday) {
+  C.week = monday;
+  const days = weekDays(monday);
+  if (!days.includes(C.selected)) C.selected = days.includes(todayIso()) ? todayIso() : monday;
+  C.month = C.selected.slice(0, 7);
+  if (C.sel && !days.includes(C.sel.date)) C.sel = null;
+  renderCalendar();
+}
+
+/** Week or month: kept in the browser, and the day picked decides which week or month opens. */
+function setCalendarView(view) {
+  C.view = view;
+  try { localStorage.setItem(CAL_VIEW_KEY, view); } catch { /* the choice lasts until the page closes */ }
+  const day = C.selected || todayIso();
+  if (view === "week") { C.week = mondayOf(day); C.sel = null; } else C.month = day.slice(0, 7);
+  renderCalendar();
+}
+
+/** The week as the locale writes a range: "Nov 9 – 15, 2026", "Oct 26 – Nov 1, 2026", "Dec 28, 2026 – Jan 3, 2027". */
+const weekTitle = (days) => utcFormat({ day: "numeric", month: "short", year: "numeric" }).formatRange(msOf(days[0]), msOf(days[6]));
+
+/** The workouts of the days, each once: one that sits in a plan and in a copy kept in a profile's data folder is the plan file's. */
+function weekItems(days) {
+  const kept = new Map(), list = [];
+  for (const iso of days) for (const it of C.byDate.get(iso) || []) {
+    const key = `${iso}|${it.w.workoutId != null && it.w.workoutId !== "" ? it.w.workoutId : String(it.w.workoutName).toLowerCase()}`, old = kept.get(key);
+    if (!old) { kept.set(key, it); list.push(it); }
+    else if (!old.plan.path.startsWith("workout-plans/") && it.plan.path.startsWith("workout-plans/")) { list[list.indexOf(old)] = it; kept.set(key, it); }
+  }
+  return list;
+}
+
+/** A workout's analysis, with its time and distance: from its steps, else from the duration the plan states. `assumed`: the time rests on a pace the person never ran. */
+function measureItem(it) {
+  const w = it.w.workout, a = w ? WM.analyze(w, { pacer: pacerFor(profileOfPlan(it.plan)) }) : null;
+  const stated = w && Number(w.estimatedDurationSeconds) > 0 ? Math.round(Number(w.estimatedDurationSeconds)) : 0;
+  return { a, seconds: (a && a.seconds) || stated, meters: (a && a.meters) || 0, assumed: !!(a && (a.assumed || (!a.seconds && stated))) };
+}
+
+const TYPE_SHORT = { strength_training: "Strength", running: "Running", cycling: "Cycling", swimming: "Swimming", walking: "Walking", cardio: "Cardio", hiit: "HIIT" };
+const typeShort = (type) => TYPE_SHORT[type] || prettyName(type || "other");
+/** A duration for a big number: "4 h 47", "58 min". */
+const compactTime = (seconds) => { const m = Math.round(seconds / 60); return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${String(m % 60).padStart(2, "0")}`; };
+const isDone = (it) => it.w.workoutId != null && it.w.workoutId !== "" && C.done.has(`${it.w.workoutId}|${it.date}`);
+const isPicked = (it) => !!C.sel && C.sel.date === it.date && C.sel.path === it.plan.path && C.sel.index === it.w.index;
+const metaOf = (m, withType, it) => [withType && prettyName(it.w.workoutType || "other"), m.meters > 0 && AM.distance(+(m.meters / 1000).toFixed(1)), m.seconds > 0 && `${m.assumed ? "~" : ""}${AM.duration(m.seconds)}`].filter(Boolean).join(" · ");
+
+function renderWeek() {
+  const days = weekDays(C.week), today = todayIso(), items = weekItems(days), measured = new Map(items.map((it) => [it, measureItem(it)]));
+  $("cTitle").textContent = weekTitle(days);
+  $("cNote").hidden = true;
+  renderWeekNote(days, items);
+
+  // the numbers of the week, and the same of the week before
+  const sum = (list, key) => list.reduce((t, it) => t + (measured.get(it) || measureItem(it))[key], 0);
+  const seconds = sum(items, "seconds"), meters = sum(items, "meters"), assumed = items.some((it) => measured.get(it).assumed);
+  const before = weekItems(weekDays(addDaysIso(C.week, -7))), beforeSeconds = sum(before, "seconds");
+  const done = items.filter(isDone).length, byDay = days.map((iso) => items.filter((it) => it.date === iso).reduce((t, it) => t + measured.get(it).seconds, 0));
+  const peak = Math.max(1, ...byDay);
+  const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
+  const tile = (label, value, note) => { const d = el("div", "cws"); d.append(el("small", "", label), el("b", "", value), el("span", "", note || "")); return d; };
+  const change = seconds > 0 && beforeSeconds > 0 ? Math.round((seconds / beforeSeconds - 1) * 100) : null;
+  const box = $("cwSum"); box.replaceChildren(
+    tile("Sessions", String(items.length), done ? `${done} done` : items.length ? "planned" : "nothing planned"),
+    tile("Distance", meters > 0 ? AM.distance(+(meters / 1000).toFixed(1)).replace(/^/, assumed ? "~" : "") : "–", meters > 0 ? (assumed ? "some at an assumed pace" : "from the steps") : "no distance in the steps"),
+    tile("Time", seconds > 0 ? `${assumed ? "~" : ""}${compactTime(seconds)}` : "–", change === null ? (before.length ? "" : "last week had nothing") : change === 0 ? "same as last week" : `${change > 0 ? "▲" : "▼"} ${Math.abs(change)} % on last week`),
+  );
+  const load = el("div", "cws cwload"); load.setAttribute("role", "img");
+  load.setAttribute("aria-label", `Planned time by day: ${days.map((iso, i) => `${utcFormat({ weekday: "short" }).format(msOf(iso))} ${byDay[i] ? AM.duration(byDay[i]) : "none"}`).join(", ")}`);
+  load.append(el("small", "", "Load by day"));
+  const bars = el("div", "cwbars"); bars.setAttribute("aria-hidden", "true");
+  days.forEach((iso, i) => {
+    const col = el("div", "cwbar" + (iso === today ? " today" : "") + (byDay[i] ? "" : " none")), fill = el("i");
+    fill.style.setProperty("--h", byDay[i] ? Math.max(8, Math.round((byDay[i] / peak) * 100)) + "%" : "4px");
+    col.append(fill, el("span", "", utcFormat({ weekday: "narrow" }).format(msOf(iso))));
+    bars.append(col);
+  });
+  load.append(bars);
+  box.append(load);
+
+  // the board: a column for each day
+  const board = $("cwBoard"); board.replaceChildren();
+  days.forEach((iso) => {
+    const col = el("section", "wday" + (iso === today ? " today" : "") + (iso < today ? " past" : "") + (iso === C.selected ? " sel" : ""));
+    col.dataset.day = iso; col.setAttribute("aria-label", longDay(iso));
+    const mine = items.filter((it) => it.date === iso), total = mine.reduce((t, it) => t + measured.get(it).seconds, 0);
+    const head = el("button", "wdh"); head.type = "button"; head.setAttribute("aria-label", `${longDay(iso)}${total ? `, ${AM.duration(total)} planned` : ""}`);
+    head.append(el("span", "wdn", utcFormat({ weekday: "short" }).format(msOf(iso))), el("span", "wdd", String(Number(iso.slice(8)))), el("span", "wdt", total ? AM.duration(total) : ""));
+    head.onclick = () => { C.selected = iso; C.sel = null; renderCalendar(); };
+    col.append(head);
+    const list = el("div", "wdl");
+    for (const it of mine) list.append(weekCard(it, measured.get(it)));
+    if (!mine.length) list.append(el("div", "wrest", iso < today ? "Rest" : "Rest day"));
+    col.append(list);
+    board.append(col);
+  });
+  // on a phone the days are one under another: the week opened is brought to today (or to its top)
+  if (mobileQuery.matches && C.scrolledTo !== C.week) {
+    C.scrolledTo = C.week;
+    const target = board.querySelector(".wday.today");
+    requestAnimationFrame(() => (target ? target.scrollIntoView({ block: "start" }) : $("cview").scrollTo({ top: 0 })));
+  }
+  renderWeekSide(days, items, measured);
+}
+
+/** A workout of the week: its type, name, distance and time, its profile (a strength one says its sets), the plan it is in, and a tick when it was done. */
+function weekCard(it, m) {
+  const w = it.w, card = document.createElement("div"), done = isDone(it);
+  card.className = "wcard" + (done ? " done" : "") + (isPicked(it) ? " sel" : "") + (drag && drag.active && sameItem(drag.item, it) ? " lifted" : "");
+  chipItems.set(card, it);
+  card.style.setProperty("--c", typeColor(w.workoutType)); card.style.setProperty("--pc", it.plan.color);
+  const top = document.createElement("div"); top.className = "wct";
+  const type = document.createElement("span"); type.textContent = typeShort(w.workoutType);
+  top.append(type);
+  if (done) { const tick = document.createElement("span"); tick.className = "wdone"; tick.textContent = "✓"; tick.title = "Done"; top.append(tick); }
+  const name = document.createElement("b"); name.className = "wcn"; name.textContent = w.workoutName;
+  const meta = document.createElement("span"); meta.className = "wcm"; meta.textContent = metaOf(m, false, it) || (m.a && m.a.sets ? `${m.a.sets} sets` : "");
+  card.append(top, name, meta);
+  const graph = m.a && profileEl(m.a, { mini: true });
+  if (graph) { const g = document.createElement("div"); g.className = "wcg"; g.append(graph); card.append(g); }
+  const plan = document.createElement("span"); plan.className = "wcp"; const dot = document.createElement("i"); plan.append(dot, it.plan.name);
+  card.append(plan);
+  card.setAttribute("aria-label", [w.workoutName, prettyName(w.workoutType || "other"), metaOf(m, false, it), `in ${it.plan.name}`, longDay(it.date), done ? "done" : ""].filter(Boolean).join(", "));
+  clickable(card, () => { if (mobileQuery.matches) openPlanAt(it.plan.path, w); else { C.sel = { date: it.date, path: it.plan.path, index: w.index }; C.selected = it.date; renderCalendar(); } });
+  card.ondblclick = () => openPlanAt(it.plan.path, w);
+  const mv = document.createElement("button"); mv.type = "button"; mv.className = "wcmv"; mv.textContent = "⋯"; mv.title = "Move to another day"; mv.setAttribute("aria-label", `Move ${w.workoutName} to another day`);
+  mv.onclick = (e) => { e.stopPropagation(); openMoveMenu(mv, it.date, (to) => guard(() => moveCalendarItem(it, to))()); };
+  card.append(mv);
+  return card;
+}
+
+/** Above the board when the week has nothing: a way to the nearest week that has. */
+function renderWeekNote(days, items) {
+  const note = $("cNote"); note.replaceChildren(); note.classList.toggle("err", !!C.error);
+  if (C.error) { note.hidden = false; note.textContent = C.error; return; }
+  if (!C.loaded) { note.hidden = false; note.textContent = "Loading…"; return; }
+  if (items.length) { note.hidden = true; return; }
+  note.hidden = false;
+  const dates = [...C.byDate.keys()].sort(), before = dates.filter((d) => d < days[0]).pop(), after = dates.find((d) => d > days[6]);
+  if (!dates.length) { note.textContent = "No workout has a scheduledDate yet (YYYY-MM-DD)."; return; }
+  note.append("Nothing planned this week.");
+  for (const [date, label] of [[before, (w) => `← ${w}`], [after, (w) => `${w} →`]]) {
+    if (!date) continue;
+    const b = document.createElement("button"), monday = mondayOf(date);
+    b.type = "button"; b.textContent = label(weekTitle(weekDays(monday))); b.onclick = () => gotoWeek(monday);
+    note.append(b);
+  }
+}
+
+/** The side of the week view: the workout picked (or the day's workouts), and the plans. */
+function renderWeekSide(days, items, measured) {
+  const day = $("cDay"); day.replaceChildren();
+  const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
+  const picked = C.sel && items.find(isPicked);
+  if (!picked) C.sel = null;
+  const iso = C.selected;
+  $("cDayTitle").textContent = picked ? "Workout" : iso ? fmtDate(iso, { weekday: "long", day: "numeric", month: "long" }) : "Day";
+  if (picked) {
+    const m = measured.get(picked), w = picked.w, box = el("div", "wdet");
+    box.append(el("b", "wdtt", w.workoutName), el("div", "wdsub", `${longDay(picked.date)}${isDone(picked) ? " · done" : ""}`));
+    const line = metaOf(m, true, picked); if (line) box.append(el("div", "wdmeta", line));
+    const plan = el("div", "wdplan"); plan.style.setProperty("--pc", picked.plan.color); plan.append(el("i"), picked.plan.name); box.append(plan);
+    const graph = m.a && profileEl(m.a);
+    if (graph) { const g = el("div", "wdgraph"); g.append(graph); box.append(g); }
+    if (m.a && m.a.steps) box.append(el("div", "wdsteps", `${m.a.steps} ${m.a.steps === 1 ? "step" : "steps"}${m.a.sets ? ` · ${m.a.sets} sets` : ""}`));
+    const acts = el("div", "wdact");
+    const open = el("button", "primary", "Open plan"); open.type = "button"; open.onclick = () => openPlanAt(picked.plan.path, w);
+    const move = el("button", "", "Move…"); move.type = "button"; move.onclick = () => openMoveMenu(move, picked.date, (to) => guard(() => moveCalendarItem(picked, to))());
+    acts.append(open, move); box.append(acts);
+    day.append(box);
+  } else {
+    const mine = items.filter((it) => it.date === iso);
+    if (!mine.length) day.append(el("div", "empty", C.loaded ? "Nothing on this day." : ""));
+    for (const it of mine) {
+      const row = el("div", "citem"), sw = el("span", "sw"), n = el("span", "n", it.w.workoutName);
+      row.style.setProperty("--c", typeColor(it.w.workoutType)); row.append(sw, n, el("span"), el("small", "", `${metaOf(measured.get(it), true, it)} · ${it.plan.name}`));
+      clickable(row, () => { C.sel = { date: it.date, path: it.plan.path, index: it.w.index }; renderCalendar(); });
+      day.append(row);
+    }
+  }
+  const legend = $("cLegend"); legend.replaceChildren();
+  $("cLegendTitle").hidden = legend.hidden = false; $("cTypesTitle").hidden = $("cTypes").hidden = true;
+  for (const p of C.plans) {
+    const row = el("div", "citem"), sw = el("span", "sw" + (p.dated ? "" : " window")), n = el("span", "n", p.name);
+    row.style.setProperty("--c", p.color); row.style.setProperty("--cl", p.light || p.color); row.append(sw, n);
+    const b = el("button", "", "Open"); b.type = "button"; b.onclick = (e) => { e.stopPropagation(); openPlan(p.path); }; row.append(b);
+    row.append(el("small", "", p.start ? `${spanText(p)} · ${planNote(p)}` : "No dates yet"));
+    clickable(row, p.start ? () => gotoWeek(mondayOf(p.start > C.week ? p.start : p.end < C.week ? p.end : C.week)) : () => openPlan(p.path));
+    legend.append(row);
+  }
+  if (!C.plans.length) legend.append(el("div", "empty", C.loaded ? "No plans." : ""));
+}
+
 function renderCalendar() {
   if (!C.month) return;
+  const week = C.view === "week";
+  $("cview").classList.toggle("wk", week);
+  $("cViews").querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.view === C.view)));
+  $("cModes").hidden = week; $("cdow").hidden = $("cgrid").hidden = week; $("cweek").hidden = !week;
+  for (const [id, dir] of [["cPrev", "Previous"], ["cNext", "Next"]]) { const label = `${dir} ${week ? "week" : "month"}`; $(id).setAttribute("aria-label", label); $(id).title = label; }
+  if (week) { C.week = C.week || mondayOf(C.selected || todayIso()); return renderWeek(); }
   const weeks = gridDays(C.month), first = weeks[0][0], last = weeks[weeks.length - 1][6], today = todayIso();
   $("cTitle").textContent = monthName(C.month);
   $("cModes").querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.mode === C.mode)));
@@ -3678,6 +3954,7 @@ function renderSide() {
   $("cDayTitle").textContent = iso ? fmtDate(iso, { weekday: "long", day: "numeric", month: "long", year: "numeric" }) : "Day";
   const inPlans = iso ? C.plans.filter((p) => p.start && p.start <= iso && p.end >= iso) : [];
   const works = iso ? C.byDate.get(iso) || [] : [];
+  if (iso) { const link = el("button", "cwlink", "Open this week →"); link.type = "button"; link.onclick = () => setCalendarView("week"); day.append(link); }
   const moveButton = (it) => ({ label: "Move…", run: (b) => openMoveMenu(b, it.date, (to) => guard(() => moveCalendarItem(it, to))()) });
   const sections = [
     [`In ${inPlans.length === 1 ? "plan" : "plans"}`, inPlans.map(rowFor)],
@@ -3791,6 +4068,7 @@ const profileOfPlan = (plan) => ownerOfPath(plan.path) || plan.owner || undefine
 /** Move a workout of the calendar (`it`: its day, plan and workout) to `to`: drawn there at once, then as the files say once they are saved. */
 async function moveCalendarItem({ date, plan, w }, to) {
   w.dates = [...new Set(w.dates.map((d) => (d === date ? to : d)))].sort();
+  if (C.sel && C.sel.date === date && C.sel.path === plan.path && C.sel.index === w.index) C.sel.date = to;
   indexCalendar(); C.selected = to; renderCalendar();
   await moveWorkout({ name: w.workoutName, plans: [{ path: plan.path, index: w.index }], from: date, to, workoutId: w.workoutId, profile: profileOfPlan(plan) });
 }
@@ -3806,8 +4084,9 @@ let dropClick = false; // the click a drag ends with is not a click on what it e
 const sameItem = (a, b) => a.date === b.date && a.plan.path === b.plan.path && a.w.index === b.w.index;
 
 function pickUp(e) {
-  if (e.button !== 0 || drag || C.mode === "plans") return;
-  const chip = e.target.closest(".cbar.wk") || (e.pointerType === "mouse" ? null : chipUnder(e)), item = chip && chipItems.get(chip);
+  if (e.button !== 0 || drag || (C.view === "month" && C.mode === "plans")) return;
+  if (e.target.closest(".wcmv")) return; // the Move… button is a button
+  const chip = e.target.closest(".cbar.wk, .wcard") || (e.pointerType === "mouse" ? null : chipUnder(e)), item = chip && chipItems.get(chip);
   if (!item) return;
   drag = { item, chip, id: e.pointerId, touch: e.pointerType !== "mouse", x: e.clientX, y: e.clientY, active: false };
   if (drag.touch) drag.hold = setTimeout(lift, DRAG_HOLD_MS);
@@ -3835,7 +4114,7 @@ function lift() {
   d.ghost.style.setProperty("--c", typeColor(d.item.w.workoutType));
   document.body.append(d.ghost); document.body.classList.add("cdragging");
   d.chip.classList.add("lifted");
-  try { $("cgrid").setPointerCapture(d.id); } catch {} // the grid outlives the redraws of a turned month: it keeps the pointer's events
+  try { (d.chip.closest("#cgrid, #cwBoard") || $("cgrid")).setPointerCapture(d.id); } catch {} // the grid outlives the redraws of a turned month or week: it keeps the pointer's events
   if (d.touch && navigator.vibrate && navigator.userActivation?.hasBeenActive) navigator.vibrate(12); // a buzz under the finger (the browser allows it once the page was used)
   dragTo(d.x, d.y);
   d.scroll = requestAnimationFrame(edgeScroll);
@@ -3845,17 +4124,17 @@ function dragTo(x, y) {
   const d = drag;
   d.x = x; d.y = y;
   d.ghost.style.transform = `translate(${x + 10}px, ${y - (d.touch ? 48 : 12)}px)`; // a finger would hide it
-  const under = document.elementsFromPoint(x, y), cell = under.find((el) => el.classList.contains("cday")) || null;
+  const under = document.elementsFromPoint(x, y), cell = under.find((el) => el.classList.contains("cday") || el.classList.contains("wday")) || null;
   if (cell !== d.over) { if (d.over) d.over.classList.remove("drop"); d.over = cell; if (cell) cell.classList.add("drop"); }
   const arrow = (under.find((el) => el.id === "cPrev" || el.id === "cNext") || {}).id;
   if (arrow !== d.turnAt) { clearTimeout(d.turn); d.turnAt = arrow; if (arrow) d.turn = setTimeout(turnMonth, DRAG_TURN_MS); }
 }
 
-/** Held over ◀ or ▶, the month turns, and goes on turning while it is held there. */
+/** Held over ◀ or ▶, the month (or the week) turns, and goes on turning while it is held there. */
 function turnMonth() {
   const d = drag;
   if (!d || !d.turnAt) return;
-  gotoMonth(addMonths(C.month, d.turnAt === "cPrev" ? -1 : 1));
+  if (C.view === "week") gotoWeek(addDaysIso(C.week, d.turnAt === "cPrev" ? -7 : 7)); else gotoMonth(addMonths(C.month, d.turnAt === "cPrev" ? -1 : 1));
   d.over = null; // the days were drawn again
   d.turn = setTimeout(turnMonth, DRAG_TURN_MS);
 }
@@ -3895,12 +4174,13 @@ function endDrag() {
   clearTimeout(d.hold); clearTimeout(d.turn); cancelAnimationFrame(d.scroll);
   if (d.ghost) d.ghost.remove();
   if (d.over) d.over.classList.remove("drop");
-  document.querySelectorAll("#cgrid .lifted").forEach((c) => c.classList.remove("lifted"));
+  document.querySelectorAll("#cgrid .lifted, #cwBoard .lifted").forEach((c) => c.classList.remove("lifted"));
   document.body.classList.remove("cdragging");
 }
 
 function bindCalendarDrag() {
   $("cgrid").addEventListener("pointerdown", pickUp);
+  $("cwBoard").addEventListener("pointerdown", pickUp);
   addEventListener("pointermove", (e) => {
     const d = drag;
     if (!d || e.pointerId !== d.id) return;
@@ -6703,9 +6983,11 @@ function bindActivitiesView() {
 function bindCalendarView() {
   $("vCalendar").onclick = () => setView("calendar");
   bindActivitiesView();
-  $("cPrev").onclick = () => gotoMonth(addMonths(C.month, -1));
-  $("cNext").onclick = () => gotoMonth(addMonths(C.month, 1));
-  $("cToday").onclick = () => { C.selected = todayIso(); gotoMonth(C.selected.slice(0, 7)); };
+  const step = (n) => (C.view === "week" ? gotoWeek(addDaysIso(C.week, 7 * n)) : gotoMonth(addMonths(C.month, n)));
+  $("cPrev").onclick = () => step(-1);
+  $("cNext").onclick = () => step(1);
+  $("cToday").onclick = () => { C.selected = todayIso(); C.sel = null; if (C.view === "week") gotoWeek(mondayOf(C.selected)); else gotoMonth(C.selected.slice(0, 7)); };
+  $("cViews").querySelectorAll("button").forEach((b) => (b.onclick = () => setCalendarView(b.dataset.view)));
   $("cRefresh").onclick = guard(loadCalendar);
   $("cModes").querySelectorAll("button").forEach((b) => (b.onclick = () => { C.mode = b.dataset.mode; renderCalendar(); }));
   bindCalendarDrag();

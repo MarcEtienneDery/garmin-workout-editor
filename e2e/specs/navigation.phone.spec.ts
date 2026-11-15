@@ -55,7 +55,7 @@ async function expectInStrip(page: Page, buttonId: string) {
 const settled: Record<string, (page: Page) => Promise<void>> = {
   today: (page) => expect(page.locator("#tbody")).not.toContainText("Loading…"),
   plans: (page) => expect(page.locator("#filelist .file").first()).toBeVisible(),
-  calendar: (page) => expect(page.locator("#cgrid .cday").first()).toBeVisible(),
+  calendar: (page) => expect(page.locator("#cwBoard .wday").first()).toBeVisible(),
   activities: (page) => expect(page.locator("#alist .arow").first()).toBeVisible(),
   recovery: (page) => expect(page.locator("#rbody")).not.toContainText("Loading…"),
   weight: (page) => expect(page.locator("#bbody")).not.toContainText("Loading…"),

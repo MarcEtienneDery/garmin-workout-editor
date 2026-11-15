@@ -334,7 +334,7 @@ test.describe("alice's day", () => {
 
 const VIEWS: [string, string, string][] = [
   ["today", "#tbody .tcard", "#tbody"],
-  ["calendar", "#cgrid .cday", "#cview"],
+  ["calendar", "#cwBoard .wday", "#cview"],
   ["activities", "#aview", "#aview"],
   ["recovery", "#rview", "#rview"],
   ["weight", "#bview", "#bview"],

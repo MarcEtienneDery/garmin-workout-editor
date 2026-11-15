@@ -4,7 +4,7 @@
  * palette, and the sizes of the controls. alice's plans are read only; the Move menu needs a plan of a profile's own.
  */
 import type { Page } from "@playwright/test";
-import { test, expect, openView, type Profile } from "../support/fixtures";
+import { test, expect, openView, monthView, type Profile } from "../support/fixtures";
 
 test.describe.configure({ timeout: 60_000 });
 
@@ -22,6 +22,7 @@ const contrast = (page: Page, a: string, b: string) =>
 const style = (page: Page, selector: string, prop: string) => page.locator(selector).first().evaluate((el, p) => getComputedStyle(el).getPropertyValue(p), prop);
 
 async function openCalendar(page: Page): Promise<void> {
+  await monthView(page);
   await openView(page, "calendar");
   await expect(page.locator("#cNote")).not.toContainText("Loading", { timeout: 20_000 });
   await expect(page.locator("#cgrid .cday").first()).toBeVisible();

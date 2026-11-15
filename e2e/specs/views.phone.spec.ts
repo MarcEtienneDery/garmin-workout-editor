@@ -2,7 +2,7 @@
  * The views on a phone: Activities (list, detail pane, calendar), the Calendar, Recovery, Weight, Today and Settings. Each one fits
  * the 412 px width, its charts scale to it, and its panes move the way a phone expects. alice's data, read only.
  */
-import { test, expect, openView, type Page } from "../support/fixtures";
+import { test, expect, openView, monthView, type Page, type Profile } from "../support/fixtures";
 
 // The suite shares this machine with other runs, so a step can take longer than the default 30 s on a loaded box.
 test.setTimeout(60_000);
@@ -88,6 +88,7 @@ test.describe("Activities on a phone", () => {
 
 test.describe("the Calendar on a phone", () => {
   test("tapping a day lists its workouts below the grid", async ({ alice }) => {
+    await monthView(alice);
     await openView(alice, "calendar");
     await alice.locator("#cgrid .cday.today").tap();
     await expect(alice.locator("#cgrid .cday.sel")).toHaveCount(1);
@@ -97,6 +98,7 @@ test.describe("the Calendar on a phone", () => {
   });
 
   test("opens on Both: the workouts are dots inside their plan's bar, under its name", async ({ alice }) => {
+    await monthView(alice);
     await openView(alice, "calendar");
     await expect(alice.locator("#cModes button[data-mode=both]")).toHaveAttribute("aria-pressed", "true");
     const week = alice.locator("#cgrid .cweek").filter({ has: alice.locator(".cday.today") });
@@ -110,6 +112,7 @@ test.describe("the Calendar on a phone", () => {
   });
 
   test("a day with nothing planned says so", async ({ alice }) => {
+    await monthView(alice);
     await openView(alice, "calendar");
     // two months ahead, where no plan reaches
     await alice.locator("#cNext").tap();
@@ -119,6 +122,7 @@ test.describe("the Calendar on a phone", () => {
   });
 
   test("the month grid is seven columns that fit the width", async ({ alice }) => {
+    await monthView(alice);
     await openView(alice, "calendar");
     await expect(alice.locator("#cdow span")).toHaveCount(7);
     await expect(alice.locator("#cgrid .cday").first()).toBeVisible();
@@ -128,6 +132,7 @@ test.describe("the Calendar on a phone", () => {
   });
 
   test("the month arrows move a month, and Today comes back to this one", async ({ alice }) => {
+    await monthView(alice);
     await openView(alice, "calendar");
     const title = alice.locator("#cTitle");
     const first = (await title.textContent()) ?? "";
@@ -285,6 +290,7 @@ test.describe("Settings on a phone", () => {
 
 test.describe("the Calendar's new look on a phone", () => {
   test("the bar fits with its theme button, the month is a card that does not scroll by itself, and nothing goes sideways in either theme", async ({ alice }) => {
+    await monthView(alice);
     await openView(alice, "calendar");
     await expect(alice.locator("#cgrid .cday").first()).toBeVisible();
     for (const theme of ["dark", "light"]) {
@@ -298,10 +304,68 @@ test.describe("the Calendar's new look on a phone", () => {
   });
 
   test("the first of a month shows its whole name and number, such as Dec 1, in a cell", async ({ alice }) => {
+    await monthView(alice);
     await openView(alice, "calendar");
     const label = alice.locator("#cgrid .cday .dnum", { hasText: /^[A-Z][a-z]{2} 1$/ }).first();
     await expect(label).toBeVisible();
     const fits = await label.evaluate((el) => { const cell = el.closest(".cday")!.getBoundingClientRect(), r = el.getBoundingClientRect(); return r.left >= cell.left - 0.5 && r.right <= cell.right + 0.5 && r.height < 30; });
     expect(fits).toBe(true);
+  });
+});
+
+test.describe("the Calendar's week on a phone", () => {
+  const enc = (path: string) => `/api/file?path=${encodeURIComponent(path)}`;
+  async function openWeek(page: Page) {
+    await openView(page, "calendar");
+    await expect(page.locator("#cwBoard .wday")).toHaveCount(7);
+  }
+  async function planOf(page: Page, profile: Profile) {
+    const name = `${profile.name}-phone`, path = `workout-plans/${name}.json`;
+    const res = await profile.api.put(enc(path), { data: { text: JSON.stringify({ weekStart: "2031-09-01", weekEnd: "2031-09-07", workouts: [{ workoutName: "Morning run", workoutType: "running", scheduledDate: "2031-09-03" }] }), create: true } });
+    expect(res.status()).toBe(201);
+    await openWeek(page);
+    await page.locator("#cLegend .citem", { hasText: name }).tap();
+    await expect(page.locator("#cwBoard .wday").first()).toHaveAttribute("data-day", "2031-09-01");
+  }
+
+  test("the days are one under another with the numbers of the week on top, and nothing goes sideways in either theme", async ({ alice }) => {
+    await openWeek(alice);
+    for (const theme of ["dark", "light"]) {
+      if (theme === "light") await alice.locator("#cTheme").tap();
+      await expect(alice.locator("body")).toHaveAttribute("data-theme", theme);
+      const lefts = await alice.locator("#cwBoard .wday").evaluateAll((els) => els.map((el) => Math.round(el.getBoundingClientRect().left)));
+      expect(new Set(lefts).size).toBe(1);
+      const tops = await alice.locator("#cwBoard .wday").evaluateAll((els) => els.map((el) => Math.round(el.getBoundingClientRect().top)));
+      expect(tops).toEqual([...tops].sort((a, b) => a - b));
+      expect(new Set(tops).size).toBe(7);
+      await expect(alice.locator("#cwSum .cws")).toHaveCount(4);
+      await expect.poll(() => stickingOut(alice)).toEqual([]);
+    }
+  });
+
+  test("brings today into sight when the week opens", async ({ alice }) => {
+    await openWeek(alice);
+    await expect.poll(() => alice.locator("#cwBoard .wday.today").evaluate((el) => { const r = el.getBoundingClientRect(); return r.top >= 0 && r.top < innerHeight; })).toBe(true);
+  });
+
+  test("a tap on a card opens its plan, and the ⋯ on it is 44 px and moves the workout", async ({ me, profile }) => {
+    await planOf(me, profile);
+    const run = me.locator("#cwBoard .wcard", { hasText: "Morning run" });
+    const box = (await run.locator(".wcmv").boundingBox())!;
+    expect(box.width).toBeGreaterThanOrEqual(44);
+    expect(box.height).toBeGreaterThanOrEqual(44);
+    await run.locator(".wcmv").tap();
+    await expect(me.locator("#moveMenu")).toBeVisible();
+    await me.locator("#mvNext").tap();
+    await expect(me.locator("#toast")).toContainText("Moved Morning run to");
+    await expect(me.locator('#cwBoard .wday[data-day="2031-09-04"] .wcard')).toHaveCount(1);
+    await me.locator("#cwBoard .wcard", { hasText: "Morning run" }).tap();
+    await expect(me.locator("body")).toHaveAttribute("data-view", "plans");
+  });
+
+  test("the bar, the day headers and the cards' controls are at least 44 px", async ({ alice }) => {
+    await openWeek(alice);
+    const small = await alice.evaluate(() => [...document.querySelectorAll<HTMLElement>("#cbar button, #cwBoard .wdh, #cwBoard .wcmv")].filter((el) => el.offsetParent !== null).map((el) => [el.id || el.className || el.dataset.view || "", Math.round(el.getBoundingClientRect().height)] as const).filter(([, h]) => h < 44));
+    expect(small).toEqual([]);
   });
 });

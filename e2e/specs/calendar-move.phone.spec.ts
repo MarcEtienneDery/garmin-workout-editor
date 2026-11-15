@@ -4,7 +4,7 @@
  * once scrolls the page as before. The Move menu is a sheet across the foot of the screen. Each test makes its own profile and plan, dated in 2031.
  */
 import type { Locator, Page } from "@playwright/test";
-import { test, expect, openView, type Profile } from "../support/fixtures";
+import { test, expect, openView, monthView, type Profile } from "../support/fixtures";
 
 test.setTimeout(60_000);
 
@@ -31,6 +31,7 @@ async function savedDates(profile: Profile, path: string): Promise<unknown[]> {
 }
 
 async function openOnPlan(page: Page, plan: string) {
+  await monthView(page);
   await openView(page, "calendar");
   await expect(page.locator("#cNote")).not.toContainText("Loading", { timeout: 20_000 });
   await page.locator("#cLegend .citem", { hasText: plan }).tap();
