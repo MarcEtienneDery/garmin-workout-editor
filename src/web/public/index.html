@@ -5550,7 +5550,7 @@ function weekRing(w) {
 }
 
 /** The week of the day shown: a button a day with what it came to against its goal; a day to come cannot be opened. */
-function renderWeek(d) {
+function renderFoodWeek(d) {
   const bar = $("fweek"), strip = $("fstrip");
   bar.hidden = !(F.loaded && d && d.profile);
   strip.replaceChildren();
@@ -5580,7 +5580,7 @@ function renderFood() {
   const keep = $("fscroll").scrollTop, typing = keptFocus();
   box.replaceChildren();
   box.dataset.tab = F.tab;
-  renderDock(); renderWeek(d);
+  renderDock(); renderFoodWeek(d);
   if (!F.loaded) { box.append(mk("div", "empty", "Loading…")); return; }
   if (F.error && !d) { box.append(mk("div", "msg err", F.error)); return; }
   if (!d || !d.profile) { box.append(mk("div", "empty", "No Garmin profile is configured.")); return; }
