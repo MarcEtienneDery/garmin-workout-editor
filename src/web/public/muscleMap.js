@@ -69,6 +69,59 @@
     return { muscles, max: muscles.length ? muscles[0].score : 0, unknown };
   }
 
+  /**
+   * `tally`, with for each muscle which exercises made its score: `from` is [{ name, sets, kind }], kind "direct" for an exercise that works
+   * the muscle first and "helps" for one that only helps (it counts half). The muscles come in the order tally gives them.
+   */
+  function detail(exercises) {
+    const t = tally(exercises), by = new Map(t.muscles.map((m) => [m.id, { ...m, from: [] }]));
+    for (const { name, sets } of exercises || []) {
+      const m = musclesOf(name);
+      if (!m) continue;
+      for (const id of m.primary) by.get(id).from.push({ name, sets, kind: "direct" });
+      for (const id of m.secondary) by.get(id).from.push({ name, sets, kind: "helps" });
+    }
+    return { ...t, muscles: t.muscles.map((m) => by.get(m.id)) };
+  }
+
+  /** The muscles in four groups, for "how the work was shared": push, pull, legs, core. */
+  const GROUPS = [
+    { id: "push", label: "Push", muscles: ["chest", "frontDelts", "sideDelts", "triceps"] },
+    { id: "pull", label: "Pull", muscles: ["lats", "upperBack", "rearDelts", "biceps", "traps", "forearms"] },
+    { id: "legs", label: "Legs", muscles: ["quads", "hamstrings", "glutes", "calves", "adductors"] },
+    { id: "core", label: "Core", muscles: ["abs", "obliques", "lowerBack"] },
+  ];
+
+  /** The share of the muscle work (the scores) each group has, [{ id, label, score, pct }] with pct whole percents, 0 each when nothing was worked. */
+  function groupShares(muscles) {
+    const total = (muscles || []).reduce((a, m) => a + m.score, 0);
+    return GROUPS.map((g) => {
+      const score = (muscles || []).filter((m) => g.muscles.includes(m.id)).reduce((a, m) => a + m.score, 0);
+      return { id: g.id, label: g.label, score, pct: total ? Math.round((score / total) * 100) : 0 };
+    });
+  }
+
+  /** Every muscle that got fewer than `sets` sets (none at all included), fewest first: [{ id, label, sets }]. */
+  function fewerThan(muscles, sets) {
+    const got = new Map((muscles || []).map((m) => [m.id, m.score / PRIMARY_POINTS]));
+    return MUSCLES.map((m) => ({ id: m.id, label: m.label, sets: got.get(m.id) || 0 })).filter((m) => m.sets < sets).sort((a, b) => a.sets - b.sets || MUSCLES.findIndex((x) => x.id === a.id) - MUSCLES.findIndex((x) => x.id === b.id));
+  }
+
+  /**
+   * The sets per exercise of the sessions ({ date, exercises: [{ name, sets }] }) on the days from `from` to `to` (YYYY-MM-DD, both
+   * included), added up by exercise name: [{ name, sets }], and how many sessions that was.
+   */
+  function sumSessions(sessions, from, to) {
+    const by = new Map();
+    let count = 0;
+    for (const s of sessions || []) {
+      if (s.date < from || s.date > to) continue;
+      count++;
+      for (const x of s.exercises) by.set(x.name, (by.get(x.name) || 0) + x.sets);
+    }
+    return { exercises: [...by].map(([name, sets]) => ({ name, sets })), sessions: count };
+  }
+
   /** A muscle's score as sets: a primary set is one, a secondary set half of one. "3", "4.5". */
   const setsOf = (score) => String(Math.round((score / PRIMARY_POINTS) * 10) / 10);
 
@@ -157,5 +210,5 @@
     return `<svg class="mm-fig" viewBox="0 0 ${W} ${H}" role="img" aria-label="${view === "back" ? "Back" : "Front"} of the body" xmlns="http://www.w3.org/2000/svg">${body}<g stroke="#1e1e1e" stroke-width=".8" stroke-linejoin="round">${parts.join("")}</g></svg>`;
   }
 
-  return { MUSCLES, EXERCISES, PRIMARY_POINTS, SECONDARY_POINTS, musclesOf, tally, setsOf, fillOf, mix, figure };
+  return { MUSCLES, EXERCISES, PRIMARY_POINTS, SECONDARY_POINTS, GROUPS, musclesOf, tally, detail, groupShares, fewerThan, sumSessions, setsOf, fillOf, mix, figure };
 });
