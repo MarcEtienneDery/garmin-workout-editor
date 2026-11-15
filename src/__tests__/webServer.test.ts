@@ -557,7 +557,7 @@ describe("web plan editor", () => {
       expect(bench.history).toEqual([{ date: "2026-01-01", oneRm: 300 }, { date: "2026-07-01", oneRm: 247.5 }, { date: "2026-08-01", oneRm: 240 }, { date: "2026-09-01", oneRm: 400 }]); // the sparkline's points
       const strength = (await call("GET", "/api/activities/stats")).json.stats.strength;
       expect(strength.recent.map((s: any) => s.date)).toEqual(["2026-07-01", "2026-08-01", "2026-08-01", "2026-09-01"]); // the January session is over 120 days before the newest
-      expect(strength.recent[2].exercises).toEqual([{ name: "Dumbbell Curl", sets: 1 }]);
+      expect(strength.recent.filter((s: any) => s.date === "2026-08-01").flatMap((s: any) => s.exercises).sort((x: any, y: any) => x.name.localeCompare(y.name))).toEqual([{ name: "Barbell Bench Press", sets: 1 }, { name: "Dumbbell Curl", sets: 1 }]);
 
       // a training plan with benchmarks is not read: it changes nothing
       seed("data/MED/training-plan.json", { strengthBenchmarks: { BARBELL_BENCH_PRESS: { oneRepMax: 266 } } });
