@@ -622,6 +622,32 @@ describe("web plan editor", () => {
         expect((await call("GET", "/api/wellness?date=yesterday")).json.date).toBe(today());
       });
 
+      it("sends the readiness of each day of the week the day is in, Monday to Sunday, and of each day of the range", async () => {
+        addProfile("MED");
+        fill("MED", 60);
+        const monday = (day: string) => new Date(Date.parse(`${day}T00:00:00Z`) - ((new Date(`${day}T00:00:00Z`).getUTCDay() + 6) % 7) * 86_400_000).toISOString().slice(0, 10);
+        const out = (await call("GET", `/api/wellness?date=${dayOf(10)}&days=14`)).json;
+        expect(out.week).toHaveLength(7);
+        expect(out.week[0].day).toBe(monday(dayOf(10)));
+        expect(new Date(`${out.week[0].day}T00:00:00Z`).getUTCDay()).toBe(1);
+        expect(out.week.map((d: any) => d.day)).toContain(dayOf(10));
+        for (const d of out.week) expect(d).toEqual({ day: d.day, band: expect.stringMatching(/go-harder|as-planned|back-off/), score: expect.any(Number) });
+        expect(out.readinessDays).toHaveLength(14); // one for each day of the range
+        expect(out.readinessDays[13]).toEqual({ day: dayOf(10), band: out.readiness.band, score: out.readiness.score });
+        expect(out.readinessDays[0].day).toBe(dayOf(23));
+      });
+
+      it("has no verdict for a day of the week still to come, and the week of a profile with nothing stored is all unknown", async () => {
+        addProfile("MED");
+        const empty = (await call("GET", "/api/wellness")).json;
+        expect(empty.week).toHaveLength(7);
+        expect(empty.week.every((d: any) => d.band === "unknown" && d.score === null)).toBe(true);
+        fill("MED", 60);
+        const week = (await call("GET", "/api/wellness")).json.week;
+        for (const d of week) if (d.day > today()) expect(d).toEqual({ day: d.day, band: "unknown", score: null });
+        expect(week.find((d: any) => d.day === today())).toEqual(expect.objectContaining({ band: expect.stringMatching(/go-harder|as-planned|back-off/) }));
+      });
+
       it("keeps one profile's data from another's", async () => {
         addProfile("MED");
         addProfile("SAM");

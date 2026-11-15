@@ -3,7 +3,7 @@
  * days of a range with the person's own normal. The MCP tools and the web view both answer from these, so they cannot disagree.
  */
 import { type BodyTrend, bodyTrend } from "./bodyTrend";
-import { BASELINE_DAYS, baselines, computeReadiness, dayIntensityMinutes, type Readiness } from "./readiness";
+import { BASELINE_DAYS, type Band, baselines, computeReadiness, dayIntensityMinutes, type Readiness } from "./readiness";
 import { toWeighIn } from "./renphoFit";
 import { type DayMetrics, type SqliteStore, emptyDayMetrics } from "./store";
 import { addDays } from "./wellnessSync";
@@ -16,6 +16,30 @@ export function readinessAt(store: SqliteStore, profile: string, date: string): 
   const metrics = store.wellness.metrics(profile, addDays(date, -LOAD_DAYS), date); // the load looks 31 days back, the baselines 28
   const load = store.activities.loadRows(profile, `${addDays(date, -LOAD_DAYS)} 00:00:00`);
   return { readiness: computeReadiness(metrics, load, date), daysStored: metrics.filter((m) => m.day >= addDays(date, -BASELINE_DAYS)).length };
+}
+
+/** How ready a day was, as the week strip and the trend show it: the band and the score (null when the day cannot be judged). */
+export interface ReadinessDay {
+  day: string;
+  band: Band;
+  score: number | null;
+}
+
+/**
+ * The readiness of each day from `from` to `to`, oldest first, worked out from one read of the stored days and one of the activities.
+ * Each day is what `readinessAt` says of it: a day reads only the days before it.
+ */
+export function readinessDays(store: SqliteStore, profile: string, from: string, to: string): ReadinessDay[] {
+  if (from > to) return [];
+  const start = addDays(from, -LOAD_DAYS);
+  const metrics = store.wellness.metrics(profile, start, to);
+  const load = store.activities.loadRows(profile, `${start} 00:00:00`);
+  const days: ReadinessDay[] = [];
+  for (let day = from; day <= to; day = addDays(day, 1)) {
+    const { band, score } = computeReadiness(metrics, load, day);
+    days.push({ day, band, score });
+  }
+  return days;
 }
 
 /** The stored days from `from` to `to`, oldest first, with the person's own normal over the 28 days before `to`. */

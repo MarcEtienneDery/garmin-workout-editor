@@ -93,7 +93,7 @@ import { fetchChartNow, fetchDetailsNow, refreshActivities, startBackgroundSync 
 import { diffPlanWorkout, extractWorkouts, validatePlanData } from "../mcp/tools/plans";
 import { MAX_SCAN_BYTES, activePlanDocs, isExportSnapshot } from "../shared/planDocs";
 import { refreshWellness, rereadWeighIns, startBackgroundWellness, wellnessSyncStatus } from "../mcp/tools/wellness";
-import { bodyRange, dayTrend, intensityWeek, readinessAt, wellnessRange } from "../shared/wellnessReport";
+import { bodyRange, dayTrend, intensityWeek, readinessAt, readinessDays, wellnessRange } from "../shared/wellnessReport";
 import { SettingsError, createProfile, removeGarminLogin, removeRenpho, saveGarminLogin, savePrefs, saveRenpho, saveWebPassword, settingsView } from "../shared/accounts";
 import exerciseCategoryMap from "../exercise-category-map.json";
 import { recentFit, testRenphoLogin } from "../shared/renphoSync";
@@ -1130,6 +1130,14 @@ async function foodAiCall<T>(ask: () => Promise<T>): Promise<T> {
 }
 
 /** What the Food view shows: one day with its meals, the days of a range for the trend, the foods the form offers again, and whether the AI box works. */
+/** How ready each day of the week (Monday to Sunday) that has `date` was; a day to come cannot be judged, so it has no band. */
+function readinessWeek(profile: string, date: string, today: string) {
+  const monday = addDays(date, -((new Date(`${date}T00:00:00Z`).getUTCDay() + 6) % 7)), sunday = addDays(monday, 6);
+  const known = readinessDays(store(), profile, monday, sunday < today ? sunday : today);
+  const byDay = new Map(known.map((d) => [d.day, d]));
+  return Array.from({ length: 7 }, (_, i) => { const day = addDays(monday, i); return byDay.get(day) ?? { day, band: "unknown" as const, score: null }; });
+}
+
 /** The calories of each day of the week (Monday to Sunday) that has `date`, with the day's goal: the totals only, the foods are in the day shown. */
 function weekOf(profile: string, date: string, today: string, goals: ReturnType<typeof getGoals>) {
   const monday = addDays(date, -((new Date(`${date}T00:00:00Z`).getUTCDay() + 6) % 7));
@@ -1354,6 +1362,8 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
         profile, today, date,
         ...readinessAt(store(), profile, date),
         ...wellnessRange(store(), profile, addDays(date, -(days - 1)), date),
+        week: readinessWeek(profile, date, today),
+        readinessDays: readinessDays(store(), profile, addDays(date, -(days - 1)), date),
         stored: store().wellness.rowsOfDay(profile, date),
         sync: wellnessSyncStatus(profile, Math.max(0, Math.round((Date.parse(today) - Date.parse(date)) / 86_400_000)) + days), // all the days the page shows
       });
