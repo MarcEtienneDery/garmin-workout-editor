@@ -84,9 +84,16 @@
     return [...counts].sort((a, b) => compare(a[0], b[0])).map(([path, count]) => ({ path, count }));
   }
 
+  /** How many rows each status of the strip above the list holds: all, attention, ok, notuploaded, garminonly, and checking while Garmin has not answered. */
+  function statusCounts(rows, stateOf) {
+    const counts = { all: rows.length, attention: 0, ok: 0, notuploaded: 0, garminonly: 0, checking: 0 };
+    for (const r of rows) counts[GROUP[stateOf(r)] || "checking"]++;
+    return counts;
+  }
+
   /** Is any filter set (the search included)? */
   const isFiltered = ({ query, status, plan, types, upcoming } = {}) =>
     !!((query || "").trim() || (status && status !== "all") || (plan && plan !== "all") || (types && types.size) || upcoming);
 
-  return { SORTS, GROUP, sortRows, filterRows, typeCounts, planCounts, nextDate, isFiltered };
+  return { SORTS, GROUP, sortRows, filterRows, typeCounts, planCounts, nextDate, isFiltered, statusCounts };
 });
