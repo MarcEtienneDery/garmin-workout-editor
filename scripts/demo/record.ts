@@ -327,6 +327,8 @@ const SCENES: Scene[] = [
       await s.pause(1800);
       await s.scroll(page.locator("#rbody"), 520, 1200);
       await s.pause(600);
+      // the trend charts are on the Trends tab
+      await s.click(page.locator("#rTabs").getByRole("button", { name: "Trends", exact: true }), { wait: 1200 });
       const chart = page.locator("#rbody svg.rcsvg").first();
       await s.sweep(chart, 0.05, 0.95, 3000);
       await s.pause(400);
