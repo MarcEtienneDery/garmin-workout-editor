@@ -917,7 +917,7 @@
   .amap .leaflet-control-attribution { background:color-mix(in srgb, var(--panel) 85%, transparent); color:var(--dim); font-size:10px; }
   .amap .leaflet-control-attribution a { color:var(--t-ink); }
   .amapkey { display:flex; align-items:center; gap:10px; margin-top:8px; font-size:12px; color:var(--dim); }
-  .aramp { display:block; flex:0 0 90px; height:6px; border-radius:9px; background:linear-gradient(90deg, var(--ok), var(--warn), var(--err)); }
+  .aramp { display:block; flex:0 0 90px; height:6px; border-radius:9px; background:linear-gradient(90deg, var(--err), var(--warn), var(--ok)); }
   .alaps .abars { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:0 32px; }
   #aview .abarrow { grid-template-columns:26px minmax(3.4em,auto) minmax(40px,1fr) auto; gap:4px 12px; padding:8px 0; border-top:1px solid var(--line); }
   #aview .abarrow .abl { font:600 12px "Fira Code",ui-monospace,monospace; color:var(--dim); }
@@ -5086,7 +5086,7 @@ function actCard(cls, title, aside) {
 /** A figure of the hero: the value (a number and its unit, split on the last space), and what it is. */
 function actFigure(text, label) {
   const f = mk("div", "afig"), b = mk("b"), i = String(text).lastIndexOf(" ");
-  if (i > 0 && /^[\d.,:−-]+$/.test(String(text).slice(0, i))) b.append(String(text).slice(0, i), mk("em", "", String(text).slice(i + 1)));
+  if (i > 0 && /^[\d.,:−-]+$/.test(String(text).slice(0, i))) b.append(String(text).slice(0, i), " ", mk("em", "", String(text).slice(i + 1)));
   else b.append(String(text));
   f.append(b, mk("small", "", label));
   return f;
@@ -5147,8 +5147,9 @@ function actHero(d) {
   }
   for (const [value, label] of hero) if (value) figs.append(actFigure(value, label));
   const pill = (label, value) => { if (value !== null && value !== undefined && value !== "" && !skip.has(label)) { const m = mk("span", "amini"); m.append(label, " ", mk("b", "", String(value))); minis.append(m); } };
-  if (key !== "str") { pill("Max HR", r.maxHr && `${r.maxHr}`); pill("Cadence", s.avgCadence && `${Math.round(s.avgCadence)} spm`); pill("Calories", r.calories && `${r.calories}`); }
-  else pill("Max HR", r.maxHr && `${r.maxHr}`);
+  pill("Max HR", r.maxHr && `${r.maxHr} bpm`);
+  if (key !== "str") { pill("Cadence", s.avgCadence && `${Math.round(s.avgCadence)} spm`); pill("Calories", r.calories && `${r.calories} kcal`); }
+  pill("Training effect", r.effect && prettyName(r.effect));
   pill("Body Battery", s.differenceBodyBattery !== undefined ? s.differenceBodyBattery : "");
   pill("Moderate + vigorous", s.moderateIntensityMinutes || s.vigorousIntensityMinutes ? `${s.moderateIntensityMinutes || 0} + ${s.vigorousIntensityMinutes || 0} min` : "");
   extraStats(d, (value, label) => pill(label, value));
@@ -5225,15 +5226,15 @@ function routeSection(c, g, box) {
   const seg = mk("div", "seg sm amapmodes"), holder = mk("div", "amap");
   const card = actCard("aroute", "Route", seg);
   let by = "pace";
+  const keyBar = mk("div", "amapkey amapbar");
   for (const [key, label] of [["pace", "Pace"], ["hr", "Heart rate"], ["none", "Plain"]]) {
     const b = mk("button", "", label); b.dataset.by = key; b.type = "button";
     b.setAttribute("aria-pressed", String(key === by));
-    b.onclick = () => { by = key; [...seg.children].forEach((x) => x.setAttribute("aria-pressed", String(x.dataset.by === by))); if (A.map) A.map.recolor(by); };
+    b.onclick = () => { by = key; keyBar.style.display = by === "none" ? "none" : ""; [...seg.children].forEach((x) => x.setAttribute("aria-pressed", String(x.dataset.by === by))); if (A.map) A.map.recolor(by); };
     seg.append(b);
   }
-  const key = mk("div", "amapkey amapbar"), ramp = mk("i", "aramp");
-  key.append("Slower or harder", ramp, "faster or easier");
-  card.append(holder, key);
+  keyBar.append(mk("span", "", "Slower or harder"), mk("i", "aramp"), mk("span", "", "faster or easier"));
+  card.append(holder, keyBar);
   box.append(card);
   const token = A.detailRun;
   ActivityMap.create(holder, c, { colorBy: by, onCursor: (j) => g.setCursor(j === null ? null : AM.chartIndexFor(c, j)) })
@@ -5289,7 +5290,7 @@ function chartSection(d, box) {
 function actExerciseBlock(entries, oneRm) {
   const x = entries[0], runs = entries.flatMap((e) => AM.setRuns(e)), count = runs.reduce((a, r) => a + r.count, 0), max = oneRm && oneRm.oneRm > 0 ? oneRm : null;
   const block = mk("div", "aex"), head = mk("div", "aexh"), chips = mk("div", "aexc");
-  head.append(mk("span", "aexn", x.exerciseName), mk("span", "aext", [entries.some((e) => e.supersetGroup) ? "superset" : "", `${count} set${count === 1 ? "" : "s"}`, max ? `est. 1RM ${lb(max.oneRm)}` : ""].filter(Boolean).join(" · ")));
+  head.append(mk("span", "aexn", x.exerciseName), mk("span", "aext", [entries.some((e) => e.supersetGroup) ? "superset" : "", `${count} set${count === 1 ? "" : "s"}`, max ? `est. 1RM ${lb(Math.round(max.oneRm))}` : ""].filter(Boolean).join(" · ")));
   for (const run of runs) {
     const text = AM.runText(run, lb);
     if (!text) continue;
@@ -5376,7 +5377,7 @@ function renderActivityDetail() {
     for (const [name, entries] of byName) list.append(actExerciseBlock(entries, d.oneRepMax && d.oneRepMax[name]));
     card.append(list);
     box.append(card);
-    if (d.chart) chartSection(d, box);
+    chartSection(d, box);
   }
 
   // the watch's laps say more than the intervals Garmin summarises, so the table is for activities without them

@@ -25,8 +25,9 @@ const exact = (s: string) => new RegExp(`^${s.replace(/[.*+?^${}()|[\]\\]/g, "\\
 const longDate = (iso: string) => new Intl.DateTimeFormat("en-CA", { timeZone: "UTC", weekday: "long", month: "long", day: "numeric", year: "numeric" }).format(new Date(`${iso}T00:00:00Z`));
 const rowNamed = (page: Page, name: string) => page.locator("#alist .arow").filter({ has: page.locator(".nm", { hasText: exact(name) }) });
 /** The value of one figure of the summary, by its label. */
-const figure = (page: Page, label: string) => page.locator("#abody .astats > div", { has: page.locator("small", { hasText: exact(label) }) }).locator("b");
-const figureLabels = (page: Page) => page.locator("#abody .astats > div small").allInnerTexts();
+const figure = (page: Page, label: string) =>
+  page.locator("#abody .afig", { has: page.locator("small", { hasText: exact(label) }) }).locator("b").or(page.locator("#abody .amini", { hasText: new RegExp(`^${label}\\b`) }).locator("b"));
+const figureLabels = (page: Page) => page.locator("#abody .afig small").allInnerTexts();
 
 /** Open the Activities view and select a row by its name, then wait until its page is drawn. */
 async function openActivity(page: Page, name: string) {
@@ -70,10 +71,10 @@ test.describe("opening an activity", () => {
     await openActivity(alice, "Easy run");
     await expect(figure(alice, "Distance")).toHaveText(`${d.activity.km} km`);
     await expect(figure(alice, "Time")).toHaveText("40 min");
-    await expect(figure(alice, "Pace")).toHaveText("5:03 /km");
-    await expect(figure(alice, "Average HR")).toHaveText(`${d.activity.avgHr} bpm`);
+    await expect(figure(alice, "Average pace")).toHaveText("5:03 /km");
+    await expect(figure(alice, "Average heart rate")).toHaveText(`${d.activity.avgHr} bpm`);
     await expect(figure(alice, "Max HR")).toHaveText(`${d.activity.maxHr} bpm`);
-    await expect(figure(alice, "Elevation")).toHaveText(`${d.activity.elevation} m`);
+    await expect(figure(alice, "Elevation gain")).toHaveText(`${d.activity.elevation} m`);
     await expect(figure(alice, "Calories")).toHaveText(`${d.activity.calories} kcal`);
   });
 
@@ -81,11 +82,11 @@ test.describe("opening an activity", () => {
     const d = await detailOf(alice, "9018");
     await openActivity(alice, "Easy run");
     await expect(figure(alice, "Training effect")).toHaveText("Aerobic Base");
-    await expect(figure(alice, "RPE")).toHaveText("50 / 100");
+    await expect(alice.locator("#abody .aeffect .aeff", { hasText: "Perceived effort (RPE)" }).locator("b")).toHaveText("50 / 100");
     await expect(figure(alice, "Lowest HR")).toHaveText(`${d.stats.minHr} bpm`);
     // a figure the activity does not have is not shown at all, rather than as a dash
-    await expect(figureLabels(alice)).not.toContain("Aerobic effect");
-    await expect(figureLabels(alice)).not.toContain("Feel");
+    await expect(alice.locator("#abody .aeffect")).not.toContainText("Aerobic effect");
+    await expect(alice.locator("#abody .aeffect")).not.toContainText("Feel");
   });
 
   test("the page starts on a prompt to select an activity", async ({ alice }) => {
@@ -181,7 +182,7 @@ test.describe("what the page of a run with details shows", () => {
   // The seed's list item carries hrTimeInZone_1..5, as Garmin's list does, so the Easy run has its zone block; the chart fetch's zones add the bpm ranges.
   test("the heart-rate zone bar shows the time in each of the five zones", async ({ alice }) => {
     await openActivity(alice, "Easy run");
-    await expect(alice.locator("#abody h3", { hasText: exact("Heart-rate zones") })).toBeVisible();
+    await expect(alice.locator("#abody .acard.azones .aeyebrow")).toHaveText("Heart-rate zones");
     await expect(alice.locator("#abody .azstack .azseg")).toHaveCount(5);
     await expect(alice.locator("#abody .azlegend .azitem")).toHaveCount(5);
     await expect(alice.locator("#abody .azlegend .azitem").first()).toContainText("Z1 105–120 bpm: 5 min · 13%");
@@ -197,7 +198,7 @@ test.describe("what the page of a run with details shows", () => {
       await route.fulfill({ response, json: body });
     });
     await openActivity(alice, "Easy run");
-    await expect(alice.locator("#abody h3", { hasText: exact("Heart-rate zones") })).toBeVisible();
+    await expect(alice.locator("#abody .acard.azones .aeyebrow")).toHaveText("Heart-rate zones");
     await expect(alice.locator("#abody .azstack .azseg")).toHaveCount(5);
     await expect(alice.locator("#abody .azlegend .azitem")).toHaveCount(5);
     await expect(alice.locator("#abody .azlegend .azitem").first()).toContainText("Z1 105–120 bpm: 25 min · 33%");
@@ -212,6 +213,7 @@ test.describe("what the page of a run with details shows", () => {
   test("hovering a graph reads the value and the place at that point, and leaving clears it", async ({ alice }) => {
     await openActivity(alice, "Easy run");
     const svg = alice.locator("#abody .acp").first().locator("svg.acsvg");
+    await svg.scrollIntoViewIfNeeded();
     const box = (await svg.boundingBox())!;
     await alice.mouse.move(box.x + box.width * 0.5, box.y + box.height * 0.5);
     await expect(alice.locator("#abody .acread")).toHaveText(/^\d+(\.\d+)? km · \d+:\d{2}$/);
@@ -254,15 +256,18 @@ test.describe("what the page of a run with details shows", () => {
     await blockTiles(alice);
     await openActivity(alice, "Easy run");
     const paths = alice.locator("#abody .leaflet-overlay-pane path");
-    await expect(alice.locator("#abody .amapbar .seg button", { hasText: "Pace" })).toHaveAttribute("aria-pressed", "true");
+    await expect(alice.locator("#abody .amapmodes button", { hasText: "Pace" })).toHaveAttribute("aria-pressed", "true");
     await expect(paths).not.toHaveCount(3); // one segment per stretch of the track, coloured
-    await alice.locator("#abody .amapbar .seg button", { hasText: "Plain" }).click();
-    await expect(alice.locator("#abody .amapbar .seg button", { hasText: "Plain" })).toHaveAttribute("aria-pressed", "true");
+    await alice.locator("#abody .amapmodes button", { hasText: "Plain" }).click();
+    await expect(alice.locator("#abody .amapmodes button", { hasText: "Plain" })).toHaveAttribute("aria-pressed", "true");
     await expect(paths).toHaveCount(3); // one line and the two end marks
-    await alice.locator("#abody .amapbar .seg button", { hasText: "Heart rate" }).click();
-    await expect(alice.locator("#abody .amapbar .seg button", { hasText: "Heart rate" })).toHaveAttribute("aria-pressed", "true");
+    await alice.locator("#abody .amapmodes button", { hasText: "Heart rate" }).click();
+    await expect(alice.locator("#abody .amapmodes button", { hasText: "Heart rate" })).toHaveAttribute("aria-pressed", "true");
     await expect(paths).not.toHaveCount(3);
-    await expect(alice.locator("#abody .amapbar small")).toHaveText("Red is slower or harder, green is faster or easier.");
+    await expect(alice.locator("#abody .amapbar")).toContainText("Slower or harder");
+    await expect(alice.locator("#abody .amapbar")).toContainText("faster or easier");
+    await alice.locator("#abody .amapmodes button", { hasText: "Plain" }).click();
+    await expect(alice.locator("#abody .amapbar")).toBeHidden(); // no colour, no key
   });
 
   test("the start and the finish of the route are marked on the map", async ({ alice }) => {
@@ -280,6 +285,7 @@ test.describe("what the page of a run with details shows", () => {
     await expect(alice.locator("#abody .leaflet-overlay-pane path").first()).toBeAttached();
     await expect(cursor).toHaveCount(0);
     const svg = alice.locator("#abody .acp").first().locator("svg.acsvg");
+    await svg.scrollIntoViewIfNeeded();
     const box = (await svg.boundingBox())!;
     await alice.mouse.move(box.x + box.width * 0.5, box.y + box.height * 0.5);
     await expect(cursor).toHaveCount(1);
@@ -288,19 +294,19 @@ test.describe("what the page of a run with details shows", () => {
   test("the planned workout the run came from is linked, with what was planned against what was done", async ({ alice }) => {
     await blockTiles(alice);
     await openActivity(alice, "Easy run");
-    await expect(alice.locator("#abody h3", { hasText: "Planned workout" })).toBeVisible();
+    await expect(alice.locator("#abody .aplanned .aeyebrow")).toHaveText("Planned against done");
     await expect(alice.locator("#abody a", { hasText: "Easy run · alice-run-block" })).toBeVisible();
-    const rows = alice.locator("#abody table.atable tr");
-    await expect(rows).toHaveCount(3);
-    const time = rows.nth(1), distance = rows.nth(2);
-    await expect(time.locator("td").nth(0)).toHaveText("Time");
-    await expect(time.locator("td").nth(1)).toHaveText(/^~\d+ min$/);
-    await expect(time.locator("td").nth(2)).toHaveText("40 min");
-    await expect(time.locator("td").nth(3)).toHaveText(/^-\d+%$/);
-    await expect(distance.locator("td").nth(0)).toHaveText("Distance");
-    await expect(distance.locator("td").nth(1)).toHaveText("~8 km");
-    await expect(distance.locator("td").nth(2)).toHaveText("8 km");
-    await expect(distance.locator("td").nth(3)).toHaveText("0%");
+    const bars = alice.locator("#abody .aplanned .abul");
+    await expect(bars).toHaveCount(2);
+    const distance = bars.nth(0), time = bars.nth(1);
+    await expect(distance.locator(".abl span")).toHaveText("Distance");
+    await expect(distance.locator(".abl b")).toHaveText("8 km");
+    await expect(distance.locator(".abn span").first()).toHaveText("planned ~8 km");
+    await expect(distance.locator(".abn span").last()).toHaveText("0%");
+    await expect(time.locator(".abl span")).toHaveText("Time");
+    await expect(time.locator(".abl b")).toHaveText("40 min");
+    await expect(time.locator(".abn span").first()).toHaveText(/^planned ~\d+ min$/);
+    await expect(time.locator(".abn span").last()).toHaveText(/^-\d+%$/);
   });
 
   test("the planned workout's name opens it in the Plans view, with that workout in the outline", async ({ alice }) => {
@@ -313,7 +319,7 @@ test.describe("what the page of a run with details shows", () => {
 
   test("a run that came from no plan has no planned section", async ({ alice }) => {
     await openActivity(alice, "Morning run 9000");
-    await expect(alice.locator("#abody h3", { hasText: "Planned workout" })).toHaveCount(0);
+    await expect(alice.locator("#abody .aplanned")).toHaveCount(0);
   });
 
   test("the page of the Easy run has no button to fetch from Garmin", async ({ alice }) => {
@@ -327,10 +333,10 @@ test.describe("what the page of a run without stored details shows", () => {
   test("the run opens with its summary, and says that the details and the graphs are not stored", async ({ alice }) => {
     await openActivity(alice, "Morning run 9000");
     await expect(figure(alice, "Distance")).toHaveText("7 km");
-    await expect(figure(alice, "Pace")).toHaveText("5:03 /km");
-    await expect(figure(alice, "Average HR")).toHaveText("148 bpm");
+    await expect(figure(alice, "Average pace")).toHaveText("5:03 /km");
+    await expect(figure(alice, "Average heart rate")).toHaveText("148 bpm");
     await expect(alice.locator("#abody .anote").first()).toHaveText("The details (feel, RPE, sets, intervals) are not stored yet.");
-    await expect(alice.locator("#abody h3", { hasText: "Graphs" })).toBeVisible();
+    await expect(alice.locator("#abody .agraphs .aeyebrow")).toHaveText("Graphs");
     await expect(alice.locator("#abody .anote", { hasText: "The graphs are not stored yet." })).toBeVisible();
     await expect(alice.locator("#abody .acg")).toHaveCount(0);
     await expect(alice.locator("#abody .amap")).toHaveCount(0);
@@ -360,24 +366,23 @@ test.describe("what the page of a strength session with its sets stored shows", 
   // the seed stores the sets of two gym sessions: 3 × 5 squats at 100 kg (90 kg in the other) and 3 × 8 bench presses at 70 kg
   test("the exercises list each exercise with its sets, reps and weight", async ({ alice }) => {
     await openActivity(alice, "Gym session 9019");
-    const exercises = alice.locator("#abody h3", { hasText: exact("Exercises") }).locator("+ .aexs .aex");
+    const exercises = alice.locator("#abody .aexercises .aex");
     await expect(exercises).toHaveCount(2);
     await expect(exercises.nth(0).locator(".aexn")).toHaveText("Barbell Back Squat");
-    await expect(exercises.nth(0).locator(".aext")).toHaveText("3 sets");
-    await expect(exercises.nth(0).locator(".aexchip")).toHaveText("3 × 5 @ 220 lb");
+    await expect(exercises.nth(0).locator(".aext")).toHaveText("3 sets · est. 1RM 257 lb");
+    await expect(exercises.nth(0).locator(".aexchip")).toHaveText("3 × 5 @ 220 lb 86 %");
     await expect(exercises.nth(1).locator(".aexn")).toHaveText("Barbell Bench Press");
-    await expect(exercises.nth(1).locator(".aexchip")).toHaveText("3 × 8 @ 154 lb");
+    await expect(exercises.nth(1).locator(".aexchip")).toHaveText("3 × 8 @ 154 lb 79 %");
   });
 
-  test("% of 1RM gives each exercise's estimated one-rep max and the share each set is of it", async ({ alice }) => {
+  test("each exercise gives its estimated one-rep max, the share each run of sets is of it, and the set it was worked out from", async ({ alice }) => {
     await openActivity(alice, "Gym session 9019");
-    const lifts = alice.locator("#abody h3", { hasText: exact("% of 1RM") }).locator("+ .aexs .aex");
-    await expect(lifts).toHaveCount(2);
-    await expect(lifts.nth(0).locator(".aext")).toHaveText("est. 1RM 257 lb");
-    await expect(lifts.nth(0).locator(".aexchip")).toHaveText("3 × 86% · 220 lb");
+    const lifts = alice.locator("#abody .aexercises .aex");
+    await expect(lifts.nth(0).locator(".aext")).toContainText("est. 1RM 257 lb");
+    await expect(lifts.nth(0).locator(".aexchip.b2")).toHaveText("3 × 5 @ 220 lb 86 %"); // 80 to 90 % is the third band
     await expect(lifts.nth(0).locator(".aexnote")).toHaveText(/^from 5 @ 220 lb on \d{4}-\d{2}-\d{2}$/);
-    await expect(lifts.nth(1).locator(".aext")).toHaveText("est. 1RM 195 lb");
-    await expect(lifts.nth(1).locator(".aexchip")).toHaveText("3 × 79% · 154 lb");
+    await expect(lifts.nth(1).locator(".aext")).toContainText("est. 1RM 195 lb");
+    await expect(lifts.nth(1).locator(".aexchip.b1")).toHaveText("3 × 8 @ 154 lb 79 %");
   });
 
   test("in kg, the weights are the kilos lifted: 100 kg, not the 99.8 that its whole pounds (220) would make", async ({ alice }) => {
@@ -387,25 +392,25 @@ test.describe("what the page of a strength session with its sets stored shows", 
       await route.fulfill({ json: { ...info, prefs: { ...info.prefs, alice: { ...info.prefs?.alice, weightUnit: "kg" } } } });
     });
     await openActivity(alice, "Gym session 9019");
-    const exercises = alice.locator("#abody h3", { hasText: exact("Exercises") }).locator("+ .aexs .aex");
-    await expect(exercises.nth(0).locator(".aexchip")).toHaveText("3 × 5 @ 100 kg");
-    await expect(exercises.nth(1).locator(".aexchip")).toHaveText("3 × 8 @ 70 kg");
-    const lifts = alice.locator("#abody h3", { hasText: exact("% of 1RM") }).locator("+ .aexs .aex");
-    await expect(lifts.nth(0).locator(".aexchip")).toHaveText("3 × 86% · 100 kg");
-    await expect(lifts.nth(0).locator(".aexnote")).toHaveText(/^from 5 @ 100 kg on \d{4}-\d{2}-\d{2}$/);
+    const exercises = alice.locator("#abody .aexercises .aex");
+    await expect(exercises.nth(0).locator(".aexchip")).toHaveText("3 × 5 @ 100 kg 86 %");
+    await expect(exercises.nth(1).locator(".aexchip")).toHaveText("3 × 8 @ 70 kg 79 %");
+    await expect(exercises.nth(0).locator(".aexnote")).toHaveText(/^from 5 @ 100 kg on \d{4}-\d{2}-\d{2}$/);
   });
 
   test("the muscles worked count the sets each muscle gets, with a scale from fewer to more", async ({ alice }) => {
     await openActivity(alice, "Gym session 9019");
-    await expect(alice.locator("#abody h3", { hasText: exact("Muscles worked") })).toBeVisible();
-    await expect(alice.locator("#abody")).toContainText("Chest");
-    await expect(alice.locator("#abody")).toContainText("Quads");
-    await expect(alice.locator("#abody")).toContainText("fewer sets");
+    await expect(alice.locator("#abody .ammc .aeyebrow").first()).toHaveText("Muscles worked · sets");
+    await alice.locator("#abody .ammt").click(); // the card is compact until the rest is asked for
+    await expect(alice.locator("#abody .ammc")).toHaveClass(/open/);
+    await expect(alice.locator("#abody .ammrow", { hasText: "Chest" })).toBeVisible();
+    await expect(alice.locator("#abody .ammrow", { hasText: "Quads" })).toBeVisible();
+    await expect(alice.locator("#abody .ammread")).toContainText("Darker means more sets");
   });
 
   test("the session's own rating of effort shows, and its graphs say they are not stored", async ({ alice }) => {
     await openActivity(alice, "Gym session 9019");
-    await expect(figure(alice, "RPE")).toHaveText("60 / 100");
+    await expect(alice.locator("#abody .aeffect .aeff", { hasText: "Perceived effort (RPE)" }).locator("b")).toHaveText("60 / 100");
     await expect(alice.locator("#abody")).toContainText("The graphs are not stored yet.");
   });
 });
@@ -415,17 +420,16 @@ test.describe("what the page of a strength session shows", () => {
     await openActivity(alice, "Gym session 9019");
     await expect(alice.locator("#abody .ahead")).toContainText(`Strength Training · ${longDate(daysAgo(3))}, 18:00`);
     await expect(figure(alice, "Time")).toHaveText("50 min");
-    await expect(figure(alice, "Average HR")).toHaveText("148 bpm");
+    await expect(figure(alice, "Average heart rate")).toHaveText("148 bpm");
     await expect(figureLabels(alice)).not.toContain("Distance");
-    await expect(figureLabels(alice)).not.toContain("Pace");
+    await expect(figureLabels(alice)).not.toContain("Average pace");
   });
 
   test("a strength session without stored details has no exercise sections and no graphs", async ({ alice }) => {
     await openActivity(alice, "Gym session 9020");
     await expect(alice.locator("#abody .anote").first()).toHaveText("The details (feel, RPE, sets, intervals) are not stored yet.");
-    await expect(alice.locator("#abody h3", { hasText: "Exercises" })).toHaveCount(0);
-    await expect(alice.locator("#abody h3", { hasText: "Muscles worked" })).toHaveCount(0);
-    await expect(alice.locator("#abody h3", { hasText: "% of 1RM" })).toHaveCount(0);
+    await expect(alice.locator("#abody .aexercises")).toHaveCount(0);
+    await expect(alice.locator("#abody .ammc")).toHaveCount(0);
     await expect(alice.locator("#abody .acg")).toHaveCount(0);
   });
 });
