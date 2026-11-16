@@ -507,13 +507,16 @@ async function main() {
   fs.mkdirSync(OUT, { recursive: true });
   const work = fs.mkdtempSync(path.join(os.tmpdir(), "demo-frames-"));
   const demo = await startDemo(PORT);
-  const browser = await chromium.launch();
+  // CHROMIUM_PATH: a browser Playwright did not install itself (a container, say); it then also needs --no-sandbox
+  const browser = await chromium.launch(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH, args: ["--no-sandbox"] } : {});
   try {
     for (const scene of scenes) console.log(await record(browser, demo.url, scene, work));
   } finally {
     await browser.close();
     demo.stop();
-    fs.rmSync(work, { recursive: true, force: true });
+    // KEEP_FRAMES=1 keeps the PNG of every frame (to look at one), in the folder printed here
+    if (process.env.KEEP_FRAMES) console.log(`frames kept in ${work}`);
+    else fs.rmSync(work, { recursive: true, force: true });
   }
 }
 
