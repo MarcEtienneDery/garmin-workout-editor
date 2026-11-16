@@ -2002,7 +2002,7 @@
   #pview :is(#save, #garminBtn) { min-height:44px; padding:0 20px; border-radius:999px; font-weight:700; }
   #pview #save:not(.primary), #pview #save:disabled { background:var(--t-surface2); }
   #pview #save.dirty::after { content:none; }
-  #pview #garminBtn { background:var(--garmin-bg); border:1px solid var(--garmin); color:var(--fg); display:inline-flex; align-items:center; gap:8px; }
+  #pview #garminBtn { background:color-mix(in srgb, var(--garmin) 14%, var(--panel)); border:1px solid var(--garmin); color:var(--fg); display:inline-flex; align-items:center; gap:8px; }
   #pview #garminBtn b { color:var(--garmin); font-size:12px; }
   #pview #garminBtn:hover:not(:disabled) { background:color-mix(in srgb, var(--garmin) 24%, var(--panel)); }
   #pview :is(#fileBtn, .themebtn) { width:44px; height:44px; min-height:44px; padding:0; border-radius:50%; font-size:20px; line-height:1; background:var(--panel); border:1px solid var(--line); }
@@ -2187,7 +2187,7 @@
   @media (max-width:1180px) and (min-width:901px) { #pview > main { grid-template-columns:240px minmax(0,1fr); } #pview #side { grid-column:1 / -1; max-height:34vh; } }
   @media (max-width:900px) {
     #pview #toolbar { padding:12px 12px 8px; gap:8px; flex-wrap:wrap; }
-    #ptitle { flex:1 1 0; order:0; } #pview #current .dir { display:none; } #pview #pTheme { order:1; }
+    #ptitle { flex:1 1 calc(100% - 60px); order:0; } #pview #current .dir { display:none; } #pview #pTheme { order:1; }
     #pview #toolbar > :not(#ptitle):not(#actions), #pview #actions > :not(#pTheme):not(#emode) { order:2; }
     #pview #emode { flex:1 1 100%; order:5; } #pview #emode button { flex:1; }
     #pview #save { flex:1 1 auto; } #pview .ppill { padding:0 12px; font-size:13px; }
@@ -2227,9 +2227,9 @@
   #wstrip .wchecking { grid-column:1 / -1; color:var(--dim); }
   #wmain { flex:1; min-height:0; display:grid; grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr); gap:16px; }
   #wview :is(#wlist, #wdetail) { min-height:0; min-width:0; background:transparent; border:0; }
+  #wsearch { padding:0 0 8px; } #wsearch input[type="search"] { width:100%; min-height:44px; padding:0 16px; border-radius:999px; }
   #wFilters { display:flex; flex-wrap:wrap; gap:8px; align-items:center; padding:0 0 10px; background:none; border:0; }
-  #wFilters input[type="search"] { flex:1 1 180px; min-height:44px; padding:0 14px; border-radius:999px; }
-  #wFilters select { min-height:44px; padding:0 12px; border-radius:999px; max-width:46%; }
+  #wFilters select { flex:1 1 140px; min-height:44px; padding:0 12px; border-radius:999px; }
   #wChips { display:flex; flex-wrap:wrap; gap:8px; align-items:center; padding:0 0 10px; background:none; border:0; }
   #wTypes { display:flex; flex-wrap:wrap; gap:6px; }
   #wview .tchip { display:inline-flex; align-items:center; gap:8px; min-height:44px; padding:0 14px; border-radius:999px; border:1px solid var(--t-line2); background:transparent; font-weight:600; color:var(--fg); }
@@ -2279,9 +2279,8 @@
     #wmain { display:block; } #wview :is(#wlist, #wdetail) { height:100%; width:100%; }
     #wdetail > .wbar { padding:12px; } #wdetail > .wbar b { font-size:19px; } #wBackList { width:44px; padding:0; border-radius:50%; font-size:20px; }
     #wbody { padding:0 14px 16px; }
-    #wFilters select { max-width:none; flex:1 1 120px; }
     #wTypes { flex-wrap:nowrap; overflow-x:auto; } #wview .tchip { flex:none; }
-    #wview :is(#wFilters input, #wFilters select) { font-size:16px; }
+    #wview :is(#wsearch input, #wFilters select) { font-size:16px; }
   }
 </style>
 </head>
@@ -2391,8 +2390,8 @@
   <div id="wstrip" role="group" aria-label="Show workouts by status" hidden></div>
   <div id="wmain">
     <div id="wlist">
+      <div id="wsearch"><input id="wFilter" type="search" placeholder="Filter workouts" aria-label="Filter workouts"></div>
       <div id="wFilters">
-        <input id="wFilter" type="search" placeholder="Filter workouts" aria-label="Filter workouts">
         <select id="wSort" title="Order of the list: most recently updated, name, type, workouts needing a look first, or next scheduled" aria-label="Sort the workouts"></select>
         <select id="wPlanFilter" title="Show only the workouts of one plan" aria-label="Filter by plan"></select>
       </div>
