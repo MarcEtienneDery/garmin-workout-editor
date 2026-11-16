@@ -362,9 +362,10 @@ const SCENES: Scene[] = [
       await s.scroll(page.locator("#tbody"), 700, 1200);
       await s.pause(1000);
       await s.click(page.locator("#views button, #views a").filter({ hasText: "Calendar" }), { wait: 1500 });
-      await s.click(page.locator("#cgrid .cday.today, #cgrid .cday.sel").first(), { wait: 1600 });
+      await s.click(page.locator("#cwBoard .wday.today, #cwBoard .wday.sel").first(), { wait: 1600 });
       // a plan opens on its outline; a workout tapped there opens in the form, and a set is one tap more
       await s.click(page.locator("#views button, #views a").filter({ hasText: "Plans" }), { wait: 1200 });
+      await s.click(page.locator('#tabbar [data-tab="files"]'), { wait: 900 });
       await s.click(page.locator("#filelist .file").filter({ hasText: "half-marathon-build" }), { wait: 1500 });
       await s.click(page.locator("#outline .row.wk .name").filter({ hasText: "Strength A" }), { wait: 1400 });
       await s.reveal(page.locator("#pform .wf-ex").first(), 1000);
