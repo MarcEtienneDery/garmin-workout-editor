@@ -1668,6 +1668,22 @@ describe("web plan editor", () => {
       expect(g.uploadPlan).not.toHaveBeenCalled();
     });
 
+    it("limits an action to the workouts named in indexes, and refuses places the plan has no workout at", async () => {
+      addProfile("TEST");
+      const count = JSON.parse(await (async () => (await call("GET", "/api/file?path=" + encodeURIComponent("workout-plans/a.json"))).json.text)()).workouts.length;
+      expect((await act({ action: "upload", indexes: [0] })).status).toBe(200);
+      expect(g.uploadPlan).toHaveBeenLastCalledWith("TEST", "workout-plans/a.json", false, [0]);
+      await act({ action: "schedule", indexes: [0, 0] });
+      expect(g.schedulePlan).toHaveBeenLastCalledWith("TEST", "workout-plans/a.json", [0]);
+      await act({ action: "upload_schedule", indexes: [0] });
+      expect(g.uploadAndSchedulePlan).toHaveBeenLastCalledWith("TEST", "workout-plans/a.json", [0]);
+      await act({ action: "send", indexes: [0], deviceId: 7 });
+      expect(g.sendPlanToDevice).toHaveBeenLastCalledWith("TEST", "workout-plans/a.json", 7, [0]);
+      g.uploadPlan.mockClear();
+      for (const indexes of [[], [count], [-1], [1.5], "0", [null]]) expect([indexes, (await act({ action: "upload", indexes })).status]).toEqual([indexes, 400]);
+      expect(g.uploadPlan).not.toHaveBeenCalled();
+    });
+
     it("runs each action against the right profile and path", async () => {
       addProfile("TEST");
       expect((await act({ action: "upload" })).json.result).toEqual(expect.objectContaining({ status: "ok" }));

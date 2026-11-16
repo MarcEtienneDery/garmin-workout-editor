@@ -475,17 +475,25 @@ async function garminAction(body: any, who: Principal): Promise<{ status: number
     }
   }
   const deviceId = Number.isInteger(body.deviceId) ? (body.deviceId as number) : undefined;
+  // `indexes`: the workouts of the plan the action is limited to (the page's "only what needs it"), by place in its list; without it, all of them
+  let only: number[] | undefined;
+  if (body.indexes !== undefined) {
+    const count = readPlan(logical)?.list.length ?? 0;
+    const ok = Array.isArray(body.indexes) && body.indexes.length > 0 && body.indexes.every((i: unknown) => Number.isInteger(i) && (i as number) >= 0 && (i as number) < count);
+    if (!ok) throw new HttpError(400, `indexes must name the places of workouts in the plan (0 to ${Math.max(0, count - 1)}).`);
+    only = [...new Set<number>(body.indexes)];
+  }
 
   const outcome = await runCaptured<unknown>(() => {
     switch (action) {
       case "upload":
-        return uploadPlan(profile, logical);
+        return only ? uploadPlan(profile, logical, false, only) : uploadPlan(profile, logical);
       case "schedule":
-        return schedulePlan(profile, logical);
+        return only ? schedulePlan(profile, logical, only) : schedulePlan(profile, logical);
       case "upload_schedule":
-        return uploadAndSchedulePlan(profile, logical);
+        return only ? uploadAndSchedulePlan(profile, logical, only) : uploadAndSchedulePlan(profile, logical);
       case "send":
-        return sendPlanToDevice(profile, logical, deviceId);
+        return only ? sendPlanToDevice(profile, logical, deviceId, only) : sendPlanToDevice(profile, logical, deviceId);
     }
   });
   const version = store().head(logical)?.version;
