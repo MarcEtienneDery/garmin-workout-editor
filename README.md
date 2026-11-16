@@ -36,7 +36,7 @@ Your Garmin history is stored once and read from the database. The view has two 
 
 ### Strength and lifetime stats
 
-![A gym session's muscles and sets, the activity calendar with the planned workouts done and missed, and the lifetime stats](docs/media/activities.webp)
+![A gym session's numbers and its sets with the plan it came from, then the Progress view: the consistency calendar and the lifetime stats](docs/media/activities.webp)
 
 A strength session shows the muscles it worked as a compact muscle map (*Show all* opens the full one in place), and each exercise with its sets as chips (`3 × 5 @ 215 lb 86 %`) that carry their share of your estimated one-rep max. *Progress* adds everything up: best efforts over 1 km to 10 km, records, the VO2max trend, the biggest week and month, every lift with its estimated 1RM and how it moved, and the muscles of the last 7 days, 4 weeks or 12 weeks with the push, pull, legs and core shares and the muscles under 4 sets.
 

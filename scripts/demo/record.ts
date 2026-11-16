@@ -314,9 +314,6 @@ const SCENES: Scene[] = [
       await s.click(page.locator("#alist .arow").filter({ hasText: "Strength A" }).first(), { wait: 1800 });
       await s.scroll(page.locator("#abody"), 480, 1200);
       await s.pause(2200);
-      await s.click(page.locator("#aModes button[data-mode=calendar]"), { wait: 1200 });
-      if ((await page.locator("#aPlanned").getAttribute("aria-pressed")) !== "true") await s.click(page.locator("#aPlanned"), { wait: 1500 });
-      await s.pause(1200);
       await s.click(page.locator("#aModes button[data-mode=stats]"), { wait: 1800 });
       await s.scroll(page.locator("#astats"), 600, 1500);
       await s.pause(2200);
