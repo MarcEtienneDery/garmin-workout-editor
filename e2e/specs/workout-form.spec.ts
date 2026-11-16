@@ -504,6 +504,9 @@ test.describe("The workout form: moving a card, and a step's JSON", () => {
     await expect(form(me).locator(".wf-pic")).not.toHaveAttribute("open", "");
     await form(me).evaluate((el) => { el.scrollTop = 0; });
     const drag = async (from: number, to: number, cancel = false) => {
+      // both cards on screen first: the pane is taller than the window
+      await cards.nth(to).scrollIntoViewIfNeeded();
+      await cards.nth(from).locator(".wf-grip").scrollIntoViewIfNeeded();
       const a = (await cards.nth(from).locator(".wf-grip").boundingBox())!, b = (await cards.nth(to).boundingBox())!;
       await me.mouse.move(a.x + a.width / 2, a.y + a.height / 2);
       await me.mouse.down();
