@@ -267,7 +267,14 @@ The **Weight** view is a tab of its own, from the same table. Under its title ar
 
 #### Settings: logins and the Renpho scale
 
-The web editor's **Settings** view (the account menu, top right) holds a profile's logins and the Renpho sync, and monitors it.
+The web editor's **Settings** view (the account menu, top right) is a list of sections with the one shown beside it (on a phone the list is the home screen and a section opens over the whole screen, with *‹ Settings* to go back):
+
+- **Overview:** one verdict, *Everything is set up* or *N things need attention*, each problem with a button to where it is fixed (a Garmin login that was refused or whose saved password cannot be read, a Renpho login or run that failed, saved passwords still in plain text, a profile with no sign-in password), then a tile each for Garmin, the Renpho scale, the Food AI (which one answers and how many estimates are left today) and sign-in and storage, and the goals set as chips. A dot in the list marks the sections that need a look.
+- **Connections:** the Garmin account (with when the last *Test login* was accepted or refused, kept until the login changes), the Renpho scale with its sync switches, monitor and log, and the Food AI, read only (it is chosen in the server's settings).
+- **Goals:** a preview of how the Food view will draw the goals, which follows what is typed before it is saved (a slider moves a sample day; the calorie goal that follows the burn is worked through as an example), the goals form, and an unsaved bar with *Discard* and *Save* at the first change. *Clear all goals* asks first and its toast offers *Undo*.
+- **Display:** the theme, *Show every explanation* and the unit of lifting weights, in one place.
+- **Sign-in & security:** the password (changed, never removed; the checks are listed as it is typed), how the saved passwords are kept, and *Sign out*.
+- **Profiles** (admin login only): every profile with what it has connected, the one Settings shows, and *+ Add profile*.
 
 - **Profiles:** *+ Add profile* (admin login only) makes a profile from a name and its web sign-in password, typed twice. Nothing else is needed for it to have plans, a calendar and a food log.
 - **Garmin account (optional):** the email and password the web editor and the MCP server sign in to Garmin with, saved in the database. *Disconnect Garmin* forgets the login and its session and switches the Renpho upload off; the profile and everything synced stay (the views that have data stay, the ones that only fed on Garmin go). The MCP server reads the same database, so a change applies to it at once, without a restart. A password is only ever sent to the server, never back to the page.

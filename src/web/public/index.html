@@ -371,7 +371,7 @@
   @font-face { font-family:"Fira Code"; font-weight:400; font-display:swap; src:url(/fonts/fira-code-latin-400-normal.woff2) format("woff2"); }
   @font-face { font-family:"Fira Code"; font-weight:500; font-display:swap; src:url(/fonts/fira-code-latin-500-normal.woff2) format("woff2"); }
   @font-face { font-family:"Fira Code"; font-weight:600; font-display:swap; src:url(/fonts/fira-code-latin-600-normal.woff2) format("woff2"); }
-  :is(#tview, #fview, #fsheet, #cview, #moveMenu, #rview, #bview, #aview) {
+  :is(#tview, #fview, #fsheet, #cview, #moveMenu, #rview, #bview, #aview, #sview) {
     --bg:#070504; --panel:#1b1612; --t-surface2:#262019; --line:rgba(255,236,214,.15); --t-line2:rgba(255,236,214,.26);
     --fg:#fbf3ea; --dim:#b3a698; --t-faint:#968a7c;
     --accent:#ff9f2e; --t-on-accent:#1a0d00; --t-ink:#ff9f2e;
@@ -381,7 +381,7 @@
     --t-track:rgba(255,236,214,.09); --t-tint:rgba(0,0,0,.2); --t-glow:rgba(255,159,46,.3); --t-hero-glow:rgba(255,159,46,.12); --t-ok-bg:rgba(74,222,128,.18); --t-pill:rgba(255,159,46,.16);
     background:var(--bg); color:var(--fg); font:400 15px/1.5 "Fira Sans",system-ui,sans-serif; color-scheme:dark;
   }
-  body[data-theme="light"] :is(#tview, #fview, #fsheet, #cview, #moveMenu, #rview, #bview, #aview) {
+  body[data-theme="light"] :is(#tview, #fview, #fsheet, #cview, #moveMenu, #rview, #bview, #aview, #sview) {
     --bg:#e9e1d3; --panel:#ffffff; --t-surface2:#f4eee3; --line:rgba(40,24,8,.15); --t-line2:rgba(40,24,8,.28);
     --fg:#1d1610; --dim:#5e5244; --t-faint:#766a5b;
     --accent:#d97706; --t-on-accent:#1a0d00; --t-ink:#a24a05;
@@ -1251,12 +1251,12 @@
 
   /* ── Food view, in the new look: the palette of Today (the variables on #fview and on the add sheet, so both themes), Fira type, rounded cards ──
      Written over the rules above: the colours that were fixed greys read the variables now, and shapes are rounded. */
-  :where(#fview, #fsheet, #rview, #bview, #aview) button { background:var(--t-surface2); color:var(--fg); border-color:var(--t-line2); font-family:inherit; }
-  :where(#fview, #fsheet, #rview, #bview, #aview) button:hover:not(:disabled) { background:color-mix(in srgb, var(--fg) 8%, var(--t-surface2)); }
-  :is(#fview, #fsheet, #rview, #bview, #aview) button.primary { background:var(--accent); border-color:transparent; color:var(--t-on-accent); font-weight:700; }
-  :is(#fview, #fsheet, #rview, #bview, #aview) button.primary:hover:not(:disabled) { background:var(--accent); filter:brightness(1.08); }
-  :is(#fview, #fsheet, #rview, #bview, #aview) :is(input, select, textarea) { background:var(--t-surface2); color:var(--fg); border:1px solid var(--t-line2); border-radius:10px; font-family:inherit; }
-  :is(#fview, #fsheet, #rview, #bview, #aview) :is(input, select, textarea):focus-visible, :is(#fview, #fsheet, #rview, #bview, #aview) button:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+  :where(#fview, #fsheet, #rview, #bview, #aview, #sview) button { background:var(--t-surface2); color:var(--fg); border-color:var(--t-line2); font-family:inherit; }
+  :where(#fview, #fsheet, #rview, #bview, #aview, #sview) button:hover:not(:disabled) { background:color-mix(in srgb, var(--fg) 8%, var(--t-surface2)); }
+  :is(#fview, #fsheet, #rview, #bview, #aview, #sview) button.primary { background:var(--accent); border-color:transparent; color:var(--t-on-accent); font-weight:700; }
+  :is(#fview, #fsheet, #rview, #bview, #aview, #sview) button.primary:hover:not(:disabled) { background:var(--accent); filter:brightness(1.08); }
+  :is(#fview, #fsheet, #rview, #bview, #aview, #sview) :is(input, select, textarea) { background:var(--t-surface2); color:var(--fg); border:1px solid var(--t-line2); border-radius:10px; font-family:inherit; }
+  :is(#fview, #fsheet, #rview, #bview, #aview, #sview) :is(input, select, textarea):focus-visible, :is(#fview, #fsheet, #rview, #bview, #aview, #sview) button:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
   #fsheet .fform input[readonly] { background:transparent; color:var(--dim); }
   /* the bar: profile, the day (◀ a pill that opens the calendar ▶), Today, the theme */
   #fbar { display:flex; align-items:center; justify-content:stretch; gap:8px; padding:18px clamp(16px,2.6vw,34px) 6px; background:transparent; border-bottom:0; }
@@ -1350,8 +1350,8 @@
   #fsheet .faibig { border-radius:14px; }
   #fsheet .fsh-note { color:var(--warn); }
   /* cards stand off the page: a firmer edge (the variables above), a lit top edge and a soft shadow; a section's label carries a rule */
-  :is(#tview, #fview, #cview, #moveMenu, #rview, #bview, #aview) { --card-shadow:0 1px 0 rgba(255,255,255,.06) inset, 0 14px 30px -18px rgba(0,0,0,.95); }
-  body[data-theme="light"] :is(#tview, #fview, #cview, #moveMenu, #rview, #bview, #aview) { --card-shadow:0 1px 0 #fff inset, 0 1px 2px rgba(60,40,10,.10), 0 14px 28px -18px rgba(60,40,10,.40); }
+  :is(#tview, #fview, #cview, #moveMenu, #rview, #bview, #aview, #sview) { --card-shadow:0 1px 0 rgba(255,255,255,.06) inset, 0 14px 30px -18px rgba(0,0,0,.95); }
+  body[data-theme="light"] :is(#tview, #fview, #cview, #moveMenu, #rview, #bview, #aview, #sview) { --card-shadow:0 1px 0 #fff inset, 0 1px 2px rgba(60,40,10,.10), 0 14px 28px -18px rgba(60,40,10,.40); }
   :is(#tview, #fview) :is(.tcard, .tfig, .fsum, .fcard, .fmeal, .fchip, .fday) { box-shadow:var(--card-shadow); }
   #fbody > h3, .fth h3 { display:flex; align-items:center; gap:14px; color:var(--fg); }
   #fbody > h3::after, .fth h3::after { content:""; flex:1; height:1px; background:var(--t-line2); }
@@ -1889,7 +1889,7 @@
      On a restyled view (Today, Food) in its light theme the rail turns light with it (body[data-theme]). */
   header { --nav-bg:#100c09; --nav-line:rgba(255,236,214,.10); --nav-fg:#fbf3ea; --nav-dim:#b3a698; --nav-active:#1e1814; --nav-hover:#17120e; --nav-accent:#ff9f2e; --nav-on-accent:#1a0d00;
     background:var(--nav-bg); border-color:var(--nav-line); color:var(--nav-fg); font-family:"Fira Sans",system-ui,sans-serif; }
-  body:is([data-view="today"], [data-view="food"], [data-view="calendar"], [data-view="recovery"], [data-view="weight"], [data-view="activities"])[data-theme="light"] header { --nav-bg:#fbf8f2; --nav-line:rgba(40,24,8,.12); --nav-fg:#1d1610; --nav-dim:#5e5244; --nav-active:#efe7d8; --nav-hover:#f5efe4; --nav-accent:#d97706; --nav-on-accent:#1a0d00; }
+  body:is([data-view="today"], [data-view="food"], [data-view="calendar"], [data-view="recovery"], [data-view="weight"], [data-view="activities"], [data-view="settings"])[data-theme="light"] header { --nav-bg:#fbf8f2; --nav-line:rgba(40,24,8,.12); --nav-fg:#1d1610; --nav-dim:#5e5244; --nav-active:#efe7d8; --nav-hover:#f5efe4; --nav-accent:#d97706; --nav-on-accent:#1a0d00; }
   header h1 { margin:0; font-size:0; line-height:0; }
   .brandmark { display:grid; place-items:center; width:38px; height:38px; border-radius:11px; background:var(--nav-accent); color:var(--nav-on-accent); }
   .brandmark svg { width:21px; height:21px; }
@@ -1933,6 +1933,65 @@
     #views button[aria-pressed="true"] { box-shadow:inset 0 -3px 0 var(--nav-accent); border-radius:12px 12px 6px 6px; }
   }
   @media (max-width:420px) { header h1 { display:none; } }
+
+  /* ── Settings, in the new look: a list of sections beside the one shown (the whole screen on a phone), cards, the tokens of the other views ── */
+  #sbar { gap:8px 10px; padding:18px clamp(16px,2.6vw,34px) 8px; background:transparent; border-bottom:0; max-width:1280px; }
+  #sTitle { flex:1 1 auto; font-size:clamp(24px,3vw,32px); font-weight:700; letter-spacing:-.02em; min-width:0; }
+  #sBack, #sAddProfile, #sProfile { min-height:44px; border-radius:999px; padding:0 16px; }
+  #sBack { order:-1; width:44px; padding:0; border-radius:50%; font-size:0; } #sBack::before { content:"◀"; font-size:13px; }
+  #sscroll { background:var(--bg); }
+  #sbody { max-width:1280px; padding:8px clamp(16px,2.6vw,34px) 48px; }
+  #sbody .empty, #sNote { color:var(--dim); }
+  .sgrid { display:grid; grid-template-columns:290px minmax(0,1fr); gap:18px; align-items:start; }
+  .snav { position:sticky; top:8px; display:flex; flex-direction:column; gap:2px; padding:8px; background:var(--panel); border:1px solid var(--line); border-radius:18px; box-shadow:var(--card-shadow); }
+  .snav button { display:grid; grid-template-columns:24px minmax(0,1fr) auto; gap:12px; align-items:center; min-height:52px; padding:0 12px; border:0; border-radius:12px; background:transparent; text-align:left; font-weight:600; font-size:15px; }
+  .snav button svg { width:22px; height:22px; color:var(--dim); }
+  .snav button:hover:not(:disabled) { background:var(--t-surface2); }
+  .snav button[aria-current="page"] { background:var(--t-surface2); box-shadow:inset 3px 0 0 var(--accent); } .snav button[aria-current="page"] svg { color:var(--t-ink); }
+  .snavend { display:inline-flex; align-items:center; gap:8px; color:var(--dim); font:500 12px "Fira Code",ui-monospace,monospace; }
+  .sdot { display:inline-block; width:10px; height:10px; border-radius:50%; background:var(--warn); } .sdot.err { background:var(--err); }
+  .spane { display:flex; flex-direction:column; gap:16px; min-width:0; max-width:900px; }
+  .sback { align-self:flex-start; min-height:44px; padding:0 16px; border-radius:999px; font-weight:600; }
+  #sview .scard { margin:0; padding:20px 22px; background:var(--panel); border:1px solid var(--line); border-radius:18px; box-shadow:var(--card-shadow); }
+  #sview .scard h2 { margin:0 0 4px; font-size:17px; font-weight:700; }
+  #sview .chip { font:600 12px/18px "Fira Sans",system-ui,sans-serif; padding:1px 10px; border:1px solid var(--t-line2); border-radius:999px; background:transparent; color:var(--dim); }
+  #sview .chip.ok { color:var(--ok); border-color:color-mix(in srgb, var(--ok) 45%, transparent); } #sview .chip.warn { color:var(--warn); border-color:color-mix(in srgb, var(--warn) 45%, transparent); } #sview .chip.err { color:var(--err); border-color:color-mix(in srgb, var(--err) 45%, transparent); }
+  #sview .sform label, #sview .sdim { color:var(--dim); }
+  #sview .sform :is(input[type="text"], input[type="password"], select) { min-height:44px; }
+  #sview :is(.sbtns, .sunsaved, .sattn) button, #sview .scard > button, #sview .sprow button { min-height:44px; padding:0 18px; border-radius:999px; }
+  #sview .sbtns button.danger { color:var(--err); } #sview .sbtns button.danger:hover:not(:disabled) { background:var(--err); border-color:var(--err); color:var(--bg); }
+  #sview .sline.warn { color:var(--warn); } #sview .sline.ok { color:var(--ok); } #sview .sline.err { color:var(--err); }
+  #sview .slog { background:var(--t-surface2); border-radius:12px; }
+  #sview .stoggle input { width:22px; height:22px; accent-color:var(--accent); }
+  #sview .seg { display:inline-flex; gap:2px; padding:2px; background:var(--t-surface2); border:1px solid var(--line); border-radius:999px; }
+  #sview .seg button { min-height:44px; border:0; border-radius:999px; background:transparent; color:var(--dim); font-weight:600; padding:0 16px; }
+  #sview .seg button[aria-pressed="true"] { background:var(--accent); color:var(--t-on-accent); }
+  /* the overview */
+  .sverdict { border-top:3px solid var(--ok); display:flex; flex-direction:column; gap:10px; } .sverdict.warn { border-top-color:var(--warn); } .sverdict.err { border-top-color:var(--err); }
+  .seyebrow { font:500 11.5px "Fira Code",ui-monospace,monospace; letter-spacing:.14em; text-transform:uppercase; color:var(--dim); }
+  .sverdict h2 { font-size:clamp(24px,3vw,32px) !important; letter-spacing:-.02em; } .sverdict.err h2 { color:var(--err); } .sverdict.warn h2 { color:var(--warn); } .sverdict.ok h2 { color:var(--ok); }
+  .sattn { display:grid; grid-template-columns:auto minmax(0,1fr) auto; gap:4px 14px; align-items:center; padding:12px 14px; border-radius:14px; background:var(--t-surface2); border:1px solid var(--line); }
+  .sattn .sic { width:34px; height:34px; border-radius:50%; display:grid; place-items:center; font-style:normal; font-weight:700; border:1px solid currentColor; } .sattn.err .sic { color:var(--err); } .sattn.warn .sic { color:var(--warn); }
+  .sattn b { display:block; } .sattn span { color:var(--dim); font-size:13.5px; }
+  .stiles { display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:14px; }
+  .stile { display:flex; flex-direction:column; gap:6px; } .sth { display:flex; align-items:center; gap:10px; } .sth svg { width:24px; height:24px; color:var(--dim); } .sth b { flex:1; font-size:15px; }
+  .sst { font:600 21px/1.2 "Fira Code",ui-monospace,monospace; letter-spacing:-.02em; } .sst.ok { color:var(--ok); } .sst.warn { color:var(--warn); } .sst.err { color:var(--err); } .sst.off { color:var(--dim); }
+  .ssub { color:var(--dim); font-size:13.5px; } #sview .slink { margin-top:auto; align-self:flex-start; background:none; border:0; padding:0 !important; color:var(--t-ink); font-weight:600; min-height:44px; border-radius:8px !important; }
+  .sgoalchips { display:flex; flex-wrap:wrap; gap:8px; margin:10px 0; } .sgoalchips span { padding:5px 12px; border-radius:999px; background:var(--t-surface2); border:1px solid var(--line); font:500 13px "Fira Code",ui-monospace,monospace; } .sgoalchips small { color:var(--dim); font:400 12px "Fira Sans",system-ui,sans-serif; }
+  /* goals */
+  .spreview { display:flex; flex-direction:column; gap:10px; } .spreview input[type="range"] { width:100%; accent-color:var(--accent); min-height:44px; padding:0; }
+  .sprow2 { display:grid; grid-template-columns:90px minmax(0,1fr) auto; gap:12px; align-items:center; min-height:32px; font-size:14px; } .sprow2 b { font:500 13px "Fira Code",ui-monospace,monospace; }
+  .sbar { display:block; height:10px; border-radius:99px; background:var(--t-track); overflow:hidden; } .sbar i { display:block; height:100%; border-radius:99px; background:var(--accent); } .sprow2.st-ok .sbar i { background:var(--ok); } .sprow2.st-over .sbar i { background:var(--t-rose); }
+  .sunsaved { position:sticky; bottom:14px; z-index:6; display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-top:14px; padding:10px 16px; border-radius:999px; background:var(--panel); border:1px solid var(--accent); box-shadow:var(--card-shadow); } .sunsaved[hidden] { display:none; } .sunsaved b { margin-right:auto; padding-left:6px; }
+  /* profiles */
+  .sprofiles { display:flex; flex-direction:column; margin:8px 0 14px; } .sprow { display:grid; grid-template-columns:minmax(0,1fr) auto auto; gap:8px 14px; align-items:center; padding:10px 0; border-top:1px solid var(--line); min-height:56px; } .sprow:first-child { border-top:0; }
+  .sprchips { display:flex; flex-wrap:wrap; gap:6px; } .stag { font:600 12px "Fira Sans",system-ui,sans-serif; padding:2px 10px; border-radius:999px; background:var(--t-pill); color:var(--t-ink); }
+  @media (max-width:900px) {
+    #sbar { padding:12px 12px 4px; } #sbody { padding:8px 12px 32px; }
+    .sgrid { grid-template-columns:minmax(0,1fr); } .sgrid.open .snav { display:none; } .snav { position:static; }
+    .stiles { grid-template-columns:minmax(0,1fr); } .sprow { grid-template-columns:minmax(0,1fr) auto; } .sprchips { grid-column:1 / -1; order:3; }
+    #sview .sform { grid-template-columns:minmax(0,1fr); max-width:none; } .sunsaved { bottom:8px; border-radius:18px; }
+  }
 </style>
 </head>
 <body data-view="today">
@@ -2224,7 +2283,7 @@
 <section id="sview">
   <div class="wbar" id="sbar">
     <button id="sBack" title="Back to the view you came from">◀ Back</button>
-    <b>Settings</b>
+    <b id="sTitle">Settings</b>
     <select id="sProfile" title="Profile" hidden></select>
     <button id="sAddProfile" title="Add a profile" hidden>+ Add profile</button>
   </div>
@@ -8021,7 +8080,7 @@ function bindTodayView() {
 // to the server, never back). The Renpho card also monitors the sync: its state, the weigh-ins kept as Renpho sent them
 // and the log. The logic (times, states, how a weigh-in reads) is settingsModel.js.
 const SetM = SettingsModel;
-const S = { profile: null, data: null, error: "", loaded: false, run: 0, busy: "", from: "plans", polling: false, msg: {}, draft: {} };
+const S = { profile: null, data: null, error: "", loaded: false, run: 0, busy: "", from: "plans", polling: false, msg: {}, draft: {}, section: null, sample: 55, previewUpdate: null };
 
 async function loadSettings() {
   await garminReady;
@@ -8123,6 +8182,7 @@ function garminCard(d) {
     ? "The login the editor and the MCP server use to sync activities and health data and to send workouts to the watch. A password goes to the server only and is never shown again."
     : "Without Garmin you still have plans, the calendar, the food log and a Renpho scale's weigh-ins. Connect it to sync activities and health data and to send workouts to the watch.", "the Garmin account")));
   if (g.error) card.append(sline("err", g.error));
+  else if (g.connected) { const st = SetM.garminState(g, garmin.mock, Date.now()); card.append(sline(st.tone || "dim", st.text)); }
   const form = mk("div", "sform");
   sfield(form, "Email", "gEmail", { value: g.email || "" });
   sfield(form, "Password", "gPass", { type: "password", placeholder: g.hasPassword ? "saved: leave empty to keep it" : "" });
@@ -8171,22 +8231,35 @@ function goalsCard(d) {
   });
   const initial = (f) => (f.kind === "weight" ? WtM.weightInput(g.values[f.key], B.unit) : g.values[f.key] === undefined ? (f.kind === "burn" ? "100" : "") : String(g.values[f.key]));
   const texts = () => Object.fromEntries(g.fields.map((f) => [f.key, f.kind === "burn" && !burnOn() ? "" : S.draft["goal_" + f.key] ?? initial(f)]));
-  const note = mk("div", "sline dim");
-  const sum = () => { note.textContent = SetM.macroGoalsNote(texts()); note.hidden = !note.textContent; };
+  const note = mk("div", "sline dim"), bar = mk("div", "sunsaved");
+  const saveGoals = () => {
+    const r = SetM.goalsPatch(texts(), g.fields, g.values);
+    if (r.error) { S.msg.goals = { ok: false, text: r.error }; renderSettings(); return; }
+    if (typeof r.goals.weightKg === "number") { // typed in the unit, kept in kilograms; a weight left as it was is not sent, or the round trip through the unit would move it
+      if (texts().weightKg === initial(g.fields.find((f) => f.kind === "weight"))) delete r.goals.weightKg; else r.goals.weightKg = WtM.parseWeight(texts().weightKg, B.unit);
+    }
+    return settingsPost("goals", { action: "save", goals: r.goals }, "Goals saved.");
+  };
+  const dirty = () => g.fields.some((f) => {
+    const was = f.kind === "burn" ? (g.values.kcalBurnPct === undefined ? "" : initial(f)) : initial(f), now = f.kind === "burn" && !burnOn() ? "" : S.draft["goal_" + f.key] ?? initial(f);
+    return now !== was;
+  });
+  const discard = sbtn("Discard", () => { for (const k of Object.keys(S.draft)) if (k.startsWith("goal_")) delete S.draft[k]; renderSettings(); });
+  const keepBar = sbtn("Save", () => saveGoals(), { cls: "primary", key: "goals:bar" });
+  bar.append(mk("b", "", "You have unsaved changes"), discard, keepBar);
+  const sum = () => { note.textContent = SetM.macroGoalsNote(texts()); note.hidden = !note.textContent; bar.hidden = !dirty(); if (S.previewUpdate) S.previewUpdate(); };
   sum();
   for (const input of Object.values(inputs)) input.addEventListener("input", sum);
-  card.append(form, note);
+  card.append(form, note, bar);
   const buttons = mk("div", "sbtns");
   buttons.append(
-    sbtn("Save goals", () => {
-      const r = SetM.goalsPatch(texts(), g.fields, g.values);
-      if (r.error) { S.msg.goals = { ok: false, text: r.error }; renderSettings(); return; }
-      if (typeof r.goals.weightKg === "number") { // typed in the unit, kept in kilograms; a weight left as it was is not sent, or the round trip through the unit would move it
-        if (texts().weightKg === initial(g.fields.find((f) => f.kind === "weight"))) delete r.goals.weightKg; else r.goals.weightKg = WtM.parseWeight(texts().weightKg, B.unit);
-      }
-      return settingsPost("goals", { action: "save", goals: r.goals }, "Goals saved.");
-    }, { cls: "primary", key: "goals:save" }),
-    sbtn("Clear all goals", () => settingsPost("goals", { action: "clear" }, "Goals cleared."), { key: "goals:clear", disabled: !Object.keys(g.values).length }) // a weight goal alone is cleared here too
+    sbtn("Save goals", () => saveGoals(), { cls: "primary", key: "goals:save" }),
+    sbtn("Clear all goals", async () => {
+      if (!(await confirmDialog({ title: "Clear every goal?", text: "The Food, Today and Weight views stop measuring against them. You can undo it for a few seconds.", ok: "Clear all", danger: true }))) return;
+      const before = { ...g.values };
+      await settingsPost("goals", { action: "clear" }, "Goals cleared.");
+      toastUndo("Goals cleared.", async () => { await settingsPost("goals", { action: "save", goals: before }, "Goals restored."); });
+    }, { key: "goals:clear", disabled: !Object.keys(g.values).length }) // a weight goal alone is cleared here too
   );
   card.append(buttons);
   const msg = messageLine("goals"); if (msg) card.append(msg);
@@ -8357,19 +8430,184 @@ async function setWeightUnit(profile, unit) {
   } finally { renderSettings(); }
 }
 
+// ── The sections: a list with a dot for what needs a look, and the one shown beside it (the whole screen on a phone) ──
+const SETTINGS_SECTIONS = [["overview", "Overview"], ["connections", "Connections"], ["goals", "Goals"], ["display", "Display"], ["signin", "Sign-in & security"], ["profiles", "Profiles"]];
+const SETTINGS_ICON = {
+  overview: '<path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z"/>',
+  connections: '<path d="M9 3v5M15 3v5M6 8h12v3a6 6 0 0 1-12 0zM12 17v4"/>',
+  goals: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5"/>',
+  display: '<path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/>',
+  signin: '<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
+  profiles: '<circle cx="9" cy="8" r="3.5"/><path d="M3 20a6 6 0 0 1 12 0M16 4.5a3.5 3.5 0 0 1 0 7M21 20a6 6 0 0 0-4-5.6"/>',
+};
+const settingsIcon = (name) => { const s = svgEl("svg", { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", "stroke-width": 1.8, "stroke-linecap": "round", "stroke-linejoin": "round", "aria-hidden": "true" }); s.innerHTML = SETTINGS_ICON[name]; return s; };
+const settingsAdmin = () => !!(garmin.user && garmin.user.admin);
+const settingsGo = (section) => { S.section = section; renderSettings(); $("sscroll").scrollTop = 0; };
+
+/** What each section says in the list: a dot (ok / warn / err) or a few words. */
+function settingsStatus(d) {
+  const ov = SetM.overview(d, { mock: !!garmin.mock }, Date.now()), tone = (...keys) => (ov.items.filter((i) => keys.includes(i.key)).some((i) => i.tone === "err") ? "err" : ov.items.some((i) => keys.includes(i.key)) ? "warn" : "");
+  const n = SetM.goalCount(d.goals);
+  return { overview: { dot: ov.ok ? "" : ov.worst }, connections: { dot: tone("garmin", "renpho") }, goals: { meta: n ? `${n} set` : "none" }, display: { meta: document.body.dataset.theme === "light" ? "light" : "dark" }, signin: { dot: tone("plain", "web") }, profiles: { meta: String(garmin.profiles.length) } };
+}
+
+function settingsNav(d, section) {
+  const nav = mk("nav", "snav"), status = settingsStatus(d);
+  nav.setAttribute("aria-label", "Settings sections");
+  for (const [key, label] of SETTINGS_SECTIONS) {
+    if (key === "profiles" && !settingsAdmin()) continue;
+    const b = mk("button", ""), s = status[key];
+    b.type = "button"; b.dataset.section = key;
+    if (key === section) b.setAttribute("aria-current", "page");
+    const end = mk("span", "snavend");
+    if (s.dot) { const dot = mk("i", "sdot " + s.dot); dot.setAttribute("role", "img"); dot.setAttribute("aria-label", s.dot === "err" ? "needs attention" : "worth a look"); end.append(dot); }
+    if (s.meta) end.append(mk("span", "", s.meta));
+    b.append(settingsIcon(key), mk("span", "", label), end);
+    b.onclick = () => settingsGo(key);
+    nav.append(b);
+  }
+  return nav;
+}
+
 function renderSettings() {
   const box = $("sbody"), d = S.data, keep = $("sscroll").scrollTop;
   box.replaceChildren();
-  $("sNote").hidden = true;
+  $("sNote").hidden = true; S.previewUpdate = null;
   if (!S.loaded) box.append(mk("div", "empty", "Loading…"));
   else if (S.error && !d) box.append(mk("div", "msg err", S.error));
   else if (!d || !d.profile) box.append(mk("div", "empty", garmin.user && garmin.user.admin ? "No profile yet: add one with + Add profile." : "No profile."));
   else {
-    const enc = d.encryption;
-    if (!enc.enabled || enc.plain) box.append(sline("warn", enc.enabled ? `Saved passwords are encrypted, but ${enc.plain} older one${enc.plain === 1 ? "" : "s"} is still plain text: it is encrypted the next time it is used.` : "Saved passwords are stored as plain text in the database. Set CREDENTIALS_KEY (in the compose file, for both services) to encrypt them."));
-    box.append(goalsCard(d), unitsCard(), garminCard(d), renphoCard(d), webCard(d));
+    const phone = mobileQuery.matches;
+    if (S.section === "profiles" && !settingsAdmin()) S.section = null;
+    const section = S.section || (phone ? null : "overview"), grid = mk("div", "sgrid" + (section ? " open" : ""));
+    grid.append(settingsNav(d, section));
+    if (section) {
+      const pane = mk("div", "spane");
+      if (phone) { const back = mk("button", "sback", "‹ Settings"); back.type = "button"; back.onclick = () => { S.section = null; renderSettings(); $("sscroll").scrollTop = 0; }; pane.append(back); }
+      pane.dataset.section = section;
+      const enc = d.encryption;
+      pane.append(...({ overview: () => settingsOverview(d), connections: () => [garminCard(d), renphoCard(d), settingsFoodAi(d)], goals: () => [settingsPreview(d), goalsCard(d)], display: () => settingsDisplay(), signin: () => [webCard(d), settingsEncryption(enc)], profiles: () => [settingsProfiles(d)] }[section] || (() => []))());
+      grid.append(pane);
+    }
+    box.append(grid);
   }
   $("sscroll").scrollTop = keep;
+}
+
+/** The Overview: what needs attention first, each with its fix, then the four tiles and the goals. */
+function settingsOverview(d) {
+  const now = Date.now(), ov = SetM.overview(d, { mock: !!garmin.mock }, now), out = [];
+  const head = mk("section", "scard sverdict " + ov.worst);
+  head.append(mk("div", "seyebrow", `${S.profile}${settingsAdmin() ? " · admin login" : ""}`), mk("h2", "", ov.headline));
+  for (const it of ov.items) {
+    const row = mk("div", "sattn " + it.tone), text = mk("div"), go = mk("button", "", it.fix.label);
+    go.type = "button"; go.onclick = () => settingsGo(it.fix.section);
+    text.append(mk("b", "", it.title), mk("span", "", it.text));
+    row.append(mk("i", "sic", it.tone === "err" ? "!" : "•"), text, go);
+    head.append(row);
+  }
+  out.push(head);
+  const tiles = mk("div", "stiles");
+  const tile = (title, st, section, label = "Manage ›") => {
+    const el = mk("section", "scard stile"), h = mk("div", "sth"), go = mk("button", "slink", label);
+    h.append(settingsIcon(section === "signin" ? "signin" : section === "goals" ? "goals" : "connections"), mk("b", "", title), mk("span", "chip " + (st.tone === "ok" ? "ok" : st.tone === "err" ? "err" : st.tone === "warn" ? "warn" : ""), st.tone === "ok" ? "ok" : st.tone === "err" ? "problem" : st.tone === "warn" ? "check" : "info"));
+    go.type = "button"; go.onclick = () => settingsGo(section);
+    el.append(h, mk("div", "sst " + (st.tone || "off"), st.label), mk("div", "ssub", st.text), go);
+    return el;
+  };
+  tiles.append(tile("Garmin", SetM.garminState(d.garmin, !!garmin.mock, now), "connections"), tile("Renpho scale", SetM.renphoTile(d.renpho, now), "connections"), tile("Food AI", SetM.aiTile(d.ai), "connections", "Details ›"), tile("Sign-in & storage", SetM.signinTile(d), "signin"));
+  out.push(tiles);
+  const goals = mk("section", "scard"), chips = mk("div", "sgoalchips"), list = SetM.goalChips(d.goals), n = SetM.goalCount(d.goals);
+  goals.append(mk("h2", "", "Your goals at a glance"));
+  for (const c of list) { const s = mk("span", "", `${c.value.toLocaleString()} `); s.append(mk("small", "", `${c.unit} ${c.label.toLowerCase()}`)); chips.append(s); }
+  if (typeof d.goals.values.weightKg === "number") { const s = mk("span", "", `${WtM.weightInput(d.goals.values.weightKg, B.unit)} `); s.append(mk("small", "", `${B.unit} weight goal`)); chips.append(s); }
+  if (!list.length && typeof d.goals.values.weightKg !== "number") chips.append(mk("span", "sdim", "No goals set yet."));
+  const edit = mk("button", "", n ? "Edit goals" : "Set goals"); edit.type = "button"; edit.onclick = () => settingsGo("goals");
+  goals.append(chips, edit, mk("span", "ssub", " The Food, Today and Weight views measure each day against these."));
+  out.push(goals);
+  return out;
+}
+
+/** Food AI: which one answers, its daily limit, the estimates left today (set up in the server's environment, so read only here). */
+function settingsFoodAi(d) {
+  const ai = d.ai, st = SetM.aiTile(ai), card = mk("div", "scard");
+  card.append(mk("h2", "", "Food AI"), mk("div", "sline " + (st.tone || "dim"), ai && ai.enabled ? `${st.label} answers the Food view's AI box: ${st.text}.` : st.text));
+  card.append(mk("div", "sline dim", "It is chosen in the server's settings (FOOD_AI_BACKEND and its key), not here."));
+  return card;
+}
+
+/** The look of the editor and the unit of lifting weights: the choices the views already read, in one place. */
+function settingsDisplay() {
+  const card = mk("div", "scard"), seg = mk("div", "seg"), light = document.body.dataset.theme === "light";
+  card.append(mk("h2", "", "Appearance"));
+  seg.setAttribute("role", "group"); seg.setAttribute("aria-label", "Theme");
+  for (const [value, label] of [["dark", "Dark"], ["light", "Light"]]) {
+    const b = mk("button", "", label); b.type = "button"; b.setAttribute("aria-pressed", String((value === "light") === light));
+    b.onclick = () => { setTheme(value, true); renderSettings(); };
+    seg.append(b);
+  }
+  const row = mk("div", "sbtns"); row.append(mk("span", "", "Theme"), seg);
+  const on = document.body.classList.contains("explain");
+  card.append(row, stoggle(on, "Show every explanation", "Opens the ⓘ notes in every view, so the way each number is worked out stays in sight.", () => $("explainBtn").click(), { key: "explain", shown: true }));
+  return [card, unitsCard()];
+}
+
+/** How the saved passwords are kept. */
+function settingsEncryption(enc) {
+  const card = mk("div", "scard");
+  card.append(mk("h2", "", "Saved passwords"));
+  card.append(sline(enc.enabled && !enc.plain ? "ok" : "warn", enc.enabled ? (enc.plain ? `Saved passwords are encrypted, but ${enc.plain} older one${enc.plain === 1 ? " is" : "s are"} still plain text: ${enc.plain === 1 ? "it is" : "they are"} encrypted the next time ${enc.plain === 1 ? "it is" : "they are"} used.` : "Saved passwords are encrypted.") : `Saved passwords are stored as plain text in the database${enc.plain ? ` (${enc.plain} now)` : ""}. Set CREDENTIALS_KEY (a long random string) in the server's environment and restart: they are encrypted the next time each is used.`));
+  const out = mk("button", "", "Sign out"); out.type = "button"; out.onclick = guard(signOut);
+  out.hidden = $("logout").hidden;
+  card.append(out);
+  return card;
+}
+
+/** The profiles (the admin sees all of them): what each has connected, the one Settings shows, and a way to add one. */
+function settingsProfiles(d) {
+  const card = mk("div", "scard"), list = mk("div", "sprofiles");
+  card.append(mk("h2", "", "Profiles"));
+  for (const name of garmin.profiles) {
+    const info = garmin.profileInfo[name] || {}, row = mk("div", "sprow" + (name === S.profile ? " here" : "")), chips = mk("span", "sprchips");
+    chips.append(mk("span", "chip" + (info.garmin ? " ok" : ""), info.garmin ? "Garmin" : "no Garmin"), mk("span", "chip" + (info.renpho ? " ok" : ""), info.renpho ? "Renpho" : "no Renpho"), mk("span", "chip" + (info.webPassword ? " ok" : " warn"), info.webPassword ? "password" : "no password"));
+    const end = name === S.profile ? mk("span", "stag", "showing in Settings") : mk("button", "", "Show in Settings");
+    if (name !== S.profile) { end.type = "button"; end.onclick = () => { Object.assign(S, { profile: name, data: null, loaded: false, error: "", draft: {}, msg: {} }); guard(loadSettings)(); }; }
+    row.append(mk("b", "", name), chips, end);
+    list.append(row);
+  }
+  const add = mk("button", "primary", "+ Add profile"); add.type = "button"; add.onclick = guard(addProfile);
+  card.append(list, add, mk("div", "sline dim", "A profile has its own plans, food, goals and logins. Garmin and a Renpho scale are optional and connected in Connections, once the profile is shown here."));
+  return card;
+}
+
+/** The goals as the Food view will draw them, for a sample day: a slider for how much of the day is eaten. It follows what is typed, before it is saved. */
+function settingsPreview(d) {
+  const card = mk("div", "scard spreview"), body = mk("div"), slider = mk("input");
+  card.append(mk("h2", "", "How the Food view will show them"));
+  slider.type = "range"; slider.min = "0"; slider.max = "130"; slider.value = String(S.sample); slider.setAttribute("aria-label", "A sample day: how much of the calorie goal is eaten");
+  const live = () => {
+    const values = {};
+    for (const key of ["kcal", "proteinG", "carbsG", "fatG", "kcalBurnPct"]) {
+      const typed = S.draft["goal_" + key], n = SetM.goalNumber(typed !== undefined ? typed : d.goals.values[key] === undefined ? "" : String(d.goals.values[key]));
+      if (Number.isFinite(n) && n > 0) values[key] = n;
+    }
+    const pv = SetM.previewDay(values, S.sample / 100), ex = SetM.burnExample(values);
+    body.replaceChildren();
+    if (!pv.rows.length) { body.append(mk("div", "sline dim", "Set a calorie or macro goal to see the day against it.")); slider.hidden = true; return; }
+    slider.hidden = false;
+    body.append(mk("div", "sline dim", `A sample day: ${S.sample} % of the calorie goal eaten${pv.left !== null ? (pv.left >= 0 ? ` · ${pv.left.toLocaleString()} kcal left` : ` · ${(-pv.left).toLocaleString()} kcal over`) : ""}`));
+    for (const r of pv.rows) {
+      const row = mk("div", "sprow2 st-" + r.state), bar = mk("span", "sbar"), fill = mk("i");
+      fill.style.width = `${Math.round(r.pct * 100)}%`; bar.append(fill);
+      row.append(mk("span", "", r.label), bar, mk("b", "", `${r.amount.toLocaleString()} / ${r.goal.toLocaleString()} ${r.unit}`));
+      body.append(row);
+    }
+    if (ex) body.append(mk("div", "sline dim", `The calorie goal follows the burn: ${ex.text} on a day with ${ex.active} kcal active.`));
+  };
+  slider.oninput = () => { S.sample = Number(slider.value); live(); };
+  S.previewUpdate = live; live();
+  card.append(body, slider);
+  return card;
 }
 
 /**
