@@ -148,7 +148,7 @@ test.describe("the rail", () => {
     expect(foot).toBeLessThan(40);
   });
 
-  test("turns light with the light theme on a restyled view (Today), and is dark again on a view that is not restyled yet (Plans)", async ({ alice }) => {
+  test("turns light with the light theme, on Today and on Plans, and stays light when the view changes", async ({ alice }) => {
     await openView(alice, "today");
     const bg = () => alice.locator("header").evaluate((el) => getComputedStyle(el).backgroundColor);
     const dark = await bg();
@@ -158,7 +158,7 @@ test.describe("the rail", () => {
     expect(light).not.toBe(dark);
     await alice.locator("#vPlans").click();
     await isOn(alice, "plans");
-    expect(await bg()).toBe(dark);
+    expect(await bg()).toBe(light);
     await alice.locator("#vToday").click();
     await isOn(alice, "today");
     expect(await bg()).toBe(light);

@@ -113,19 +113,22 @@ test.describe("Plans: opening a plan", () => {
     const rows = alice.locator("#outline .row.wk");
     await expect(rows).toHaveCount(4);
     await expect(rows.locator(".name")).toHaveText(["Easy run", "Tempo intervals", "Long run", "Full body strength"]);
-    await expect(rows.nth(0).locator("small")).toContainText(daysAgo(2));
-    await expect(rows.nth(1).locator("small")).toContainText(today());
-    await expect(rows.nth(2).locator("small")).toContainText(daysAhead(3));
-    await expect(rows.nth(3).locator("small")).toContainText(`${daysAhead(1)}, ${daysAhead(5)}`);
+    // the line under a name says how many days, how long and how far; the days themselves are its title
+    await expect(rows.nth(0).locator("small")).toHaveAttribute("title", daysAgo(2));
+    await expect(rows.nth(1).locator("small")).toHaveAttribute("title", today());
+    await expect(rows.nth(2).locator("small")).toHaveAttribute("title", daysAhead(3));
+    await expect(rows.nth(3).locator("small")).toHaveAttribute("title", `${daysAhead(1)}, ${daysAhead(5)}`);
+    await expect(rows.nth(0).locator("small")).toContainText("1 day");
+    await expect(rows.nth(3).locator("small")).toContainText("2 days");
   });
 
-  test("each workout row shows its step count and a small picture of its steps", async ({ alice }) => {
+  test("each workout row shows how long and far it is and a small picture of its steps, a lifting one its sets", async ({ alice }) => {
     await openPlans(alice);
     await openPlan(alice, "alice-run-block.json");
     const rows = alice.locator("#outline .row.wk");
-    await expect(rows.nth(1).locator("small")).toContainText("3 steps");
+    await expect(rows.nth(1).locator("small")).toContainText("min");
     await expect(rows.nth(1).locator(".wv-chart.mini")).toHaveAttribute("aria-label", /^Workout profile: 3 steps, about \d+ min/);
-    await expect(rows.nth(3).locator("small")).toContainText("3 steps");
+    await expect(rows.nth(3).locator("small")).toContainText("2 sets"); // lifting is sets, and too small a row for its muscles
   });
 
   test("a workout's name opens its picture (steps and totals) and closes it again", async ({ alice }) => {
@@ -417,7 +420,7 @@ test.describe("Plans: the outline's workout buttons", () => {
     await makeFile(profile.api, `workout-plans/${profile.name}-add.json`, planJson());
     await openPlans(me);
     await openPlan(me, `${profile.name}-add.json`);
-    await me.getByRole("button", { name: "+ Add workout" }).click();
+    await me.locator("#outAdd").click(); // the outline's + Add: the same in the JSON, where the plan's page is not shown
     await expect(me.locator("#dlgTitle")).toHaveText("Add a workout");
     await expect(me.locator("#dlgInput")).toHaveValue("New workout");
     await expect(me.locator("#dlgChoice")).toHaveValue("strength_training");
@@ -435,7 +438,8 @@ test.describe("Plans: the outline's workout buttons", () => {
     await makeFile(profile.api, `workout-plans/${profile.name}-dupw.json`, planWithIds());
     await openPlans(me);
     await openPlan(me, `${profile.name}-dupw.json`);
-    await me.locator("#outline .row.wk").first().locator("button[title='Duplicate']").click();
+    await me.locator("#outline .row.wk").first().locator("button.more").click();
+    await me.locator("#pmenu button[title='Duplicate']").click();
     await expect(me.locator("#outline .row.wk .name")).toHaveText(["Easy run", "Easy run (copy)"]);
     const [original, copy] = JSON.parse(await textOf(me)).workouts;
     expect(original.workoutId).toBe(5511);
@@ -450,12 +454,14 @@ test.describe("Plans: the outline's workout buttons", () => {
     );
     await openPlans(me);
     await openPlan(me, `${profile.name}-rm.json`);
-    await me.locator("#outline .row.wk").nth(1).locator("button[title='Remove from the plan']").click();
+    await me.locator("#outline .row.wk").nth(1).locator("button.more").click();
+    await me.locator("#pmenu button[title='Remove from the plan']").click();
     await expect(me.locator("#dlgTitle")).toHaveText('Remove "Hills"?');
     await me.locator("#dlgCancel").click();
     await expect(me.locator("#dlg")).toBeHidden();
     await expect(me.locator("#outline .row.wk .name")).toHaveText(["Easy run", "Hills"]);
-    await me.locator("#outline .row.wk").nth(1).locator("button[title='Remove from the plan']").click();
+    await me.locator("#outline .row.wk").nth(1).locator("button.more").click();
+    await me.locator("#pmenu button[title='Remove from the plan']").click();
     await me.locator("#dlgOk").click();
     await expect(me.locator("#outline .row.wk .name")).toHaveText(["Easy run"]);
     expect(JSON.parse(await textOf(me)).workouts.map((w: { workoutName: string }) => w.workoutName)).toEqual(["Easy run"]);

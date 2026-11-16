@@ -1981,7 +1981,7 @@
   }
   /* ── Plans, in the new look: the title and what can be done at the top, the plans beside the plan or workout in the form or the JSON, the outline, the checks ── */
   :is(#pview, #wview, #gdrawer, #wdlg) { --c-run:var(--ok); --c-str:var(--t-sky); --c-ride:#c084fc; --mm-base:#2c2620; --mm-idle:#3b342c; --mm-edge:rgba(255,236,214,.22); --garmin:#4aa3ff; --garmin-bg:rgba(74,163,255,.14); --p-ok:var(--ok); --p-warn:var(--warn); --p-err:var(--err); --p-ink:var(--t-ink); }
-  body[data-theme="light"] :is(#pview, #wview, #gdrawer, #wdlg) { --c-ride:#9333ea; --mm-base:#e9dfcf; --mm-idle:#d9ccb6; --mm-edge:rgba(40,24,8,.28); --garmin:#1a5fb4; --garmin-bg:rgba(26,95,180,.10); --p-ok:#0f7a4a; --p-warn:#8a5600; --p-err:#b02a45; }
+  body[data-theme="light"] :is(#pview, #wview, #gdrawer, #wdlg) { --c-ride:#9333ea; --mm-base:#e9dfcf; --mm-idle:#d9ccb6; --mm-edge:rgba(40,24,8,.28); --garmin:#1a5fb4; --garmin-bg:rgba(26,95,180,.10); --p-ok:#0f7a4a; --p-warn:#7a4b00; --p-err:#b02a45; }
   #pview { display:flex; flex-direction:column; min-height:0; min-width:0; background:var(--bg); }
   #pview #toolbar { flex:none; flex-wrap:wrap; gap:10px 12px; padding:18px clamp(16px,2.2vw,30px) 12px; background:transparent; border-bottom:0; }
   #ptitle { display:flex; flex-direction:column; flex:1 1 280px; min-width:0; }
@@ -2083,7 +2083,7 @@
   #outline .row:hover { background:var(--t-surface2); }
   #outline .row.sel { background:var(--t-surface2); border-color:var(--t-line2); box-shadow:inset 3px 0 0 var(--c); }
   #outline .wtop { display:flex; align-items:center; gap:8px; min-width:0; }
-  #outline .row .name { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:14.5px; font-weight:600; cursor:pointer; }
+  #outline .row .name { flex:1; min-width:0; display:flex; align-items:center; min-height:44px; margin:-8px 0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:14.5px; font-weight:600; cursor:pointer; }
   #outline .row .name:hover { text-decoration:none; color:var(--t-ink); }
   #outline .wbot { display:flex; gap:8px; }
   #outline .row small { flex:1; min-width:0; color:var(--dim); font-size:12px; white-space:normal; }
@@ -2364,7 +2364,7 @@
   </div>
   <aside id="side">
     <div id="outlinePane">
-      <div id="outhead"><span class="peyebrow" id="outCount">Outline</span><button id="outAdd" class="plink" type="button" disabled>+ Add</button></div>
+      <div id="outhead"><span class="peyebrow" id="outCount">Outline</span><button id="outAdd" class="plink" type="button" aria-label="Add a workout" title="Add a workout to the plan" disabled>+ Add</button></div>
       <div id="syncbar" hidden><span id="syncSummary"></span><button id="syncRefresh" title="Check against Garmin again" aria-label="Check against Garmin again">↻</button></div>
       <div id="outline"><div class="empty">Open a plan.</div></div>
     </div>
@@ -3682,6 +3682,7 @@ function renderOutline() {
     name.textContent = label;
     const a = w && typeof w === "object" ? WM.analyze(w, { pacer: pacerFor(planProfile()) }) : null;
     small.textContent = a ? outlineMeta(w, a) : "";
+    small.title = w && typeof w === "object" ? PM.datesOf(w).join(", ") : ""; // the days themselves, as the file has them
     const st = garminOn(planProfile()) ? syncOf(i, w) : null;
     if (garminOn(planProfile())) {
       const [glyph, cls, tip] = st ? SYNC_CHIPS[st.state] : ["…", "", "Checking against Garmin"];

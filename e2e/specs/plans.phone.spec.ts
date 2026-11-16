@@ -143,9 +143,10 @@ test.describe("the bottom tab bar", () => {
   test("Checks shows the validation pane only", async ({ alice }) => {
     await openPlans(alice);
     await tab(alice, "problems").tap();
-    await expect(alice.locator("#side")).toBeVisible();
+    await expect(alice.locator("#center")).toBeVisible();
     await expect(alice.locator("#problemsPane")).toBeVisible();
-    await expect(alice.locator("#outlinePane")).toBeHidden();
+    await expect(alice.locator("#side")).toBeHidden();
+    await expect(alice.locator("#pform")).toBeHidden();
     await expect(alice.locator("#problems")).toContainText("Nothing to report.");
   });
 
@@ -195,59 +196,50 @@ test.describe("the Checks badge and pane", () => {
   });
 });
 
-test.describe("the toolbar's ⋯ panel", () => {
-  test("⋯ opens a panel with the plan's actions", async ({ alice }) => {
+test.describe("the bar and its file menu", () => {
+  test("the ⋯ button opens the file's actions in a menu", async ({ alice }) => {
     await openPlans(alice);
     await openPlanFile(alice, "alice-run-block.json");
-    await alice.locator("#menu").tap();
-    await expect(alice.locator("#menu")).toHaveAttribute("aria-expanded", "true");
-    await expect(alice.locator("body")).toHaveClass(/menu-open/);
-    await expect(alice.locator("#actions")).toBeVisible();
-    for (const id of ["new", "validate", "format", "reload", "history", "dup", "rename", "archive", "delete"]) {
-      await expect(alice.locator(`#${id}`)).toBeVisible();
-    }
+    await alice.locator("#fileBtn").tap();
+    await expect(alice.locator("#fileBtn")).toHaveAttribute("aria-expanded", "true");
+    await expect(alice.locator("#fileMenu button")).toHaveText(["Reload from disk", "History", "Duplicate", "Rename", "Archive", "Delete"]);
+    for (const id of ["reload", "history", "dup", "rename", "archive", "delete"]) await expect(alice.locator(`#${id}`)).toBeVisible();
+    await alice.locator("#fileBtn").tap();
+    await expect(alice.locator("#fileMenu")).toBeHidden();
   });
 
-  test("⋯ closes the panel when tapped again", async ({ alice }) => {
-    await openPlans(alice);
-    await alice.locator("#menu").tap();
-    await expect(alice.locator("#actions")).toBeVisible();
-    await alice.locator("#menu").tap();
-    await expect(alice.locator("#actions")).toBeHidden();
-    await expect(alice.locator("#menu")).toHaveAttribute("aria-expanded", "false");
-  });
-
-  test("choosing an action runs it and closes the panel", async ({ alice }) => {
+  test("Validate, in the JSON's own bar, runs the check", async ({ alice }) => {
     await openPlans(alice);
     await openPlanFile(alice, "alice-run-block.json");
-    await alice.locator("#menu").tap();
+    await tab(alice, "editor").tap();
+    await alice.locator("#emode button[data-mode=json]").tap();
     const validated = alice.waitForResponse((r) => r.url().includes("/api/validate") && r.request().method() === "POST");
     await alice.locator("#validate").tap();
     await validated;
-    await expect(alice.locator("#actions")).toBeHidden();
-    await expect(alice.locator("body")).not.toHaveClass(/menu-open/);
   });
 
-  test("the Garmin actions are disabled, with the reason, for a profile with no Garmin login", async ({ me, profile }) => {
+  test("the Garmin button is disabled, with the reason, for a profile with no Garmin login; so are the actions in its drawer", async ({ me, profile }) => {
     await putPlan(profile, "good", validPlan());
     await openPlans(me);
     await openPlanFile(me, `${profile.name}-good.json`);
-    await me.locator("#menu").tap();
+    await expect(me.locator("#garminBtn")).toBeDisabled();
+    await expect(me.locator("#garminBtn")).toHaveAttribute("title", /no Garmin login/);
     for (const id of ["gUpload", "gSchedule", "gBoth", "gSend"]) {
       await expect(me.locator(`#${id}`)).toBeDisabled();
     }
     await expect(me.locator("#gUpload")).toHaveAttribute("title", /no Garmin login/);
   });
 
-  test("the ⋯ button and its panel buttons are at least 40 px tall", async ({ alice }) => {
+  test("the bar's buttons and the file menu's are at least 44 px tall", async ({ alice }) => {
     await openPlans(alice);
     await openPlanFile(alice, "alice-run-block.json");
-    const menu = await alice.locator("#menu").boundingBox();
-    expect(menu!.height).toBeGreaterThanOrEqual(40);
-    await alice.locator("#menu").tap();
-    const heights = await alice.locator("#actions button:visible").evaluateAll((els) => els.map((el) => el.getBoundingClientRect().height));
+    const bar = await alice.locator("#toolbar button").evaluateAll((els) => els.filter((el) => (el as HTMLElement).offsetParent).map((el) => el.getBoundingClientRect().height));
+    expect(bar.length).toBeGreaterThanOrEqual(5);
+    for (const h of bar) expect(h).toBeGreaterThanOrEqual(44);
+    await alice.locator("#fileBtn").tap();
+    const heights = await alice.locator("#fileMenu button:visible").evaluateAll((els) => els.map((el) => el.getBoundingClientRect().height));
     expect(heights.length).toBeGreaterThan(5);
-    for (const h of heights) expect(h).toBeGreaterThanOrEqual(40);
+    for (const h of heights) expect(h).toBeGreaterThanOrEqual(44);
   });
 
   test("Save stays disabled while the open plan is unchanged", async ({ alice }) => {
@@ -258,7 +250,7 @@ test.describe("the toolbar's ⋯ panel", () => {
 });
 
 test.describe("the file list and the editor on a phone", () => {
-  test("the icon buttons beside each file are at least 40 px", async ({ alice }) => {
+  test("the ⋯ button beside each file is at least 40 px", async ({ alice }) => {
     await openPlans(alice);
     const heights = await alice.locator("#filelist .file .wact button").evaluateAll((els) => els.map((el) => el.getBoundingClientRect().height));
     expect(heights.length).toBeGreaterThanOrEqual(3);
@@ -270,12 +262,13 @@ test.describe("the file list and the editor on a phone", () => {
     await expect(alice.locator("#fileSort")).toHaveCSS("font-size", "16px");
   });
 
-  test("the toolbar stays on one row", async ({ alice }) => {
+  test("the bar wraps under the title and shows no more than the screen is wide", async ({ alice }) => {
     await openPlans(alice);
     await openPlanFile(alice, "alice-run-block.json");
-    const r = await alice.evaluate(() => ({ height: document.getElementById("toolbar")!.getBoundingClientRect().height, wrap: getComputedStyle(document.getElementById("toolbar")!).flexWrap }));
-    expect(r.wrap).toBe("nowrap");
-    expect(r.height).toBeLessThanOrEqual(64);
+    const r = await alice.evaluate(() => ({ title: document.getElementById("pTitle")!.getBoundingClientRect().bottom, save: document.getElementById("save")!.getBoundingClientRect().top, scroll: document.documentElement.scrollWidth, client: document.documentElement.clientWidth }));
+    expect(r.save).toBeGreaterThanOrEqual(r.title - 1);
+    expect(r.scroll).toBeLessThanOrEqual(r.client);
+    await expect.poll(() => stickingOut(alice)).toEqual([]);
   });
 
   test("the editor fills the width of the phone", async ({ alice }) => {

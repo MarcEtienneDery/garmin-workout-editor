@@ -17,6 +17,8 @@ export interface GarminOptions {
   states?: string[];
   /** What a check says differs, for a "modified" workout. */
   differences?: string[];
+  /** The watches the page may send to (none: the action is sent without asking which). */
+  devices?: { deviceId: number; displayName: string }[];
   /** How the action answers (the page shows it); an error status makes it fail. Default: 200, every workout uploaded. */
   action?: { status?: number; body?: Record<string, unknown> };
 }
@@ -41,6 +43,7 @@ export async function withGarmin(page: Page, profile: string, options: GarminOpt
     });
     await route.fulfill({ json: { profile, statuses } });
   });
+  await page.route(/\/api\/garmin\/devices\?/, (route) => route.fulfill({ json: { devices: options.devices ?? [] } }));
   await page.route(/\/api\/garmin\/action$/, async (route) => {
     const body = route.request().postDataJSON() as Record<string, unknown>;
     calls.actions.push(body);

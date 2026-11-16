@@ -57,9 +57,9 @@ const stepsOf = async (page: Page, i: number): Promise<Step[]> => (await workout
 const form = (page: Page) => page.locator("#pform");
 const card = (page: Page, text: string) => form(page).locator(".wf-list > .wf-card").filter({ hasText: text });
 
-/** Open workout `name` of the open plan in the form, from the plan's list. */
+/** Open workout `name` of the open plan in the form, from the outline. */
 async function openWorkout(page: Page, name: string): Promise<void> {
-  await form(page).locator(".wf-pw").filter({ hasText: name }).click();
+  await page.locator("#outline .row.wk .name").filter({ hasText: name }).click();
   await expect(form(page).locator(".wf-name")).toHaveValue(name);
 }
 
@@ -84,7 +84,8 @@ test.describe("The workout form: opening", () => {
     await expect(form(me).getByLabel("Week from")).toHaveValue("2026-11-02");
     await expect(form(me).getByLabel("to", { exact: true })).toHaveValue("2026-11-08");
     await expect(form(me).getByLabel("Notes", { exact: true })).toHaveValue("Base block");
-    await expect(form(me).locator(".wf-pw b")).toHaveText(["Legs", "Intervals"]);
+    await expect(me.locator("#outline .row.wk .name")).toHaveText(["Legs", "Intervals"]);
+    await expect(form(me).locator(".sg")).toBeVisible(); // the plan day by day
 
     await me.locator("#emode button[data-mode=json]").click();
     await expect(me.locator("#editor")).toBeVisible();
@@ -104,20 +105,20 @@ test.describe("The workout form: opening", () => {
     await expect(me.locator("#editor")).toBeVisible();
   });
 
-  test("a workout opens in the form from the plan's list, the outline and the picker above the form", async ({ me, profile }) => {
+  test("a workout opens in the form from the plan's day-by-day grid, the outline and the way back above the form", async ({ me, profile }) => {
     const path = await makePlan(profile.api, profile.name);
     await openPlan(me, path);
     await openWorkout(me, "Legs");
-    await expect(me.locator("#ewk")).toHaveValue("0");
+    await expect(me.locator("#pcrumb")).toContainText("Workout 1 of");
     await expect(me.locator("#outline .row.wk.sel .name")).toHaveText("Legs");
 
     await me.locator("#outline .row.wk .name").filter({ hasText: "Intervals" }).click();
     await expect(form(me).locator(".wf-name")).toHaveValue("Intervals");
     await expect(me.locator("#outline .row.wk.sel .name")).toHaveText("Intervals");
 
-    await me.locator("#ewk").selectOption("plan");
+    await me.locator("#pcrumb").getByRole("button", { name: "‹ The plan" }).click();
     await expect(form(me).locator(".wf-plan")).toBeVisible();
-    await me.locator("#ewk").selectOption("0");
+    await me.locator("#outline .row.wk .name").filter({ hasText: "Legs" }).click();
     await expect(form(me).locator(".wf-name")).toHaveValue("Legs");
   });
 
@@ -145,7 +146,7 @@ test.describe("The workout form: opening", () => {
   test("a swim opens on a note and Edit in JSON, which the form does not edit", async ({ me, profile }) => {
     const path = await makePlan(profile.api, profile.name, [{ workoutName: "Laps", workoutType: "swimming", steps: [] }]);
     await openPlan(me, path);
-    await form(me).locator(".wf-pw").filter({ hasText: "Laps" }).click();
+    await me.locator("#outline .row.wk .name").filter({ hasText: "Laps" }).click();
     await expect(form(me)).toContainText("The form does not edit swim workouts");
     await form(me).getByRole("button", { name: "Edit in JSON" }).click();
     await expect(me.locator("#editor")).toBeVisible();
