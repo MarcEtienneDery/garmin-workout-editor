@@ -349,7 +349,8 @@ test.describe("the Move menu of a workout's days in the Plans view", () => {
     const { path, name } = await addPlan(profile, "unsaved", [{ workoutName: "Morning run", workoutType: "running", scheduledDate: "2031-09-03" }, { workoutName: "Swim", workoutType: "swimming", scheduledDate: "2031-09-04" }]);
     const row = await openPicture(me, name, "2031-09-03", "Morning run");
     // an unsaved change: Duplicate the swim in the outline
-    await me.locator("#outline .row[data-name='Swim']").getByRole("button", { name: "Duplicate" }).click();
+    await me.locator("#outline .row[data-name='Swim'] button.more").click();
+    await me.locator("#pmenu").getByRole("menuitem", { name: "Duplicate" }).click();
     await expect(me.locator("#save")).toBeEnabled();
 
     await row.getByRole("button", { name: `Move ${longLabel("2031-09-03")} to another day` }).click();
