@@ -65,24 +65,28 @@ test.describe("Activities on a phone", () => {
     await expect.poll(() => stickingOut(alice)).toEqual([]);
   });
 
-  test("the calendar mode shows seven day columns that fit the width", async ({ alice }) => {
+  test("the Progress mode stacks its cards inside the width, with a heatmap of 26 weeks", async ({ alice }) => {
     await openView(alice, "activities");
-    await alice.locator('#aModes button[data-mode="calendar"]').tap();
-    await expect(alice.locator("#acal")).toBeVisible();
-    await expect(alice.locator("#adow span:visible")).toHaveCount(7);
-    await expect(alice.locator("#agrid .cday").first()).toBeVisible();
-    const grid = await alice.locator("#agrid").evaluate((el) => el.getBoundingClientRect().width);
-    expect(grid).toBeLessThanOrEqual(412);
+    await alice.locator('#aModes button[data-mode="stats"]').tap();
+    await expect(alice.locator("#astats")).toBeVisible();
+    await expect(alice.locator("#astats .aheatcard")).toBeVisible();
+    await expect(alice.locator("#astats .aheatcard .aeyebrow")).toContainText("last 26 weeks");
+    const widest = await alice.locator("#astats .acard").evaluateAll((els) => Math.max(...els.map((el) => el.getBoundingClientRect().width)));
+    expect(widest).toBeLessThanOrEqual(412);
     await expect.poll(() => stickingOut(alice)).toEqual([]);
   });
 
-  test("tapping a day of the calendar lists that day's activities below the grid", async ({ alice }) => {
+  test("tapping a week of the ribbon narrows the list to that week, and the same week again lets it go", async ({ alice }) => {
     await openView(alice, "activities");
-    await alice.locator('#aModes button[data-mode="calendar"]').tap();
-    await alice.locator("#agrid .cday.today").tap();
-    await expect(alice.locator("#aDay")).toBeVisible();
-    await expect(alice.locator("#aDay h3")).toBeVisible();
-    await expect(alice.locator("#aDay")).toContainText("Today's shakeout");
+    const weeks = alice.locator("#aribbon .awk12");
+    await expect(weeks.first()).toBeVisible();
+    const all = await alice.locator("#alist .arow").count();
+    await alice.locator("#aribbon .awk12:has(i)").last().tap();
+    await expect(alice.locator("#aribbon .awk12.sel")).toHaveCount(1);
+    expect(await alice.locator("#alist .arow").count()).toBeLessThan(all);
+    await alice.locator("#aribbon .awk12.sel").tap();
+    await expect(alice.locator("#aribbon .awk12.sel")).toHaveCount(0);
+    await expect(alice.locator("#alist .arow")).toHaveCount(all);
   });
 });
 
