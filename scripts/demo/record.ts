@@ -292,7 +292,7 @@ const SCENES: Scene[] = [
     run: async (s, page) => {
       await s.pause(800);
       await s.click(page.locator("#alist .arow").filter({ hasText: "Intervals 6 x 800 m" }).first(), { wait: 2200 });
-      const section = (title: RegExp) => page.locator("#abody h3").filter({ hasText: title }).first();
+      const section = (title: RegExp) => page.locator("#abody .achd h2").filter({ hasText: title }).first();
       await s.reveal(section(/graphs/i));
       const graph = page.locator("#abody svg.acsvg").first();
       await s.sweep(graph, 0.03, 0.97, 3500);
@@ -301,7 +301,7 @@ const SCENES: Scene[] = [
       await s.pause(1800);
       await s.reveal(section(/laps/i));
       await s.pause(2000);
-      await s.reveal(section(/planned workout/i));
+      await s.reveal(section(/planned/i));
       await s.pause(2400);
     },
   },
