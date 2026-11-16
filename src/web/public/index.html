@@ -371,7 +371,7 @@
   @font-face { font-family:"Fira Code"; font-weight:400; font-display:swap; src:url(/fonts/fira-code-latin-400-normal.woff2) format("woff2"); }
   @font-face { font-family:"Fira Code"; font-weight:500; font-display:swap; src:url(/fonts/fira-code-latin-500-normal.woff2) format("woff2"); }
   @font-face { font-family:"Fira Code"; font-weight:600; font-display:swap; src:url(/fonts/fira-code-latin-600-normal.woff2) format("woff2"); }
-  :is(#tview, #fview, #fsheet, #cview, #moveMenu, #rview, #bview) {
+  :is(#tview, #fview, #fsheet, #cview, #moveMenu, #rview, #bview, #aview) {
     --bg:#070504; --panel:#1b1612; --t-surface2:#262019; --line:rgba(255,236,214,.15); --t-line2:rgba(255,236,214,.26);
     --fg:#fbf3ea; --dim:#b3a698; --t-faint:#968a7c;
     --accent:#ff9f2e; --t-on-accent:#1a0d00; --t-ink:#ff9f2e;
@@ -381,7 +381,7 @@
     --t-track:rgba(255,236,214,.09); --t-tint:rgba(0,0,0,.2); --t-glow:rgba(255,159,46,.3); --t-hero-glow:rgba(255,159,46,.12); --t-ok-bg:rgba(74,222,128,.18); --t-pill:rgba(255,159,46,.16);
     background:var(--bg); color:var(--fg); font:400 15px/1.5 "Fira Sans",system-ui,sans-serif; color-scheme:dark;
   }
-  body[data-theme="light"] :is(#tview, #fview, #fsheet, #cview, #moveMenu, #rview, #bview) {
+  body[data-theme="light"] :is(#tview, #fview, #fsheet, #cview, #moveMenu, #rview, #bview, #aview) {
     --bg:#e9e1d3; --panel:#ffffff; --t-surface2:#f4eee3; --line:rgba(40,24,8,.15); --t-line2:rgba(40,24,8,.28);
     --fg:#1d1610; --dim:#5e5244; --t-faint:#766a5b;
     --accent:#d97706; --t-on-accent:#1a0d00; --t-ink:#a24a05;
@@ -715,36 +715,6 @@
 
   /* ── Activities view: the stored activities as a list and as a calendar ── */
   body:not([data-view="activities"]) #aview { display:none; }
-  #aview { display:grid; grid-template-columns:minmax(0,1fr) 400px; min-height:0; }
-  #amain, #adetail { display:flex; flex-direction:column; min-height:0; min-width:0; }
-  #adetail { background:var(--panel); border-left:1px solid var(--line); }
-  #abar, #aCalBar { flex-wrap:wrap; }
-  #aTitle { min-width:9em; }
-  #aSearch { flex:1 1 140px; min-width:0; }
-  #aNote { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
-  #aNote.err { color:var(--err); }
-  #ascroll, #abody { flex:1; min-height:0; overflow:auto; overscroll-behavior:contain; }
-  #abody { padding:12px 16px 24px; }
-  #aTypes { display:flex; gap:4px; flex-wrap:wrap; }
-  .tchip { display:inline-flex; gap:6px; align-items:center; padding:2px 9px; border-radius:11px; }
-  .tchip i { width:9px; height:9px; border-radius:50%; background:var(--c); }
-  .tchip[aria-pressed="true"] { background:var(--c); border-color:var(--c); color:#fff; }
-  .tchip[aria-pressed="true"] i { background:#fff; }
-  .awk { position:sticky; top:0; z-index:2; display:flex; gap:4px 14px; flex-wrap:wrap; padding:7px 12px; background:var(--bg); border-bottom:1px solid var(--line); color:var(--dim); }
-  .awk b { color:var(--fg); }
-  .arow { display:grid; grid-template-columns:6px minmax(0,1fr) auto; gap:1px 10px; align-items:center; padding:7px 12px 7px 10px; border-bottom:1px solid #2f2f2f; cursor:pointer; }
-  .arow:hover { background:#2d2d2e; }
-  .arow.active { background:#37373d; box-shadow:inset 2px 0 0 var(--accent); }
-  .arow .dot { align-self:stretch; border-radius:3px; background:var(--c); }
-  .arow .nm { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .arow small { color:var(--dim); }
-  .arow .met { grid-column:3; grid-row:1 / span 2; text-align:right; white-space:nowrap; }
-  .arow .met small { display:block; }
-  #adow, .acal .cweek { grid-template-columns:repeat(7,minmax(0,1fr)) 78px; }
-  #adow { display:grid; }
-  #adow span { padding:6px 4px; text-align:center; color:var(--dim); font-size:11px; text-transform:uppercase; letter-spacing:.06em; }
-  .acal { padding:0 10px; }
-  #agrid { border-right:1px solid var(--line); border-bottom:1px solid var(--line); }
   .cwtot { grid-column:8; grid-row:1 / -1; padding:4px 6px; font-size:11px; line-height:1.35; color:var(--dim); border-left:1px solid var(--line); border-top:1px solid var(--line); overflow:hidden; }
   .cwtot b { display:block; color:var(--fg); font-weight:600; }
   /* an activity that answers a planned workout: a tick before the name, and a white frame that survives the phone's thin bars */
@@ -754,20 +724,6 @@
   .cbar.more { background:transparent; border-color:transparent; color:var(--dim); cursor:pointer; }
   .cbar.plan { background:transparent; border:1px dashed var(--c); color:var(--fg); cursor:pointer; }
   .cbar.plan.missed { --c:var(--err); color:var(--err); } .cbar.plan.today { --c:var(--warn); } .cbar.plan.upcoming { --c:#8b8b8b; color:var(--dim); }
-  #aDay { padding:6px 0 24px; }
-  #aDay h3 { margin:8px 12px 4px; font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--dim); }
-  .aplan { display:flex; gap:8px; padding:5px 12px; color:var(--dim); }
-  .aplan.missed b { color:var(--err); } .aplan.today b { color:var(--warn); } .aplan.done b { color:var(--ok); }
-  .astats { display:grid; grid-template-columns:repeat(auto-fill,minmax(112px,1fr)); gap:10px 14px; margin:12px 0; }
-  .astats b { display:block; font-size:17px; font-weight:400; }
-  .astats small { color:var(--dim); font-size:11px; }
-  .astats .long b { font-size:13px; line-height:1.35; }
-  .ahead { color:var(--dim); }
-  .ahead b { display:block; color:var(--fg); font-size:15px; }
-  #abody h3 { margin:16px 0 6px; font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--dim); }
-  .amapbar { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin:0 0 6px; }
-  .amapbar small { color:var(--dim); }
-  .amap { height:260px; border:1px solid var(--line); border-radius:4px; overflow:hidden; background:#1e1e1e; }
   .amap.leaflet-container { background:#1e1e1e; font:inherit; }
   /* dark tiles from the light ones: the filter is on the tile layer alone, so the route and the markers keep their colours */
   .amap .leaflet-tile-pane { filter:invert(1) hue-rotate(180deg) brightness(.95) contrast(.9); }
@@ -813,19 +769,270 @@
   .aexchip.b2 { border-left:3px solid #d7ba7d; } .aexchip.b3 { border-left:3px solid #e0393c; }
   .anote { color:var(--dim); margin:8px 0; }
   /* Stats mode: the lifetime numbers use the whole width, so the detail pane steps aside */
-  #aview[data-amode="stats"] { grid-template-columns:minmax(0,1fr); }
+
+  /* ── Activities, in the new look: a log with the open activity beside it, and Progress ──
+     The sport colours, the muscle map's tones, a pill for the sync, cards for everything. Scoped to #aview: nothing else changes. */
+  #aview { --c-run:var(--ok); --c-str:var(--t-sky); --c-ride:#c084fc; --c-other:var(--dim); --mm-base:#2c2620; --mm-idle:#3b342c; --mm-edge:rgba(255,236,214,.22); --z-gap:14px;
+    display:grid; grid-template-columns:minmax(340px,430px) minmax(0,1fr); grid-template-rows:auto auto auto minmax(0,1fr); column-gap:16px; min-height:0; padding:0 clamp(12px,2.2vw,30px); }
+  body[data-theme="light"] #aview { --c-ride:#9333ea; --mm-base:#e9dfcf; --mm-idle:#d9ccb6; --mm-edge:rgba(40,24,8,.28); }
+  #abar, #aFetch, #afilters { grid-column:1 / -1; }
+  #amain { grid-column:1; grid-row:4; display:flex; flex-direction:column; min-height:0; min-width:0; }
+  #adetail { grid-column:2; grid-row:4; display:flex; flex-direction:column; min-height:0; min-width:0; background:transparent; border:0; }
+  #aview[data-amode="stats"] #amain { grid-column:1 / -1; }
   #aview[data-amode="stats"] #adetail { display:none; }
-  #astats { padding:4px 16px 28px; max-width:900px; }
-  #astats h3 { margin:18px 0 6px; font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--dim); }
-  .stiles { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:8px; margin:6px 0 8px; }
-  .stile { background:#2a2a2b; border:1px solid var(--line); border-radius:6px; padding:8px 10px; min-width:0; }
-  .stile b { display:block; font-size:18px; font-weight:600; overflow-wrap:anywhere; }
-  .stile span { color:var(--dim); font-size:11px; }
-  .srec { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:1px 12px; padding:7px 4px; border-bottom:1px solid #2a2a2a; }
-  .srec.go { cursor:pointer; } .srec.go:hover { background:#2a2a2b; }
-  .srec .srl { color:var(--dim); }
-  .srec .srv { text-align:right; font-weight:600; white-space:nowrap; }
-  .srec .srd { grid-column:1 / -1; color:var(--dim); font-size:11px; }
+  #aview.aempty { grid-template-columns:minmax(0,1fr); }
+  #aview.aempty #adetail { display:none; }
+  #ascroll, #abody { flex:1; min-height:0; overflow:auto; overscroll-behavior:contain; scrollbar-width:thin; }
+  #ascroll { padding:0 2px 28px; }
+  #abody { padding:0 2px 32px; display:flex; flex-direction:column; gap:var(--z-gap); }
+  #abody > * { flex:none; }
+  #aview .empty { color:var(--dim); }
+  #abody > .anote { margin:0; padding:12px 16px; border-radius:14px; background:var(--t-surface2); }
+  #adetail > .wbar { display:none; }
+  /* the bar */
+  #abar { display:flex; flex-wrap:wrap; align-items:center; gap:10px 12px; padding:18px 0 12px; background:transparent; border-bottom:0; }
+  #aHead { flex:1 1 auto; min-width:0; margin:0; font-size:clamp(24px,3vw,32px); font-weight:700; letter-spacing:-.02em; }
+  #abar #aProfile { max-width:100%; }
+  .apill { position:relative; overflow:hidden; display:inline-flex; align-items:center; gap:8px; padding:8px 14px; border-radius:999px; background:var(--panel); border:1px solid var(--line); font-size:13px; color:var(--dim); }
+  .apill::before { content:""; flex:none; width:8px; height:8px; border-radius:50%; background:var(--ok); box-shadow:0 0 0 4px color-mix(in srgb, var(--ok) 22%, transparent); }
+  .apill.busy::before { background:var(--accent); box-shadow:0 0 0 4px color-mix(in srgb, var(--accent) 24%, transparent); }
+  .apill.none::before { background:var(--t-faint); box-shadow:none; }
+  .apill.err { color:var(--err); } .apill.err::before { background:var(--err); box-shadow:0 0 0 4px color-mix(in srgb, var(--err) 22%, transparent); }
+  .apill .prog { position:absolute; left:0; bottom:0; height:3px; background:var(--accent); }
+  #aSync { min-height:44px; padding:0 18px; border-radius:999px; font-weight:600; }
+  #aModes { display:flex; padding:2px; gap:2px; background:var(--panel); border:1px solid var(--line); border-radius:999px; }
+  #aModes button, #aModes button:first-child, #aModes button:last-child { min-height:44px; margin:0; padding:0 22px; border:0; border-radius:999px; background:transparent; color:var(--dim); font-weight:600; }
+  #aModes button:hover:not(:disabled):not([aria-pressed="true"]) { background:var(--t-surface2); color:var(--fg); }
+  #aModes button[aria-pressed="true"] { background:var(--accent); color:var(--t-on-accent); }
+  #aview .themebtn { width:44px; min-width:44px; height:44px; padding:0; }
+  .anotebar { display:flex; flex-wrap:wrap; align-items:center; gap:8px 14px; margin:0 0 14px; padding:10px 16px; border-radius:14px; background:var(--t-surface2); color:var(--dim); font-size:13.5px; }
+  .anotebar button { min-height:44px; padding:0 16px; border-radius:999px; font-weight:600; }
+  /* the filters */
+  #afilters { display:flex; flex-wrap:wrap; align-items:center; gap:8px 10px; margin-bottom:14px; }
+  #aTypes { display:flex; gap:8px; flex-wrap:wrap; }
+  #aview .tchip { min-height:44px; display:inline-flex; align-items:center; gap:8px; padding:0 16px; border-radius:999px; border:1px solid var(--t-line2); background:transparent; font-weight:600; color:var(--fg); }
+  #aview .tchip i { width:10px; height:10px; border-radius:50%; background:var(--c); }
+  #aview .tchip small { font:500 12px "Fira Code",ui-monospace,monospace; color:var(--dim); }
+  #aview .tchip[aria-pressed="true"], #aview .tchip[aria-pressed="true"]:hover:not(:disabled) { background:color-mix(in srgb, var(--c) 18%, transparent); border-color:var(--c); color:var(--fg); }
+  .asearch { display:flex; align-items:center; gap:10px; flex:1 1 220px; min-width:0; min-height:44px; padding:0 16px; border-radius:999px; background:var(--panel); border:1px solid var(--t-line2); color:var(--dim); }
+  .asearch svg { width:18px; height:18px; flex:none; }
+  #aview .asearch input { flex:1; min-width:0; min-height:40px; padding:0; background:none; border:0; border-radius:0; color:var(--fg); outline:0; }
+  #aview .asearch:focus-within { outline:2px solid var(--accent); outline-offset:2px; }
+  #aview #aRange { min-height:44px; padding:0 14px; border-radius:999px; background:var(--panel); }
+  /* cards */
+  .acard { padding:18px 20px; background:var(--panel); border:1px solid var(--line); border-radius:18px; box-shadow:var(--card-shadow); min-width:0; }
+  .achd { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px 14px; margin-bottom:12px; }
+  .aeyebrow { margin:0; font:500 11.5px "Fira Code",ui-monospace,monospace; letter-spacing:.14em; text-transform:uppercase; color:var(--dim); }
+  .anote { color:var(--dim); margin:8px 0; }
+  .anote button { min-height:44px; padding:0 14px; border-radius:999px; margin-left:6px; }
+  #aview .seg { display:inline-flex; padding:2px; gap:2px; background:var(--panel); border:1px solid var(--line); border-radius:999px; }
+  #aview .seg button, #aview .seg button:first-child, #aview .seg button:last-child { min-height:44px; margin:0; padding:0 16px; border:0; border-radius:999px; background:transparent; color:var(--dim); font-weight:600; }
+  #aview .seg button[aria-pressed="true"] { background:var(--accent); color:var(--t-on-accent); }
+  /* the ribbon and the list */
+  .aribcard { margin-bottom:12px; padding:14px 16px; }
+  .abars12 { display:grid; grid-template-columns:repeat(12,minmax(0,1fr)); gap:5px; height:64px; align-items:end; margin-top:10px; }
+  .awk12 { display:flex; flex-direction:column-reverse; gap:1px; justify-content:flex-start; height:100%; min-width:0; padding:0; border:0; border-radius:5px; background:none; cursor:pointer; }
+  .awk12:hover:not(:disabled) { background:var(--t-surface2); }
+  .awk12 i { display:block; width:100%; border-radius:2px; min-height:2px; }
+  .awk12.sel, .awk12.sel:hover:not(:disabled) { outline:2px solid var(--accent); outline-offset:2px; background:none; }
+  .aaxis { display:flex; justify-content:space-between; gap:8px; margin-top:6px; font:500 10.5px "Fira Code",ui-monospace,monospace; color:var(--t-faint); }
+  #aview .awk { position:sticky; top:0; z-index:2; display:flex; flex-wrap:wrap; align-items:baseline; gap:4px 12px; padding:10px 6px 4px; background:var(--bg); border:0; }
+  #aview .awk b { font:500 11.5px "Fira Code",ui-monospace,monospace; letter-spacing:.14em; text-transform:uppercase; color:var(--dim); }
+  #aview .awk span { font:500 12.5px "Fira Code",ui-monospace,monospace; color:var(--dim); }
+  #aview .arow { display:grid; grid-template-columns:44px minmax(0,1fr) auto; align-items:center; gap:12px; min-height:68px; margin:0 0 8px; padding:11px 14px; background:var(--panel); border:1px solid var(--line); border-radius:16px; box-shadow:var(--card-shadow); cursor:pointer; transition:border-color .18s; }
+  #aview .arow:hover { border-color:var(--t-line2); background:var(--panel); }
+  #aview .arow.active { border-color:var(--accent); box-shadow:0 0 0 1px var(--accent) inset, var(--card-shadow); background:color-mix(in srgb, var(--accent) 7%, var(--panel)); }
+  #aview .arow:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+  .aico { width:44px; height:44px; border-radius:13px; display:grid; place-items:center; background:color-mix(in srgb, var(--c) 18%, transparent); color:var(--c); }
+  .aico svg { width:22px; height:22px; }
+  .aico.big { width:56px; height:56px; border-radius:16px; } .aico.big svg { width:28px; height:28px; }
+  #aview .arow .nm { font-weight:600; line-height:1.25; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .ainfo { min-width:0; }
+  .ameta { display:flex; flex-wrap:wrap; align-items:center; gap:2px 8px; font-size:12.5px; color:var(--dim); }
+  .atag { display:inline-flex; align-items:center; padding:0 8px; border-radius:999px; background:var(--t-surface2); border:1px solid var(--line); font-size:11px; font-weight:600; line-height:18px; color:var(--dim); }
+  .atag.plan { color:var(--t-ink); border-color:color-mix(in srgb, var(--accent) 45%, transparent); background:var(--t-pill); }
+  .ak { text-align:right; white-space:nowrap; }
+  .ak b { display:block; font:600 16px/1.2 "Fira Code",ui-monospace,monospace; }
+  .ak small { font:500 12px "Fira Code",ui-monospace,monospace; color:var(--dim); }
+  .aemptycard { display:flex; flex-direction:column; align-items:center; gap:12px; padding:34px 26px; text-align:center; max-width:620px; margin:10px auto 0; }
+  .aemptycard .abig { width:72px; height:72px; border-radius:22px; display:grid; place-items:center; background:var(--t-pill); color:var(--t-ink); }
+  .aemptycard .abig svg { width:34px; height:34px; }
+  .aemptycard h2 { margin:0; font-size:22px; font-weight:700; letter-spacing:-.02em; }
+  .aemptycard p { margin:0; max-width:46ch; color:var(--dim); text-wrap:pretty; }
+  .aemptycard button { min-height:44px; padding:0 22px; border-radius:999px; }
+  /* the detail: the header, the figures */
+  .adhead { display:flex; align-items:center; flex-wrap:wrap; gap:16px; padding:20px 22px; --c:var(--accent); }
+  .atxt { min-width:0; }
+  .ahead .atxt b { display:block; font-size:clamp(20px,2.4vw,26px); font-weight:700; letter-spacing:-.02em; line-height:1.15; color:var(--fg); }
+  .ahead .atxt small { display:block; margin-top:2px; font-size:14px; color:var(--dim); }
+  .ago { margin-left:auto; display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
+  .ago button { min-height:44px; padding:0 16px; border-radius:999px; font-weight:600; }
+  .ahero { padding:16px 18px; }
+  .afigs { display:grid; grid-template-columns:repeat(auto-fit,minmax(132px,1fr)); gap:10px; }
+  .afig { padding:2px 6px 2px 10px; border-left:3px solid var(--t-line2); }
+  .afig:first-child { border-color:var(--c, var(--accent)); }
+  .afig b { display:block; font:600 26px/1.15 "Fira Code",ui-monospace,monospace; letter-spacing:-.03em; overflow-wrap:anywhere; }
+  .afig b em { margin-left:3px; font:500 13px "Fira Sans",system-ui,sans-serif; font-style:normal; letter-spacing:0; color:var(--dim); }
+  .afig small { color:var(--dim); font-size:12.5px; }
+  .aminis { display:flex; flex-wrap:wrap; gap:6px 8px; margin-top:14px; }
+  .amini { display:inline-flex; gap:8px; align-items:baseline; padding:5px 12px; border-radius:999px; background:var(--t-surface2); font-size:13px; color:var(--dim); }
+  .amini b { font:600 13px "Fira Code",ui-monospace,monospace; color:var(--fg); }
+  .atwo { display:grid; grid-template-columns:minmax(0,1.3fr) minmax(0,1fr); gap:var(--z-gap); align-items:start; }
+  .atwo.one { grid-template-columns:minmax(0,1fr); }
+  .atwo > .ammc.open { grid-column:1 / -1; }
+  /* planned against done */
+  .aplanlink { display:block; margin:-4px 0 6px; color:var(--t-ink); font-weight:600; cursor:pointer; text-decoration:none; }
+  .aplanlink:hover { text-decoration:underline; }
+  .abul { --c:var(--ok); margin:12px 0 4px; }
+  .abl { display:flex; justify-content:space-between; gap:8px; font-size:13.5px; }
+  .abl b { font:600 14px "Fira Code",ui-monospace,monospace; }
+  .abt { position:relative; height:12px; margin-top:8px; border-radius:99px; background:var(--t-track); }
+  .abt i { position:absolute; left:0; top:0; bottom:0; border-radius:99px; background:var(--c); }
+  .abt u { position:absolute; top:-4px; bottom:-4px; width:2px; border-radius:1px; background:var(--fg); opacity:.85; text-decoration:none; }
+  .abn { display:flex; justify-content:space-between; gap:8px; margin-top:6px; font-size:12px; color:var(--dim); }
+  .aplanned .wv { margin-top:14px; } #aview .aplanned .wv-chart { height:56px; }
+  /* effort and effect */
+  .aeff + .aeff { margin-top:14px; padding-top:12px; border-top:1px solid var(--line); }
+  .ar { display:flex; justify-content:space-between; align-items:baseline; gap:10px; font-size:14px; }
+  .ar b { font:600 15px "Fira Code",ui-monospace,monospace; }
+  .ameter { display:grid; grid-template-columns:repeat(5,1fr); gap:4px; margin:7px 0 5px; }
+  .ameter i { height:8px; border-radius:99px; background:var(--t-track); } .ameter i.on { background:var(--c); }
+  .aslim { position:relative; height:8px; margin-top:7px; border-radius:99px; background:var(--t-track); }
+  .aslim i { position:absolute; left:0; top:0; bottom:0; border-radius:99px; background:var(--c); }
+  .awhy { color:var(--dim); font-size:13px; }
+  /* the graphs, the route, the laps: the existing drawings, in the palette */
+  #aview .acg { margin:0; }
+  #aview .acbar { display:flex; align-items:center; flex-wrap:wrap; gap:10px 12px; margin-bottom:8px; min-height:44px; }
+  #aview .acread { margin-left:auto; font:500 12.5px "Fira Code",ui-monospace,monospace; color:var(--dim); }
+  #aview .acp { margin:0; border-top:1px solid var(--line); } #aview .acp:first-child { border-top:0; }
+  #aview .acp .act { color:var(--dim); font:500 11px "Fira Code",ui-monospace,monospace; letter-spacing:.06em; text-transform:uppercase; padding-top:6px; }
+  #aview .acp .acv { color:var(--fg); }
+  #aview .acgrid { stroke:var(--line); }
+  #aview .accur { stroke:var(--fg); stroke-dasharray:none; stroke-width:1.2; opacity:.8; }
+  #aview .aclab { fill:var(--dim); font-size:7.4px; }
+  #aview .acsvg { max-height:none; }
+  .amap { height:340px; border:1px solid var(--line); border-radius:14px; overflow:hidden; background:var(--t-surface2); }
+  .amap.leaflet-container { background:var(--t-surface2); font:inherit; }
+  body[data-theme="light"] #aview .amap .leaflet-tile-pane { filter:none; }
+  .amap .leaflet-control-attribution { background:color-mix(in srgb, var(--panel) 85%, transparent); color:var(--dim); font-size:10px; }
+  .amap .leaflet-control-attribution a { color:var(--t-ink); }
+  .amapkey { display:flex; align-items:center; gap:10px; margin-top:8px; font-size:12px; color:var(--dim); }
+  .aramp { display:block; flex:0 0 90px; height:6px; border-radius:9px; background:linear-gradient(90deg, var(--ok), var(--warn), var(--err)); }
+  .alaps .abars { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:0 32px; }
+  #aview .abarrow { grid-template-columns:26px minmax(3.4em,auto) minmax(40px,1fr) auto; gap:4px 12px; padding:8px 0; border-top:1px solid var(--line); }
+  #aview .abarrow .abl { font:600 12px "Fira Code",ui-monospace,monospace; color:var(--dim); }
+  #aview .abarrow .abv { font:600 13px "Fira Code",ui-monospace,monospace; }
+  #aview .abartrack { height:10px; border-radius:99px; background:var(--t-track); }
+  #aview .abarfill { border-radius:99px; background:var(--t-sky); }
+  #aview .abarrow.fast .abarfill { background:var(--ok); } #aview .abarrow.slow .abarfill { background:var(--warn); }
+  #aview .abarrow .abx { font-size:12px; color:var(--dim); }
+  #aview .azstack { height:16px; border-radius:99px; background:var(--t-track); gap:2px; }
+  #aview .azseg { border-radius:0; }
+  #aview .azlegend { margin-top:10px; gap:6px 16px; font-size:12px; color:var(--dim); }
+  /* a strength session */
+  .aband { display:flex; flex-wrap:wrap; gap:4px 12px; font-size:12px; color:var(--dim); }
+  .aband span::before { content:""; display:inline-block; width:9px; height:9px; margin-right:5px; border-radius:50%; background:var(--c); }
+  .aband .b0 { --c:var(--t-sky); } .aband .b1 { --c:var(--ok); } .aband .b2 { --c:var(--warn); } .aband .b3 { --c:var(--err); }
+  #aview .aex { padding:14px 0; border-top:1px solid var(--line); border-bottom:0; } #aview .aex:first-child { border-top:0; padding-top:2px; }
+  #aview .aexh { display:flex; justify-content:space-between; align-items:baseline; gap:12px; flex-wrap:wrap; }
+  #aview .aexn { font-weight:600; }
+  #aview .aext { font:500 12px "Fira Code",ui-monospace,monospace; color:var(--dim); white-space:normal; }
+  #aview .aexc { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+  #aview .aexchip { display:inline-flex; align-items:center; gap:8px; padding:4px 11px 4px 9px; border-radius:999px; background:var(--t-surface2); border:0; font:500 12.5px "Fira Code",ui-monospace,monospace; }
+  #aview .aexchip.b0, #aview .aexchip.b1, #aview .aexchip.b2, #aview .aexchip.b3 { border:0; }
+  #aview .aexchip.b0::before, #aview .aexchip.b1::before, #aview .aexchip.b2::before, #aview .aexchip.b3::before { content:""; width:9px; height:9px; border-radius:50%; background:var(--c); flex:none; }
+  #aview .aexchip.b0 { --c:var(--t-sky); } #aview .aexchip.b1 { --c:var(--ok); } #aview .aexchip.b2 { --c:var(--warn); } #aview .aexchip.b3 { --c:var(--err); }
+  #aview .aexchip small { color:var(--dim); font-size:11.5px; }
+  #aview .aexnote { font-size:11.5px; color:var(--dim); margin-top:6px; }
+  #aview .atable { width:100%; border-collapse:collapse; }
+  #aview .atable td, #aview .atable th { padding:8px 8px 8px 0; text-align:left; border-bottom:1px solid var(--line); }
+  #aview .atable th { color:var(--dim); font:500 11px "Fira Code",ui-monospace,monospace; letter-spacing:.1em; text-transform:uppercase; }
+  #aview .atable td.num, #aview .atable th.num { text-align:right; font-family:"Fira Code",ui-monospace,monospace; }
+  /* the muscle map */
+  .ammc { display:flex; flex-direction:column; gap:10px; }
+  .ammc .achd { margin-bottom:0; }
+  .ammside { display:flex; align-items:center; flex-wrap:wrap; gap:6px 10px; }
+  .ammt { min-height:44px; margin:-10px -6px -10px 0; padding:0 6px 0 10px; border:0; background:none !important; color:var(--t-ink) !important; font-weight:600; font-size:13px; cursor:pointer; }
+  .ammt:hover { text-decoration:underline; }
+  .ammbody { display:grid; grid-template-columns:auto minmax(0,1fr); gap:16px; align-items:center; }
+  .ammleft { display:flex; flex-direction:column; min-width:0; }
+  .ammf { display:flex; gap:2px; padding:6px 8px 4px; border-radius:12px; background:var(--t-surface2); }
+  .ammf .mm-fig { display:block; width:84px; height:auto; }
+  .mm-fig .mm-body { fill:var(--mm-base); fill-opacity:1; stroke:var(--mm-edge); }
+  .ammc .mm-fig g:not(.mm-body) { stroke:var(--t-surface2); }
+  .ammc .mm-muscle { transition:opacity .15s; } .ammc .mm-muscle.t { cursor:pointer; } .ammc .mm-muscle.t:focus-visible { outline:none; }
+  .ammc .mm-muscle.on path, .ammc .mm-muscle.t:focus-visible path { stroke:var(--fg); stroke-width:1.6; }
+  .ammc.hov .mm-muscle:not(.on) { opacity:.4; }
+  .ammlist { display:flex; flex-direction:column; } .ammc:not(.open) .ammlist { max-width:560px; }
+  .ammrow { display:grid; grid-template-columns:92px minmax(0,1fr) 30px; align-items:center; gap:8px; min-height:32px; padding:0 6px; margin:0 -6px; border-radius:10px; font-size:13.5px; cursor:pointer; }
+  .ammrow:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+  .ammrow.on, .ammrow:hover { background:var(--t-surface2); } .ammrow.on .ammnm { color:var(--t-ink); }
+  .ammbar { display:block; height:8px; border-radius:99px; background:var(--t-track); overflow:hidden; } .ammbar i { display:block; height:100%; border-radius:99px; }
+  .ammrow b { font:600 13px "Fira Code",ui-monospace,monospace; text-align:right; }
+  .ammread { height:36px; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; font-size:12.5px; line-height:1.4; color:var(--dim); }
+  .ammread b { color:var(--fg); font-weight:600; }
+  .ammnote { font-size:12.5px; color:var(--dim); }
+  .ammunder { display:flex; flex-wrap:wrap; align-items:center; gap:6px 8px; }
+  .ammnone { font-size:12.5px; color:var(--dim); }
+  .acchip { display:inline-flex; align-items:center; gap:6px; min-height:32px; padding:0 12px; border-radius:999px; background:var(--t-surface2); border:1px solid var(--line); font-size:13px; font-weight:500; }
+  .acchip.cold { border-style:dashed; color:var(--dim); } .acchip b { font:600 12.5px "Fira Code",ui-monospace,monospace; }
+  .ammbal { margin-top:14px; } .ammstack { display:flex; gap:3px; height:12px; margin:8px 0; border-radius:99px; overflow:hidden; background:var(--t-track); } .ammstack i { display:block; height:100%; }
+  .ammlg { display:flex; flex-wrap:wrap; gap:4px 16px; font-size:13px; } .ammlg span { display:inline-flex; align-items:center; gap:6px; } .ammlg i { display:inline-block; width:10px; height:10px; border-radius:3px; } .ammlg b { font:600 13px "Fira Code",ui-monospace,monospace; }
+  .ammc.open .ammbody { grid-template-columns:minmax(0,380px) minmax(0,1fr); gap:28px; align-items:start; }
+  .ammc.open .ammf { padding:6px 8px 0; gap:8px; } .ammc.open .ammf .mm-fig { width:auto; flex:1; min-width:0; }
+  .ammc.open .ammrow { min-height:40px; grid-template-columns:132px minmax(0,1fr) 34px; }
+  .amperiods { margin-right:4px; }
+  /* Progress */
+  #astats { display:flex; flex-direction:column; gap:var(--z-gap); max-width:1280px; padding:0 0 28px; }
+  #astats > * { flex:none; }
+  .acols { display:grid; grid-template-columns:minmax(0,1.5fr) minmax(0,1fr); gap:var(--z-gap); align-items:start; }
+  .stiles { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; }
+  #aview .stile { padding:14px 16px; border:0; border-radius:14px; background:var(--t-surface2); min-width:0; }
+  #aview .stile small { display:block; color:var(--dim); font-size:12.5px; }
+  #aview .stile b { display:block; margin-top:2px; font:600 24px/1.15 "Fira Code",ui-monospace,monospace; letter-spacing:-.03em; overflow-wrap:anywhere; }
+  .avol { display:grid; grid-template-columns:repeat(26,minmax(0,1fr)); gap:4px; height:140px; align-items:end; }
+  .avc { display:flex; flex-direction:column-reverse; gap:1px; height:100%; justify-content:flex-start; } .avc i { display:block; width:100%; border-radius:2px; min-height:2px; }
+  .alegend { display:flex; flex-wrap:wrap; gap:4px 14px; margin-top:10px; font-size:12px; color:var(--dim); } .alegend span { display:inline-flex; align-items:center; gap:6px; } .alegend i { display:inline-block; width:10px; height:10px; border-radius:3px; }
+  .ayr { display:grid; grid-template-columns:44px minmax(0,1fr); gap:2px 10px; align-items:center; padding:7px 0; font-size:13.5px; }
+  .ayr small { grid-column:1 / -1; font:500 12px "Fira Code",ui-monospace,monospace; color:var(--dim); }
+  .ayb { display:block; height:10px; border-radius:99px; background:var(--t-track); overflow:hidden; } .ayb i { display:block; height:100%; border-radius:99px; background:var(--accent); }
+  .aheatstats { display:flex; flex-wrap:wrap; gap:4px 22px; margin-bottom:12px; color:var(--dim); font-size:13px; } .aheatstats b { font:600 15px "Fira Code",ui-monospace,monospace; color:var(--fg); }
+  .aheatm { display:grid; grid-template-columns:repeat(var(--n),minmax(0,1fr)); gap:3px; margin-bottom:4px; } .aheatm span { font:500 10px "Fira Code",ui-monospace,monospace; color:var(--t-faint); white-space:nowrap; overflow:visible; }
+  .aheat { display:grid; grid-template-columns:repeat(var(--n),minmax(0,1fr)); grid-template-rows:repeat(7,auto); grid-auto-flow:column; gap:3px; }
+  .aheat i { aspect-ratio:1; border-radius:3px; background:var(--t-track); }
+  .aheat i.fut { background:transparent; }
+  .aheat i.l1 { background:color-mix(in srgb, var(--accent) 28%, var(--t-track)); } .aheat i.l2 { background:color-mix(in srgb, var(--accent) 52%, var(--t-track)); } .aheat i.l3 { background:color-mix(in srgb, var(--accent) 78%, var(--t-track)); } .aheat i.l4 { background:var(--accent); }
+  #aview .srec { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:2px 12px; align-items:center; padding:11px 0; border-top:1px solid var(--line); border-bottom:0; } #aview .srec:first-of-type { border-top:0; }
+  #aview .srec.go { cursor:pointer; } #aview .srec.go:hover { background:none; } #aview .srec.go:hover .srl { text-decoration:underline; } #aview .srec:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+  #aview .srl { font-weight:600; color:var(--fg); } #aview .srv { font:600 17px "Fira Code",ui-monospace,monospace; text-align:right; white-space:nowrap; } #aview .srd { grid-column:1; color:var(--dim); font-size:12.5px; }
+  .anew { display:inline-block; margin-left:8px; padding:0 8px; border-radius:999px; background:var(--t-pill); color:var(--t-ink); font:600 11px "Fira Sans",system-ui,sans-serif; line-height:18px; }
+  .aline { display:block; width:100%; height:auto; } .aline .agrid { stroke:var(--line); stroke-width:.8; } .atick { fill:var(--dim); font:500 10px "Fira Code",ui-monospace,monospace; }
+  .aliney { stroke:var(--accent); stroke-width:2.2; stroke-linejoin:round; stroke-linecap:round; vector-effect:non-scaling-stroke; } .alinep { fill:var(--accent); }
+  .alifts .aexs { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; margin-top:10px; }
+  .aexc2 { display:flex; flex-direction:column; gap:3px; padding:14px 16px; border-radius:14px; background:var(--t-surface2); min-width:0; }
+  .aexh2 { display:flex; justify-content:space-between; align-items:baseline; gap:10px; } .aexh2 .aexn { font-weight:600; min-width:0; } .aexrm { font:600 20px "Fira Code",ui-monospace,monospace; white-space:nowrap; }
+  .aexc2 small { color:var(--dim); font-size:12.5px; } .aspark { display:block; width:100%; height:34px; margin:4px 0; }
+  .alifts > button { min-height:44px; margin-top:12px; padding:0 18px; border-radius:999px; }
+  @media (max-width:1100px) { .atwo, .acols { grid-template-columns:minmax(0,1fr); } .alaps .abars { grid-template-columns:minmax(0,1fr); } .ammc.open .ammbody { grid-template-columns:minmax(0,1fr); } .ammc.open .ammf { max-width:420px; margin:0 auto; } .alifts .aexs { grid-template-columns:minmax(0,1fr); } }
+  @media (max-width:900px) {
+    #abar { padding:12px 12px 8px; } #aFetch, #afilters { margin-left:12px; margin-right:12px; }
+    body:not([data-wpane="detail"]) #adetail, body[data-wpane="detail"] #amain, body[data-wpane="detail"] #abar, body[data-wpane="detail"] #aFetch, body[data-wpane="detail"] #afilters { display:none; }
+    body[data-wpane="detail"] #aview[data-amode="stats"] #adetail { display:flex; } /* a record opened from Progress: the pane comes over it, and Back returns to Progress */
+    #aview .apill { flex:1 1 100%; justify-content:center; order:5; }
+    #aModes { flex:1 1 auto; } #aModes button { flex:1; padding:0 10px; }
+    #aview #aHead { order:1; flex:1 1 60%; } #aSync { order:2; } #aTheme { order:3; } #aModes { order:4; flex:1 1 100%; }
+    #aview { display:flex; flex-direction:column; overflow:hidden; padding:0; } #aview #amain, #aview #adetail { flex:1; min-height:0; width:100%; }
+    #afilters { flex-wrap:nowrap; overflow-x:auto; scrollbar-width:none; } #afilters::-webkit-scrollbar { display:none; } #aTypes { flex-wrap:nowrap; } #aview .tchip { flex:none; } .asearch { flex:1 0 180px; } #aview #aRange { flex:none; }
+    #aview #ascroll { padding:0 12px 24px; } #aview #abody { padding:0 12px 24px; }
+    #adetail > .wbar { display:flex; align-items:center; gap:10px; padding:12px; background:transparent; border-bottom:0; } #adetail > .wbar b { font-size:18px; font-weight:700; }
+    .afigs { grid-template-columns:repeat(2,minmax(0,1fr)); } .afig b { font-size:22px; }
+    .adhead { padding:16px; gap:12px; } .ago { margin-left:0; width:100%; }
+    .acard { padding:16px; } .amap { height:260px; } #aview .aclab { font-size:9.5px; }
+    .ammbody { grid-template-columns:auto minmax(0,1fr); gap:12px; } .ammrow { min-height:44px; grid-template-columns:84px minmax(0,1fr) 30px; }
+    .stiles { grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; } #aview .stile { padding:12px 14px; } #aview .stile b { font-size:20px; }
+    .avol { height:110px; gap:2px; }
+  }
+  @media (prefers-reduced-motion:reduce) { #aview *, #aview *::before { transition:none !important; animation:none !important; } }
 
   /* ── Calendar view: where the plan files put their workouts ── */
   body:not([data-view="calendar"]) #cview { display:none; }
@@ -1007,16 +1214,6 @@
     button.wf-pk-row { padding:10px 8px; font-size:15px; }
     #ebar { gap:6px; }
 
-    #aview { display:block; position:relative; overflow:hidden; }
-    #amain, #adetail { width:100%; height:100%; border:0; }
-    body:not([data-wpane="detail"]) #adetail, body[data-wpane="detail"] #amain { display:none; }
-    body[data-wpane="detail"] #aview[data-amode="stats"] #adetail { display:flex; } /* a record opened from Stats: the pane comes over it, and Back returns to Stats */
-    .arow { grid-template-columns:6px minmax(0,1fr); padding:10px 12px 10px 10px; font-size:15px; }
-    .arow .met { grid-column:2; grid-row:auto; text-align:left; color:var(--dim); font-size:13px; }
-    .arow small { font-size:12px; }
-    .acal { padding:0; }
-    #adow, .acal .cweek { grid-template-columns:repeat(7,minmax(0,1fr)); }
-    .cwtot, #adow span:last-child { display:none; }
     #aTypes { flex-wrap:nowrap; overflow-x:auto; max-width:100%; }
     #wFilters select { font-size:16px !important; }
     #wChips { flex-wrap:nowrap; }
@@ -1024,8 +1221,6 @@
     #wChips .tchip { flex:none; }
     .tchip { flex:none; min-height:32px; padding:0 10px; }
     #aSearch { flex:1 1 90px; }
-    #abody { padding:12px 14px 24px; font-size:15px; }
-    .amap { height:230px; }
     #cview { display:block; height:100%; overflow:auto; overscroll-behavior:contain; }
     #cmain, #cscroll { display:block; overflow:visible; padding-left:0; padding-right:0; }
     #cbar { position:sticky; top:0; z-index:3; }
@@ -1055,17 +1250,17 @@
 
   /* ── Food view, in the new look: the palette of Today (the variables on #fview and on the add sheet, so both themes), Fira type, rounded cards ──
      Written over the rules above: the colours that were fixed greys read the variables now, and shapes are rounded. */
-  :where(#fview, #fsheet, #rview, #bview) button { background:var(--t-surface2); color:var(--fg); border-color:var(--t-line2); font-family:inherit; }
-  :where(#fview, #fsheet, #rview, #bview) button:hover:not(:disabled) { background:color-mix(in srgb, var(--fg) 8%, var(--t-surface2)); }
-  :is(#fview, #fsheet, #rview, #bview) button.primary { background:var(--accent); border-color:transparent; color:var(--t-on-accent); font-weight:700; }
-  :is(#fview, #fsheet, #rview, #bview) button.primary:hover:not(:disabled) { background:var(--accent); filter:brightness(1.08); }
-  :is(#fview, #fsheet, #rview, #bview) :is(input, select, textarea) { background:var(--t-surface2); color:var(--fg); border:1px solid var(--t-line2); border-radius:10px; font-family:inherit; }
-  :is(#fview, #fsheet, #rview, #bview) :is(input, select, textarea):focus-visible, :is(#fview, #fsheet, #rview, #bview) button:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+  :where(#fview, #fsheet, #rview, #bview, #aview) button { background:var(--t-surface2); color:var(--fg); border-color:var(--t-line2); font-family:inherit; }
+  :where(#fview, #fsheet, #rview, #bview, #aview) button:hover:not(:disabled) { background:color-mix(in srgb, var(--fg) 8%, var(--t-surface2)); }
+  :is(#fview, #fsheet, #rview, #bview, #aview) button.primary { background:var(--accent); border-color:transparent; color:var(--t-on-accent); font-weight:700; }
+  :is(#fview, #fsheet, #rview, #bview, #aview) button.primary:hover:not(:disabled) { background:var(--accent); filter:brightness(1.08); }
+  :is(#fview, #fsheet, #rview, #bview, #aview) :is(input, select, textarea) { background:var(--t-surface2); color:var(--fg); border:1px solid var(--t-line2); border-radius:10px; font-family:inherit; }
+  :is(#fview, #fsheet, #rview, #bview, #aview) :is(input, select, textarea):focus-visible, :is(#fview, #fsheet, #rview, #bview, #aview) button:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
   #fsheet .fform input[readonly] { background:transparent; color:var(--dim); }
   /* the bar: profile, the day (◀ a pill that opens the calendar ▶), Today, the theme */
   #fbar { display:flex; align-items:center; justify-content:stretch; gap:8px; padding:18px clamp(16px,2.6vw,34px) 6px; background:transparent; border-bottom:0; }
   #fbar #fProfile { flex:none; max-width:36%; margin-right:0; }
-  :is(#fview, #rview, #bview) .themebtn { border-radius:50%; background:transparent; border:1px solid var(--t-line2); }
+  :is(#fview, #rview, #bview, #aview) .themebtn { border-radius:50%; background:transparent; border:1px solid var(--t-line2); }
   #fPrev, #fNext { width:44px; min-width:44px; height:44px; padding:0; border-radius:50%; background:var(--panel); border:1px solid var(--line); font-size:13px; }
   #fPrev:disabled, #fNext:disabled { opacity:.4; }
   #fToday { min-height:44px; padding:0 18px; border-radius:999px; font-weight:600; }
@@ -1154,8 +1349,8 @@
   #fsheet .faibig { border-radius:14px; }
   #fsheet .fsh-note { color:var(--warn); }
   /* cards stand off the page: a firmer edge (the variables above), a lit top edge and a soft shadow; a section's label carries a rule */
-  :is(#tview, #fview, #cview, #moveMenu, #rview, #bview) { --card-shadow:0 1px 0 rgba(255,255,255,.06) inset, 0 14px 30px -18px rgba(0,0,0,.95); }
-  body[data-theme="light"] :is(#tview, #fview, #cview, #moveMenu, #rview, #bview) { --card-shadow:0 1px 0 #fff inset, 0 1px 2px rgba(60,40,10,.10), 0 14px 28px -18px rgba(60,40,10,.40); }
+  :is(#tview, #fview, #cview, #moveMenu, #rview, #bview, #aview) { --card-shadow:0 1px 0 rgba(255,255,255,.06) inset, 0 14px 30px -18px rgba(0,0,0,.95); }
+  body[data-theme="light"] :is(#tview, #fview, #cview, #moveMenu, #rview, #bview, #aview) { --card-shadow:0 1px 0 #fff inset, 0 1px 2px rgba(60,40,10,.10), 0 14px 28px -18px rgba(60,40,10,.40); }
   :is(#tview, #fview) :is(.tcard, .tfig, .fsum, .fcard, .fmeal, .fchip, .fday) { box-shadow:var(--card-shadow); }
   #fbody > h3, .fth h3 { display:flex; align-items:center; gap:14px; color:var(--fg); }
   #fbody > h3::after, .fth h3::after { content:""; flex:1; height:1px; background:var(--t-line2); }
@@ -1199,7 +1394,7 @@
   #fTabs button, #fTabs button:first-child, #fTabs button:last-child { min-height:44px; margin:0; padding:0 22px; border:0; border-radius:999px; background:transparent; color:var(--dim); font-weight:600; }
   #fTabs button:hover:not(:disabled):not([aria-pressed="true"]) { background:var(--t-surface2); color:var(--fg); }
   #fTabs button[aria-pressed="true"] { background:var(--accent); color:var(--t-on-accent); }
-  :is(#fview, #rview, #bview) .themebtn { width:44px; min-width:44px; height:44px; padding:0; }
+  :is(#fview, #rview, #bview, #aview) .themebtn { width:44px; min-width:44px; height:44px; padding:0; }
   /* the week: a day each, its calories against its goal as a ring; ◀ ▶ step a day */
   #fweek { display:flex; align-items:center; gap:8px; max-width:1280px; padding:8px clamp(16px,2.6vw,34px) 2px; }
   #fweek[hidden] { display:none; }
@@ -1693,7 +1888,7 @@
      On a restyled view (Today, Food) in its light theme the rail turns light with it (body[data-theme]). */
   header { --nav-bg:#100c09; --nav-line:rgba(255,236,214,.10); --nav-fg:#fbf3ea; --nav-dim:#b3a698; --nav-active:#1e1814; --nav-hover:#17120e; --nav-accent:#ff9f2e; --nav-on-accent:#1a0d00;
     background:var(--nav-bg); border-color:var(--nav-line); color:var(--nav-fg); font-family:"Fira Sans",system-ui,sans-serif; }
-  body:is([data-view="today"], [data-view="food"], [data-view="calendar"], [data-view="recovery"], [data-view="weight"])[data-theme="light"] header { --nav-bg:#fbf8f2; --nav-line:rgba(40,24,8,.12); --nav-fg:#1d1610; --nav-dim:#5e5244; --nav-active:#efe7d8; --nav-hover:#f5efe4; --nav-accent:#d97706; --nav-on-accent:#1a0d00; }
+  body:is([data-view="today"], [data-view="food"], [data-view="calendar"], [data-view="recovery"], [data-view="weight"], [data-view="activities"])[data-theme="light"] header { --nav-bg:#fbf8f2; --nav-line:rgba(40,24,8,.12); --nav-fg:#1d1610; --nav-dim:#5e5244; --nav-active:#efe7d8; --nav-hover:#f5efe4; --nav-accent:#d97706; --nav-on-accent:#1a0d00; }
   header h1 { margin:0; font-size:0; line-height:0; }
   .brandmark { display:grid; place-items:center; width:38px; height:38px; border-radius:11px; background:var(--nav-accent); color:var(--nav-on-accent); }
   .brandmark svg { width:21px; height:21px; }
@@ -1912,33 +2107,30 @@
   </aside>
 </section>
 <section id="aview">
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false"><defs><pattern id="mmhat" width="4.5" height="4.5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="4.5" height="4.5" fill="var(--mm-base)"/><line x1="0" y1="0" x2="0" y2="4.5" stroke="var(--accent)" stroke-width="2.2" opacity=".85"/></pattern></defs></svg>
+  <div class="wbar" id="abar">
+    <h1 id="aHead">Activities</h1>
+    <select id="aProfile" title="Garmin profile" hidden></select>
+    <span id="aNote" class="apill" role="status"></span>
+    <button id="aSync" title="Ask Garmin for new activities" hidden>↻ Sync</button>
+    <div class="seg" id="aModes" role="group" aria-label="What the view shows">
+      <button data-mode="list" aria-pressed="true">Log</button>
+      <button data-mode="stats" aria-pressed="false">Progress</button>
+    </div>
+    <button id="aTheme" class="themebtn" type="button" aria-label="Switch to light theme" title="Switch to light theme"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><g class="sun"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></g><path class="moon" d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z"/></svg></button>
+  </div>
+  <div id="aFetch" class="anotebar" hidden></div>
+  <div id="afilters">
+    <span id="aTypes" role="group" aria-label="Activity types"></span>
+    <label class="asearch"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 21 21"/></svg><input type="search" id="aSearch" placeholder="Search by name" aria-label="Search activities by name"></label>
+    <select id="aRange" title="How far back the list goes">
+      <option value="4w">4 weeks</option><option value="12w" selected>12 weeks</option><option value="1y">1 year</option><option value="all">All</option>
+    </select>
+  </div>
   <div id="amain">
-    <div class="wbar" id="abar">
-      <div class="seg" id="aModes" role="group" aria-label="How the activities are shown">
-        <button data-mode="list" aria-pressed="true">List</button>
-        <button data-mode="calendar" aria-pressed="false">Calendar</button>
-        <button data-mode="stats" aria-pressed="false">Stats</button>
-      </div>
-      <select id="aProfile" title="Garmin profile" hidden></select>
-      <select id="aRange" title="How far back the list goes">
-        <option value="4w">4 weeks</option><option value="12w" selected>12 weeks</option><option value="1y">1 year</option><option value="all">All</option>
-      </select>
-      <input type="search" id="aSearch" placeholder="Search by name" aria-label="Search activities by name">
-      <button id="aSync" title="Ask Garmin for new activities" hidden>↻ Sync</button>
-    </div>
-    <div class="wbar" id="aCalBar" hidden>
-      <button id="aPrev" title="Previous month" aria-label="Previous month">◀</button>
-      <button id="aToday">Today</button>
-      <button id="aNext" title="Next month" aria-label="Next month">▶</button>
-      <b id="aTitle" aria-live="polite"></b>
-      <button id="aPlanned" aria-pressed="false" title="Show the workouts the plans schedule, and whether each was done">Show planned</button>
-    </div>
-    <div class="wbar" id="aTypesBar"><span id="aTypes" role="group" aria-label="Activity types"></span></div>
-    <div id="aNote" class="empty" hidden></div>
     <div id="ascroll">
+      <div id="aribbon"></div>
       <div id="alist"></div>
-      <div class="acal" id="acal" hidden><div id="adow"></div><div id="agrid"></div></div>
-      <div id="aDay" hidden></div>
       <div id="astats" hidden></div>
     </div>
   </div>
@@ -4589,18 +4781,32 @@ function bindCalendarDrag() {
   addEventListener("click", (e) => { if (dropClick) { dropClick = false; e.preventDefault(); e.stopPropagation(); } }, true);
 }
 
-// ── Activities view: the stored activities as a list and as a calendar ──
+// ── Activities view: the stored activities as a log, the open one beside it, and the long-term picture ──
 // Everything here reads the activities table through /api/activities and /api/activity; Garmin is asked only when
 // someone presses a button (POST /api/activities/sync and /detail). Dates are the strings of the rows (YYYY-MM-DD, HH:MM),
-// never parsed by Date. The logic (weeks, totals, filters, planned against done) lives in activityModel.js.
+// never parsed by Date. Log is the list (a 12-week ribbon on top, weeks as groups) with the activity opened beside it;
+// Progress is what the stored activities add up to. The logic (weeks, totals, filters, the ribbon, the heatmap, planned
+// against done) lives in activityModel.js, the muscles in muscleMap.js.
 const AM = ActivityModel;
-const A = { profile: null, rows: [], sync: null, mode: "list", types: new Set(), query: "", range: "12w", month: null, day: null, selected: null, showPlanned: false, plans: null, loaded: false, error: "", run: 0, detail: null, detailRun: 0, refreshed: false, polling: false, busy: false, stats: null, statsError: "", statsLoading: false, statsAgain: false, allLifts: false };
+const A = { profile: null, rows: [], sync: null, mode: "list", types: new Set(), query: "", range: "12w", week: null, selected: null, loaded: false, error: "", run: 0, detail: null, detailRun: 0, refreshed: false, polling: false, busy: false, stats: null, statsError: "", statsLoading: false, statsAgain: false, allLifts: false, muscles: {}, musclePeriod: "4w" };
 const activityRow = (id) => A.rows.find((r) => r.id === id);
 const activityQuery = () => (A.profile ? `profile=${encodeURIComponent(A.profile)}&` : "");
 
+/** The icons of the sports (drawn in the colour of the sport), and the colour of one: --c-run, --c-str, --c-ride, --c-other. */
+const ACT_ICONS = {
+  run: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="14" cy="4.5" r="1.8"/><path d="M5 20l3-5 3 2 2-6-3-2-3 3M12 9l3 3 4 1M13 17l1 4"/></svg>',
+  str: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 9v6M6 7v10M18 7v10M21 9v6M6 12h12"/></svg>',
+  ride: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="5.5" cy="16.5" r="3.5"/><circle cx="18.5" cy="16.5" r="3.5"/><path d="M5.5 16.5L9 8h5l4.5 8.5M9 8L12 16.5M14 8l-1-2h-2"/></svg>',
+  other: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l3-7 4 14 3-7h4"/></svg>',
+};
+const actKey = (type) => AM.sportKey(type);
+const actIcon = (type) => ACT_ICONS[actKey(type)];
+const actColor = (type) => `var(--c-${actKey(type)})`;
+const ACT_SPORTS = [["run", "Running"], ["str", "Strength"], ["ride", "Cycling"], ["other", "Other"]];
+
 async function loadActivities() {
   await garminReady;
-  const run = ++A.run, note = $("aNote");
+  const run = ++A.run;
   const sel = $("aProfile");
   fillProfiles(sel);
   sel.hidden = !(garmin.user && garmin.user.admin && garmin.profiles.length > 1);
@@ -4641,7 +4847,7 @@ async function reloadActivityRows() {
   try { const r = await api("GET", "/api/activities?" + activityQuery()); A.rows = r.activities; A.sync = r.sync; } catch { /* the old rows stay */ }
 }
 
-/** Look again at the lifetime numbers when something new was stored; they are only shown (and fetched) in Stats mode. */
+/** Look again at the lifetime numbers when something new was stored; they are only shown (and fetched) in Progress. */
 function refreshStats() { if (A.mode === "stats") loadStats(); }
 
 /** While a sync runs (here or in the MCP server), look again every few seconds, so rows and details appear as they are stored. */
@@ -4664,22 +4870,22 @@ async function pollActivities() {
   } finally { A.polling = false; renderActivities(); }
 }
 
+/** The rows the list shows: the types and the search, and either the week picked in the ribbon or the range. */
 function visibleActivities() {
-  return AM.filterRows(A.rows, { types: A.types, query: A.query, from: A.mode === "list" ? AM.rangeStart(A.range, todayIso()) : null });
+  const rows = AM.filterRows(A.rows, { types: A.types, query: A.query, from: A.week ? null : AM.rangeStart(A.range, todayIso()) });
+  return A.week ? rows.filter((r) => AM.weekOf(r.date) === A.week) : rows;
 }
 
 function renderActivities() {
   $("aModes").querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.mode === A.mode)));
-  const calendar = A.mode === "calendar", stats = A.mode === "stats";
+  const stats = A.mode === "stats", empty = A.loaded && !A.rows.length;
   $("aview").dataset.amode = A.mode;
-  $("aRange").hidden = calendar || stats; $("aSearch").hidden = stats; $("aCalBar").hidden = !calendar;
-  $("alist").hidden = calendar || stats; $("acal").hidden = !calendar; $("aDay").hidden = !calendar; $("astats").hidden = !stats;
-  $("aPlanned").setAttribute("aria-pressed", String(A.showPlanned));
-  if (stats) $("aTypesBar").hidden = true; // the lifetime numbers cover every type
-  else renderActivityTypes();
+  $("aview").classList.toggle("aempty", empty);
+  $("afilters").hidden = stats || empty;
+  $("alist").hidden = stats; $("aribbon").hidden = stats || empty; $("astats").hidden = !stats;
   renderActivityNote();
   if (stats) { renderActivityStats(); if (!A.stats && !A.statsError && !A.statsLoading) loadStats(); }
-  else if (calendar) { renderActivityCalendar(); renderActivityDay(); } else renderActivityList();
+  else { renderActivityTypes(); renderActivityRibbon(); renderActivityList(); }
 }
 
 function renderActivityTypes() {
@@ -4688,299 +4894,123 @@ function renderActivityTypes() {
   for (const r of A.rows) counts.set(r.type, (counts.get(r.type) || 0) + 1);
   for (const [type, n] of [...counts].sort((a, b) => b[1] - a[1])) {
     const b = mk("button", "tchip"), dot = mk("i");
-    b.style.setProperty("--c", typeColor(type));
+    b.type = "button";
+    b.style.setProperty("--c", actColor(type));
     b.setAttribute("aria-pressed", String(A.types.has(type)));
-    b.append(dot, `${prettyName(type)} ${n}`);
+    b.append(dot, `${prettyName(type)} `, mk("small", "", String(n)));
     b.onclick = () => { if (A.types.has(type)) A.types.delete(type); else A.types.add(type); renderActivities(); };
     box.append(b);
   }
-  $("aTypesBar").hidden = !counts.size;
 }
 
-/** What the table holds and how the sync stands; before anything is stored, the way to start the first fill. */
+/**
+ * The status pill in the bar (what is stored and how the sync stands; the reason when there is nothing or something failed), and
+ * under the bar the way to fetch what is missing. Before anything is stored, the first fill is offered in the list's place.
+ */
 function renderActivityNote() {
-  const note = $("aNote"); note.replaceChildren(); note.classList.toggle("err", !!A.error);
-  const line = (text) => note.append(text);
-  const button = (label, run, title) => { const b = mk("button", "", label); if (title) b.title = title; b.onclick = guard(run); note.append(b); };
-  note.hidden = false;
-  if (A.error) { line(A.error); return; }
-  if (!A.loaded) { line("Loading…"); return; }
-  const s = A.sync;
+  const note = $("aNote"), fetchBar = $("aFetch"), s = A.sync;
+  note.className = "apill"; note.style.removeProperty("--p"); note.replaceChildren();
+  fetchBar.replaceChildren(); fetchBar.hidden = true;
+  note.classList.toggle("err", !!A.error);
+  if (A.error) { note.textContent = A.error; return; }
+  if (!A.loaded) { note.textContent = "Loading…"; return; }
   if (!A.rows.length) {
-    if (!garminOn(A.profile)) { line(garminWhy(A.profile) || "Garmin is not available, and nothing is stored yet."); return; }
-    line("No activities are stored yet. ");
-    button("Fetch history from Garmin", () => syncActivities(true), "Lists your whole history, then fetches every activity's details in the background, about a second each");
-    if (s && s.syncing) line("A fill is running…");
+    note.classList.add("none");
+    note.textContent = !garminOn(A.profile) ? garminWhy(A.profile) || "Garmin is not available, and nothing is stored yet." : "Nothing stored yet";
     return;
   }
   const parts = [`${s.activities} stored`, `${s.withDetails} with details`, `${s.withCharts} with graphs`];
-  if (s.syncing) parts.push("syncing…");
-  note.hidden = !(A.note || s.syncing || s.pendingDetails || s.pendingCharts || !s.historyComplete || s.error);
+  if (s.syncing) { parts.push("syncing…"); note.classList.add("busy"); }
   if (A.note) parts.unshift(A.note);
   if (s.error) parts.push(`stopped: ${s.error}`);
-  if (note.hidden) return;
-  line(parts.join(" · "));
+  note.textContent = parts.join(" · ");
+  if (s.syncing && s.activities) {
+    const bar = mk("span", "prog"); bar.style.width = `${Math.min(100, Math.round(((s.withDetails + s.withCharts) / (s.activities * 2)) * 100))}%`;
+    note.append(bar);
+  }
   const missing = s.pendingDetails + s.pendingCharts;
   if (garminOn(A.profile) && !s.syncing && (!s.historyComplete || missing)) {
-    button(s.historyComplete ? `Fetch ${s.pendingDetails} missing details and ${s.pendingCharts} graphs` : "Fetch the rest of the history", () => syncActivities(true), "Runs in the background; this view follows it. The graphs take about three Garmin calls each.");
+    const b = mk("button", "", s.historyComplete ? `Fetch the ${s.pendingDetails} missing details and ${s.pendingCharts} graphs` : "Fetch the rest of the history");
+    b.type = "button"; b.title = "Runs in the background; this view follows it. The graphs take about three Garmin calls an activity.";
+    b.onclick = guard(() => syncActivities(true));
+    fetchBar.append(s.historyComplete ? `${s.pendingDetails} detail${s.pendingDetails === 1 ? "" : "s"} and ${s.pendingCharts} graph${s.pendingCharts === 1 ? " is" : "s are"} not stored yet. ` : "The history has not been fetched in full. ", b);
+    fetchBar.hidden = false;
   }
 }
 
-// ── Stats: what the stored activities add up to ──
-// The server works the numbers out (GET /api/activities/stats) and keeps the answer until an activity is added or gets
-// its details, so this view only draws them; a new activity shows up here with the next look.
-
-async function loadStats() {
-  if (A.statsLoading) { A.statsAgain = true; return; }
-  A.statsLoading = true;
-  try {
-    do {
-      A.statsAgain = false;
-      const profile = A.profile, r = await api("GET", "/api/activities/stats?" + activityQuery());
-      if (profile === A.profile) { A.stats = r.stats; A.statsError = ""; }
-    } while (A.statsAgain);
-  } catch (e) { A.statsError = e.message; }
-  finally { A.statsLoading = false; }
-  if (A.mode === "stats") renderActivityStats();
+/** Nothing stored: what the first fill does, and its button, or why there is none. */
+function activityEmptyEl() {
+  const card = mk("section", "acard aemptycard");
+  const big = mk("div", "abig"); big.innerHTML = ACT_ICONS.other;
+  card.append(big, mk("h2", "", "No activities are stored yet"));
+  if (!garminOn(A.profile)) { card.append(mk("p", "", garminWhy(A.profile) || "Garmin is not available, and nothing is stored yet.")); return card; }
+  card.append(mk("p", "", "Start with your history: it lists every activity, then fetches each one's details and graphs in the background, about a second each. Nothing is sent to Garmin but the requests for your own data."));
+  const b = mk("button", "primary", "Fetch history from Garmin");
+  b.type = "button"; b.title = "Lists your whole history, then fetches every activity's details in the background, about a second each";
+  b.onclick = guard(() => syncActivities(true));
+  card.append(b);
+  if (A.sync && A.sync.syncing) card.append(mk("p", "anote", "A fill is running…"));
+  return card;
 }
 
-const fmtKm = (m) => `${(m / 1000).toLocaleString(undefined, { maximumFractionDigits: 1 })} km`;
-const fmtNum = (n) => Math.round(n).toLocaleString();
-/** A volume lifted (kept in lb), whole, in the unit of the Activities view's profile. */
-const lbVolume = (v) => (weightUnitOf(A.profile) === "kg" ? `${fmtNum(v / WM.LB_PER_KG)} kg` : `${fmtNum(v)} lb`);
-/** A weight lifted (kept in lb), in the unit of the Activities view's profile. Garmin's lifts come in whole pounds, which are good to a
- *  quarter of a kilo: kg are shown to the half kilo, so 100 kg lifted is 100 kg (whole pounds make it 99.8). */
-const lb = (w) => (weightUnitOf(A.profile) === "kg" ? `${Math.round((w / WM.LB_PER_KG) * 2) / 2} kg` : WM.weight(w, "lb"));
-const fromNote = (b) => `from ${b.reps} @ ${lb(b.weight)} on ${b.date}`;
-const ONE_RM_NOTE = "est. 1RM: your best set of the exercise by the Epley formula, weight × (1 + reps ÷ 30), over sets of up to 12 counted reps.";
-/** A list's heading with an ⓘ; the note opens at the top of the list. */
-const infoHeading = (text, list, [info, note]) => { const h = mk("h3", "", text); h.append(info); list.prepend(note); return h; };
+// ── The ribbon and the list ──
 
-/** A table from header cells and rows of cells, each cell [text, class]. */
-function table(head, rows) {
-  const t = mk("table", "atable"), tr = (cells, tag = "td") => { const row = mk("tr"); cells.forEach(([text, cls]) => row.append(mk(tag, cls || "", text))); t.append(row); };
-  tr(head, "th"); rows.forEach((cells) => tr(cells));
-  return t;
-}
-
-/** One exercise: its name and an aside, a chip for each [text, class], and a note. */
-function exerciseBlock(name, aside, chips, note) {
-  const block = mk("div", "aex"), head = mk("div", "aexh");
-  head.append(mk("span", "aexn", name), mk("span", "aext", aside));
-  block.append(head);
-  if (chips.length) { const row = mk("div", "aexc"); chips.forEach(([text, cls]) => row.append(mk("span", cls ? `aexchip ${cls}` : "aexchip", text))); block.append(row); }
-  if (note) block.append(mk("div", "aexnote", note));
-  return block;
-}
-
-const effortLabel = (m) => (m === 1609 ? "1 mile" : m % 1000 === 0 ? `${m / 1000} km` : `${+(m / 1000).toFixed(2)} km`);
-
-/**
- * An activity's page, from a record. On a wide screen that is the list with the activity open beside it; on a phone the
- * detail pane comes over Stats, and Back returns to it.
- */
-function openFromStats(id) {
-  if (!mobileQuery.matches) { A.mode = "list"; renderActivities(); }
-  selectActivity(id, true);
-}
-
-function renderActivityStats() {
-  const box = $("astats"); box.replaceChildren();
-  if (A.statsError) { box.append(mk("div", "msg err", A.statsError)); return; }
-  const s = A.stats;
-  if (!s) { box.append(mk("div", "empty", A.statsLoading ? "Loading…" : "")); return; }
-  if (!s.activities) { box.append(mk("div", "empty", "No activities are stored yet.")); return; }
-
-  const tiles = (list) => {
-    const grid = mk("div", "stiles");
-    for (const [value, label, title] of list) {
-      const t = mk("div", "stile"); t.append(mk("b", "", value), mk("span", "", label));
-      if (title) t.title = title;
-      grid.append(t);
-    }
-    return grid;
-  };
-  // a record: what it is, its value, and the day; the ones that belong to one activity open it
-  const record = (label, value, note, id) => {
-    const r = mk("div", "srec" + (id ? " go" : ""));
-    r.append(mk("span", "srl", label), mk("span", "srv", value));
-    if (note) r.append(mk("span", "srd", note));
-    if (id) { r.tabIndex = 0; r.setAttribute("role", "button"); r.onclick = () => openFromStats(id); r.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openFromStats(id); } }; }
-    return r;
-  };
-  const heading = (text) => box.append(mk("h3", "", text));
-
-  heading("Overall");
-  box.append(tiles([[fmtNum(s.activities), "activities"], [AM.duration(s.seconds) || "–", "time"], [fmtNum(s.activeDays), "active days"], [s.since || "–", "since", s.until ? `latest ${s.until}` : ""]]));
-  box.append(mk("div", "anote", s.byType.map((t) => `${prettyName(t.type)} ${t.count}`).join(" · ")));
-
-  const r = s.running;
-  if (r) {
-    heading("Running");
-    box.append(tiles([
-      [fmtNum(r.runs), "runs"], [fmtKm(r.meters), "distance"], [AM.duration(r.seconds) || "–", "time"], [`${fmtNum(r.gain)} m`, "climbed"],
-      [r.avgPaceSec ? AM.pace(r.avgPaceSec) : "–", "average pace"], [r.vo2max.latest ? String(r.vo2max.latest.value) : "–", "VO2max", r.vo2max.best ? `best ${r.vo2max.best.value} on ${r.vo2max.best.date}` : ""],
-    ]));
-    if (r.efforts.length) {
-      heading("Best efforts");
-      for (const e of r.efforts) box.append(record(effortLabel(e.meters), AM.axisClock(e.seconds), `${AM.pace(e.seconds / (e.meters / 1000))} · ${e.date} · ${e.name}`, e.id));
-    }
-    heading("Records");
-    if (r.longest) box.append(record("Longest run", fmtKm(r.longest.meters), `${AM.axisClock(r.longest.seconds)} · ${r.longest.date} · ${r.longest.name}`, r.longest.id));
-    if (r.bestPace) box.append(record("Best pace, runs of 3 km or more", AM.pace(r.bestPace.paceSec), `${fmtKm(r.bestPace.meters)} · ${r.bestPace.date} · ${r.bestPace.name}`, r.bestPace.id));
-    if (r.biggestClimb) box.append(record("Biggest climb", `${fmtNum(r.biggestClimb.gain)} m`, `${r.biggestClimb.date} · ${r.biggestClimb.name}`, r.biggestClimb.id));
-    if (r.biggestWeek) box.append(record("Biggest week", fmtKm(r.biggestWeek.meters), `${r.biggestWeek.runs} run${r.biggestWeek.runs === 1 ? "" : "s"}, the week of ${r.biggestWeek.start}`));
-    if (r.biggestMonth) box.append(record("Biggest month", fmtKm(r.biggestMonth.meters), `${r.biggestMonth.runs} run${r.biggestMonth.runs === 1 ? "" : "s"}, ${r.biggestMonth.month}`));
+/** The last 12 weeks, a bar each, split by sport: a tap on a week lists that week alone. */
+function renderActivityRibbon() {
+  const box = $("aribbon"); box.replaceChildren();
+  if (!A.rows.length) return;
+  const { weeks, peak } = AM.ribbon(A.rows, todayIso(), 12), card = mk("section", "acard aribcard");
+  card.append(mk("h2", "aeyebrow", "Last 12 weeks · time"));
+  const bars = mk("div", "abars12");
+  for (const w of weeks) {
+    const b = mk("button", "awk12" + (A.week === w.week ? " sel" : ""));
+    b.type = "button"; b.dataset.week = w.week; b.setAttribute("aria-pressed", String(A.week === w.week));
+    b.setAttribute("aria-label", `Week of ${fmtDate(w.week, { day: "numeric", month: "long" })}: ${w.count} session${w.count === 1 ? "" : "s"}${w.seconds ? ", " + AM.duration(w.seconds) : ""}`);
+    b.title = b.getAttribute("aria-label");
+    for (const [key] of ACT_SPORTS) if (w.bySport[key]) { const seg = mk("i"); seg.style.height = `${(w.bySport[key] / (peak || 1)) * 100}%`; seg.style.background = `var(--c-${key})`; b.append(seg); }
+    b.onclick = () => { A.week = A.week === w.week ? null : w.week; renderActivities(); };
+    bars.append(b);
   }
-
-  const g = s.strength;
-  if (g) {
-    heading("Strength");
-    box.append(tiles([
-      [fmtNum(g.sessions), "sessions"], [AM.duration(g.seconds) || "–", "time"], [fmtNum(g.sets), "sets"], [fmtNum(g.reps), "reps"],
-      [g.detailed ? lbVolume(g.volume) : "–", "volume lifted", `from the ${g.detailed} of ${g.sessions} sessions whose details are stored`],
-    ]));
-    if (g.detailed < g.sessions) box.append(mk("div", "anote", `The exercise figures cover ${g.detailed} of ${g.sessions} sessions; the others have no details stored yet.`));
-    if (g.exercises.length) {
-      const list = mk("div", "aexs"), shown = A.allLifts ? g.exercises : g.exercises.slice(0, 12);
-      box.append(infoHeading("Exercises", list, help("1rm", ONE_RM_NOTE, "est. 1RM")));
-      for (const e of shown) {
-        const chips = [
-          e.best && [`est. 1RM ${lb(e.best.oneRm)}`], e.heaviest && [`heaviest ${lb(e.heaviest.weight)} × ${e.heaviest.reps || "–"}`],
-          [`${fmtNum(e.sets)} sets · ${fmtNum(e.reps)} reps`], e.volume && [lbVolume(e.volume)],
-        ].filter(Boolean);
-        const when = [e.best ? fromNote(e.best) : "", `last ${e.lastDate}`].filter(Boolean).join(" · ");
-        list.append(exerciseBlock(e.name, `${e.sessions} session${e.sessions === 1 ? "" : "s"}`, chips, when));
-      }
-      box.append(list);
-      if (g.exercises.length > 12) {
-        const more = mk("button", "", A.allLifts ? "Show fewer" : `Show all ${g.exercises.length} exercises`);
-        more.onclick = () => { A.allLifts = !A.allLifts; renderActivityStats(); };
-        box.append(more);
-      }
-    }
-  }
-
-  heading("By year");
-  box.append(table(
-    [["Year"], ["Activities", "num"], ["Time", "num"], ["Runs", "num"], ["Distance", "num"], ["Lifts", "num"], ["Sets", "num"]],
-    s.years.map((y) => [[y.year], [fmtNum(y.activities), "num"], [AM.duration(y.seconds) || "–", "num"], [y.runs ? fmtNum(y.runs) : "–", "num"], [y.runMeters ? fmtKm(y.runMeters) : "–", "num"], [y.lifts ? fmtNum(y.lifts) : "–", "num"], [y.liftSets ? fmtNum(y.liftSets) : "–", "num"]]),
-  ));
+  const axis = mk("div", "aaxis");
+  axis.append(mk("span", "", fmtDate(weeks[0].week, { day: "numeric", month: "short" })), mk("span", "", A.week ? "a week picked: tap it again for all" : "this week"));
+  card.append(bars, axis);
+  box.append(card);
 }
-
-// ── List ──
 
 function renderActivityList() {
   const box = $("alist"); box.replaceChildren();
+  if (A.loaded && !A.rows.length) { box.append(activityEmptyEl()); return; }
   const rows = visibleActivities();
   if (!rows.length) { if (A.loaded && A.rows.length) box.append(mk("div", "empty", "No activity matches.")); return; }
   for (const wk of AM.groupWeeks(rows)) {
     const head = mk("div", "awk"), t = wk.totals;
-    head.append(mk("b", "", `Week of ${fmtDate(wk.week, { day: "numeric", month: "short" })}`), mk("span", "", `${t.count} session${t.count === 1 ? "" : "s"}`));
-    if (t.km) head.append(mk("span", "", `${t.km} km`));
-    if (t.seconds) head.append(mk("span", "", AM.duration(t.seconds)));
+    head.append(mk("b", "", `Week of ${fmtDate(wk.week, { day: "numeric", month: "short" })}`), mk("span", "", [`${t.count} session${t.count === 1 ? "" : "s"}`, t.km ? `${t.km} km` : "", t.seconds ? AM.duration(t.seconds) : ""].filter(Boolean).join(" · ")));
     box.append(head);
     for (const r of wk.rows) box.append(activityRowEl(r));
   }
 }
 
-const metricsOf = (r) => [AM.distance(r.km), AM.duration(r.seconds), AM.pace(r.paceSec), r.sets ? `${r.sets} sets` : "", r.avgHr ? `${r.avgHr} bpm` : ""].filter(Boolean);
+/** What a row says small, under its big figure: the pace of a run, the speed of a ride, the sets of a lift, and the heart rate. */
+function activitySmall(r) {
+  const key = actKey(r.type);
+  const first = key === "run" ? AM.pace(r.paceSec) : key === "ride" ? (r.speedKph ? `${r.speedKph.toLocaleString(undefined, { minimumFractionDigits: 1 })} km/h` : AM.duration(r.seconds)) : key === "str" ? (r.sets ? `${r.sets} sets` : "") : r.km ? AM.duration(r.seconds) : "";
+  return [first, r.avgHr ? `${r.avgHr} bpm` : ""].filter(Boolean);
+}
 
 function activityRowEl(r) {
   const el = mk("div", "arow" + (A.selected === r.id ? " active" : ""));
-  el.dataset.id = r.id; el.style.setProperty("--c", typeColor(r.type));
-  const info = mk("div"), met = mk("div", "met");
-  info.append(mk("div", "nm", r.name), mk("small", "", [fmtDate(r.date, { weekday: "short", day: "numeric", month: "short" }), AM.clock(r.time)].filter(Boolean).join(" · ")));
-  const m = metricsOf(r);
-  met.append(m.slice(0, 3).join(" · "));
-  if (r.effect) met.append(mk("small", "", prettyName(r.effect)));
-  el.append(mk("span", "dot"), info, met);
+  el.dataset.id = r.id; el.style.setProperty("--c", actColor(r.type));
+  const ico = mk("span", "aico"); ico.innerHTML = actIcon(r.type);
+  const info = mk("div", "ainfo"), meta = mk("div", "ameta"), big = mk("div", "ak");
+  meta.append(mk("span", "", [fmtDate(r.date, { weekday: "short", day: "numeric", month: "short" }), AM.clock(r.time)].filter(Boolean).join(" · ")));
+  if (r.workoutId) meta.append(mk("span", "atag plan", "✓ planned"));
+  if (r.effect) meta.append(mk("span", "atag", prettyName(r.effect)));
+  info.append(mk("div", "nm", r.name), meta);
+  const primary = r.km ? AM.distance(r.km) : AM.duration(r.seconds) || "–";
+  big.append(mk("b", "", primary), mk("small", "", activitySmall(r).slice(0, 2).join(" · ")));
+  el.append(ico, info, big);
   clickable(el, () => selectActivity(r.id));
   return el;
-}
-
-// ── Calendar ──
-
-const activityChipText = (r) => r.name;
-const activityChipTitle = (r) => [r.name, `${prettyName(r.type)} · ${r.date} ${AM.clock(r.time)}`, metricsOf(r).join(" · ")].filter(Boolean).join("\n");
-const MAX_CHIPS = 4;
-
-function renderActivityCalendar() {
-  A.month = A.month || todayIso().slice(0, 7);
-  const weeks = gridDays(A.month), first = weeks[0][0], last = weeks[weeks.length - 1][6], today = todayIso();
-  $("aTitle").textContent = monthName(A.month);
-  if (!$("adow").children.length) {
-    for (let d = 0; d < 7; d++) $("adow").append(mk("span", "", utcFormat({ weekday: "short" }).format(Date.UTC(2024, 0, 1 + d))));
-    $("adow").append(mk("span", "", "Week"));
-  }
-  const rows = visibleActivities(), days = AM.byDate(rows);
-  const sessions = A.showPlanned && A.plans ? AM.planned(A.plans, A.rows, today, { from: first, to: last }) : [];
-  const doneBy = new Set(sessions.filter((s) => s.status === "done").map((s) => s.activityId));
-  const openByDay = new Map();
-  for (const s of sessions) if (s.status !== "done") { if (!openByDay.has(s.date)) openByDay.set(s.date, []); openByDay.get(s.date).push(s); }
-  const grid = $("agrid"); grid.replaceChildren();
-  for (const week of weeks) {
-    const el = mk("div", "cweek"), chips = [];
-    week.forEach((iso, col) => {
-      const cell = mk("div", "cday" + (iso.slice(0, 7) !== A.month ? " out" : "") + (iso === today ? " today" : "") + (iso === A.day ? " sel" : ""));
-      cell.style.gridColumn = String(col + 1);
-      cell.append(mk("span", "dnum", iso.endsWith("-01") ? fmtDate(iso, { day: "numeric", month: "short" }) : String(Number(iso.slice(8)))));
-      cell.setAttribute("aria-label", fmtDate(iso, { weekday: "long", day: "numeric", month: "long", year: "numeric" }));
-      clickable(cell, () => { A.day = iso; renderActivities(); });
-      el.append(cell);
-      const items = [...(days.get(iso) || []).map((r) => ({ r })), ...(openByDay.get(iso) || []).map((s) => ({ s }))];
-      items.slice(0, items.length > MAX_CHIPS ? MAX_CHIPS - 1 : MAX_CHIPS).forEach((item, lane) => {
-        const node = mk("button", "cbar wk");
-        node.style.cssText = `grid-column:${col + 1}; grid-row:${lane + 2}`;
-        if (item.r) {
-          node.classList.add("act"); node.style.setProperty("--c", typeColor(item.r.type));
-          if (doneBy.has(item.r.id)) node.classList.add("ok");
-          if (item.r.id === A.selected) node.classList.add("sel");
-          node.textContent = activityChipText(item.r); node.title = activityChipTitle(item.r);
-          node.onclick = () => { A.day = iso; selectActivity(item.r.id); };
-        } else {
-          node.classList.add("plan", item.s.status); node.style.setProperty("--c", typeColor(item.s.sport));
-          node.textContent = item.s.name; node.title = `${item.s.name}\nPlanned (${item.s.status === "missed" ? "not done" : item.s.status})`;
-          node.onclick = () => { A.day = iso; renderActivities(); };
-        }
-        chips.push(node);
-      });
-      if (items.length > MAX_CHIPS) {
-        const more = mk("button", "cbar wk more", `+${items.length - MAX_CHIPS + 1} more`);
-        more.style.cssText = `grid-column:${col + 1}; grid-row:${MAX_CHIPS + 1}`; more.onclick = () => { A.day = iso; renderActivities(); };
-        chips.push(more);
-      }
-    });
-    const t = AM.totals(week.flatMap((iso) => days.get(iso) || []));
-    const tot = mk("div", "cwtot");
-    if (t.count) { tot.append(mk("b", "", `${t.count} session${t.count === 1 ? "" : "s"}`), [t.km ? `${t.km} km` : "", AM.duration(t.seconds)].filter(Boolean).join(" · ")); }
-    el.append(tot, ...chips);
-    el.style.gridTemplateRows = `24px repeat(${MAX_CHIPS}, 20px) 4px`;
-    grid.append(el);
-  }
-}
-
-/** The selected day below the grid: its activities, and the planned workouts that were not done. */
-function renderActivityDay() {
-  const box = $("aDay"); box.replaceChildren();
-  if (!A.day) return;
-  box.append(mk("h3", "", fmtDate(A.day, { weekday: "long", day: "numeric", month: "long", year: "numeric" })));
-  const rows = visibleActivities().filter((r) => r.date === A.day).sort((a, b) => (a.time || "").localeCompare(b.time || ""));
-  for (const r of rows) box.append(activityRowEl(r));
-  const today = todayIso();
-  const planned = A.showPlanned && A.plans ? AM.planned(A.plans, A.rows, today, { from: A.day, to: A.day }) : [];
-  for (const s of planned) {
-    const line = mk("div", "aplan " + s.status);
-    line.append(mk("b", "", (s.status === "done" ? "✓ " : "") + s.name), mk("span", "", s.status === "done" ? "planned, done" : s.status === "missed" ? "planned, not done" : s.status === "today" ? "planned for today" : "planned"));
-    box.append(line);
-  }
-  if (!rows.length && !planned.length) box.append(mk("div", "empty", "Nothing on this day."));
-}
-
-async function loadPlannedPlans() {
-  if (A.plans) return;
-  try { A.plans = (await api("GET", "/api/calendar")).plans.map((p) => ({ ...p, name: planName(p.path) })); }
-  catch { A.plans = []; }
 }
 
 // ── One activity ──
@@ -4998,8 +5028,7 @@ async function selectActivity(id, show = true) {
   if (!row) return;
   A.selected = id;
   if (show) { document.body.dataset.wpane = "detail"; navSync(); }
-  document.querySelectorAll("#aview .arow, #aview .cbar.act").forEach((el) => el.classList.toggle("active", el.dataset.id === id));
-  if (A.mode === "calendar") renderActivityCalendar();
+  document.querySelectorAll("#aview .arow").forEach((el) => el.classList.toggle("active", el.dataset.id === id));
   const token = ++A.detailRun;
   $("aDetailTitle").textContent = row.name;
   if (!A.detail || A.detail.activity.id !== id) $("abody").innerHTML = '<div class="empty">Loading…</div>';
@@ -5047,9 +5076,23 @@ async function fetchActivityDetails(id, token = A.detailRun) {
   renderActivityDetail();
 }
 
-function statEl(value, label) { const d = mk("div", value.length > 12 ? "long" : ""); d.append(mk("b", "", value), mk("small", "", label)); return d; }
+/** A card of the detail or of Progress: a title in small capitals with something at its right, if given. */
+function actCard(cls, title, aside) {
+  const card = mk("section", "acard " + cls);
+  if (title) { const head = mk("div", "achd"); head.append(mk("h2", "aeyebrow", title)); if (aside) head.append(aside); card.append(head); }
+  return card;
+}
 
-/** What the list item and the details say beyond the headline numbers. */
+/** A figure of the hero: the value (a number and its unit, split on the last space), and what it is. */
+function actFigure(text, label) {
+  const f = mk("div", "afig"), b = mk("b"), i = String(text).lastIndexOf(" ");
+  if (i > 0 && /^[\d.,:−-]+$/.test(String(text).slice(0, i))) b.append(String(text).slice(0, i), mk("em", "", String(text).slice(i + 1)));
+  else b.append(String(text));
+  f.append(b, mk("small", "", label));
+  return f;
+}
+
+/** What the list item and the details say beyond the headline numbers, as [label, value] pairs. */
 function extraStats(d, add) {
   const st = d.stats || {}, r = d.activity;
   add(st.minHr && `${st.minHr} bpm`, "Lowest HR");
@@ -5064,51 +5107,159 @@ function extraStats(d, add) {
   const seg = (st.segments || []).filter((x) => x.seconds >= 20).map((x) => `${prettyName(x.kind)} ${AM.duration(x.seconds)}`);
   add(seg.length > 1 ? seg.join(" · ") : "", "Run, walk, stand");
   add(st.location, "Place");
-  for (const [msg, label] of [[st.aerobicMessage, "Aerobic effect"], [st.anaerobicMessage, "Anaerobic effect"]]) {
-    const text = msg && prettyName(msg.replace(/_\d+$/, ""));
-    if (text && !/^No /i.test(text)) add(text, label);
+}
+
+/** The sets of a strength activity, one entry per exercise Garmin lists (not the intervals), and the volume lifted in lb. */
+const actLifts = (d) => (Array.isArray((d.slim || {}).exerciseSets) ? d.slim.exerciseSets : []).filter((x) => x.category !== "INTERVAL");
+const actVolume = (lifts) => lifts.reduce((v, x) => v + AM.setRuns(x).reduce((n, r) => n + r.count * (r.reps || 0) * (r.weight || 0), 0), 0);
+
+/** The header: the sport's icon, the name, when and where, and for a planned workout the way to its plan. */
+function actHeader(d) {
+  const r = d.activity, st = d.stats || {}, card = mk("section", "acard ahead adhead");
+  card.style.setProperty("--c", actColor(r.type));
+  const ico = mk("span", "aico big"); ico.innerHTML = actIcon(r.type);
+  const txt = mk("div", "atxt");
+  txt.append(mk("b", "", r.name), mk("small", "", [prettyName(r.type), `${fmtDate(r.date, { weekday: "long", day: "numeric", month: "long", year: "numeric" })}${r.time ? ", " + AM.clock(r.time) : ""}`, st.location].filter(Boolean).join(" · ")));
+  card.append(ico, txt);
+  if (d.planned) {
+    const go = mk("div", "ago"), open = mk("button", "", "Open in Plans ›");
+    open.type = "button"; open.onclick = guard(() => openPlanWorkout(d.planned.path, d.planned.workout));
+    go.append(mk("span", "atag plan", "✓ From a plan"), open);
+    card.append(go);
   }
+  return card;
+}
+
+/** The headline numbers of the sport, and under them what else the watch stored as small pills. */
+function actHero(d) {
+  const r = d.activity, s = d.slim || {}, key = actKey(r.type), card = actCard("ahero"), figs = mk("div", "afigs"), minis = mk("div", "aminis");
+  card.style.setProperty("--c", actColor(r.type));
+  const hero = [], skip = new Set();
+  if (key === "str") {
+    hero.push([AM.duration(r.seconds), "Time"], [r.sets ? `${r.sets} sets · ${r.reps || 0} reps` : "", "Sets · reps"]);
+    const lifts = actLifts(d), vol = actVolume(lifts);
+    hero.push([vol ? lbVolume(vol) : "", "Volume lifted"], [r.avgHr && `${r.avgHr} bpm`, "Average heart rate"], [r.calories && `${r.calories} kcal`, "Calories"]);
+    skip.add("Calories");
+  } else {
+    hero.push([AM.distance(r.km), "Distance"], [AM.duration(r.seconds), "Time"]);
+    hero.push(key === "ride" ? [r.speedKph && `${r.speedKph.toLocaleString(undefined, { minimumFractionDigits: 1 })} km/h`, "Average speed"] : [AM.pace(r.paceSec), "Average pace"]);
+    hero.push([r.avgHr && `${r.avgHr} bpm`, "Average heart rate"], [r.elevation && `${r.elevation} m`, "Elevation gain"]);
+  }
+  for (const [value, label] of hero) if (value) figs.append(actFigure(value, label));
+  const pill = (label, value) => { if (value !== null && value !== undefined && value !== "" && !skip.has(label)) { const m = mk("span", "amini"); m.append(label, " ", mk("b", "", String(value))); minis.append(m); } };
+  if (key !== "str") { pill("Max HR", r.maxHr && `${r.maxHr}`); pill("Cadence", s.avgCadence && `${Math.round(s.avgCadence)} spm`); pill("Calories", r.calories && `${r.calories}`); }
+  else pill("Max HR", r.maxHr && `${r.maxHr}`);
+  pill("Body Battery", s.differenceBodyBattery !== undefined ? s.differenceBodyBattery : "");
+  pill("Moderate + vigorous", s.moderateIntensityMinutes || s.vigorousIntensityMinutes ? `${s.moderateIntensityMinutes || 0} + ${s.vigorousIntensityMinutes || 0} min` : "");
+  extraStats(d, (value, label) => pill(label, value));
+  card.append(figs);
+  if (minis.childElementCount) card.append(minis);
+  return card;
+}
+
+/** A bar of two values against a mark: how much of something was done and where the plan had it. */
+function actBullet(label, value, fill, tick, note, delta, color) {
+  const b = mk("div", "abul"), l = mk("div", "abl"), t = mk("div", "abt"), f = mk("i"), u = mk("u"), n = mk("div", "abn");
+  b.style.setProperty("--c", color);
+  l.append(mk("span", "", label), mk("b", "", value));
+  f.style.width = `${Math.min(100, fill)}%`; u.style.left = `${Math.min(100, tick)}%`; u.title = "planned";
+  t.append(f, u);
+  n.append(mk("span", "", note), mk("span", "", delta));
+  b.append(l, t, n);
+  return b;
+}
+
+/** Planned against done: the distance and the time as bars with the planned value marked, and the workout as it was planned. */
+function actPlannedCard(d) {
+  const r = d.activity, pl = d.planned, card = actCard("aplanned", "Planned against done");
+  const link = mk("a", "aplanlink", `${pl.workout.workoutName} · ${planName(pl.path)}`);
+  link.tabIndex = 0; link.setAttribute("role", "link");
+  link.onclick = guard(() => openPlanWorkout(pl.path, pl.workout));
+  link.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); link.onclick(); } };
+  card.append(link);
+  const plan = WM.analyze(pl.workout, { pacer: pacerFor(A.profile) });
+  const sign = (n) => (n > 0 ? "+" : "");
+  for (const x of AM.plannedBars({ seconds: plan.seconds, km: plan.meters / 1000 }, { seconds: r.seconds, km: r.km }).sort((a, b) => (a.label === "Distance" ? -1 : 1) - (b.label === "Distance" ? -1 : 1))) {
+    card.append(actBullet(x.label, x.actual, x.fill, x.tick, `planned ${plan.assumed ? "~" : ""}${x.planned}`, `${sign(x.pct)}${x.pct}%`, Math.abs(x.pct) <= 10 ? "var(--ok)" : "var(--warn)"));
+  }
+  card.append(workoutVisual(pl.workout, { profile: A.profile }));
+  return card;
+}
+
+/** A training effect, the aerobic or the anaerobic one: its number, five steps and what Garmin says of it. */
+function actMeter(label, value, message, color) {
+  const row = mk("div", "aeff"), top = mk("div", "ar"), meter = mk("div", "ameter");
+  meter.style.setProperty("--c", color); meter.setAttribute("role", "img"); meter.setAttribute("aria-label", `${label}: ${value.toFixed(1)} of 5`);
+  const on = AM.meterSteps(value);
+  for (let i = 0; i < 5; i++) meter.append(mk("i", i < on ? "on" : ""));
+  top.append(mk("span", "", label), mk("b", "", value.toFixed(1)));
+  row.append(top, meter);
+  if (message) row.append(mk("div", "awhy", message));
+  return row;
+}
+const actEffectMessage = (msg) => { const text = msg && prettyName(msg.replace(/_\d+$/, "")); return text && !/^No /i.test(text) ? text : ""; };
+/** A figure out of 100 as a slim bar. */
+function actSlim(label, value, color) {
+  const row = mk("div", "aeff"), top = mk("div", "ar"), bar = mk("div", "aslim"), f = mk("i");
+  bar.style.setProperty("--c", color); f.style.width = `${Math.max(0, Math.min(100, value))}%`; bar.append(f);
+  top.append(mk("span", "", label), mk("b", "", `${value} / 100`));
+  row.append(top, bar);
+  return row;
+}
+
+/** Effort and effect: the training effects, and how it felt (the feel and the perceived effort), when the watch stored them. */
+function actEffectCard(d) {
+  const r = d.activity, s = d.slim || {}, st = d.stats || {}, rows = [];
+  if (r.aerobic) rows.push(actMeter("Aerobic effect", r.aerobic, actEffectMessage(st.aerobicMessage) || (r.effect ? prettyName(r.effect) : ""), "var(--ok)"));
+  if (s.anaerobicTrainingEffect) rows.push(actMeter("Anaerobic effect", s.anaerobicTrainingEffect, actEffectMessage(st.anaerobicMessage), "var(--warn)"));
+  if (s.directWorkoutFeel) rows.push(actSlim("Feel", s.directWorkoutFeel, "var(--ok)"));
+  if (s.directWorkoutRpe) rows.push(actSlim("Perceived effort (RPE)", s.directWorkoutRpe, "var(--warn)"));
+  if (!rows.length) return null;
+  const card = actCard("aeffect", "Effort and effect");
+  card.append(...rows);
+  return card;
 }
 
 /** The route on a tile map, coloured by pace or heart rate; the map loads when it is first drawn. */
 function routeSection(c, g, box) {
-  box.append(mk("h3", "", "Route"));
-  const bar = mk("div", "amapbar"), seg = mk("div", "seg"), holder = mk("div", "amap");
-  const modes = [["pace", "Pace"], ["hr", "Heart rate"], ["none", "Plain"]];
+  const seg = mk("div", "seg sm amapmodes"), holder = mk("div", "amap");
+  const card = actCard("aroute", "Route", seg);
   let by = "pace";
-  for (const [key, label] of modes) {
-    const b = mk("button", "", label); b.dataset.by = key;
+  for (const [key, label] of [["pace", "Pace"], ["hr", "Heart rate"], ["none", "Plain"]]) {
+    const b = mk("button", "", label); b.dataset.by = key; b.type = "button";
     b.setAttribute("aria-pressed", String(key === by));
     b.onclick = () => { by = key; [...seg.children].forEach((x) => x.setAttribute("aria-pressed", String(x.dataset.by === by))); if (A.map) A.map.recolor(by); };
     seg.append(b);
   }
-  bar.append(seg, mk("small", "", "Red is slower or harder, green is faster or easier."));
-  box.append(bar, holder);
+  const key = mk("div", "amapkey amapbar"), ramp = mk("i", "aramp");
+  key.append("Slower or harder", ramp, "faster or easier");
+  card.append(holder, key);
+  box.append(card);
   const token = A.detailRun;
   ActivityMap.create(holder, c, { colorBy: by, onCursor: (j) => g.setCursor(j === null ? null : AM.chartIndexFor(c, j)) })
     .then((map) => { if (token !== A.detailRun || !holder.isConnected) { map.destroy(); return; } A.map = map; if (by !== "pace") map.recolor(by); })
     .catch((e) => { holder.replaceChildren(mk("div", "anote", e.message || "The map could not be loaded.")); holder.style.height = "auto"; });
 }
 
-/** The graphs of one activity, and the note that says why there are none yet. */
+/** The graphs of one activity, the route, the laps and the splits; or the note that says why there are none yet. */
 function chartSection(d, box) {
-  const c = d.chart, id = d.activity.id;
-  box.append(mk("h3", "", "Graphs"));
+  const c = d.chart, id = d.activity.id, card = actCard("agraphs", "Graphs");
   if (!c) {
     const note = mk("div", "anote");
     if (A.chartBusy) note.textContent = "Fetching the graphs from Garmin…";
     else {
       note.append(A.chartFailure ? `Could not fetch the graphs: ${A.chartFailure} ` : A.sync && A.sync.syncing ? "The graphs are being filled in; they appear here when stored. " : "The graphs are not stored yet. ");
-      if (garminOn(A.profile) && !(A.sync && A.sync.syncing)) { const b = mk("button", "", "Fetch them now"); b.onclick = guard(() => fetchActivityChart(id)); note.append(b); }
+      if (garminOn(A.profile) && !(A.sync && A.sync.syncing)) { const b = mk("button", "", "Fetch them now"); b.type = "button"; b.onclick = guard(() => fetchActivityChart(id)); note.append(b); }
     }
-    box.append(note);
+    card.append(note); box.append(card);
     return;
   }
   // The cursor of the graphs and the marker on the map follow each other.
   const g = ActivityCharts.graphs(c, { onCursor: (i) => { if (A.map) A.map.setCursor(i === null ? null : AM.routeIndexFor(c, i)); } });
   A.graphs = g;
-  if (!g.el.childElementCount) box.append(mk("div", "anote", "Garmin has no time series for this activity."));
-  else box.append(g.el);
+  if (!g.el.childElementCount) card.append(mk("div", "anote", "Garmin has no time series for this activity."));
+  else card.append(g.el);
+  box.append(card);
   if (c.route) routeSection(c, g, box);
 
   // laps as the watch recorded them, and kilometer splits worked out from the series
@@ -5119,19 +5270,61 @@ function chartSection(d, box) {
     if (laps.length > 1) views.push(["laps", `Laps (${laps.length})`]);
     if (splits.length > 1) views.push(["splits", `Km splits (${splits.length})`]);
     let shown = laps.length > 1 && (kinds.size > 1 || splits.length <= 1) ? "laps" : views[0][0];
-    const holder = mk("div"), tabs = mk("div", "seg asegtabs");
+    const holder = mk("div", "alaps"), tabs = mk("div", "seg sm asegtabs");
+    const lapCard = actCard("alapcard", views.length > 1 ? "Laps and splits" : views[0][1], views.length > 1 ? tabs : null);
     const draw = () => {
       [...tabs.children].forEach((b, i) => b.setAttribute("aria-pressed", String(views[i][0] === shown)));
       holder.replaceChildren(shown === "laps"
         ? ActivityCharts.paceBars(laps, { label: (x) => String(x.index), extra: (x) => [AM.distance(x.meters / 1000), AM.duration(x.seconds), x.avgHr ? `${Math.round(x.avgHr)} bpm` : "", x.kind && x.kind !== "ACTIVE" ? prettyName(x.kind) : ""].filter(Boolean).join(" · ") })
         : ActivityCharts.paceBars(splits, { label: (x) => String(x.index), extra: (x) => [x.meters < 990 ? AM.distance(x.meters / 1000) : "", x.avgHr ? `${x.avgHr} bpm` : "", x.climb ? `${x.climb > 0 ? "+" : ""}${x.climb} m` : ""].filter(Boolean).join(" · ") }));
     };
-    for (const [key, label] of views) { const b = mk("button", "", label); b.onclick = () => { shown = key; draw(); }; tabs.append(b); }
-    box.append(mk("h3", "", views.length > 1 ? "Laps and splits" : views[0][1]));
-    if (views.length > 1) box.append(tabs);
-    box.append(holder);
+    for (const [key, label] of views) { const b = mk("button", "", label); b.type = "button"; b.onclick = () => { shown = key; draw(); }; tabs.append(b); }
+    lapCard.append(holder);
+    box.append(lapCard);
     draw();
   }
+}
+
+/** An exercise of a strength session: each run of identical sets as a chip with its share of your estimated one-rep max, and a line of where that max is from. */
+function actExerciseBlock(entries, oneRm) {
+  const x = entries[0], runs = entries.flatMap((e) => AM.setRuns(e)), count = runs.reduce((a, r) => a + r.count, 0), max = oneRm && oneRm.oneRm > 0 ? oneRm : null;
+  const block = mk("div", "aex"), head = mk("div", "aexh"), chips = mk("div", "aexc");
+  head.append(mk("span", "aexn", x.exerciseName), mk("span", "aext", [entries.some((e) => e.supersetGroup) ? "superset" : "", `${count} set${count === 1 ? "" : "s"}`, max ? `est. 1RM ${lb(max.oneRm)}` : ""].filter(Boolean).join(" · ")));
+  for (const run of runs) {
+    const text = AM.runText(run, lb);
+    if (!text) continue;
+    const pct = max && run.weight > 0 ? Math.round((run.weight / max.oneRm) * 100) : null, chip = mk("span", "aexchip" + (pct !== null ? ` b${AM.intensityBand(pct)}` : ""));
+    chip.append(text);
+    if (pct !== null) chip.append(mk("small", "", ` ${pct} %`));
+    chips.append(chip);
+  }
+  block.append(head);
+  if (chips.childElementCount) block.append(chips);
+  if (max) block.append(mk("div", "aexnote", fromNote(max)));
+  return block;
+}
+
+/** The session card of a lift: how it felt and the heaviest set against your estimated one-rep max. */
+function actSessionCard(d, lifts) {
+  const s = d.slim || {}, card = actCard("aeffect", "Session");
+  if (s.directWorkoutFeel) card.append(actSlim("Feel", s.directWorkoutFeel, "var(--ok)"));
+  if (s.directWorkoutRpe) card.append(actSlim("Perceived effort (RPE)", s.directWorkoutRpe, "var(--warn)"));
+  let best = null;
+  for (const x of lifts) {
+    const max = d.oneRepMax && d.oneRepMax[x.exerciseName];
+    for (const run of AM.setRuns(x)) {
+      if (!(run.weight > 0)) continue;
+      const pct = max && max.oneRm > 0 ? run.weight / max.oneRm : null;
+      if (!best || (pct !== null && (best.pct === null || pct > best.pct)) || (pct === null && best.pct === null && run.weight > best.run.weight)) best = { x, run, pct };
+    }
+  }
+  if (best) {
+    const row = mk("div", "aeff"), top = mk("div", "ar");
+    top.append(mk("span", "", "Heaviest set"), mk("b", "", `${lb(best.run.weight)}${best.run.reps ? ` × ${best.run.reps}` : ""}`));
+    row.append(top, mk("div", "awhy", `${best.x.exerciseName}${best.pct !== null ? ` · ${Math.round(best.pct * 100)} % of your estimated one-rep max` : ""}`));
+    card.append(row);
+  }
+  return card.childElementCount > 1 ? card : null;
 }
 
 function renderActivityDetail() {
@@ -5140,82 +5333,399 @@ function renderActivityDetail() {
   box.replaceChildren();
   A.graphs = null;
   if (!d) return;
-  const r = d.activity, s = d.slim || {};
-  const head = mk("div", "ahead");
-  head.append(mk("b", "", r.name), `${prettyName(r.type)} · ${fmtDate(r.date, { weekday: "long", day: "numeric", month: "long", year: "numeric" })}${r.time ? ", " + AM.clock(r.time) : ""}`);
-  box.append(head);
-
-  const stats = mk("div", "astats");
-  const add = (value, label) => { if (value !== null && value !== undefined && value !== "") stats.append(statEl(String(value), label)); };
-  add(AM.distance(r.km), "Distance"); add(AM.duration(r.seconds), "Time"); add(AM.pace(r.paceSec), "Pace");
-  add(r.avgHr && `${r.avgHr} bpm`, "Average HR"); add(r.maxHr && `${r.maxHr} bpm`, "Max HR");
-  add(r.elevation && `${r.elevation} m`, "Elevation"); add(s.avgCadence && `${Math.round(s.avgCadence)} spm`, "Cadence");
-  add(r.calories && `${r.calories} kcal`, "Calories");
-  add(r.effect && prettyName(r.effect), "Training effect");
-  add(r.aerobic && r.aerobic.toFixed(1), "Aerobic effect"); add(s.anaerobicTrainingEffect && s.anaerobicTrainingEffect.toFixed(1), "Anaerobic effect");
-  add(s.differenceBodyBattery !== undefined ? s.differenceBodyBattery : "", "Body battery");
-  add(s.moderateIntensityMinutes || s.vigorousIntensityMinutes ? `${s.moderateIntensityMinutes || 0} + ${s.vigorousIntensityMinutes || 0} min` : "", "Moderate + vigorous");
-  add(r.sets && `${r.sets} sets · ${r.reps || 0} reps`, "Strength");
-  add(s.directWorkoutFeel && `${s.directWorkoutFeel} / 100`, "Feel"); add(s.directWorkoutRpe && `${s.directWorkoutRpe} / 100`, "RPE");
-  extraStats(d, add);
-  box.append(stats);
+  const r = d.activity, key = actKey(r.type), s = d.slim || {};
+  box.append(actHeader(d), actHero(d));
 
   if (!d.detailed) {
     const note = mk("div", "anote");
     if (A.detailBusy) note.textContent = "Fetching the details from Garmin…";
     else {
       note.append(A.detailFailure ? `Could not fetch the details: ${A.detailFailure} ` : A.sync && A.sync.syncing ? "The details are being filled in; they appear here when stored. " : "The details (feel, RPE, sets, intervals) are not stored yet. ");
-      if (garminOn(A.profile) && !(A.sync && A.sync.syncing)) { const b = mk("button", "", "Fetch them now"); b.onclick = guard(() => fetchActivityDetails(r.id)); note.append(b); }
+      if (garminOn(A.profile) && !(A.sync && A.sync.syncing)) { const b = mk("button", "", "Fetch them now"); b.type = "button"; b.onclick = guard(() => fetchActivityDetails(r.id)); note.append(b); }
     }
     box.append(note);
   }
 
-  const zoneSeconds = d.stats && d.stats.hrZones;
-  if (zoneSeconds) { box.append(mk("h3", "", "Heart-rate zones")); box.append(ActivityCharts.zoneBar(zoneSeconds, d.chart && d.chart.zones)); }
-
-  chartSection(d, box);
-
   const sets = Array.isArray(s.exerciseSets) ? s.exerciseSets : [];
   const lifts = sets.filter((x) => x.category !== "INTERVAL"), intervals = sets.filter((x) => x.category === "INTERVAL");
-  if (lifts.length) {
-    const body = muscleEl(lifts.map((x) => ({ name: x.exerciseName, sets: AM.setRuns(x).reduce((n, r) => n + r.count, 0) })));
-    if (body) box.append(mk("h3", "", "Muscles worked"), body);
-    box.append(mk("h3", "", "Exercises"));
-    // one block per exercise: its name and set count, then a chip for each run of identical sets
-    const list = mk("div", "aexs");
-    for (const x of lifts) {
-      const runs = AM.setRuns(x), count = runs.reduce((a, r) => a + r.count, 0);
-      list.append(exerciseBlock(x.exerciseName, `${x.supersetGroup ? "superset · " : ""}${count} set${count === 1 ? "" : "s"}`, runs.map((r) => AM.runText(r, lb)).filter(Boolean).map((c) => [c])));
-    }
-    box.append(list);
-    // each loaded exercise's sets as a share of its one-rep max
-    const heavy = AM.intensity(lifts, d.oneRepMax);
-    if (heavy.length) {
-      const pcts = mk("div", "aexs");
-      box.append(infoHeading("% of 1RM", pcts, help("1rm", ONE_RM_NOTE, "est. 1RM")));
-      for (const e of heavy) pcts.append(exerciseBlock(e.name, `est. 1RM ${lb(e.oneRm)}`, e.runs.map((r) => [`${r.count > 1 ? r.count + " × " : ""}${r.pct}% · ${lb(r.weight)}`, `b${r.band}`]), fromNote(e.from)));
-      box.append(pcts);
-    }
+  const effect = lifts.length ? null : actEffectCard(d);
+  if (d.planned || effect) {
+    const two = mk("div", "atwo" + (d.planned && effect ? "" : " one"));
+    if (d.planned) two.append(actPlannedCard(d));
+    if (effect) two.append(effect);
+    box.append(two);
   }
-  // the watch's laps say more than the intervals Garmin summarises, so the table is for activities without them
-  if (intervals.length && !(d.chart && d.chart.laps.length > 1)) {
-    box.append(mk("h3", "", "Intervals"));
-    box.append(table([["#"], ["Distance", "num"], ["Time", "num"], ["Pace", "num"], ["HR", "num"]], intervals.map((x, i) => [[String(i + 1)], [AM.distance(x.distance), "num"], [AM.duration(x.duration), "num"], [x.pace ? AM.pace(x.pace * 60) : "", "num"], [x.avgHR ? String(Math.round(x.avgHR)) : "", "num"]])));
+  if (!lifts.length) chartSection(d, box);
+
+  if (lifts.length) {
+    // the muscles, compact, beside the session; then each exercise with its sets against the one-rep max
+    const exercises = lifts.map((x) => ({ name: x.exerciseName, sets: AM.setRuns(x).reduce((n, run) => n + run.count, 0) }));
+    const muscles = actMuscleCard("detail", "Muscles worked · sets", exercises, { extra: false }), session = actSessionCard(d, lifts);
+    if (muscles || session) {
+      const two = mk("div", "atwo");
+      if (muscles) two.append(muscles);
+      if (session) two.append(session);
+      box.append(two);
+    }
+    const card = actCard("aexercises", "Exercises · each set against your estimated 1RM"), key1rm = mk("div", "aband");
+    for (const [cls, text] of [["b0", "under 65 %"], ["b1", "65–80"], ["b2", "80–90"], ["b3", "90+"]]) key1rm.append(mk("span", cls, text));
+    card.querySelector(".achd").append(key1rm);
+    const list = mk("div", "aexs");
+    const byName = new Map();
+    for (const x of lifts) byName.set(x.exerciseName, [...(byName.get(x.exerciseName) || []), x]);
+    for (const [name, entries] of byName) list.append(actExerciseBlock(entries, d.oneRepMax && d.oneRepMax[name]));
+    card.append(list);
+    box.append(card);
+    if (d.chart) chartSection(d, box);
   }
 
-  if (d.planned) {
-    box.append(mk("h3", "", "Planned workout"));
-    const link = mk("a", "", `${d.planned.workout.workoutName} · ${planName(d.planned.path)}`);
-    link.style.cursor = "pointer"; link.style.color = "var(--accent)";
-    link.onclick = guard(() => openPlanWorkout(d.planned.path, d.planned.workout));
-    box.append(link);
-    const plan = WM.analyze(d.planned.workout, { pacer: pacerFor(A.profile) });
-    const rows = AM.compare({ seconds: plan.seconds, km: plan.meters / 1000 }, { seconds: r.seconds, km: r.km });
-    if (rows.length) {
-      const sign = (n) => (n > 0 ? "+" : "");
-      box.append(table([["", ""], ["Planned", "num"], ["Done", "num"], ["Difference", "num"]], rows.map((x) => [[x.label], [(plan.assumed ? "~" : "") + x.planned, "num"], [x.actual, "num"], [`${sign(x.pct)}${x.pct}%`, "num"]])));
+  // the watch's laps say more than the intervals Garmin summarises, so the table is for activities without them
+  if (intervals.length && !(d.chart && d.chart.laps.length > 1)) {
+    const card = actCard("aintervals", "Intervals");
+    card.append(table([["#"], ["Distance", "num"], ["Time", "num"], ["Pace", "num"], ["HR", "num"]], intervals.map((x, i) => [[String(i + 1)], [AM.distance(x.distance), "num"], [AM.duration(x.duration), "num"], [x.pace ? AM.pace(x.pace * 60) : "", "num"], [x.avgHR ? String(Math.round(x.avgHR)) : "", "num"]])));
+    box.append(card);
+  }
+
+  const zoneSeconds = d.stats && d.stats.hrZones;
+  if (zoneSeconds) {
+    const card = actCard("azones", "Heart-rate zones");
+    if (key === "str") card.append(mk("div", "anote", "Garmin keeps no heart-rate graph for a strength session."));
+    card.append(ActivityCharts.zoneBar(zoneSeconds, d.chart && d.chart.zones));
+    box.append(card);
+  }
+}
+
+// ── The muscle map: compact by default, the whole of it a tap away ──
+// The drawing and the exercise table are muscleMap.js. One colour, more of it the more sets; a muscle only helped (never worked first) is hatched.
+// Pointing at or focusing a muscle, on the body or in the list, says which exercises made its score.
+
+/** The fill of a muscle trained as much as `t` (0 to 1) of the most: the accent against the body's own tone, so both themes read. */
+const actHeat = (t) => `color-mix(in srgb, var(--accent) ${Math.round(24 + 76 * t)}%, var(--mm-base))`;
+const actExerciseName = (name) => WM.prettyName(String(name).replace(/ /g, "_"));
+
+/**
+ * The muscles of some exercises ([{ name, sets }]) as a card: small front and back figures with the top five muscles, a line of reasons, and
+ * "Show all" for the figures at size, every muscle and the share of the work. `key` keeps whether it is open; `under` adds the muscles that got fewer
+ * sets than that. null when no exercise has known muscles.
+ */
+function actMuscleCard(key, title, exercises, { under = 0, aside = null, note = "" } = {}) {
+  const T = MuscleMap.detail(exercises);
+  if (!T.muscles.length) return null;
+  const state = A.muscles[key] || (A.muscles[key] = { open: false }), open = state.open;
+  const card = mk("section", "acard ammc" + (open ? " open" : "")), by = new Map(T.muscles.map((m) => [m.id, m]));
+  const toggle = mk("button", "ammt", open ? "Show less ‹" : `Show all ${T.muscles.length} ›`);
+  toggle.type = "button"; toggle.setAttribute("aria-expanded", String(open));
+  const side = mk("div", "ammside"); if (aside) side.append(aside);
+  side.append(toggle);
+  const head = mk("div", "achd"); head.append(mk("h2", "aeyebrow", title), side);
+  card.append(head);
+
+  const paint = (id) => { const m = by.get(id); return m ? { fill: m.direct > 0 ? actHeat(m.score / T.max) : "url(#mmhat)", title: `${m.label}: ${MuscleMap.setsOf(m.score)} sets` } : { fill: "var(--mm-idle)" }; };
+  const figs = mk("div", "ammf");
+  figs.innerHTML = MuscleMap.figure("front", paint) + MuscleMap.figure("back", paint); // the text is this file's own: muscle names and numbers
+  const left = mk("div", "ammleft"), right = mk("div", "ammright"), list = mk("div", "ammlist");
+  left.append(figs);
+  if (open) {
+    const shares = MuscleMap.groupShares(T.muscles), bal = mk("div", "ammbal"), stack = mk("div", "ammstack"), lg = mk("div", "ammlg");
+    const colors = { push: "var(--accent)", pull: "var(--t-sky)", legs: "var(--ok)", core: "var(--t-rose)" };
+    bal.append(mk("div", "aeyebrow", "Share of the muscle work"));
+    for (const g of shares) {
+      if (g.pct) { const i = mk("i"); i.style.width = `${g.pct}%`; i.style.background = colors[g.id]; stack.append(i); }
+      const span = mk("span"), dot = mk("i");
+      dot.style.background = colors[g.id]; span.append(dot, `${g.label} `, mk("b", "", `${g.pct} %`)); lg.append(span);
     }
-    box.append(workoutVisual(d.planned.workout, { profile: A.profile }));
+    stack.setAttribute("role", "img"); stack.setAttribute("aria-label", shares.map((g) => `${g.label} ${g.pct} percent`).join(", "));
+    bal.append(stack, lg);
+    left.append(bal);
+  }
+  for (const m of open ? T.muscles : T.muscles.slice(0, 5)) {
+    const x = m.score / T.max, row = mk("div", "ammrow"), bar = mk("span", "ammbar"), fill = mk("i");
+    row.tabIndex = 0; row.setAttribute("role", "button"); row.dataset.m = m.id; row.setAttribute("aria-label", `${m.label}, ${MuscleMap.setsOf(m.score)} sets`);
+    fill.style.width = `${Math.max(8, x * 100)}%`;
+    fill.style.background = m.direct > 0 ? actHeat(x) : "repeating-linear-gradient(135deg, var(--accent) 0 3px, transparent 3px 6px)";
+    bar.append(fill);
+    row.append(mk("span", "ammnm", m.label), bar, mk("b", "", MuscleMap.setsOf(m.score)));
+    list.append(row);
+  }
+  const hint = "Darker means more sets; hatched means only helped. Point at a muscle to see why.";
+  const read = mk("div", "ammread"); read.setAttribute("aria-live", "polite"); read.textContent = hint;
+  right.append(list);
+  const body = mk("div", "ammbody"); body.append(left, right);
+  card.append(body, read);
+  if (under) {
+    const few = MuscleMap.fewerThan(T.muscles, under), box = mk("div", "ammunder");
+    box.append(mk("span", "aeyebrow", `Under ${under} sets`));
+    if (!few.length) box.append(mk("span", "ammnone", "none: every muscle got at least that"));
+    for (const m of open ? few : few.slice(0, 4)) { const chip = mk("span", "acchip cold"); chip.append(m.label, " ", mk("b", "", MuscleMap.setsOf(m.sets * MuscleMap.PRIMARY_POINTS))); box.append(chip); }
+    if (!open && few.length > 4) box.append(mk("span", "ammnone", `+${few.length - 4} more`));
+    card.append(box);
+  }
+  if (note) card.append(mk("div", "ammnote", note));
+  const unknown = T.unknown.reduce((n, x) => n + x.sets, 0);
+  if (unknown) card.append(mk("div", "ammnote", `${unknown} set${unknown === 1 ? "" : "s"} of ${[...new Set(T.unknown.map((x) => actExerciseName(x.name)))].join(", ")} not counted: no muscles known.`));
+
+  const show = (id) => {
+    card.querySelectorAll(".mm-muscle.on, .ammrow.on").forEach((x) => x.classList.remove("on"));
+    card.classList.toggle("hov", !!id);
+    if (!id) { read.textContent = hint; return; }
+    const m = by.get(id);
+    card.querySelectorAll(`.mm-muscle[data-muscle="${id}"], .ammrow[data-m="${id}"]`).forEach((x) => x.classList.add("on"));
+    read.textContent = "";
+    read.append(mk("b", "", m.label), ` · ${MuscleMap.setsOf(m.score)} sets: ` + m.from.map((f) => (f.kind === "direct" ? `${actExerciseName(f.name)} ${f.sets}` : `${actExerciseName(f.name)} ½ × ${f.sets}`)).join(", "));
+  };
+  card.querySelectorAll(".mm-muscle").forEach((g) => {
+    const id = g.dataset.muscle;
+    if (!by.has(id)) return;
+    g.classList.add("t"); g.tabIndex = 0; g.setAttribute("role", "button"); g.setAttribute("aria-label", `${by.get(id).label}, ${MuscleMap.setsOf(by.get(id).score)} sets`);
+    g.addEventListener("pointerenter", () => show(id)); g.addEventListener("focus", () => show(id)); g.addEventListener("pointerleave", () => show(null)); g.addEventListener("blur", () => show(null));
+  });
+  card.querySelectorAll(".ammrow").forEach((r) => {
+    const id = r.dataset.m;
+    r.addEventListener("pointerenter", () => show(id)); r.addEventListener("focus", () => show(id)); r.addEventListener("pointerleave", () => show(null)); r.addEventListener("blur", () => show(null));
+  });
+  toggle.onclick = () => { state.open = !open; const again = actMuscleCard(key, title, exercises, { under, aside, note }); card.replaceWith(again); const t = again.querySelector(".ammt"); if (t) t.focus({ preventScroll: true }); };
+  return card;
+}
+
+// ── Progress: what the stored activities add up to ──
+// The server works the numbers out (GET /api/activities/stats) and keeps the answer until an activity is added or gets
+// its details, so this view only draws them; a new activity shows up here with the next look. The volume by week and the
+// consistency map are worked out here from the list's rows.
+
+async function loadStats() {
+  if (A.statsLoading) { A.statsAgain = true; return; }
+  A.statsLoading = true;
+  try {
+    do {
+      A.statsAgain = false;
+      const profile = A.profile, r = await api("GET", "/api/activities/stats?" + activityQuery());
+      if (profile === A.profile) { A.stats = r.stats; A.statsError = ""; }
+    } while (A.statsAgain);
+  } catch (e) { A.statsError = e.message; }
+  finally { A.statsLoading = false; }
+  if (A.mode === "stats") renderActivityStats();
+}
+
+const fmtKm = (m) => `${(m / 1000).toLocaleString(undefined, { maximumFractionDigits: 1 })} km`;
+const fmtNum = (n) => Math.round(n).toLocaleString();
+/** A volume lifted (kept in lb), whole, in the unit of the Activities view's profile. */
+const lbVolume = (v) => (weightUnitOf(A.profile) === "kg" ? `${fmtNum(v / WM.LB_PER_KG)} kg` : `${fmtNum(v)} lb`);
+/** A weight lifted (kept in lb), in the unit of the Activities view's profile. Garmin's lifts come in whole pounds, which are good to a
+ *  quarter of a kilo: kg are shown to the half kilo, so 100 kg lifted is 100 kg (whole pounds make it 99.8). */
+const lb = (w) => (weightUnitOf(A.profile) === "kg" ? `${Math.round((w / WM.LB_PER_KG) * 2) / 2} kg` : WM.weight(w, "lb"));
+const fromNote = (b) => `from ${b.reps} @ ${lb(b.weight)} on ${b.date}`;
+const ONE_RM_NOTE = "est. 1RM: your best set of the exercise by the Epley formula, weight × (1 + reps ÷ 30), over sets of up to 12 counted reps.";
+/** A card's heading with an ⓘ; the note opens at the top of the card's list. */
+const infoHeading = (text, list, [info, note]) => { const h = mk("h3", "", text); h.append(info); list.prepend(note); return h; };
+
+/** A table from header cells and rows of cells, each cell [text, class]. */
+function table(head, rows) {
+  const t = mk("table", "atable"), tr = (cells, tag = "td") => { const row = mk("tr"); cells.forEach(([text, cls]) => row.append(mk(tag, cls || "", text))); t.append(row); };
+  tr(head, "th"); rows.forEach((cells) => tr(cells));
+  return t;
+}
+
+const effortLabel = (m) => (m === 1609 ? "1 mile" : m % 1000 === 0 ? `${m / 1000} km` : `${+(m / 1000).toFixed(2)} km`);
+
+/**
+ * An activity's page, from a record. On a wide screen that is the log with the activity open beside it; on a phone the
+ * detail pane comes over Progress, and Back returns to it.
+ */
+function openFromStats(id) {
+  if (!mobileQuery.matches) { A.mode = "list"; A.week = null; A.types.clear(); A.query = ""; $("aSearch").value = ""; renderActivities(); }
+  selectActivity(id, true);
+}
+
+/** The small line chart of a series of { date, value } (a VO2max over time): a line, a dot a point, the range in words. */
+function actLineChart(series, { w = 420, h = 130, label = "" } = {}) {
+  const p = AM.seriesPoints(series, w, h - 22, 0.14);
+  if (!p) return null;
+  const svg = svgEl("svg", { viewBox: `0 0 ${w} ${h}`, class: "aline", role: "img", "aria-label": `${label}: ${p.first.value} on ${p.first.date}, ${p.last.value} on ${p.last.date}, from ${p.min} to ${p.max}` });
+  const x = (v) => 34 + (v / w) * (w - 40);
+  for (const [v, y] of [[p.max, 8], [p.min, h - 30]]) {
+    svg.append(svgEl("line", { x1: 34, x2: w - 6, y1: y, y2: y, class: "agrid" }));
+    const t = svgEl("text", { x: 28, y: y + 4, "text-anchor": "end", class: "atick" }); t.textContent = String(v); svg.append(t);
+  }
+  const pts = p.points.map((q) => ({ ...q, px: x(q.x), py: 8 + (q.y / (h - 22)) * (h - 38) }));
+  svg.append(svgEl("polyline", { points: pts.map((q) => `${q.px},${q.py}`).join(" "), class: "aliney", fill: "none" }));
+  for (const q of pts) { const c = svgEl("circle", { cx: q.px, cy: q.py, r: q === pts[pts.length - 1] ? 4.5 : 2.6, class: "alinep" }); const tt = svgEl("title", {}); tt.textContent = `${q.value} · ${fmtDate(q.date)}`; c.append(tt); svg.append(c); }
+  for (const [q, anchor] of [[p.first, "start"], [p.last, "end"]]) { const t = svgEl("text", { x: anchor === "start" ? 34 : w - 6, y: h - 6, "text-anchor": anchor, class: "atick" }); t.textContent = fmtDate(q.date, { day: "numeric", month: "short" }); svg.append(t); }
+  return svg;
+}
+
+/** A sparkline: a series of { date, value } as a thin line with its last point dotted. */
+function actSpark(series) {
+  const p = AM.seriesPoints(series, 200, 30, 0.12);
+  if (!p) return null;
+  const svg = svgEl("svg", { viewBox: "0 0 200 30", preserveAspectRatio: "none", class: "aspark", role: "img", "aria-label": `${p.first.value} on ${p.first.date}, ${p.last.value} on ${p.last.date}` });
+  svg.append(svgEl("polyline", { points: p.points.map((q) => `${q.x},${q.y}`).join(" "), class: "aliney", fill: "none" }));
+  const last = p.points[p.points.length - 1];
+  svg.append(svgEl("circle", { cx: last.x, cy: last.y, r: 3, class: "alinep" }));
+  return svg;
+}
+
+/** A row of a record: what it is, its value, the day; the ones that belong to one activity open it. A record of the last 30 days is tagged new. */
+function actRecord(label, value, note, id, date) {
+  const r = mk("div", "srec" + (id ? " go" : "")), l = mk("span", "srl", label);
+  if (date && AM.isRecent(date, todayIso())) l.append(mk("span", "anew", "new"));
+  r.append(l, mk("span", "srv", value));
+  if (note) r.append(mk("span", "srd", note));
+  if (id) { r.tabIndex = 0; r.setAttribute("role", "button"); r.onclick = () => openFromStats(id); r.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openFromStats(id); } }; }
+  return r;
+}
+
+function actTiles(list) {
+  const grid = mk("div", "stiles");
+  for (const [value, label, title] of list) {
+    const t = mk("div", "stile"); t.append(mk("small", "", label), mk("b", "", value));
+    if (title) t.title = title;
+    grid.append(t);
+  }
+  return grid;
+}
+
+/** The volume of the last weeks, a bar each split by sport, with the sports named under it. */
+function actVolumeCard(rows) {
+  const { weeks, peak } = AM.ribbon(rows, todayIso(), 26), card = actCard("avolume", "Time by week · last 26 weeks");
+  const bars = mk("div", "avol"), legend = mk("div", "alegend");
+  weeks.forEach((w) => {
+    const col = mk("div", "avc");
+    col.title = `Week of ${fmtDate(w.week, { day: "numeric", month: "short" })}: ${w.count} session${w.count === 1 ? "" : "s"}${w.seconds ? ", " + AM.duration(w.seconds) : ""}`;
+    for (const [key] of ACT_SPORTS) if (w.bySport[key]) { const seg = mk("i"); seg.style.height = `${(w.bySport[key] / (peak || 1)) * 100}%`; seg.style.background = `var(--c-${key})`; col.append(seg); }
+    bars.append(col);
+  });
+  bars.setAttribute("role", "img"); bars.setAttribute("aria-label", `Time trained in each of the last 26 weeks, busiest ${AM.duration(peak) || "none"}`);
+  for (const [key, name] of ACT_SPORTS) if (weeks.some((w) => w.bySport[key])) { const sp = mk("span"), dot = mk("i"); dot.style.background = `var(--c-${key})`; sp.append(dot, name); legend.append(sp); }
+  const axis = mk("div", "aaxis"); axis.append(mk("span", "", fmtDate(weeks[0].week, { day: "numeric", month: "short" })), mk("span", "", "this week"));
+  card.append(bars, axis, legend);
+  return card;
+}
+
+/** The years: how much of each, a bar by time. */
+function actYearsCard(years) {
+  const card = actCard("ayears", "By year"), top = Math.max(1, ...years.map((y) => y.seconds));
+  for (const y of years) {
+    const row = mk("div", "ayr"), bar = mk("span", "ayb"), fill = mk("i");
+    fill.style.width = `${Math.max(3, (y.seconds / top) * 100)}%`; bar.append(fill);
+    const bits = [`${fmtNum(y.activities)} activities`, AM.duration(y.seconds), y.runs ? `${fmtNum(y.runs)} runs, ${fmtKm(y.runMeters)}` : "", y.lifts ? `${fmtNum(y.lifts)} lifts, ${fmtNum(y.liftSets)} sets` : ""].filter(Boolean);
+    row.append(mk("b", "", y.year), bar, mk("small", "", bits.join(" · ")));
+    card.append(row);
+  }
+  return card;
+}
+
+/** A year of days as a map: a square a day, darker the more was trained, with the active days and the streaks. */
+function actHeatCard(rows) {
+  const weeks = mobileQuery.matches ? 26 : 52, h = AM.heatmap(rows, todayIso(), weeks), card = actCard("aheatcard", `Consistency · last ${weeks === 52 ? "12 months" : "26 weeks"}`);
+  const stats = mk("div", "aheatstats");
+  for (const [v, l] of [[h.activeDays, "active days"], [h.longestStreak, "days in a row, longest"], [h.currentStreak, "days in a row now"]]) { const s = mk("span"); s.append(mk("b", "", String(v)), " " + l); stats.append(s); }
+  const wrap = mk("div", "aheatwrap"), labels = mk("div", "aheatm"), grid = mk("div", "aheat");
+  wrap.style.setProperty("--n", String(weeks)); grid.style.setProperty("--n", String(weeks)); labels.style.setProperty("--n", String(weeks));
+  h.weeks.forEach((col, i) => {
+    const first = col[0].date;
+    if (first.slice(8) <= "07") { const m = mk("span", "", fmtDate(first, { month: "short" })); m.style.gridColumn = `${i + 1} / span 4`; labels.append(m); }
+    for (const day of col) {
+      const c = mk("i", day.future ? "fut" : day.level ? `l${day.level}` : "");
+      if (!day.future) c.title = `${fmtDate(day.date, { weekday: "short", day: "numeric", month: "short" })}: ${day.count ? `${day.count} session${day.count === 1 ? "" : "s"}, ${AM.duration(day.seconds)}` : "nothing"}`;
+      grid.append(c);
+    }
+  });
+  grid.setAttribute("role", "img"); grid.setAttribute("aria-label", `${h.activeDays} active days in the last ${weeks} weeks, ${h.longestStreak} in a row at most`);
+  wrap.append(labels, grid);
+  card.append(stats, wrap);
+  return card;
+}
+
+/** The muscles the strength sessions of a period trained, from the sets the server keeps of the recent sessions. */
+function actMusclesOverTime(g) {
+  const today = todayIso(), periods = [["7d", "7 days", 6], ["4w", "4 weeks", 27], ["12w", "12 weeks", 83]], pick = periods.find((p) => p[0] === A.musclePeriod) || periods[1];
+  const from = isoOf(msOf(today) - pick[2] * 86_400_000), sum = MuscleMap.sumSessions(g.recent, from, today);
+  const seg = mk("div", "seg sm amperiods"); seg.setAttribute("role", "group"); seg.setAttribute("aria-label", "Period");
+  for (const [key, label] of periods) {
+    const b = mk("button", "", label); b.type = "button"; b.setAttribute("aria-pressed", String(key === pick[0]));
+    b.onclick = () => { A.musclePeriod = key; renderActivityStats(); };
+    seg.append(b);
+  }
+  const card = actMuscleCard("period", `Muscles · last ${pick[1]}`, sum.exercises, { under: 4, aside: seg, note: `From the sets of ${sum.sessions} strength session${sum.sessions === 1 ? "" : "s"} with details stored.` });
+  if (card) return card;
+  const empty = actCard("ammc", `Muscles · last ${pick[1]}`, seg);
+  empty.append(mk("div", "anote", sum.sessions ? "No exercise of these sessions has known muscles." : "No strength session with details in this period."));
+  return empty;
+}
+
+function renderActivityStats() {
+  const box = $("astats"); box.replaceChildren();
+  if (A.statsError) { box.append(mk("div", "msg err", A.statsError)); return; }
+  const s = A.stats;
+  if (!s) { box.append(mk("div", "empty", A.statsLoading ? "Loading…" : "")); return; }
+  if (!s.activities) { box.append(mk("div", "empty", "No activities are stored yet.")); return; }
+
+  const overall = actCard("aoverall", "Overall");
+  overall.append(actTiles([[fmtNum(s.activities), "activities"], [AM.duration(s.seconds) || "–", "time"], [fmtNum(s.activeDays), "active days"], [s.since || "–", "since", s.until ? `latest ${s.until}` : ""]]));
+  overall.append(mk("div", "anote", s.byType.map((t) => `${prettyName(t.type)} ${t.count}`).join(" · ")));
+  box.append(overall);
+
+  const row = mk("div", "acols");
+  row.append(actVolumeCard(A.rows), actYearsCard(s.years));
+  box.append(row, actHeatCard(A.rows));
+
+  const r = s.running;
+  if (r) {
+    const run = actCard("arunning", "Running");
+    run.append(actTiles([
+      [fmtNum(r.runs), "runs"], [fmtKm(r.meters), "distance"], [AM.duration(r.seconds) || "–", "time"], [`${fmtNum(r.gain)} m`, "climbed"],
+      [r.avgPaceSec ? AM.pace(r.avgPaceSec) : "–", "average pace"], [r.vo2max.latest ? String(r.vo2max.latest.value) : "–", "VO2max", r.vo2max.best ? `best ${r.vo2max.best.value} on ${r.vo2max.best.date}` : ""],
+    ]));
+    box.append(run);
+    const two = mk("div", "acols");
+    const recs = actCard("arecords", "Best efforts and records");
+    for (const e of r.efforts) recs.append(actRecord(effortLabel(e.meters), AM.axisClock(e.seconds), `${AM.pace(e.seconds / (e.meters / 1000))} · ${e.date} · ${e.name}`, e.id, e.date));
+    if (r.longest) recs.append(actRecord("Longest run", fmtKm(r.longest.meters), `${AM.axisClock(r.longest.seconds)} · ${r.longest.date} · ${r.longest.name}`, r.longest.id, r.longest.date));
+    if (r.bestPace) recs.append(actRecord("Best pace, runs of 3 km or more", AM.pace(r.bestPace.paceSec), `${fmtKm(r.bestPace.meters)} · ${r.bestPace.date} · ${r.bestPace.name}`, r.bestPace.id, r.bestPace.date));
+    if (r.biggestClimb) recs.append(actRecord("Biggest climb", `${fmtNum(r.biggestClimb.gain)} m`, `${r.biggestClimb.date} · ${r.biggestClimb.name}`, r.biggestClimb.id, r.biggestClimb.date));
+    if (r.biggestWeek) recs.append(actRecord("Biggest week", fmtKm(r.biggestWeek.meters), `${r.biggestWeek.runs} run${r.biggestWeek.runs === 1 ? "" : "s"}, the week of ${r.biggestWeek.start}`, "", r.biggestWeek.start));
+    if (r.biggestMonth) recs.append(actRecord("Biggest month", fmtKm(r.biggestMonth.meters), `${r.biggestMonth.runs} run${r.biggestMonth.runs === 1 ? "" : "s"}, ${r.biggestMonth.month}`));
+    two.append(recs);
+    const vo2 = actCard("avo2", "VO2max over time"), series = r.vo2max.series || [], chart = actLineChart(series, { label: "VO2max" });
+    if (chart) {
+      vo2.append(chart);
+      const latest = r.vo2max.latest, best = r.vo2max.best;
+      vo2.append(mk("div", "anote", `${latest ? `${latest.value} now` : ""}${best ? ` · best ${best.value} on ${fmtDate(best.date)}` : ""}`));
+    } else vo2.append(mk("div", "anote", series.length ? `${series[0].value} on ${fmtDate(series[0].date)}: a second reading is needed for a line.` : "No run has stated a VO2max yet."));
+    two.append(vo2);
+    box.append(two);
+  }
+
+  const g = s.strength;
+  if (g) {
+    const str = actCard("astrength", "Strength");
+    str.append(actTiles([
+      [fmtNum(g.sessions), "sessions"], [AM.duration(g.seconds) || "–", "time"], [fmtNum(g.sets), "sets"], [fmtNum(g.reps), "reps"],
+      [g.detailed ? lbVolume(g.volume) : "–", "volume lifted", `from the ${g.detailed} of ${g.sessions} sessions whose details are stored`],
+    ]));
+    if (g.detailed < g.sessions) str.append(mk("div", "anote", `The exercise figures cover ${g.detailed} of ${g.sessions} sessions; the others have no details stored yet.`));
+    box.append(str);
+    if ((g.recent || []).length) box.append(actMusclesOverTime(g));
+    if (g.exercises.length) {
+      const card = actCard("alifts", "Exercises"), list = mk("div", "aexs"), shown = A.allLifts ? g.exercises : g.exercises.slice(0, 12);
+      const [info, infoNote] = help("1rm", ONE_RM_NOTE, "est. 1RM");
+      card.querySelector(".achd").append(info); card.append(infoNote);
+      for (const e of shown) {
+        const c = mk("div", "aexc2"), top = mk("div", "aexh2"), hist = actSpark((e.history || []).map((p) => ({ date: p.date, value: p.oneRm })));
+        top.append(mk("b", "aexn", e.name), mk("span", "aexrm", e.best ? lb(e.best.oneRm) : "–"));
+        c.append(top, mk("small", "", [`${e.sessions} session${e.sessions === 1 ? "" : "s"}`, `${fmtNum(e.sets)} sets · ${fmtNum(e.reps)} reps`, e.volume ? lbVolume(e.volume) : "", e.heaviest ? `heaviest ${lb(e.heaviest.weight)} × ${e.heaviest.reps || "–"}` : ""].filter(Boolean).join(" · ")));
+        if (hist) c.append(hist);
+        c.append(mk("small", "", [e.best ? fromNote(e.best) : "", `last ${e.lastDate}`].filter(Boolean).join(" · ")));
+        list.append(c);
+      }
+      card.append(list);
+      if (g.exercises.length > 12) {
+        const more = mk("button", "", A.allLifts ? "Show fewer" : `Show all ${g.exercises.length} exercises`);
+        more.type = "button"; more.onclick = () => { A.allLifts = !A.allLifts; renderActivityStats(); };
+        card.append(more);
+      }
+      box.append(card);
+    }
   }
 }
 
@@ -7913,16 +8423,13 @@ function bindSettingsView() {
 
 function bindActivitiesView() {
   $("vActivities").onclick = () => setView("activities");
-  $("aModes").querySelectorAll("button").forEach((b) => b.onclick = () => { A.mode = b.dataset.mode; if (A.mode === "calendar" && A.showPlanned) loadPlannedPlans().then(renderActivities); if (A.mode === "stats") { A.statsError = ""; loadStats(); } renderActivities(); });
+  $("aModes").querySelectorAll("button").forEach((b) => b.onclick = () => { A.mode = b.dataset.mode; if (A.mode === "stats") { A.statsError = ""; loadStats(); } renderActivities(); });
   $("aRange").onchange = (e) => { A.range = e.target.value; renderActivities(); };
   $("aSearch").oninput = (e) => { A.query = e.target.value; renderActivities(); };
   $("aSync").onclick = guard(() => syncActivities(false));
-  $("aProfile").onchange = (e) => { A.profile = e.target.value; A.rows = []; A.sync = null; A.loaded = false; A.refreshed = false; A.selected = null; A.detail = null; A.plans = null; A.stats = null; A.statsError = ""; clearActivity(); guard(loadActivities)(); };
-  $("aPrev").onclick = () => { A.month = addMonths(A.month || todayIso().slice(0, 7), -1); renderActivities(); };
-  $("aNext").onclick = () => { A.month = addMonths(A.month || todayIso().slice(0, 7), 1); renderActivities(); };
-  $("aToday").onclick = () => { A.month = todayIso().slice(0, 7); A.day = todayIso(); renderActivities(); };
-  $("aPlanned").onclick = guard(async () => { A.showPlanned = !A.showPlanned; if (A.showPlanned) await loadPlannedPlans(); renderActivities(); });
+  $("aProfile").onchange = (e) => { A.profile = e.target.value; A.rows = []; A.sync = null; A.loaded = false; A.refreshed = false; A.selected = null; A.detail = null; A.stats = null; A.statsError = ""; A.week = null; A.muscles = {}; clearActivity(); guard(loadActivities)(); };
   $("aBack").onclick = () => showWorkoutList();
+  mobileQuery.addEventListener("change", () => { if (document.body.dataset.view === "activities" && A.mode === "stats") renderActivityStats(); }); // the consistency map is 52 weeks wide, 26 on a phone
 }
 
 function bindCalendarView() {
