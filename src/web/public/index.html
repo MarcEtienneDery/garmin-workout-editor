@@ -14,7 +14,7 @@
   html,body { height:100%; margin:0; }
   body { height:100dvh; background:var(--bg); color:var(--fg); font:13px/1.4 system-ui,sans-serif; display:grid; grid-template-rows:auto auto minmax(0,1fr) auto; grid-template-columns:minmax(0,1fr); -webkit-tap-highlight-color:transparent; }
   /* Every view has the same frame: the header (name, view switcher, account), then that view's own toolbar and content, then on phones the bottom tabs. */
-  header { grid-row:1; } #toolbar { grid-row:2; } main, #wview, #cview, #aview, #rview, #bview, #fview, #sview, #tview { grid-row:3; } #tabbar { grid-row:4; }
+  header { grid-row:1; } #pview, #wview, #cview, #aview, #rview, #bview, #fview, #sview, #tview { grid-row:3; } #tabbar { grid-row:4; }
   header, #toolbar { position:relative; display:flex; gap:6px; align-items:center; padding:6px 10px; background:var(--panel); border-bottom:1px solid var(--line); }
   #toolbar { flex-wrap:wrap; }
   header h1 { font-size:13px; margin:0 8px 0 0; }
@@ -23,7 +23,7 @@
   #current .dir { flex:0 100 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; }
   #current b { flex:0 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; }
   #actions { display:contents; }
-  #menu, #tabbar { display:none; }
+  #tabbar { display:none; }
   #current b { color:var(--fg); }
   #current.archived::after { content:" · archived"; flex:none; }
   #save.dirty::after { content:" ●"; }
@@ -133,7 +133,7 @@
   :is(#views, .seg) button:first-child { border-radius:3px 0 0 3px; } :is(#views, .seg) button:last-child { border-radius:0 3px 3px 0; }
   :is(#views, .seg) button + button { margin-left:-1px; }
   :is(#views, .seg) button[aria-pressed="true"] { background:var(--accent); border-color:var(--accent); color:#fff; }
-  body:not([data-view="plans"]) :is(#toolbar, main, #tabbar) { display:none !important; }
+  body:not([data-view="plans"]) :is(#pview, #toolbar, main, #tabbar) { display:none !important; }
   body:not([data-view="workouts"]) #wview { display:none; }
   #wview { display:grid; grid-template-columns:380px 1fr; min-height:0; }
   #wlist, #wdetail { display:flex; flex-direction:column; min-height:0; min-width:0; }
@@ -371,7 +371,7 @@
   @font-face { font-family:"Fira Code"; font-weight:400; font-display:swap; src:url(/fonts/fira-code-latin-400-normal.woff2) format("woff2"); }
   @font-face { font-family:"Fira Code"; font-weight:500; font-display:swap; src:url(/fonts/fira-code-latin-500-normal.woff2) format("woff2"); }
   @font-face { font-family:"Fira Code"; font-weight:600; font-display:swap; src:url(/fonts/fira-code-latin-600-normal.woff2) format("woff2"); }
-  :is(#tview, #fview, #fsheet, #cview, #moveMenu, #rview, #bview, #aview, #sview) {
+  :is(#tview, #fview, #fsheet, #cview, #moveMenu, #rview, #bview, #aview, #sview, #pview, #wview, #gdrawer, #dlg, #wdlg, #hdlg, #pmenu, #tabbar) {
     --bg:#070504; --panel:#1b1612; --t-surface2:#262019; --line:rgba(255,236,214,.15); --t-line2:rgba(255,236,214,.26);
     --fg:#fbf3ea; --dim:#b3a698; --t-faint:#968a7c;
     --accent:#ff9f2e; --t-on-accent:#1a0d00; --t-ink:#ff9f2e;
@@ -381,7 +381,7 @@
     --t-track:rgba(255,236,214,.09); --t-tint:rgba(0,0,0,.2); --t-glow:rgba(255,159,46,.3); --t-hero-glow:rgba(255,159,46,.12); --t-ok-bg:rgba(74,222,128,.18); --t-pill:rgba(255,159,46,.16);
     background:var(--bg); color:var(--fg); font:400 15px/1.5 "Fira Sans",system-ui,sans-serif; color-scheme:dark;
   }
-  body[data-theme="light"] :is(#tview, #fview, #fsheet, #cview, #moveMenu, #rview, #bview, #aview, #sview) {
+  body[data-theme="light"] :is(#tview, #fview, #fsheet, #cview, #moveMenu, #rview, #bview, #aview, #sview, #pview, #wview, #gdrawer, #dlg, #wdlg, #hdlg, #pmenu, #tabbar) {
     --bg:#e9e1d3; --panel:#ffffff; --t-surface2:#f4eee3; --line:rgba(40,24,8,.15); --t-line2:rgba(40,24,8,.28);
     --fg:#1d1610; --dim:#5e5244; --t-faint:#766a5b;
     --accent:#d97706; --t-on-accent:#1a0d00; --t-ink:#a24a05;
@@ -1140,19 +1140,6 @@
     #accountName { max-width:80px; }
     #syncActivity { min-height:0; padding:2px 8px; font-size:12px; line-height:16px; }
     #syncActivity .ssLong { display:none; } #syncActivity .ssShort { display:inline; }
-    #menu { display:block; min-width:40px; font-size:20px; line-height:1; padding:0; }
-    body.menu-open #menu { background:var(--accent); border-color:var(--accent); color:#fff; }
-    #actions { display:none; position:absolute; z-index:10; top:100%; left:0; right:0; padding:10px; gap:8px; grid-template-columns:1fr 1fr;
-      background:var(--panel); border-bottom:1px solid var(--line); box-shadow:0 8px 16px rgba(0,0,0,.5); }
-    body.menu-open #actions { display:grid; max-height:75dvh; overflow:auto; }
-    #profile, #new, .menu .mlabel, #delete { grid-column:1 / -1; }
-    /* The two dropdowns open flat inside this panel, one labelled section each; Delete goes last. */
-    #actions .dd, #actions .dd > .menu { display:contents; }
-    #actions .dd > .menubtn, #actions .menu hr { display:none; }
-    .menu .mlabel { display:block; padding:6px 2px 0; font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--dim); }
-    #actions .menu button { border:1px solid var(--line); background:#333; text-align:center; }
-    #actions .menu button.garmin { border-color:#4a6a8a; }
-    #delete { order:1; margin-top:6px; }
     /* iOS zooms the page in when a field under 16px gets focus; Monaco's hidden textarea inherits the editor's 14px. */
     select, input[type="search"], input[type="text"], input[type="password"], .monaco-editor .inputarea { min-height:40px; font-size:16px !important; }
     .monaco-editor .inputarea { min-height:0; }
@@ -1161,9 +1148,8 @@
     main { display:block; position:relative; overflow:hidden; }
     #files, #center, #side { width:100%; height:100%; border:0; }
     body:not([data-tab="files"]) #files,
-    body:not([data-tab="editor"]) #center,
-    body[data-tab="files"] #side, body[data-tab="editor"] #side { display:none; }
-    body[data-tab="outline"] #problemsPane, body[data-tab="problems"] #outlinePane { display:none; }
+    body:not([data-tab="editor"]):not([data-tab="problems"]) #center,
+    body:not([data-tab="outline"]) #side { display:none; }
     aside h2 { padding:14px 12px 6px; font-size:12px; }
     #outlinePane h2 { display:none; }
     .file { padding:12px 14px; font-size:15px; border-bottom:1px solid #2f2f2f; }
@@ -1251,12 +1237,12 @@
 
   /* ── Food view, in the new look: the palette of Today (the variables on #fview and on the add sheet, so both themes), Fira type, rounded cards ──
      Written over the rules above: the colours that were fixed greys read the variables now, and shapes are rounded. */
-  :where(#fview, #fsheet, #rview, #bview, #aview, #sview) button { background:var(--t-surface2); color:var(--fg); border-color:var(--t-line2); font-family:inherit; }
-  :where(#fview, #fsheet, #rview, #bview, #aview, #sview) button:hover:not(:disabled) { background:color-mix(in srgb, var(--fg) 8%, var(--t-surface2)); }
-  :is(#fview, #fsheet, #rview, #bview, #aview, #sview) button.primary { background:var(--accent); border-color:transparent; color:var(--t-on-accent); font-weight:700; }
-  :is(#fview, #fsheet, #rview, #bview, #aview, #sview) button.primary:hover:not(:disabled) { background:var(--accent); filter:brightness(1.08); }
-  :is(#fview, #fsheet, #rview, #bview, #aview, #sview) :is(input, select, textarea) { background:var(--t-surface2); color:var(--fg); border:1px solid var(--t-line2); border-radius:10px; font-family:inherit; }
-  :is(#fview, #fsheet, #rview, #bview, #aview, #sview) :is(input, select, textarea):focus-visible, :is(#fview, #fsheet, #rview, #bview, #aview, #sview) button:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+  :where(#fview, #fsheet, #rview, #bview, #aview, #sview, #pview, #wview, #gdrawer, #dlg, #wdlg, #hdlg, #pmenu, #tabbar) button { background:var(--t-surface2); color:var(--fg); border-color:var(--t-line2); font-family:inherit; }
+  :where(#fview, #fsheet, #rview, #bview, #aview, #sview, #pview, #wview, #gdrawer, #dlg, #wdlg, #hdlg, #pmenu, #tabbar) button:hover:not(:disabled) { background:color-mix(in srgb, var(--fg) 8%, var(--t-surface2)); }
+  :is(#fview, #fsheet, #rview, #bview, #aview, #sview, #pview, #wview, #gdrawer, #dlg, #wdlg, #hdlg, #pmenu, #tabbar) button.primary { background:var(--accent); border-color:transparent; color:var(--t-on-accent); font-weight:700; }
+  :is(#fview, #fsheet, #rview, #bview, #aview, #sview, #pview, #wview, #gdrawer, #dlg, #wdlg, #hdlg, #pmenu, #tabbar) button.primary:hover:not(:disabled) { background:var(--accent); filter:brightness(1.08); }
+  :is(#fview, #fsheet, #rview, #bview, #aview, #sview, #pview, #wview, #gdrawer, #dlg, #wdlg, #hdlg, #pmenu, #tabbar) :is(input, select, textarea) { background:var(--t-surface2); color:var(--fg); border:1px solid var(--t-line2); border-radius:10px; font-family:inherit; }
+  :is(#fview, #fsheet, #rview, #bview, #aview, #sview, #pview, #wview, #gdrawer, #dlg, #wdlg, #hdlg, #pmenu, #tabbar) :is(input, select, textarea):focus-visible, :is(#fview, #fsheet, #rview, #bview, #aview, #sview, #pview, #wview, #gdrawer, #dlg, #wdlg, #hdlg, #pmenu, #tabbar) button:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
   #fsheet .fform input[readonly] { background:transparent; color:var(--dim); }
   /* the bar: profile, the day (◀ a pill that opens the calendar ▶), Today, the theme */
   #fbar { display:flex; align-items:center; justify-content:stretch; gap:8px; padding:18px clamp(16px,2.6vw,34px) 6px; background:transparent; border-bottom:0; }
@@ -1350,8 +1336,8 @@
   #fsheet .faibig { border-radius:14px; }
   #fsheet .fsh-note { color:var(--warn); }
   /* cards stand off the page: a firmer edge (the variables above), a lit top edge and a soft shadow; a section's label carries a rule */
-  :is(#tview, #fview, #cview, #moveMenu, #rview, #bview, #aview, #sview) { --card-shadow:0 1px 0 rgba(255,255,255,.06) inset, 0 14px 30px -18px rgba(0,0,0,.95); }
-  body[data-theme="light"] :is(#tview, #fview, #cview, #moveMenu, #rview, #bview, #aview, #sview) { --card-shadow:0 1px 0 #fff inset, 0 1px 2px rgba(60,40,10,.10), 0 14px 28px -18px rgba(60,40,10,.40); }
+  :is(#tview, #fview, #cview, #moveMenu, #rview, #bview, #aview, #sview, #pview, #wview, #gdrawer, #dlg, #wdlg, #hdlg, #pmenu, #tabbar) { --card-shadow:0 1px 0 rgba(255,255,255,.06) inset, 0 14px 30px -18px rgba(0,0,0,.95); }
+  body[data-theme="light"] :is(#tview, #fview, #cview, #moveMenu, #rview, #bview, #aview, #sview, #pview, #wview, #gdrawer, #dlg, #wdlg, #hdlg, #pmenu, #tabbar) { --card-shadow:0 1px 0 #fff inset, 0 1px 2px rgba(60,40,10,.10), 0 14px 28px -18px rgba(60,40,10,.40); }
   :is(#tview, #fview) :is(.tcard, .tfig, .fsum, .fcard, .fmeal, .fchip, .fday) { box-shadow:var(--card-shadow); }
   #fbody > h3, .fth h3 { display:flex; align-items:center; gap:14px; color:var(--fg); }
   #fbody > h3::after, .fth h3::after { content:""; flex:1; height:1px; background:var(--t-line2); }
@@ -1889,7 +1875,7 @@
      On a restyled view (Today, Food) in its light theme the rail turns light with it (body[data-theme]). */
   header { --nav-bg:#100c09; --nav-line:rgba(255,236,214,.10); --nav-fg:#fbf3ea; --nav-dim:#b3a698; --nav-active:#1e1814; --nav-hover:#17120e; --nav-accent:#ff9f2e; --nav-on-accent:#1a0d00;
     background:var(--nav-bg); border-color:var(--nav-line); color:var(--nav-fg); font-family:"Fira Sans",system-ui,sans-serif; }
-  body:is([data-view="today"], [data-view="food"], [data-view="calendar"], [data-view="recovery"], [data-view="weight"], [data-view="activities"], [data-view="settings"])[data-theme="light"] header { --nav-bg:#fbf8f2; --nav-line:rgba(40,24,8,.12); --nav-fg:#1d1610; --nav-dim:#5e5244; --nav-active:#efe7d8; --nav-hover:#f5efe4; --nav-accent:#d97706; --nav-on-accent:#1a0d00; }
+  body:is([data-view="today"], [data-view="food"], [data-view="calendar"], [data-view="recovery"], [data-view="weight"], [data-view="activities"], [data-view="settings"], [data-view="plans"], [data-view="workouts"])[data-theme="light"] header { --nav-bg:#fbf8f2; --nav-line:rgba(40,24,8,.12); --nav-fg:#1d1610; --nav-dim:#5e5244; --nav-active:#efe7d8; --nav-hover:#f5efe4; --nav-accent:#d97706; --nav-on-accent:#1a0d00; }
   header h1 { margin:0; font-size:0; line-height:0; }
   .brandmark { display:grid; place-items:center; width:38px; height:38px; border-radius:11px; background:var(--nav-accent); color:var(--nav-on-accent); }
   .brandmark svg { width:21px; height:21px; }
@@ -1909,7 +1895,7 @@
   @media (min-width:901px) {
     body { grid-template-columns:80px minmax(0,1fr); }
     header { grid-column:1; grid-row:1 / -1; flex-direction:column; align-items:center; gap:6px; padding:16px 0 14px; border-bottom:0; border-right:1px solid var(--nav-line); }
-    #toolbar, main, #wview, #cview, #aview, #rview, #bview, #fview, #sview, #tview, #tabbar { grid-column:2; }
+    #pview, #wview, #cview, #aview, #rview, #bview, #fview, #sview, #tview, #tabbar { grid-column:2; }
     header h1 { margin:0 0 10px; }
     #views { flex-direction:column; flex:1 1 0; min-height:0; width:100%; padding:0 8px; gap:4px; overflow-y:auto; scrollbar-width:none; }
     #views::-webkit-scrollbar { display:none; }
@@ -1993,6 +1979,301 @@
     #sview .sform { grid-template-columns:minmax(0,1fr); max-width:none; } .sunsaved { bottom:8px; border-radius:18px; }
     #sview :is(input, select) { font-size:16px; }
   }
+  /* ── Plans, in the new look: the title and what can be done at the top, the plans beside the plan or workout in the form or the JSON, the outline, the checks ── */
+  :is(#pview, #wview, #gdrawer, #wdlg) { --c-run:var(--ok); --c-str:var(--t-sky); --c-ride:#c084fc; --mm-base:#2c2620; --mm-idle:#3b342c; --mm-edge:rgba(255,236,214,.22); --garmin:#4aa3ff; --garmin-bg:rgba(74,163,255,.14); --p-ok:var(--ok); --p-warn:var(--warn); --p-err:var(--err); --p-ink:var(--t-ink); }
+  body[data-theme="light"] :is(#pview, #wview, #gdrawer, #wdlg) { --c-ride:#9333ea; --mm-base:#e9dfcf; --mm-idle:#d9ccb6; --mm-edge:rgba(40,24,8,.28); --garmin:#1a5fb4; --garmin-bg:rgba(26,95,180,.10); --p-ok:#0f7a4a; --p-warn:#8a5600; --p-err:#b02a45; }
+  #pview { display:flex; flex-direction:column; min-height:0; min-width:0; background:var(--bg); }
+  #pview #toolbar { flex:none; flex-wrap:wrap; gap:10px 12px; padding:18px clamp(16px,2.2vw,30px) 12px; background:transparent; border-bottom:0; }
+  #ptitle { display:flex; flex-direction:column; flex:1 1 280px; min-width:0; }
+  #pTitle { display:flex; align-items:center; gap:10px; margin:0; min-width:0; font-size:clamp(22px,2.6vw,30px); font-weight:700; letter-spacing:-.02em; line-height:1.15; }
+  #pName { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .pdot { flex:none; width:10px; height:10px; border-radius:50%; background:var(--warn); box-shadow:0 0 0 4px color-mix(in srgb, var(--warn) 22%, transparent); }
+  #pview #current { flex:0 0 auto; justify-content:flex-start; min-width:0; max-width:100%; font:500 12px "Fira Code",ui-monospace,monospace; color:var(--dim); }
+  #pview #current b { color:var(--dim); font-weight:500; }
+  #pview #current[data-note]:not(.archived)::after { content:"· " attr(data-note); flex:none; margin-left:.6em; }
+  #pview #current[data-note=""]::after { content:none; }
+  #pview #actions { display:contents; }
+  .ppill { display:inline-flex; align-items:center; gap:8px; min-height:44px; padding:0 14px; border-radius:999px; background:var(--panel); border:1px solid var(--line); font:600 13.5px "Fira Sans",system-ui,sans-serif; color:var(--fg); }
+  .ppill i { flex:none; width:9px; height:9px; border-radius:50%; background:var(--c, var(--p-ok)); }
+  .ppill.ok { --c:var(--p-ok); } .ppill.warn { --c:var(--p-warn); } .ppill.err { --c:var(--p-err); border-color:color-mix(in srgb, var(--p-err) 55%, transparent); }
+  #pview #emode { flex:none; padding:2px; gap:2px; background:var(--panel); border:1px solid var(--line); border-radius:999px; }
+  #pview #emode button { min-height:44px; margin:0; padding:0 18px; border:0; border-radius:999px; background:transparent; color:var(--dim); font-weight:600; }
+  #pview #emode button[aria-pressed="true"] { background:var(--accent); color:var(--t-on-accent); }
+  #pview :is(#save, #garminBtn) { min-height:44px; padding:0 20px; border-radius:999px; font-weight:700; }
+  #pview #save:not(.primary), #pview #save:disabled { background:var(--t-surface2); }
+  #pview #save.dirty::after { content:none; }
+  #pview #garminBtn { background:var(--garmin-bg); border:1px solid var(--garmin); color:var(--fg); display:inline-flex; align-items:center; gap:8px; }
+  #pview #garminBtn b { color:var(--garmin); font-size:12px; }
+  #pview #garminBtn:hover:not(:disabled) { background:color-mix(in srgb, var(--garmin) 24%, var(--panel)); }
+  #pview :is(#fileBtn, .themebtn) { width:44px; height:44px; min-height:44px; padding:0; border-radius:50%; font-size:20px; line-height:1; background:var(--panel); border:1px solid var(--line); }
+  #pview #fileBtn::after { content:none; }
+  #pview .themebtn svg { width:18px; height:18px; margin:auto; }
+  #pview #profile { min-height:44px; border-radius:999px; padding:0 14px; max-width:180px; }
+  #pview .dd > .menu { top:calc(100% + 6px); left:auto; right:0; min-width:230px; padding:6px; background:var(--panel); border:1px solid var(--t-line2); border-radius:16px; box-shadow:0 24px 50px -16px #000; }
+  #pview .menu button, #pmenu button { display:flex; align-items:center; justify-content:space-between; gap:12px; width:100%; min-height:44px; padding:0 12px; border:0; border-radius:10px; background:none; color:var(--fg); font-weight:500; text-align:left; }
+  #pview .menu button:hover:not(:disabled), #pmenu button:hover:not(:disabled) { background:var(--t-surface2); }
+  #pview .menu button.danger, #pmenu button.danger { color:var(--p-err); }
+  #pview .menu hr, #pmenu hr { margin:4px 0; border:0; border-top:1px solid var(--line); }
+  #pmenu { inset:auto; margin:0; width:max-content; min-width:230px; max-width:calc(100vw - 16px); padding:6px; background:var(--panel); color:var(--fg); border:1px solid var(--t-line2); border-radius:16px; box-shadow:0 24px 50px -16px #000; font:400 14px "Fira Sans",system-ui,sans-serif; }
+  #pmenu:popover-open { display:flex; flex-direction:column; }
+  #pmenu small { color:var(--dim); font-size:12px; font-weight:400; }
+  .peyebrow { margin:0; font:500 11.5px "Fira Code",ui-monospace,monospace; letter-spacing:.14em; text-transform:uppercase; color:var(--dim); }
+  .plink { min-height:44px; padding:0 10px; border:0; background:none; color:var(--t-ink); font-weight:600; font-size:13.5px; }
+  button.plink:hover:not(:disabled) { background:none; text-decoration:underline; }
+  .padd { width:100%; min-height:44px; margin-top:10px; border-radius:12px; border:1px dashed var(--t-line2); background:none; color:var(--t-ink); font-weight:600; }
+  /* the three panes */
+  #pview > main { flex:1; min-height:0; display:grid; grid-template-columns:262px minmax(0,1fr) 330px; gap:16px; padding:0 clamp(16px,2.2vw,30px) 18px; background:transparent; }
+  #pview aside { border:1px solid var(--line); border-radius:18px; background:var(--panel); box-shadow:var(--card-shadow); padding:14px 12px 12px; }
+  #filebar { position:static; display:flex; align-items:center; justify-content:space-between; gap:8px; margin:0 4px 4px; padding:0; background:none; border:0; }
+  #filebar select { flex:0 1 128px; min-height:44px; padding:0 8px; font-size:12.5px; }
+  #filelist h2.fold { margin:10px 6px 2px; padding:0; font:500 11px "Fira Code",ui-monospace,monospace; letter-spacing:.06em; text-transform:none; color:var(--t-faint); }
+  #filelist .file { display:grid; grid-template-columns:minmax(0,1fr) 44px; align-items:center; gap:0; min-height:56px; padding:4px 4px 4px 12px; border:1px solid transparent; border-radius:14px; }
+  #filelist .file > span:first-child { grid-column:1; display:flex; align-items:center; gap:8px; font-size:14.5px; font-weight:600; min-width:0; overflow-wrap:normal; }
+  #filelist .file > span:first-child > span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #filelist .file small { grid-column:1; display:flex; flex-wrap:nowrap; overflow:hidden; font-size:12px; margin-top:1px; }
+  #filelist .file small span + span::before { content:" · "; white-space:pre; }
+  #filelist .file .wact { grid-column:2; grid-row:1 / span 2; justify-self:end; }
+  #filelist .file:hover { background:var(--t-surface2); }
+  #filelist .file.active { background:var(--t-surface2); border-color:var(--t-line2); box-shadow:inset 3px 0 0 var(--accent); border-left-color:var(--t-line2); }
+  #filelist .fdot { flex:none; width:9px; height:9px; border-radius:50%; background:var(--t-faint); } #filelist .fdot.ok { background:var(--p-ok); } #filelist .fdot.warn { background:var(--p-warn); } #filelist .fdot.err { background:var(--p-err); }
+  #filelist .file.arch > span:first-child, #filelist .file.arch small { color:var(--dim); }
+  :is(#filelist, #outline) button.more { width:44px; height:44px; min-height:44px; padding:0; border:0; border-radius:50%; background:none; color:var(--dim); font-size:20px; line-height:1; }
+  :is(#filelist, #outline) button.more:hover:not(:disabled) { background:var(--panel); color:var(--fg); }
+  #filelist details.shelved { margin-top:8px; padding-top:6px; border-top:1px solid var(--line); }
+  #filelist details.shelved > summary { display:flex; align-items:center; justify-content:space-between; min-height:44px; padding:0 10px; font-size:13.5px; font-weight:600; text-transform:none; letter-spacing:0; color:var(--dim); }
+  #filelist details.shelved > summary::before { content:none; } #filelist details.shelved > summary::after { content:"▾"; } #filelist details.shelved[open] > summary::after { content:"▴"; }
+  #filelist .empty, #outline .empty { padding:18px 8px; color:var(--dim); }
+  /* the centre: where the form is, then the form or the JSON, then the checks */
+  #pview #center { gap:12px; min-width:0; min-height:0; }
+  #ebar { display:flex; align-items:center; gap:8px; flex:none; min-height:44px; }
+  #pcrumb { display:flex; align-items:center; gap:8px; font-size:13.5px; color:var(--dim); min-width:0; } #pcrumb .here { color:var(--fg); font-weight:600; }
+  #pview .spacer { flex:1; }
+  #eUndo, #eRedo { width:44px; height:44px; min-height:44px; padding:0; border-radius:50%; font-size:16px; background:var(--panel); }
+  #editorFrame { flex:1; min-height:0; display:flex; flex-direction:column; overflow:hidden; background:var(--panel); border:1px solid var(--line); border-radius:18px; box-shadow:var(--card-shadow); }
+  body[data-emode="form"] #editorFrame, body:not([data-emode="form"]) #pform { display:none; }
+  #editorFrame .mtop { display:flex; align-items:center; flex-wrap:wrap; gap:6px; padding:8px 10px; border-bottom:1px solid var(--line); }
+  #editorFrame .mtab { display:inline-flex; align-items:center; min-height:44px; padding:0 14px; border-radius:12px; background:var(--t-surface2); font:500 12.5px "Fira Code",ui-monospace,monospace; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #editorFrame .mtool { display:flex; gap:2px; margin-left:auto; }
+  #editorFrame .mtool button { min-height:44px; padding:0 12px; border:0; border-radius:10px; background:none; color:var(--dim); font-weight:600; font-size:13.5px; }
+  #editorFrame .mtool button:hover:not(:disabled) { background:var(--t-surface2); color:var(--fg); }
+  #pview #editor { flex:1; min-height:0; }
+  #editorFrame .mstat { display:flex; flex-wrap:wrap; gap:14px; align-items:center; padding:8px 14px; border-top:1px solid var(--line); font:500 12px "Fira Code",ui-monospace,monospace; color:var(--dim); }
+  #pform { overflow:auto; overscroll-behavior:contain; padding:2px 2px 8px; }
+  #problemsPane { flex:none; max-height:46%; display:flex; flex-direction:column; overflow:hidden; background:var(--panel); border:1px solid var(--line); border-radius:18px; box-shadow:var(--card-shadow); }
+  #checksBtn { flex:none; display:flex; align-items:center; gap:12px; width:100%; min-height:52px; padding:0 20px; border:0; border-radius:0; background:none; text-align:left; font-weight:600; }
+  #checksBtn .ctxt { margin-left:auto; color:var(--dim); font-weight:500; font-size:13px; } #checksBtn .ctxt::after { content:" ▾"; } #problemsPane.open #checksBtn .ctxt::after { content:" ▴"; }
+  #checksBtn .ppill { min-height:32px; padding:0 12px; background:var(--t-surface2); }
+  #problems { display:none; overflow:auto; padding:0 20px 14px; flex-direction:column; gap:8px; }
+  #problemsPane.open #problems { display:flex; }
+  #problems .msg { display:flex; align-items:flex-start; gap:10px; padding:10px 12px; border-radius:12px; background:var(--t-surface2); font-size:13.5px; color:var(--fg); }
+  #problems .msg::before { content:""; flex:none; width:9px; height:9px; margin-top:7px; border-radius:50%; background:var(--c, var(--dim)); }
+  #problems .msg.err { --c:var(--p-err); } #problems .msg.warn { --c:var(--p-warn); } #problems .msg.ok { --c:var(--p-ok); }
+  #problems .msg > span { flex:1; min-width:0; overflow-wrap:anywhere; } #problems .msg .plink { flex:none; margin:-10px -4px -10px 0; white-space:nowrap; }
+  #problems .empty { padding:4px 0; }
+  /* the outline */
+  #side { overflow:auto; }
+  #outhead { display:flex; align-items:center; justify-content:space-between; margin:0 6px 8px; }
+  #outhead .plink { margin-right:-10px; }
+  #syncbar { display:flex; flex-wrap:wrap; align-items:center; gap:6px 12px; margin:0 6px 10px; padding:8px 10px; border-radius:12px; background:var(--t-surface2); font-size:12.5px; color:var(--dim); }
+  #syncbar span { flex:1; min-width:0; }
+  #syncbar button { width:44px; height:44px; min-height:44px; margin:-12px -8px -12px 0; padding:0; border:0; border-radius:10px; background:none; font-size:16px; }
+  #outline .row { display:grid; grid-template-columns:minmax(0,1fr); grid-template-areas:none; gap:6px; padding:10px 6px 8px 10px; border:1px solid transparent; border-radius:14px; border-bottom:1px solid transparent; }
+  #outline .row > * { grid-area:auto; }
+  #outline .row.wk, #outline .row.plan { --c:var(--accent); }
+  #outline .row:hover { background:var(--t-surface2); }
+  #outline .row.sel { background:var(--t-surface2); border-color:var(--t-line2); box-shadow:inset 3px 0 0 var(--c); }
+  #outline .wtop { display:flex; align-items:center; gap:8px; min-width:0; }
+  #outline .row .name { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:14.5px; font-weight:600; cursor:pointer; }
+  #outline .row .name:hover { text-decoration:none; color:var(--t-ink); }
+  #outline .wbot { display:flex; gap:8px; }
+  #outline .row small { flex:1; min-width:0; color:var(--dim); font-size:12px; white-space:normal; }
+  #outline .wtop .wact { flex:none; margin:-10px -4px -10px 0; }
+  #outline .row .name[aria-expanded="true"]::before { content:none; }
+  .chip { display:inline-flex; align-items:center; min-height:24px; padding:0 9px; border-radius:999px; font:600 12px/1 "Fira Code",ui-monospace,monospace; background:var(--t-surface2); border:1px solid var(--line); color:var(--dim); white-space:nowrap; }
+  .chip.ok { color:var(--p-ok); border-color:color-mix(in srgb, var(--p-ok) 45%, transparent); } .chip.warn { color:var(--p-warn); border-color:color-mix(in srgb, var(--p-warn) 45%, transparent); } .chip.err { color:var(--p-err); border-color:color-mix(in srgb, var(--p-err) 45%, transparent); }
+  #outline button.chip { cursor:pointer; min-height:44px; margin:-10px -4px; padding:0 12px; }
+  .pchip { margin-left:auto; display:inline-flex; align-items:center; min-height:28px; padding:0 10px; border-radius:999px; font:600 12px "Fira Code",ui-monospace,monospace; background:var(--t-surface2); border:1px solid var(--line); color:var(--garmin); }
+  #outline .wv-chart.mini { height:24px; }
+  /* the plan page: its week, notes and the plan day by day */
+  #pview .wf { max-width:900px; padding:2px 0 24px; gap:14px; }
+  #pview .pcard, #wdlg .pcard { background:var(--panel); border:1px solid var(--line); border-radius:18px; box-shadow:var(--card-shadow); min-width:0; }
+  .phead { display:grid; gap:12px; padding:18px 22px; }
+  .phead .wf-row { gap:12px; align-items:flex-end; }
+  .psched { padding:18px 20px; }
+  .pshead { display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; margin-bottom:12px; }
+  .pssub { margin-top:2px; font-size:13px; color:var(--dim); }
+  .pnone { padding:12px 0; color:var(--dim); }
+  .sg { display:grid; grid-template-columns:64px repeat(7, minmax(0,1fr)); gap:6px; }
+  .sgh { padding:0 2px; font:500 11px "Fira Code",ui-monospace,monospace; letter-spacing:.1em; text-transform:uppercase; color:var(--t-faint); }
+  .sgw { display:flex; flex-direction:column; justify-content:center; font:500 12px/1.3 "Fira Code",ui-monospace,monospace; color:var(--dim); } .sgw b { font-weight:600; color:var(--fg); } .sgt { color:var(--t-ink); }
+  .sgc { display:flex; flex-direction:column; gap:4px; min-width:0; min-height:58px; padding:5px 6px; border:1px solid transparent; border-radius:12px; background:var(--t-surface2); }
+  .sgc.today { border-color:var(--accent); } .sgn { font:500 10.5px "Fira Code",ui-monospace,monospace; color:var(--t-faint); } .sgc.today .sgn { color:var(--t-ink); }
+  .sgc .wc { display:block; min-height:26px; padding:0 6px; border-radius:8px; border:1px solid color-mix(in srgb, var(--c) 45%, transparent); background:color-mix(in srgb, var(--c) 20%, var(--panel)); color:var(--fg); font-size:11.5px; font-weight:600; text-align:center; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .pkey { display:flex; flex-wrap:wrap; gap:6px 14px; margin-top:12px; font-size:12px; color:var(--dim); } .pkey span:not(.pkeyhint) { display:inline-flex; align-items:center; gap:6px; } .pkey span:not(.pkeyhint)::before { content:""; width:10px; height:10px; border-radius:3px; background:var(--c); }
+  .psched .sums { display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:10px; margin-top:14px; } .sums div { padding:10px 12px; border-radius:12px; background:var(--t-surface2); } .sums small { display:block; font-size:12px; color:var(--dim); } .sums b { font:600 18px "Fira Code",ui-monospace,monospace; }
+  .ploose { margin:12px 0 0; padding:0; list-style:none; display:grid; gap:0; font-size:13.5px; color:var(--dim); } .ploose .plink { padding:0 4px 0 0; }
+  #pview .wf-add button { min-height:44px; padding:0 16px; border-radius:999px; border:1px dashed var(--t-line2); background:none; color:var(--t-ink); font-weight:600; }
+  /* the workout form */
+  :is(#pview, #wdlg) .wf :is(input[type="text"], input[type="date"], textarea, select) { min-height:44px; padding:0 12px; font-size:14.5px; color-scheme:inherit; }
+  :is(#pview, #wdlg) .wf textarea { padding:10px 12px; }
+  :is(#pview, #wdlg) .wf-head { display:grid; gap:14px; padding:18px 22px; background:var(--panel); border:1px solid var(--line); border-radius:18px; box-shadow:var(--card-shadow); }
+  :is(#pview, #wdlg) .wf-name { min-height:52px !important; font:700 24px/1.2 "Fira Sans",system-ui,sans-serif !important; letter-spacing:-.02em; }
+  :is(#pview, #wdlg) .wf-fl { font:500 11px "Fira Code",ui-monospace,monospace; letter-spacing:.1em; text-transform:uppercase; }
+  :is(#pview, #wdlg) .wf-check { min-height:44px; gap:10px; } :is(#pview, #wdlg) .wf-check input { width:22px; height:22px; accent-color:var(--accent); }
+  :is(#pview, #wdlg) .wf-day button, :is(#pview, #wdlg) button.wf-x, :is(#pview, #wdlg) button.wf-more, :is(#pview, #wdlg) button.wf-sb { min-width:44px; min-height:44px; }
+  :is(#pview, #wdlg) button.wf-link { min-height:44px; padding:0 10px; font-weight:600; color:var(--t-ink); }
+  :is(#pview, #wdlg) .wf-card { border:1px solid var(--line); border-left:4px solid var(--c, var(--line)); border-radius:16px; background:var(--panel); box-shadow:var(--card-shadow); overflow:hidden; }
+  :is(#pview, #wdlg) .wf-ch { padding:8px 12px; background:var(--t-surface2); }
+  :is(#pview, #wdlg) .wf-line { padding:12px 14px; }
+  :is(#pview, #wdlg) .wf-ex > div + div > .wf-line, :is(#pview, #wdlg) .wf-member { border-top:1px solid var(--line); }
+  :is(#pview, #wdlg) .wf input.wf-num { width:72px; } :is(#pview, #wdlg) .wf input.wf-int { width:56px; }
+  :is(#pview, #wdlg) .wf-stepper .wf-sb:first-child { border-radius:10px 0 0 10px; } :is(#pview, #wdlg) .wf-stepper .wf-sb:last-child { border-radius:0 10px 10px 0; }
+  :is(#pview, #wdlg) .wf-add button { min-height:44px; padding:0 16px; border-radius:999px; border:1px dashed var(--t-line2); background:none; color:var(--t-ink); font-weight:600; }
+  :is(#pview, #wdlg) .wf-inner > li { border-radius:12px; background:var(--panel); border:1px solid var(--line); border-left:3px solid var(--c); }
+  :is(#pview, #wdlg) .wf-pic { padding:16px 22px; background:var(--panel); border:1px solid var(--line); border-radius:18px; box-shadow:var(--card-shadow); }
+  :is(#pview, #wdlg) .wf-pic > summary { width:auto; padding:0; list-style:none; cursor:pointer; color:var(--fg); font:600 22px "Fira Code",ui-monospace,monospace; letter-spacing:-.02em; display:flex; align-items:center; gap:10px; flex-wrap:wrap; min-height:44px; }
+  :is(#pview, #wdlg) .wf-pic > summary::-webkit-details-marker { display:none; }
+  :is(#pview, #wdlg) .wf-pic .wv-chart { height:84px; gap:3px; } :is(#pview, #wdlg) .wf-pic .wvbox { margin-top:12px; }
+  .mmc { display:flex; flex-wrap:nowrap; gap:16px; align-items:center; min-width:0; } .mmc .mmside { flex:1; min-width:0; } .mmc .ammf { flex:none; }
+  .mmfoot { display:flex; flex-wrap:wrap; align-items:center; gap:4px 10px; margin-top:4px; font-size:12px; color:var(--dim); }
+  .mmc .ammlist { max-width:none; }
+  :is(#pview, #wdlg) .wf-pw > button { min-height:44px; }
+  /* the Garmin drawer: a sheet at the side (at the foot on a phone) with what to do, which workouts, and the button that confirms */
+  #gdrawer { position:fixed; inset:0 0 0 auto; margin:0; width:min(520px,100%); max-width:100%; height:100%; max-height:none; padding:0; border:0; border-left:1px solid var(--t-line2); border-radius:0; background:var(--bg); color:var(--fg); overflow:hidden; box-shadow:-30px 0 60px -30px #000; }
+  #gdrawer[open] { display:flex; flex-direction:column; }
+  #gdrawer::backdrop { background:rgba(0,0,0,.48); }
+  .gdhead { display:flex; align-items:flex-start; gap:10px; padding:18px 22px 12px; } .gdhead h2 { flex:1; margin:0; font-size:20px; line-height:1.25; }
+  .gdx { width:44px; height:44px; min-height:44px; padding:0; border-radius:50%; background:var(--panel); border:1px solid var(--line); font-size:16px; }
+  .gdbody { flex:1; min-height:0; overflow:auto; overscroll-behavior:contain; display:flex; flex-direction:column; gap:18px; padding:0 22px 16px; }
+  .gdbody section { display:flex; flex-direction:column; gap:8px; } .gdrow { display:flex; align-items:center; gap:10px; flex-wrap:wrap; } .gdrow .plink { margin-left:auto; }
+  .gdrow .plink[aria-pressed="true"] { text-decoration:underline; }
+  .gdacts { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .gact { display:grid; align-content:start; gap:2px; min-height:76px; padding:12px 14px; border-radius:14px; border:1px solid var(--t-line2); background:var(--panel); text-align:left; } .gact b { font-size:14.5px; } .gact small { color:var(--dim); font-size:12.5px; line-height:1.35; }
+  .gact[aria-pressed="true"] { border-color:var(--garmin); background:var(--garmin-bg); }
+  .gdlist { display:flex; flex-direction:column; gap:6px; }
+  #gdrawer .msg { display:flex; gap:10px; align-items:flex-start; padding:10px 12px; border-radius:12px; background:var(--t-surface2); font-size:13.5px; color:var(--fg); }
+  #gdrawer .msg::before { content:""; flex:none; width:9px; height:9px; margin-top:7px; border-radius:50%; background:var(--c, var(--dim)); } #gdrawer .msg.err { --c:var(--p-err); } #gdrawer .msg.warn { --c:var(--p-warn); } #gdrawer .msg.ok { --c:var(--p-ok); }
+  .dr { display:grid; grid-template-columns:auto minmax(0,1fr) auto; gap:10px; align-items:start; min-height:44px; padding:10px 12px; border-radius:12px; background:var(--panel); border:1px solid var(--line); font-size:13.5px; cursor:pointer; }
+  .dr:not(.on) { opacity:.72; } .dr input { width:22px; height:22px; margin-top:2px; accent-color:var(--accent); }
+  .dr b { font-weight:600; } .dr small { display:block; color:var(--dim); font-size:12.5px; } .dr small.warn { color:var(--p-warn); } .dr ul { margin:6px 0 0; padding-left:18px; color:var(--p-warn); font-size:12.5px; }
+  .msgi { display:flex; gap:8px; align-items:flex-start; margin-top:6px; padding:8px 10px; border-radius:10px; font-size:13px; background:color-mix(in srgb, var(--c) 13%, var(--panel)); border:1px solid color-mix(in srgb, var(--c) 40%, transparent); } .msgi.warn { --c:var(--p-warn); }
+  #gdrawer #activity .msg { margin-bottom:6px; } #gdrawer #activity pre { margin:0; padding:10px 12px; border-radius:12px; background:var(--t-surface2); font:500 12px/1.5 "Fira Code",ui-monospace,monospace; color:var(--dim); white-space:pre-wrap; overflow-wrap:anywhere; }
+  #gdrawer #activity .empty { padding:0; color:var(--dim); }
+  .gdfoot { display:flex; flex-wrap:wrap; align-items:center; gap:10px; padding:14px 22px calc(14px + env(safe-area-inset-bottom)); border-top:1px solid var(--line); background:var(--panel); }
+  .gdnote { flex:1 1 100%; display:flex; gap:8px; margin:0; font-size:13px; color:var(--dim); } .gdnote b { color:var(--p-warn); }
+  .gdfoot button { min-height:44px; padding:0 20px; border-radius:999px; font-weight:600; } .gdfoot .primary { flex:1; font-weight:700; }
+  /* the dialogs of the editor: the same surface */
+  :is(#dlg, #wdlg, #hdlg) { padding:0; max-width:min(620px, calc(100vw - 24px)); border:1px solid var(--t-line2); border-radius:20px; background:var(--panel); color:var(--fg); box-shadow:0 30px 80px -20px #000; font:400 15px/1.5 "Fira Sans",system-ui,sans-serif; }
+  #wdlg { max-width:min(900px, calc(100vw - 24px)); }
+  :is(#dlg, #wdlg, #hdlg)::backdrop { background:rgba(0,0,0,.55); }
+  :is(#dlg, #wdlg, #hdlg) .dhead { display:flex; align-items:center; gap:10px; padding:18px 22px 6px; border:0; background:none; } :is(#dlg, #hdlg) .dhead b { font-size:19px; }
+  :is(#dlg, #hdlg) .dbody { padding:6px 22px 8px; color:var(--dim); } :is(#dlg, #hdlg) .dbody label { display:grid; gap:4px; color:var(--dim); margin-top:10px; }
+  :is(#dlg, #wdlg, #hdlg) .dfoot { display:flex; align-items:center; flex-wrap:wrap; gap:10px; padding:14px 22px 18px; border:0; background:none; }
+  :is(#dlg, #wdlg, #hdlg) .dfoot button, #wdlg .dhead button { min-height:44px; padding:0 18px; border-radius:999px; font-weight:600; }
+  :is(#dlg, #wdlg, #hdlg) .dfoot .primary { font-weight:700; } #dlgOk.danger { background:var(--p-err); border-color:var(--p-err); color:#fff; }
+  #wdlg .seg { display:inline-flex; padding:2px; gap:2px; background:var(--t-surface2); border:1px solid var(--line); border-radius:999px; } #wdlg .seg button { min-height:44px; border:0; border-radius:999px; background:transparent; color:var(--dim); font-weight:600; padding:0 16px; } #wdlg .seg button[aria-pressed="true"] { background:var(--accent); color:var(--t-on-accent); }
+  #dlg .opts label { display:flex; align-items:flex-start; gap:10px; min-height:44px; color:var(--fg); } #dlg .opts input { width:22px; height:22px; margin-top:2px; accent-color:var(--accent); }
+  #dlg .dlg-line.warn, #dlg .dlg-line { color:var(--dim); } #dlg .dlg-line.warn { color:var(--p-warn); }
+  #pview :focus-visible, #gdrawer :focus-visible, #pmenu :focus-visible, #tabbar :focus-visible { outline:2px solid var(--accent); outline-offset:2px; border-radius:8px; }
+  @media (prefers-reduced-motion:reduce) { #pview *, #gdrawer * { transition:none !important; animation:none !important; } }
+  @media (max-width:1180px) and (min-width:901px) { #pview > main { grid-template-columns:240px minmax(0,1fr); } #pview #side { grid-column:1 / -1; max-height:34vh; } }
+  @media (max-width:900px) {
+    #pview #toolbar { padding:12px 12px 8px; gap:8px; flex-wrap:wrap; }
+    #ptitle { flex:1 1 60%; } #pview #current .dir { display:none; }
+    #pview #emode { flex:1 1 100%; order:5; } #pview #emode button { flex:1; }
+    #pview #save { flex:1 1 auto; } #pview .ppill { padding:0 12px; font-size:13px; }
+    #pview > main { display:block; position:relative; overflow:hidden; padding:0 12px 8px; }
+    #files, #center, #side { width:100%; height:100%; }
+    #pview aside { border:1px solid var(--line); }
+    #pview .wf { padding-bottom:16px; }
+    .sg { grid-template-columns:44px repeat(7, minmax(0,1fr)); gap:3px; } .sgw { font-size:10.5px; } .sgc { padding:3px; min-height:48px; } .sgc .wc { padding:0; font-size:0; min-height:22px; }
+    .psched .sums { grid-template-columns:repeat(2, minmax(0,1fr)); }
+    .phead, :is(#pview, #wdlg) .wf-head, :is(#pview, #wdlg) .wf-pic, .psched { padding-left:16px; padding-right:16px; }
+    .mmc { flex-wrap:wrap; }
+    body[data-tab="problems"] #center > :not(#problemsPane) { display:none; }
+    body[data-tab="problems"] #problemsPane { max-height:none; flex:1; } body[data-tab="problems"] #problemsPane #problems { display:flex; }
+    #gdrawer { inset:auto 0 0 0; width:100%; height:92vh; border-left:0; border-top:1px solid var(--t-line2); border-radius:22px 22px 0 0; }
+    .gdacts { grid-template-columns:1fr; } .dr { grid-template-columns:auto minmax(0,1fr); } .dr .chip { grid-column:2; justify-self:start; }
+    #pmenu { left:0; right:0; bottom:0; width:auto; max-width:none; padding:10px 10px calc(10px + env(safe-area-inset-bottom)); border-radius:20px 20px 0 0; }
+    #tabbar { background:var(--panel); border-top:1px solid var(--line); }
+    #tabbar button { color:var(--dim); font-family:"Fira Sans",system-ui,sans-serif; } #tabbar button[aria-selected="true"] { color:var(--fg); box-shadow:inset 0 3px 0 var(--accent); }
+    :is(#pview, #wdlg) .wf :is(input[type="text"], input[type="date"], textarea, select) { font-size:16px; }
+  }
+  /* ── Workouts, in the new look: the strip of states, the list beside the workout, the plan against Garmin ── */
+  #pview #current.archived::after { content:"· archived"; flex:none; margin-left:.6em; }
+  #wview { display:flex; flex-direction:column; min-height:0; min-width:0; padding:0 clamp(16px,2.2vw,30px) 18px; background:var(--bg); }
+  #wbar { flex:none; display:flex; flex-wrap:wrap; align-items:center; gap:10px 12px; padding:18px 0 12px; }
+  #wtitle { display:flex; flex-direction:column; flex:1 1 280px; min-width:0; }
+  #wtitle h2 { margin:0; font-size:clamp(22px,2.6vw,30px); font-weight:700; letter-spacing:-.02em; line-height:1.15; }
+  #wsub { font:500 12px "Fira Code",ui-monospace,monospace; color:var(--dim); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #wview :is(#wRefresh, .themebtn) { width:44px; height:44px; min-height:44px; padding:0; border-radius:50%; background:var(--panel); border:1px solid var(--line); display:grid; place-items:center; }
+  #wview :is(#wRefresh, .themebtn) svg { width:18px; height:18px; }
+  #wview #wNew { min-height:44px; padding:0 20px; border-radius:999px; font-weight:700; }
+  #wview #wProfile { min-height:44px; border-radius:999px; padding:0 14px; }
+  #wstrip { flex:none; display:grid; grid-template-columns:repeat(5, minmax(0,1fr)); gap:10px; margin-bottom:12px; }
+  #wstrip .tl { display:grid; align-content:center; min-height:76px; padding:12px 14px; border-radius:16px; background:var(--panel); border:1px solid var(--line); box-shadow:var(--card-shadow); text-align:left; }
+  #wstrip .tl b { font:600 24px/1.2 "Fira Code",ui-monospace,monospace; } #wstrip .tl small { color:var(--dim); font-size:12.5px; }
+  #wstrip .tl.warn b { color:var(--p-warn); }
+  #wstrip .tl[aria-pressed="true"] { border-color:var(--accent); box-shadow:0 0 0 1px var(--accent) inset; }
+  #wstrip .wchecking { grid-column:1 / -1; color:var(--dim); }
+  #wmain { flex:1; min-height:0; display:grid; grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr); gap:16px; }
+  #wview :is(#wlist, #wdetail) { min-height:0; min-width:0; background:transparent; border:0; }
+  #wFilters { display:flex; flex-wrap:wrap; gap:8px; align-items:center; padding:0 0 10px; background:none; border:0; }
+  #wFilters input[type="search"] { flex:1 1 180px; min-height:44px; padding:0 14px; border-radius:999px; }
+  #wFilters select { min-height:44px; padding:0 12px; border-radius:999px; max-width:46%; }
+  #wChips { display:flex; flex-wrap:wrap; gap:8px; align-items:center; padding:0 0 10px; background:none; border:0; }
+  #wTypes { display:flex; flex-wrap:wrap; gap:6px; }
+  #wview .tchip { display:inline-flex; align-items:center; gap:8px; min-height:44px; padding:0 14px; border-radius:999px; border:1px solid var(--t-line2); background:transparent; font-weight:600; color:var(--fg); }
+  #wview .tchip i { width:9px; height:9px; border-radius:50%; background:var(--c); }
+  #wview .tchip[aria-pressed="true"], #wview .tchip[aria-pressed="true"]:hover:not(:disabled) { background:color-mix(in srgb, var(--c) 22%, var(--panel)); border-color:var(--c); }
+  #wCount { color:var(--dim); font-size:13px; }
+  #wNote { padding:12px 14px; border-radius:14px; background:var(--panel); border:1px solid var(--line); color:var(--dim); }
+  #wrows { flex:1; min-height:0; overflow:auto; overscroll-behavior:contain; padding:8px; background:var(--panel); border:1px solid var(--line); border-radius:18px; box-shadow:var(--card-shadow); }
+  #wrows .empty { padding:18px 12px; color:var(--dim); }
+  .wrow { display:grid; grid-template-columns:auto minmax(0,1fr) auto 44px; gap:2px 12px; align-items:center; min-height:64px; padding:6px 4px 6px 12px; border:1px solid transparent; border-left-width:1px; border-radius:14px; cursor:pointer; }
+  .wrow:hover { background:var(--t-surface2); }
+  .wrow.active { background:var(--t-surface2); border-color:var(--t-line2); box-shadow:inset 3px 0 0 var(--accent); }
+  .wrow .ti { grid-row:1 / span 2; width:34px; height:34px; border-radius:10px; display:grid; place-items:center; background:color-mix(in srgb, var(--c) 18%, var(--panel)); color:var(--c); } .wrow .ti svg { width:18px; height:18px; }
+  .wrow .n { font-size:14.5px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .wrow small { grid-column:2 / span 2; color:var(--dim); font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .wrow .chip { grid-column:3; grid-row:1; } .wrow .wact { grid-column:4; grid-row:1 / span 2; justify-self:end; }
+  .wrow button.more { width:44px; height:44px; min-height:44px; padding:0; border:0; border-radius:50%; background:none; color:var(--dim); font-size:20px; line-height:1; }
+  .wrow button.more:hover:not(:disabled) { background:var(--panel); color:var(--fg); }
+  #wdetail { display:flex; flex-direction:column; background:var(--panel) !important; border:1px solid var(--line) !important; border-radius:18px; box-shadow:var(--card-shadow); overflow:hidden; }
+  #wdetail > .wbar { flex:none; display:flex; align-items:center; gap:8px; padding:12px 16px; background:none; border:0; }
+  #wdetail > .wbar b { flex:1; min-width:0; font-size:22px; line-height:1.2; letter-spacing:-.01em; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #wdetail > .wbar button { min-height:44px; padding:0 18px; border-radius:999px; font-weight:600; } #wdetail > .wbar button.danger { color:var(--p-err); }
+  #wbody { flex:1; min-height:0; overflow:auto; overscroll-behavior:contain; padding:0 22px 20px; display:flex; flex-direction:column; gap:16px; }
+  #wbody .meta { font:500 11.5px "Fira Code",ui-monospace,monospace; letter-spacing:.14em; text-transform:uppercase; color:var(--dim); }
+  #wbody h3 { margin:0; font:500 11.5px "Fira Code",ui-monospace,monospace; letter-spacing:.14em; text-transform:uppercase; color:var(--dim); }
+  #wbody .banner { margin:0; padding:14px 16px; border:1px solid color-mix(in srgb, var(--c, var(--line)) 45%, transparent); border-radius:14px; background:color-mix(in srgb, var(--c, transparent) 10%, var(--panel)); display:grid; gap:8px; }
+  #wbody .banner.warn { --c:var(--p-warn); } #wbody .banner.ok { --c:var(--p-ok); } #wbody .banner.err { --c:var(--p-err); }
+  #wbody .banner ul { margin:0; padding-left:18px; color:var(--dim); }
+  #wbody .banner .btns { display:flex; gap:10px; flex-wrap:wrap; margin-top:4px; }
+  #wbody .banner .btns button, #wbody .wv-actions button { min-height:44px; padding:0 18px; border-radius:999px; font-weight:600; white-space:nowrap; }
+  #wbody .banner .btns button.garmin { background:var(--garmin-bg); border-color:var(--garmin); color:var(--fg); }
+  #wbody .seg { display:inline-flex; align-self:flex-start; padding:2px; gap:2px; background:var(--panel); border:1px solid var(--line); border-radius:999px; margin:0 0 4px; }
+  #wbody .seg button { min-height:44px; margin:0; padding:0 18px; border:0; border-radius:999px; background:transparent; color:var(--dim); font-weight:600; }
+  #wbody .seg button[aria-pressed="true"] { background:var(--accent); color:var(--t-on-accent); }
+  #wbody .plans { display:grid; gap:6px; }
+  .wplan { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:10px; align-items:center; padding:10px 12px; border-radius:12px; background:var(--t-surface2); }
+  .wplan b { display:block; font-weight:600; } .wplan small { display:block; color:var(--dim); font-size:12.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; } .wplan button { min-height:44px; padding:0 14px; border-radius:999px; }
+  #wbody .wv-chart { height:84px; gap:3px; }
+  #wview :focus-visible { outline:2px solid var(--accent); outline-offset:2px; border-radius:8px; }
+  @media (prefers-reduced-motion:reduce) { #wview *, #wview *::before { transition:none !important; animation:none !important; } }
+  @media (max-width:1180px) { #wmain { grid-template-columns:minmax(0,1fr); } #wstrip { grid-template-columns:repeat(3, minmax(0,1fr)); } }
+  @media (max-width:900px) {
+    #wview { padding:0 12px 8px; }
+    #wbar { padding:12px 0 8px; gap:8px; }
+    #wstrip { grid-template-columns:repeat(2, minmax(0,1fr)); }
+    body:not([data-wpane="detail"]) #wdetail, body[data-wpane="detail"] #wlist, body[data-wpane="detail"] #wstrip, body[data-wpane="detail"] #wbar { display:none; }
+    #wmain { display:block; } #wview :is(#wlist, #wdetail) { height:100%; width:100%; }
+    #wdetail > .wbar { padding:12px; } #wdetail > .wbar b { font-size:19px; } #wBackList { width:44px; padding:0; border-radius:50%; font-size:20px; }
+    #wbody { padding:0 14px 16px; }
+    #wFilters select { max-width:none; flex:1 1 120px; }
+    #wTypes { flex-wrap:nowrap; overflow-x:auto; } #wview .tchip { flex:none; }
+    #wview :is(#wFilters input, #wFilters select) { font-size:16px; }
+  }
 </style>
 </head>
 <body data-view="today">
@@ -2030,17 +2311,22 @@
     </div>
   </div>
 </header>
+<section id="pview">
 <div id="toolbar" aria-label="File tools">
-  <button id="save" class="primary" disabled>Save</button>
+  <div id="ptitle"><h2 id="pTitle"><span class="pdot" id="pDot" hidden title="Unsaved changes"></span><span id="pName">Plans</span></h2><span id="current">No file open</span></div>
+  <button id="vpill" class="ppill" type="button" aria-expanded="false" aria-controls="problems" hidden><i></i><span id="vpillText"></span></button>
   <div id="actions">
-    <button id="new">+ New</button>
-    <button id="validate" disabled>Validate</button>
-    <button id="format" disabled>Format</button>
+    <div class="seg" id="emode" role="group" aria-label="Edit the plan as">
+      <button data-mode="form" aria-pressed="true">Form</button>
+      <button data-mode="json" aria-pressed="false" title="The plan's JSON, every field">JSON</button>
+    </div>
+    <button id="save" class="primary" disabled>Save</button>
+    <select id="profile" title="Garmin profile" hidden></select>
+    <button id="garminBtn" class="garmin" type="button" aria-haspopup="dialog" aria-controls="gdrawer" disabled title="Upload, schedule or send the plan: you choose what, and confirm"><b aria-hidden="true">●</b>Garmin</button>
     <div class="dd">
-      <button id="fileBtn" class="menubtn" aria-expanded="false" aria-controls="fileMenu" disabled>File</button>
+      <button id="fileBtn" class="menubtn" aria-expanded="false" aria-controls="fileMenu" aria-label="File actions" disabled>⋯</button>
       <div class="menu" id="fileMenu">
-        <span class="mlabel">File</span>
-        <button id="reload" disabled>Reload</button>
+        <button id="reload" disabled>Reload from disk</button>
         <button id="history" disabled>History</button>
         <button id="dup" disabled>Duplicate</button>
         <button id="rename" disabled>Rename</button>
@@ -2049,87 +2335,76 @@
         <button id="delete" class="danger" disabled>Delete</button>
       </div>
     </div>
-    <select id="profile" title="Garmin profile" hidden></select>
-    <div class="dd">
-      <button id="garminBtn" class="menubtn garmin" aria-expanded="false" aria-controls="garminMenu" disabled>Garmin</button>
-      <div class="menu" id="garminMenu">
-        <span class="mlabel">Garmin</span>
-        <button id="gUpload" class="garmin" disabled>Upload</button>
-        <button id="gSchedule" class="garmin" disabled>Schedule</button>
-        <button id="gBoth" class="garmin" disabled>Upload + schedule</button>
-        <button id="gSend" class="garmin" disabled>Send to watch</button>
-      </div>
-    </div>
+    <button id="pTheme" class="themebtn" type="button" aria-label="Switch to light theme" title="Switch to light theme"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><g class="sun"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></g><path class="moon" d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z"/></svg></button>
   </div>
-  <span id="current">No file open</span>
-  <button id="menu" aria-label="More actions" aria-expanded="false">⋯</button>
 </div>
 <main>
   <aside id="files">
-    <div id="filebar"><label for="fileSort">Sort</label><select id="fileSort" title="Order the files inside each folder"></select></div>
+    <div id="filebar"><span class="peyebrow">Plans</span><select id="fileSort" title="Order the files inside each folder" aria-label="Order of the files"></select></div>
     <div id="filelist"></div>
+    <button id="new" class="padd" type="button">＋ New plan</button>
   </aside>
   <div id="center">
-    <div class="wbar" id="ebar">
-      <div class="seg" id="emode" role="group" aria-label="Edit the plan as">
-        <button data-mode="form" aria-pressed="true">Form</button>
-        <button data-mode="json" aria-pressed="false" title="The plan's JSON, every field">JSON</button>
-      </div>
-      <select id="ewk" aria-label="What the form shows"></select>
+    <div id="ebar">
+      <div id="pcrumb"></div>
       <span class="spacer"></span>
       <button id="eUndo" title="Undo (Ctrl+Z)" aria-label="Undo" disabled>↶</button>
       <button id="eRedo" title="Redo (Ctrl+Shift+Z)" aria-label="Redo" disabled>↷</button>
     </div>
-    <div id="editor"></div>
+    <section id="editorFrame">
+      <div class="mtop"><span class="mtab" id="mtab"></span><div class="mtool"><button id="format" disabled>Format</button><button id="validate" disabled>Validate</button></div></div>
+      <div id="editor"></div>
+      <div class="mstat"><span id="mpos">Ln 1, Col 1</span><span>Spaces: 2</span><span>JSON</span></div>
+    </section>
     <div id="pform"></div>
+    <section id="problemsPane">
+      <button id="checksBtn" type="button" aria-expanded="false" aria-controls="problems"><span class="ppill" id="checksPill"><i></i><span id="checksText">Nothing to report</span></span><span class="ctxt">Checks</span></button>
+      <div id="problems"><div class="empty">Nothing to report.</div></div>
+    </section>
   </div>
   <aside id="side">
     <div id="outlinePane">
-      <h2>Outline</h2>
-      <div id="syncbar" hidden><span id="syncSummary"></span><button id="syncRefresh" title="Check against Garmin again">↻</button></div>
+      <div id="outhead"><span class="peyebrow" id="outCount">Outline</span><button id="outAdd" class="plink" type="button" disabled>+ Add</button></div>
+      <div id="syncbar" hidden><span id="syncSummary"></span><button id="syncRefresh" title="Check against Garmin again" aria-label="Check against Garmin again">↻</button></div>
       <div id="outline"><div class="empty">Open a plan.</div></div>
-    </div>
-    <div id="problemsPane">
-      <h2>Validation</h2>
-      <div id="problems"><div class="empty">Nothing to report.</div></div>
-      <h2>Garmin</h2>
-      <div id="activity"><div class="empty">No Garmin action run yet.</div></div>
     </div>
   </aside>
 </main>
+</section>
 <section id="wview">
-  <div id="wlist">
-    <div class="wbar">
-      <select id="wProfile" title="Garmin profile" hidden></select>
-      <input id="wFilter" type="search" placeholder="Filter workouts" aria-label="Filter workouts">
-      <button id="wRefresh" title="Reload from Garmin">↻</button>
-      <button id="wNew" class="primary">+ New</button>
-    </div>
-    <div class="wbar" id="wFilters">
-      <select id="wSort" title="Order of the list: most recently updated, name, type, workouts needing a look first, or next scheduled" aria-label="Sort the workouts"></select>
-      <select id="wStatus" title="Show only the workouts in one state" aria-label="Filter by status">
-        <option value="all">All statuses</option><option value="attention">Needs attention</option><option value="ok">Up to date</option>
-        <option value="notuploaded">Not on Garmin</option><option value="garminonly">Only on Garmin</option>
-      </select>
-      <select id="wPlanFilter" title="Show only the workouts of one plan" aria-label="Filter by plan"></select>
-    </div>
-    <div class="wbar" id="wChips">
-      <span id="wTypes" role="group" aria-label="Workout types"></span>
-      <button id="wUpcoming" class="tchip" style="--c:var(--accent)" aria-pressed="false" title="Only workouts a plan schedules today or later">Upcoming</button>
-      <span id="wCount"></span>
-      <button id="wClear" hidden title="Remove the search and every filter">Clear</button>
-    </div>
-    <div id="wNote" class="empty" hidden></div>
-    <div id="wrows"></div>
+  <div id="wbar">
+    <div id="wtitle"><h2>Workouts</h2><span id="wsub">Garmin library</span></div>
+    <select id="wProfile" title="Garmin profile" hidden></select>
+    <button id="wRefresh" class="round" title="Reload from Garmin" aria-label="Reload from Garmin"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></svg></button>
+    <button id="wNew" class="primary">＋ New workout</button>
+    <button id="wTheme" class="themebtn" type="button" aria-label="Switch to light theme" title="Switch to light theme"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><g class="sun"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></g><path class="moon" d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z"/></svg></button>
   </div>
-  <div id="wdetail">
-    <div class="wbar">
-      <button id="wBackList" class="only-mobile" aria-label="Back to the list">←</button>
-      <b id="wTitle">Workout</b>
-      <button id="wEdit" disabled>Edit</button>
-      <button id="wDelete" class="danger" disabled>Delete</button>
+  <div id="wstrip" role="group" aria-label="Show workouts by status" hidden></div>
+  <div id="wmain">
+    <div id="wlist">
+      <div id="wFilters">
+        <input id="wFilter" type="search" placeholder="Filter workouts" aria-label="Filter workouts">
+        <select id="wSort" title="Order of the list: most recently updated, name, type, workouts needing a look first, or next scheduled" aria-label="Sort the workouts"></select>
+        <select id="wPlanFilter" title="Show only the workouts of one plan" aria-label="Filter by plan"></select>
+      </div>
+      <div id="wChips">
+        <span id="wTypes" role="group" aria-label="Workout types"></span>
+        <button id="wUpcoming" class="tchip" style="--c:var(--accent)" aria-pressed="false" title="Only workouts a plan schedules today or later">Upcoming</button>
+        <span id="wCount"></span>
+        <button id="wClear" class="plink" hidden title="Remove the search and every filter">Clear</button>
+      </div>
+      <div id="wNote" class="empty" hidden></div>
+      <div id="wrows"></div>
     </div>
-    <div id="wbody"><div class="empty">Select a workout.</div></div>
+    <div id="wdetail">
+      <div class="wbar">
+        <button id="wBackList" class="only-mobile" aria-label="Back to the list">‹</button>
+        <b id="wTitle">Workout</b>
+        <button id="wEdit" disabled>Edit</button>
+        <button id="wDelete" class="danger" disabled>Delete</button>
+      </div>
+      <div id="wbody"><div class="empty">Select a workout.</div></div>
+    </div>
   </div>
 </section>
 <section id="cview">
@@ -2298,6 +2573,23 @@
   <button role="tab" data-tab="problems"><span>⚠</span>Checks<b class="badge" id="badge"></b></button>
 </nav>
 <div id="toast"></div>
+<dialog id="gdrawer" aria-labelledby="gdTitle">
+  <div class="gdhead"><h2 id="gdTitle">Put the plan on Garmin</h2><button id="gdClose" class="gdx" type="button" aria-label="Close">✕</button></div>
+  <div class="gdbody">
+    <section><h3 class="peyebrow">What to do</h3>
+      <div class="gdacts" role="group" aria-label="What to do">
+        <button id="gUpload" class="gact" type="button" data-action="upload" aria-pressed="false"><b>Upload</b><small></small></button>
+        <button id="gSchedule" class="gact" type="button" data-action="schedule" aria-pressed="false"><b>Schedule</b><small></small></button>
+        <button id="gBoth" class="gact" type="button" data-action="upload_schedule" aria-pressed="false"><b>Upload + schedule</b><small></small></button>
+        <button id="gSend" class="gact" type="button" data-action="send" aria-pressed="false"><b>Send to watch</b><small></small></button>
+      </div></section>
+    <section><h3 class="peyebrow">Checks before it goes</h3><div id="gdChecks" class="gdlist"></div></section>
+    <section><div class="gdrow"><h3 class="peyebrow">What will change on your Garmin account</h3><button id="gdOnly" class="plink" type="button"></button></div><div id="gdRows" class="gdlist"></div><div id="gdWarn"></div></section>
+    <section><h3 class="peyebrow">This session</h3><div id="activity"><div class="empty">No Garmin action run yet.</div></div></section>
+  </div>
+  <div class="gdfoot"><p class="gdnote"><b aria-hidden="true">●</b><span>This changes your Garmin account. Nothing is sent until you press the button.</span></p><button id="gdCancel" type="button">Cancel</button><button id="gdGo" class="primary" type="button" disabled>Upload</button></div>
+</dialog>
+<div id="pmenu" popover role="menu" aria-label="Actions"></div>
 <div id="moveMenu" popover aria-labelledby="mvTitle">
   <b id="mvTitle"></b>
   <div class="mvdays"><button id="mvPrev" type="button"></button><button id="mvNext" type="button"></button></div>
@@ -2387,6 +2679,7 @@
 <script src="/syncActivityModel.js"></script>
 <script src="/trendCharts.js"></script>
 <script src="/workoutListModel.js"></script>
+<script src="/planModel.js"></script>
 <script src="/vendor/monaco/loader.js"></script>
 <script>
 const $ = (id) => document.getElementById(id);
@@ -2395,8 +2688,6 @@ const mobileQuery = matchMedia("(max-width: 900px)");
 // ── Mobile navigation (tabs + actions menu; the desktop layout ignores both) ──
 function setTab(tab) {
   document.body.dataset.tab = tab;
-  document.body.classList.remove("menu-open");
-  $("menu").setAttribute("aria-expanded", "false");
   document.querySelectorAll("#tabbar button").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.tab === tab)));
   if (editor) requestAnimationFrame(() => editor.layout());
   navSync();
@@ -2488,10 +2779,6 @@ window.addEventListener("popstate", (e) => {
   if (document.body.dataset.view !== s.view) history.replaceState({ ...navState(), prev: s.prev }, "", urlOfView(document.body.dataset.view)); // an entry for a view that is not offered now
   else if (s.ov && !($(s.ov) && $(s.ov).open)) history.replaceState({ ...navState(), prev: s.prev }, ""); // forward onto a dialog that is no longer open
 });
-function toggleMenu() {
-  const open = document.body.classList.toggle("menu-open");
-  $("menu").setAttribute("aria-expanded", String(open));
-}
 let editor, monaco;
 let files = [];
 let current = null;        // { path, version }
@@ -2688,69 +2975,86 @@ function renderFiles() {
     el.append(box);
   }
   if (!files.length) el.innerHTML = '<div class="empty">No plans yet.</div>';
+  renderPlanTitle();
 }
 
 let showArchived = false;
 const fileInfoOf = (path) => files.find((f) => f.path === path);
 const isArchived = (path) => { const f = fileInfoOf(path); return !!f && f.archivedAt != null; };
 
-/** The files under a heading per folder. */
+/** The files under a heading per folder, each a row: its name, what it holds, a dot for how it stands on Garmin and a ⋯ for what can be done to it. */
 function addFileGroups(parent, list) {
   const groups = {};
   for (const f of list) (groups[f.path.split("/").slice(0, -1).join("/")] ||= []).push(f);
   for (const [dir, group] of Object.entries(groups)) {
-    const h = document.createElement("h2"); h.textContent = dir; parent.append(h);
+    const h = document.createElement("h2"); h.className = "fold"; h.textContent = dir; parent.append(h);
     for (const f of group) {
-      const d = document.createElement("div");
-      d.className = "file" + (current && current.path === f.path ? " active" : "");
+      const d = document.createElement("div"), open = current && current.path === f.path;
+      d.className = "file" + (open ? " active" : "") + (f.archivedAt != null ? " arch" : "");
       d.innerHTML = `<span></span><small></small><span class="wact"></span>`;
-      d.children[0].textContent = f.path.split("/").pop();
+      const name = d.children[0], dot = document.createElement("i"), label = document.createElement("span");
+      dot.className = "fdot " + (f.archivedAt != null ? "" : planDotOf(f)); dot.setAttribute("aria-hidden", "true");
+      label.textContent = f.path.split("/").pop(); name.append(dot, label);
       // the count and the date are separate pieces so a narrow sidebar wraps the date instead of cutting it off
       const saved = fileSort === "modified" ? "saved " + new Date(f.updatedAt).toISOString().slice(0, 10) : null;
       for (const text of [f.workoutCount != null ? f.workoutCount + " workouts" : null, f.weekStart, saved].filter(Boolean)) {
         const part = document.createElement("span"); part.textContent = text; d.children[1].append(part);
       }
-      for (const a of fileActions(f)) {
-        const b = document.createElement("button");
-        b.innerHTML = ICONS[a.icon]; b.title = a.title; b.setAttribute("aria-label", a.title);
-        if (a.danger) b.className = "danger";
-        b.onclick = (e) => { e.stopPropagation(); guard(a.run)(); };
-        d.children[2].append(b);
-      }
+      const more = document.createElement("button");
+      more.className = "more"; more.type = "button"; more.textContent = "⋯"; more.title = "What can be done to this file"; more.setAttribute("aria-label", `Actions for ${f.path.split("/").pop()}`);
+      more.setAttribute("aria-haspopup", "menu");
+      more.onclick = (e) => { e.stopPropagation(); openPlanMenu(more, fileActions(f)); };
+      d.children[2].append(more);
       d.onclick = guard(() => openFile(f.path));
       parent.append(d);
     }
   }
 }
 
-/** The buttons beside a plan file: the Garmin actions (plan files only), duplicate and delete. */
+/** The dot of a plan in the list: how its workouts stand on Garmin once that is known (only the open plan has been checked), else grey. */
+function planDotOf(f) {
+  if (!current || current.path !== f.path || !sync || sync.path !== current.path || sync.error) return "";
+  const states = sync.statuses.map((x) => x.state);
+  return states.some((x) => x === "missing" || x === "error") ? "err" : states.some((x) => x === "modified" || x === "not-uploaded") ? "warn" : states.length ? "ok" : "";
+}
+
+/** What can be done to a file from the list: Garmin (plan files only), duplicate, rename, archive and delete. Each runs on that file. */
 function fileActions(f) {
-  const acts = [];
-  if (f.archivedAt != null) { // put away: no Garmin buttons (the server refuses them too)
+  const shown = (fn) => async () => { if (!current || current.path !== f.path) { await openFile(f.path); if (!current || current.path !== f.path) return; } await fn(); };
+  if (f.archivedAt != null) { // put away: no Garmin (the server refuses it too)
     return [
-      { icon: "unarchive", title: "Unarchive the plan", run: () => unarchive(f.path) },
-      { icon: "clone", title: "Duplicate the file", run: () => duplicate(f.path) },
-      { icon: "delete", title: "Delete the file", run: () => remove(f.path), danger: true },
+      { label: "Unarchive", hint: "then upload", title: "Unarchive the plan", run: () => unarchive(f.path) },
+      { label: "Duplicate", title: "Duplicate the file", run: () => duplicate(f.path) },
+      { sep: true },
+      { label: "Delete", title: "Delete the file", run: () => remove(f.path), danger: true },
     ];
   }
-  if (garminOn(ownerOfPath(f.path) || pickedProfile()) && isPlanFile(f)) { // the action acts as the file's profile, else as the picker's
-    acts.push(
-      { icon: "upload", title: "Upload the plan to Garmin", run: () => garminFile(f.path, "upload") },
-      { icon: "calendar", title: "Schedule the plan on the Garmin calendar", run: () => garminFile(f.path, "schedule") },
-      { icon: "watch", title: "Send the plan to the watch", run: () => garminFile(f.path, "send") },
-    );
-  }
-  if (isPlanFile(f)) acts.push({ icon: "archive", title: "Archive the plan: remove its workouts from Garmin, keep the plan here", run: () => archive(f.path) });
-  acts.push({ icon: "clone", title: "Duplicate the file", run: () => duplicate(f.path) }, { icon: "delete", title: "Delete the file", run: () => remove(f.path), danger: true });
+  const acts = [];
+  if (garminOn(ownerOfPath(f.path) || pickedProfile()) && isPlanFile(f)) acts.push({ label: "Put on Garmin…", hint: "choose what", title: "Upload, schedule or send the plan: you choose what, and confirm", run: shown(openGarminDrawer) }); // the action acts as the file's profile, else as the picker's
+  acts.push({ label: "Duplicate", title: "Duplicate the file", run: () => duplicate(f.path) }, { label: "Rename", title: "Rename the file", run: shown(rename) });
+  if (isPlanFile(f)) acts.push({ label: "Archive", hint: "leaves Garmin", title: "Archive the plan: remove its workouts from Garmin, keep the plan here", run: () => archive(f.path) });
+  acts.push({ sep: true }, { label: "Delete", title: "Delete the file", run: () => remove(f.path), danger: true });
   return acts;
 }
 
-/** Run a toolbar Garmin action on a file from the list: that file is opened first, since the actions work on the open plan. */
-async function garminFile(path, action) {
-  if (garminBusy) return;
-  if (!current || current.path !== path) await openFile(path);
-  if (!current || current.path !== path) return; // declined to discard the open file's changes
-  await garminRun(action);
+/** A menu of actions by the button that opened it: [{ label, hint, title, run, danger, disabled }] or { sep: true }. Shared by the file list and the outline. */
+function openPlanMenu(anchor, items) {
+  const menu = $("pmenu");
+  menu.replaceChildren();
+  for (const it of items) {
+    if (it.sep) { menu.append(document.createElement("hr")); continue; }
+    const b = document.createElement("button"), label = document.createElement("span");
+    b.type = "button"; b.setAttribute("role", "menuitem"); b.title = it.title || ""; b.disabled = !!it.disabled; if (it.danger) b.className = "danger";
+    label.textContent = it.label; b.append(label);
+    if (it.hint) { const h = document.createElement("small"); h.textContent = it.hint; b.append(h); }
+    b.onclick = () => { menu.hidePopover(); guard(it.run)(); };
+    menu.append(b);
+  }
+  if (menu.matches(":popover-open")) menu.hidePopover();
+  menu.ontoggle = (e) => { if (e.newState === "closed" && anchor.isConnected) anchor.focus(); };
+  menu.showPopover();
+  placePopover(menu, anchor, { right: true });
+  menu.querySelector("button:not(:disabled)")?.focus();
 }
 
 async function openFile(p, discarded = false) { // `discarded`: the person was asked already and said yes
@@ -2779,6 +3083,9 @@ function setButtons() {
   $("profile").hidden = !(on && garmin.enabled && garmin.profiles.length > 1 && !profileOwner());
   const cur = $("current");
   cur.classList.toggle("archived", !!shelved);
+  const info = on ? fileInfoOf(current.path) : null;
+  cur.dataset.note = !on ? "" : dirty ? "unsaved changes" : info && info.updatedAt ? "saved " + SetM.ago(info.updatedAt, Date.now()) : "";
+  renderPlanTitle();
   if (cur.dataset.path !== (on ? current.path : "")) {
     cur.dataset.path = on ? current.path : ""; cur.title = on ? current.path : ""; cur.replaceChildren();
     if (!on) cur.textContent = "No file open";
@@ -2788,6 +3095,14 @@ function setButtons() {
       cur.append(dir, name);
     }
   }
+}
+
+/** The plan's name, as a title (half-marathon-base.json: Half marathon base), and the dot that says it has changes not saved. */
+function renderPlanTitle() {
+  const on = !!current;
+  const stem = on ? current.path.split("/").pop().replace(/\.json$/, "").replace(/[-_]+/g, " ").trim() : "";
+  $("pName").textContent = on && stem ? stem.charAt(0).toUpperCase() + stem.slice(1) : "Plans";
+  $("pDot").hidden = !(on && isDirty());
 }
 
 // ── Actions ────────────────────────────────────────────────────────────
@@ -2938,7 +3253,6 @@ function format() {
 // ── Garmin actions (upload / schedule / send to watch) ─────────────────
 const GARMIN_ACTIONS = { gUpload: "upload", gSchedule: "schedule", gBoth: "upload_schedule", gSend: "send" };
 const ACTION_LABEL = { upload: "Upload", schedule: "Schedule", upload_schedule: "Upload + schedule", send: "Send to watch" };
-const ACTION_TITLE = { upload: "Upload the plan to Garmin?", schedule: "Schedule the plan on Garmin?", upload_schedule: "Upload and schedule the plan?", send: "Send the plan to the watch?" };
 
 async function loadGarmin() {
   try { garmin = await api("GET", "/api/garmin"); } catch { return; }
@@ -2987,7 +3301,68 @@ function summaryOf(action, r) {
   return [`Requested: ${(res.requested || []).join(", ")}`];
 }
 
-async function garminRun(action) {
+// ── The Garmin drawer: what to do, which workouts, what will change; the button that confirms names the action and the count ──
+const GD = { action: "upload_schedule", pick: [] };
+const GD_ABOUT = { upload: "Create or replace the workouts on Garmin", schedule: "Put the workouts' days on the Garmin calendar", upload_schedule: "Both, in one go", send: "The workouts flagged ‘send to watch’, else all that are on Garmin" };
+const gdList = () => workoutsOf(parsed()) || [];
+const gdState = (list) => (i) => (syncOf(i, list[i]) || {}).state;
+
+function openGarminDrawer() {
+  if (!current || $("garminBtn").disabled) return;
+  const list = gdList();
+  GD.pick = PM.defaultPick(GD.action, list, gdState(list));
+  renderGarminDrawer();
+  $("gdrawer").showModal(); navDialog($("gdrawer"));
+  $("garminBtn").setAttribute("aria-expanded", "true");
+  if (garminOn(planProfile()) && !sync) refreshSync();
+}
+
+function renderGarminDrawer(focusIndex) {
+  if (!current) return;
+  const list = gdList(), stateOf = gdState(list), profile = planProfile();
+  const d = PM.describe(GD.action, list, GD.pick, stateOf);
+  $("gdTitle").textContent = `Put “${$("pName").textContent}” on Garmin`;
+  for (const b of document.querySelectorAll("#gdrawer .gact")) {
+    b.setAttribute("aria-pressed", String(b.dataset.action === GD.action));
+    b.querySelector("small").textContent = GD_ABOUT[b.dataset.action];
+  }
+  // checks before it goes
+  const checks = $("gdChecks"); checks.replaceChildren();
+  const line = (cls, ...kids) => { const m = mk("div", "msg " + cls); m.append(...kids); checks.append(m); return m; };
+  const uploads = GD.action.startsWith("upload"), blocked = uploads && planChecks.errors > 0;
+  if (planChecks.errors) line("err", mk("span", "", `${planChecks.errors} validation error${planChecks.errors === 1 ? "" : "s"}${uploads ? ": fix them before uploading" : ""}.`));
+  for (const m of planChecks.errorList.slice(0, 3)) line("err", mk("span", "", m));
+  if (!planChecks.errors && planChecks.valid) line("ok", mk("span", "", isDirty() ? `Valid — ${planChecks.count} workouts. The plan has unsaved changes: saving comes first, and the saved file is what is sent.` : `Valid — ${planChecks.count} workouts. The plan is saved: the file on disk is what is sent.`));
+  else if (!planChecks.errors && isDirty()) line("warn", mk("span", "", "The plan has unsaved changes: saving comes first."));
+  for (const m of planChecks.warningList) line("warn", mk("span", "", m));
+  // the workouts
+  const defaults = PM.defaultPick(GD.action, list, stateOf);
+  $("gdOnly").textContent = GD.action.startsWith("upload") ? PM.onlyLabel(defaults.length) : "The usual choice";
+  $("gdOnly").setAttribute("aria-pressed", String(PM.samePick(GD.pick, defaults)));
+  const rows = $("gdRows"); rows.replaceChildren();
+  for (const r of d.rows) {
+    const lab = mk("label", "dr" + (r.on ? " on" : "")), cb = mk("input"), body = mk("div"), chip = mk("span", "chip");
+    cb.type = "checkbox"; cb.checked = r.on; cb.dataset.i = String(r.index); cb.setAttribute("aria-label", `Include ${r.name}`);
+    cb.onchange = () => { GD.pick = cb.checked ? [...GD.pick, r.index] : GD.pick.filter((x) => x !== r.index); renderGarminDrawer(r.index); };
+    body.append(mk("b", "", r.name), mk("small", r.warn ? "warn" : "", r.note));
+    const st = syncOf(r.index, list[r.index]);
+    if (r.on && st && st.state === "modified" && uploads && st.differences.length) { const ul = mk("ul"); for (const x of st.differences.slice(0, 3)) ul.append(mk("li", "", x)); body.append(ul); }
+    const [glyph, cls, tip] = SYNC_CHIPS[r.state] || ["…", "", "Checking against Garmin"];
+    chip.className = "chip " + cls; chip.textContent = glyph; chip.title = tip;
+    lab.append(cb, body, chip); rows.append(lab);
+  }
+  if (!list.length) rows.append(mk("div", "empty", "This plan has no workouts."));
+  const warn = $("gdWarn"); warn.replaceChildren();
+  for (const t of d.warnings) warn.append(mk("div", "msgi warn", t));
+  const go = $("gdGo");
+  go.textContent = d.verb;
+  go.disabled = d.disabled || blocked || garminBusy || $("garminBtn").disabled;
+  go.title = blocked ? "Fix the validation errors first." : d.disabled ? "Nothing is chosen that this action can use." : "";
+  if (focusIndex !== undefined) rows.querySelector(`input[data-i="${focusIndex}"]`)?.focus();
+}
+
+/** Run an action on the workouts `picked` of the open plan (its places in the list). The drawer's button is the confirmation. */
+async function garminRun(action, picked) {
   if (!current || garminBusy) return;
   // The actions work on the file on disk, so save first.
   if (isDirty()) {
@@ -2997,29 +3372,11 @@ async function garminRun(action) {
   }
   const validation = (await api("POST", "/api/validate", { text: editor.getValue() })).validation;
   if (validation && validation.errors.length && action.startsWith("upload")) {
-    showValidation(validation); setTab("problems");
+    showValidation(validation);
     return toast(`Fix the ${validation.errors.length} validation error(s) before uploading.`, 6000);
   }
-  const list = workoutsOf(parsed()) || [];
-  const profile = planProfile();
-  const withId = list.filter((w) => w && w.workoutId !== undefined).length;
-  const dates = list.reduce((n, w) => n + (w && w.scheduledDate !== undefined ? [].concat(w.scheduledDate).length : 0), 0);
-  const flagged = list.filter((w) => w && w.sendToDevice);
-  const lines = [["meta", `${current.path} · Garmin profile ${profile}`]];
-  if (action !== "schedule" && action !== "send") {
-    lines.push(`Uploads ${list.length} workout(s); the new workoutIds are saved into this file.`);
-    if (withId) lines.push(["warn", `${withId} already ${withId === 1 ? "has" : "have"} a workoutId: ${withId === 1 ? "it is" : "they are"} deleted and recreated on Garmin.`]);
-  }
-  if (action === "schedule" || action === "upload_schedule") {
-    lines.push(`Schedules ${dates} date(s) on the Garmin calendar` + (action === "schedule" ? " using existing workoutIds (workouts without one are skipped)." : "."));
-  }
-  if (action === "send") {
-    lines.push(`Sends ${(flagged.length || list.length)} workout(s)` + (flagged.length ? ' flagged "sendToDevice"' : " (none flagged, so all)") + ` to your watch. Workouts without a workoutId are skipped (${list.length - withId} without).`);
-  }
-  if (validation && validation.warnings.length) lines.push(["warn", `${validation.warnings.length} validation warning(s): see Checks.`]);
-  lines.push(["warn", "This changes your Garmin account."]);
-  if (!(await confirmDialog({ title: ACTION_TITLE[action], lines, ok: ACTION_LABEL[action] }))) return;
-
+  const list = workoutsOf(parsed()) || [], profile = planProfile();
+  const indexes = PM.indexesFor(picked, list.length); // every workout: the whole plan, as before
   let deviceId;
   if (action === "send") {
     const q = new URLSearchParams({ path: current.path }); if (profile) q.set("profile", profile);
@@ -3031,10 +3388,10 @@ async function garminRun(action) {
     }
   }
 
-  garminBusy = true; setButtons();
+  garminBusy = true; setButtons(); renderGarminDrawer();
   toast(`${ACTION_LABEL[action]}… this can take a minute.`, 60000);
   try {
-    const r = await api("POST", "/api/garmin/action", { action, path: current.path, profile, deviceId, confirm: true });
+    const r = await api("POST", "/api/garmin/action", { action, path: current.path, profile, deviceId, indexes, confirm: true });
     showActivity(`✓ ${ACTION_LABEL[action]} (${r.profile})`, "ok", summaryOf(action, r), r.log);
     toast(`${ACTION_LABEL[action]} done`);
     await reloadFromDisk(r.version);
@@ -3044,8 +3401,11 @@ async function garminRun(action) {
     toast(e.message, 8000);
     await reloadFromDisk(d.version);
   } finally {
-    garminBusy = false; setButtons(); setTab("problems");
-    refreshSync(true);
+    garminBusy = false; setButtons();
+    await refreshSync(true);
+    const again = gdList();
+    GD.pick = PM.defaultPick(GD.action, again, gdState(again));
+    if ($("gdrawer").open) { renderGarminDrawer(); $("activity").scrollIntoView({ block: "nearest" }); }
   }
 }
 
@@ -3069,17 +3429,30 @@ const ICONS = {
 };
 
 /** No file is open: the Checks say there is nothing to report, as on a fresh page. */
+/** What the last check found, for the pill by the title, the Garmin drawer and the upload actions: { errors, warnings, valid, count, parseError }. */
+let planChecks = { errors: 0, warnings: 0, valid: false, count: 0, parseError: null, errorList: [], warningList: [] };
+
 function clearValidation() {
   const none = document.createElement("div");
   none.className = "empty"; none.textContent = "Nothing to report.";
   $("problems").replaceChildren(none);
   $("badge").textContent = ""; $("badge").classList.remove("err");
+  planChecks = { errors: 0, warnings: 0, valid: false, count: 0, parseError: null, errorList: [], warningList: [] };
+  renderChecksPill();
 }
 
 function showValidation(v, parseError) {
   const el = $("problems"); el.innerHTML = "";
-  const add = (cls, text) => { const d = document.createElement("div"); d.className = "msg " + cls; d.textContent = text; el.append(d); };
+  const add = (cls, text) => {
+    const d = document.createElement("div"); d.className = "msg " + cls;
+    const t = document.createElement("span"); t.textContent = text; d.append(t);
+    const at = /^Workout (\d+)/.exec(text); // "Workout 3 (…): …": a button shows it in the JSON
+    if (at && cls !== "ok") { const b = document.createElement("button"); b.type = "button"; b.className = "plink"; b.textContent = "Show in editor"; b.onclick = () => showCheckedWorkout(Number(at[1]) - 1); d.append(b); }
+    el.append(d);
+  };
   const errors = parseError ? 1 : v ? v.errors.length : 0, warnings = v ? v.warnings.length : 0;
+  const before = planChecks.errors;
+  planChecks = { errors, warnings, valid: !!v && v.valid, count: v ? v.workoutCount : 0, parseError: parseError || null, errorList: v ? v.errors : parseError ? [parseError] : [], warningList: v ? v.warnings : [] };
   $("badge").textContent = errors + warnings || ""; $("badge").classList.toggle("err", errors > 0);
   if (parseError) add("err", parseError);
   else if (!v) add("ok", "Valid JSON (not a workout file, no further checks).");
@@ -3088,6 +3461,34 @@ function showValidation(v, parseError) {
     v.warnings.forEach((m) => add("warn", m));
     if (v.valid && !v.warnings.length) add("ok", `Valid — ${v.workoutCount} workouts.`);
   }
+  if (errors && !before && !mobileQuery.matches) setChecksOpen(true); // a plan that has just gone wrong shows why (a phone has the Checks tab)
+  renderChecksPill();
+  if ($("gdrawer").open) renderGarminDrawer();
+}
+
+/** The pill by the title and the one on the Checks bar: valid, how many workouts, and what is wrong. */
+function renderChecksPill() {
+  const { errors, warnings, valid, count, parseError } = planChecks, on = !!current;
+  const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
+  const text = !on ? "Nothing to report" : parseError ? "JSON mistake" : errors ? [plural(errors, "error"), warnings ? plural(warnings, "warning") : ""].filter(Boolean).join(" · ") : valid ? [`Valid · ${plural(count, "workout")}`, warnings ? plural(warnings, "warning") : ""].filter(Boolean).join(" · ") : planChecks.warnings ? plural(warnings, "warning") : "Valid JSON";
+  const cls = errors ? "err" : warnings ? "warn" : "ok";
+  for (const id of ["vpill", "checksPill"]) { const el = $(id); el.classList.remove("ok", "warn", "err"); el.classList.add(cls); }
+  $("vpillText").textContent = $("checksText").textContent = text;
+  $("vpill").hidden = !on;
+}
+
+/** The checks list open or shut (shut: just the pill and the word Checks). */
+function setChecksOpen(open) {
+  $("problemsPane").classList.toggle("open", open);
+  for (const id of ["checksBtn", "vpill"]) $(id).setAttribute("aria-expanded", String(open));
+}
+
+/** Show the workout a check names (its number, from 0) in the JSON. */
+function showCheckedWorkout(i) {
+  const w = (workoutsOf(parsed()) || [])[i];
+  if (!w) return;
+  setEditMode("json"); revealWorkout(w);
+  if (mobileQuery.matches) setTab("editor");
 }
 
 async function runValidate() {
@@ -3243,27 +3644,44 @@ function revealWorkout(w, step) {
 // Which workouts of the open plan show their picture. Kept here because renderOutline starts from scratch on every edit and every sync result.
 const outlineOpen = { path: null, names: new Set() };
 
+/** "Tue · 3 days · 40 min · 5 km": when a workout is, and how long and far it is. */
+function outlineMeta(w, a) {
+  const days = PM.datesOf(w), dows = new Set(days.map((d) => new Date(PM_MS(d)).toLocaleDateString(undefined, { weekday: "short", timeZone: "UTC" })));
+  return [dows.size === 1 ? [...dows][0] : dows.size ? "several days" : "", days.length ? `${days.length} ${days.length === 1 ? "day" : "days"}` : "not scheduled", a.seconds ? WM.duration(a.seconds) : "", a.meters ? WM.distance(a.meters) : a.sets ? `${a.sets} sets` : ""].filter(Boolean).join(" · ");
+}
+const PM = PlanModel, PM_MS = (iso) => Date.parse(iso + "T00:00:00Z");
+/** The colour a type of workout has in the Plans and Workouts views (--c-run and the rest are set on those views). */
+const PLAN_TYPE_VARS = { running: "var(--c-run)", strength_training: "var(--c-str)", cycling: "var(--c-ride)", swimming: "var(--t-teal)", cardio: "var(--t-rose)" };
+const planTypeColor = (t) => PLAN_TYPE_VARS[t] || "var(--t-faint)";
+
 function renderOutline() {
   const el = $("outline"); el.innerHTML = "";
   const list = workoutsOf(parsed());
   renderSyncBar(current && list);
+  $("outCount").textContent = current && list ? `Outline · ${list.length} workout${list.length === 1 ? "" : "s"}` : "Outline";
+  $("outAdd").disabled = !(current && list);
   if (outlineOpen.path !== (current && current.path)) { outlineOpen.path = current && current.path; outlineOpen.names.clear(); }
   if (!current || !list) { el.innerHTML = `<div class="empty">${current ? "Not a workout plan." : "Open a plan."}</div>`; return; }
+  const data = parsed();
+  if (editMode === "form" && !Array.isArray(data)) { // the plan itself is a row: it opens the plan's page
+    const row = document.createElement("div"); row.className = "row plan" + (P.sel === null ? " sel" : "");
+    row.innerHTML = '<div class="wtop"><span class="name">The plan</span></div><div class="wbot"><small></small></div>';
+    row.querySelector("small").textContent = [data.weekStart && data.weekEnd ? `${data.weekStart} – ${data.weekEnd}` : "", data.notes ? "notes" : ""].filter(Boolean).join(" · ") || "week and notes";
+    if (P.sel === null) row.setAttribute("aria-current", "true");
+    clickable(row.querySelector(".name"), () => selectPlanWorkout(null));
+    el.append(row);
+  }
   list.forEach((w, i) => {
     const row = document.createElement("div"); row.className = "row wk";
-    const date = Array.isArray(w?.scheduledDate) ? w.scheduledDate.join(", ") : w?.scheduledDate || "";
     const label = w?.workoutName ?? "(unnamed)", open = outlineOpen.names.has(label);
     row.dataset.name = label;
-    // the name has a line to itself; the counts and the buttons share the one below
-    row.innerHTML = `<div class="wtop"><span class="name"></span></div><div class="wbot"><small></small><span class="wact"></span></div>`;
+    row.style.setProperty("--c", planTypeColor(w && w.workoutType));
+    // the name has a line to itself; the profile and what it adds up to share the ones below
+    row.innerHTML = `<div class="wtop"><span class="name"></span><span class="wact"></span></div><div class="wbot"><small></small></div>`;
     const top = row.firstChild, name = top.firstChild, small = row.querySelector("small"), acts = row.querySelector(".wact");
-    const addButton = (icon, title, enabled, onclick, cls = "ico") => {
-      const b = document.createElement("button");
-      b.className = cls; b.innerHTML = ICONS[icon]; b.title = title; b.setAttribute("aria-label", title); b.disabled = !enabled; b.onclick = onclick;
-      acts.append(b);
-    };
     name.textContent = label;
-    small.textContent = [w?.steps ? w.steps.length + " steps" : "", date, garminOn(planProfile()) ? "" : w?.workoutId ? "↑" : ""].filter(Boolean).join(" ");
+    const a = w && typeof w === "object" ? WM.analyze(w, { pacer: pacerFor(planProfile()) }) : null;
+    small.textContent = a ? outlineMeta(w, a) : "";
     const st = garminOn(planProfile()) ? syncOf(i, w) : null;
     if (garminOn(planProfile())) {
       const [glyph, cls, tip] = st ? SYNC_CHIPS[st.state] : ["…", "", "Checking against Garmin"];
@@ -3271,10 +3689,10 @@ function renderOutline() {
       chip.className = "chip " + cls; chip.textContent = glyph; chip.title = [tip, ...(st?.differences || [])].join("\n");
       if (chip.tagName === "BUTTON") chip.onclick = () => {
         showActivity(`${st.state === "error" ? "?" : "≠"} ${w?.workoutName ?? "(unnamed)"}`, st.state === "error" ? "err" : "warn", st.differences);
-        if (mobileQuery.matches) setTab("problems");
+        openGarminDrawer();
       };
       top.prepend(chip);
-    }
+    } else if (w?.workoutId) small.textContent = ["↑", small.textContent].filter(Boolean).join(" ");
     if (editMode === "form") { // the name opens the workout in the form
       row.classList.toggle("sel", P.sel === i);
       if (P.sel === i) row.setAttribute("aria-current", "true");
@@ -3283,16 +3701,23 @@ function renderOutline() {
       name.setAttribute("aria-expanded", String(open));
       clickable(name, () => { if (open) outlineOpen.names.delete(label); else outlineOpen.names.add(label); renderOutline(); });
     }
-    if (garminOn(planProfile())) {
-      const state = st?.state;
-      const up = ["modified", "not-uploaded", "missing"].includes(state);
-      addButton("upload", up ? "Upload this workout to Garmin" : `Upload: ${state === "synced" ? "already up to date" : "still checking"}`, up && !garminBusy, guard(() => planRowGarmin(i, "upload", state)));
-      addButton("download", state === "modified" ? "Download Garmin's version into this workout" : `Download: ${state === "synced" ? "already up to date" : "not on Garmin"}`, state === "modified" && !garminBusy, guard(() => planRowGarmin(i, "download", state)));
-    }
-    addButton("clone", "Duplicate", true, () => mutate((l) => { const c = structuredClone(l[i]); delete c.workoutId; c.workoutName += " (copy)"; l.splice(i + 1, 0, c); }));
-    addButton("delete", "Remove from the plan", true, guard(async () => {
-      if (await confirmDialog({ title: `Remove "${w?.workoutName}"?`, text: "It leaves the plan; a copy on Garmin, if any, is not touched.", ok: "Remove", danger: true })) mutate((l) => l.splice(i, 1));
-    }), "ico danger");
+    const more = document.createElement("button");
+    more.className = "more"; more.type = "button"; more.textContent = "⋯"; more.title = "Upload, duplicate, remove"; more.setAttribute("aria-label", `Actions for ${label}`); more.setAttribute("aria-haspopup", "menu");
+    more.onclick = (e) => {
+      e.stopPropagation();
+      const state = st?.state, items = [];
+      if (garminOn(planProfile())) {
+        const up = ["modified", "not-uploaded", "missing"].includes(state);
+        items.push({ label: "Upload to Garmin", hint: up ? "this workout alone" : state === "synced" ? "already up to date" : "still checking", title: up ? "Upload this workout to Garmin" : `Upload: ${state === "synced" ? "already up to date" : "still checking"}`, disabled: !up || garminBusy, run: () => planRowGarmin(i, "upload", state) });
+        items.push({ label: "Use Garmin's version", hint: state === "modified" ? "replaces this one" : "no difference", title: state === "modified" ? "Download Garmin's version into this workout" : `Download: ${state === "synced" ? "already up to date" : "not on Garmin"}`, disabled: state !== "modified" || garminBusy, run: () => planRowGarmin(i, "download", state) });
+      }
+      items.push({ label: "Duplicate", title: "Duplicate", run: () => mutate((l) => { const c = structuredClone(l[i]); delete c.workoutId; c.workoutName += " (copy)"; l.splice(i + 1, 0, c); }) });
+      items.push({ sep: true }, { label: "Remove from the plan", title: "Remove from the plan", danger: true, run: async () => {
+        if (await confirmDialog({ title: `Remove "${w?.workoutName}"?`, text: "It leaves the plan; a copy on Garmin, if any, is not touched.", ok: "Remove", danger: true })) mutate((l) => l.splice(i, 1));
+      } });
+      openPlanMenu(more, items);
+    };
+    acts.append(more);
     if (open && editMode !== "form") {
       const host = mk("div", "wv-host");
       const flagged = st && st.differences.length && st.state === "modified" ? WM.changedSteps(st.differences) : new Set();
@@ -3303,15 +3728,11 @@ function renderOutline() {
       actions.append(edit); host.append(actions);
       row.append(host);
     } else if (Array.isArray(w?.steps) && w.steps.length) {
-      const mini = profileEl(WM.analyze(w, { pacer: pacerFor(planProfile()) }), { mini: true });
+      const mini = profileEl(a, { mini: true });
       if (mini) row.insertBefore(mini, row.lastChild);
     }
     el.append(row);
   });
-  const add = document.createElement("div"); add.className = "row";
-  add.innerHTML = "<button>+ Add workout</button>";
-  add.firstChild.onclick = guard(addPlanWorkout);
-  el.append(add);
 }
 
 /** Add a workout to the open plan: its name and type asked, its steps those a new workout of the type starts with; the form opens on it. */
@@ -3429,6 +3850,7 @@ function setEditMode(mode) {
   try { localStorage.setItem(EDIT_MODE_KEY, editMode); } catch { /* the choice lasts until the page closes */ }
   document.body.dataset.emode = editMode;
   $("wdlg").dataset.emode = editMode;
+  renderCrumb();
   for (const id of ["emode", "wdMode"]) $(id).querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.mode === editMode)));
   if (editMode === "json") {
     if (editor) requestAnimationFrame(() => editor.layout());
@@ -3459,6 +3881,7 @@ let planFormTimer = 0;
 function renderPlanForm(now = false) {
   setUndoButtons();
   clearTimeout(planFormTimer);
+  renderCrumb();
   if (editMode !== "form") return;
   if (!now) { planFormTimer = setTimeout(() => renderPlanForm(true), 0); return; }
   const box = $("pform"), data = current ? parsed() : undefined, list = workoutsOf(data);
@@ -3468,10 +3891,7 @@ function renderPlanForm(now = false) {
     P.sel = i >= 0 ? i : list && list[P.sel] ? P.sel : null;
     P.name = P.sel === null ? null : list[P.sel].workoutName;
   }
-  const pick = $("ewk");
-  pick.replaceChildren(new Option(list ? "The plan" : "—", "plan"), ...(list || []).map((w, i) => new Option(w && w.workoutName ? w.workoutName : `Workout ${i + 1}`, String(i))));
-  pick.value = P.sel === null ? "plan" : String(P.sel);
-  pick.disabled = !list;
+  renderCrumb();
   const note = (text, button) => { const wrap = mk("div", "wf"); wrap.append(mk("div", "wf-note", text)); if (button) wrap.append(button); box.replaceChildren(wrap); };
   if (!current) return note("Open a plan from the list.");
   if (data === null) { const b = mk("button", "", "Show the JSON"); b.onclick = () => setEditMode("json"); return note("The JSON has a mistake, so the form cannot read it: the Checks say where.", b); }
@@ -3481,11 +3901,24 @@ function renderPlanForm(now = false) {
   planForm.render();
 }
 
-/** The plan in the form: its week and notes, and its workouts, each opening in the form. */
+/** Where the form is: the plan, or a workout of it with the way back (a tap on ‹ The plan); in the JSON, the whole file. */
+function renderCrumb() {
+  const el = $("pcrumb"); el.replaceChildren();
+  $("mtab").textContent = current ? current.path : "";
+  if (!current) return;
+  const list = workoutsOf(parsed());
+  if (editMode === "json") { el.append(mk("span", "here", "JSON · the whole file")); return; }
+  if (P.sel === null || !list) { el.append(mk("span", "here", "The plan")); return; }
+  const back = mk("button", "plink", "‹ The plan");
+  back.type = "button"; back.onclick = () => selectPlanWorkout(null);
+  el.append(back, mk("span", "", `Workout ${P.sel + 1} of ${list.length}`));
+}
+
+/** The plan in the form: its week and notes, and the plan laid out day by day, each workout opening in the form. */
 function planPage(data, list) {
-  const box = mk("div", "wf wf-plan"), profile = planProfile();
+  const box = mk("div", "wf wf-plan"), profile = planProfile(), pacer = pacerFor(profile);
   if (!Array.isArray(data)) {
-    const head = mk("section", "wf-head"), row = mk("div", "wf-row");
+    const head = mk("section", "pcard phead"), row = mk("div", "wf-row");
     const field = (label, key, type) => {
       const input = mk(type === "notes" ? "textarea" : "input", type === "notes" ? "wf-notes" : "");
       if (type !== "notes") input.type = "date";
@@ -3499,27 +3932,86 @@ function planPage(data, list) {
       return f;
     };
     field("Week from", "weekStart", "date"); field("to", "weekEnd", "date");
+    if (profile) row.append(mk("span", "pchip", garminOn(profile) ? `${profile} · Garmin` : profile));
     head.append(row, field("Notes", "notes", "notes"));
     box.append(head);
   }
-  const ol = mk("ol", "wf-list");
-  ol.setAttribute("aria-label", "Workouts");
-  list.forEach((w, i) => {
-    const li = mk("li", "wf-card wf-pw"), b = mk("button");
-    li.style.setProperty("--c", typeColor(w && w.workoutType));
-    b.type = "button"; b.dataset.fk = "pw:" + i;
-    const days = w && w.scheduledDate !== undefined ? [].concat(w.scheduledDate).join(", ") : "not scheduled";
-    b.append(mk("b", "", (w && w.workoutName) || `Workout ${i + 1}`), mk("small", "", [w && WFM.SPORTS[w.workoutType] ? WFM.SPORTS[w.workoutType].label : w && w.workoutType, days].filter(Boolean).join(" · ")));
-    if (w && Array.isArray(w.steps) && w.steps.length) { const mini = profileEl(WM.analyze(w, { pacer: pacerFor(profile) }), { mini: true }); if (mini) b.append(mini); }
-    b.onclick = () => selectPlanWorkout(i);
-    li.append(b); ol.append(li);
-  });
-  if (!list.length) ol.append(mk("li", "wf-note", "No workouts yet."));
+  box.append(planGrid(list, pacer));
   const add = mk("div", "wf-add"), btn = mk("button", "", "+ Add workout");
   btn.type = "button"; btn.dataset.fk = "addw"; btn.onclick = guard(addPlanWorkout);
   add.append(btn);
-  box.append(ol, add);
+  box.append(add);
   return box;
+}
+
+const PLAN_GRID_WEEKS = 12; // a longer plan shows its first weeks, and the rest on request
+let planGridAll = false;
+
+/** The plan day by day: a row per week (Monday to Sunday) with what is on each day, and what the plan adds up to. */
+function planGrid(list, pacer) {
+  const measure = (w) => { if (!w || typeof w !== "object") return {}; const a = WM.analyze(w, { pacer }); return { seconds: a.seconds, meters: a.meters, sets: a.sets }; };
+  const g = PM.scheduleGrid(list, { measure, today: todayIso() }), card = mk("section", "pcard psched");
+  const head = mk("div", "pshead"), left = mk("div");
+  left.append(mk("div", "peyebrow", "The plan day by day"), mk("div", "pssub", "from the days each workout is scheduled on"));
+  head.append(left);
+  if (g.weeks.length) {
+    const cal = mk("button", "plink", "Open in Calendar ›"); cal.type = "button"; cal.dataset.fk = "cal";
+    cal.onclick = () => { C.selected = g.first; C.week = mondayOf(g.first); C.month = g.first.slice(0, 7); setView("calendar"); };
+    head.append(cal);
+  }
+  card.append(head);
+  if (!g.weeks.length) {
+    card.append(mk("div", "pnone", list.length ? "No workout has a day yet. Give a workout its days in its form, and the plan shows here." : "No workouts yet."));
+  } else {
+    const grid = mk("div", "sg"), shown = planGridAll ? g.weeks : g.weeks.slice(0, PLAN_GRID_WEEKS);
+    grid.append(mk("span"));
+    for (const d of ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]) grid.append(mk("span", "sgh", d));
+    for (const wk of shown) {
+      const label = mk("div", "sgw"), tot = wk.meters ? PM.kmText(wk.meters) : wk.sets ? `${wk.sets} sets` : "";
+      label.append(mk("b", "", `Week ${wk.n}`), mk("span", "", fmtDate(wk.monday, { day: "numeric", month: "short" })));
+      if (tot) label.append(mk("span", "sgt", tot));
+      grid.append(label);
+      for (const day of wk.days) {
+        const cell = mk("div", "sgc" + (day.today ? " today" : "")), num = mk("span", "sgn", String(Number(day.date.slice(8))));
+        cell.append(num);
+        for (const it of day.items) {
+          const w = list[it.index], name = (w && w.workoutName) || `Workout ${it.index + 1}`, b = mk("button", "wc " + it.kind, name);
+          b.type = "button"; b.dataset.fk = `pw:${it.index}:${day.date}`; b.style.setProperty("--c", planTypeColor(w && w.workoutType));
+          b.title = `${name}, ${fmtDate(day.date, { weekday: "short", day: "numeric", month: "short" })}`; b.setAttribute("aria-label", b.title);
+          b.onclick = () => selectPlanWorkout(it.index);
+          cell.append(b);
+        }
+        grid.append(cell);
+      }
+    }
+    card.append(grid);
+    if (g.weeks.length > PLAN_GRID_WEEKS) {
+      const more = mk("button", "plink", planGridAll ? "Show the first weeks only" : `Show all ${g.weeks.length} weeks ›`);
+      more.type = "button"; more.dataset.fk = "weeks"; more.onclick = () => { planGridAll = !planGridAll; renderPlanForm(true); };
+      card.append(more);
+    }
+    const key = mk("div", "pkey");
+    for (const [type, label] of [["running", "Run"], ["strength_training", "Strength"], ["other", "Other"]]) { const s = mk("span", "", label); s.style.setProperty("--c", planTypeColor(type)); key.append(s); }
+    key.append(mk("span", "pkeyhint", "a tap on a workout opens it in the form"));
+    card.append(key);
+    const tiles = mk("div", "sums");
+    for (const [label, value] of [["Sessions", String(g.totals.sessions)], ["Run distance", g.totals.meters ? PM.kmText(g.totals.meters) : "–"], ["Time", g.totals.seconds ? PM.timeText(g.totals.seconds) : "–"], ["Lifting sets", String(g.totals.sets)]]) {
+      const t = mk("div"); t.append(mk("small", "", label), mk("b", "", value)); tiles.append(t);
+    }
+    card.append(tiles);
+  }
+  // what the grid leaves out: workouts with no day, and dates that are not days (they are skipped when scheduling)
+  const loose = [...g.undated.map((i) => ({ i, text: "has no day" })), ...g.bad.map((b) => ({ i: b.index, text: `date ${JSON.stringify(b.value)} is not a day (YYYY-MM-DD)` }))];
+  if (loose.length) {
+    const ul = mk("ul", "ploose");
+    for (const { i, text } of loose) {
+      const li = mk("li"), b = mk("button", "plink", (list[i] && list[i].workoutName) || `Workout ${i + 1}`);
+      b.type = "button"; b.dataset.fk = `loose:${i}:${text}`; b.onclick = () => selectPlanWorkout(i);
+      li.append(b, ` ${text}`); ul.append(li);
+    }
+    card.append(ul);
+  }
+  return card;
 }
 
 function setUndoButtons() {
@@ -3531,7 +4023,6 @@ function setUndoButtons() {
 function bindEditMode() {
   for (const id of ["emode", "wdMode"]) $(id).querySelectorAll("button").forEach((b) => (b.onclick = () => setEditMode(b.dataset.mode)));
   setEditMode(editMode);
-  $("ewk").onchange = (e) => selectPlanWorkout(e.target.value === "plan" ? null : Number(e.target.value), { tab: false });
   $("eUndo").onclick = () => { editor.getModel().undo(); setUndoButtons(); };
   $("eRedo").onclick = () => { editor.getModel().redo(); setUndoButtons(); };
   undoKeys($("pform"), () => editor, () => { setUndoButtons(); });
@@ -3662,7 +4153,6 @@ function renderWorkoutFilters(live) {
   const sort = $("wSort");
   if (!sort.options.length) for (const [key, label] of Object.entries(WLM.SORTS)) sort.add(new Option(label, key));
   sort.value = W.sort;
-  $("wStatus").value = W.status;
   const plans = WLM.planCounts(live), select = $("wPlanFilter");
   if (W.plan !== "all" && W.plan !== "none" && !plans.some((p) => p.path === W.plan)) W.plan = "all"; // that plan is gone
   select.replaceChildren(new Option("All plans", "all"), ...plans.map((p) => new Option(`${planName(p.path)} (${p.count})`, p.path)), new Option("In no plan", "none"));
@@ -3680,6 +4170,30 @@ function renderWorkoutFilters(live) {
   }
   $("wUpcoming").setAttribute("aria-pressed", String(W.upcoming));
   $("wFilters").hidden = $("wChips").hidden = live.length < 2;
+  renderWorkoutStrip(live);
+}
+
+/** The strip above the list: how many workouts are in each state, each a button that shows only those. */
+const WK_ICONS = {
+  run: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="14" cy="4.5" r="1.8"/><path d="M5 20l3.5-5 3 1.5L10 11l4 1 2.5 3.5M9 9l5-2 2 3"/></svg>',
+  strength: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 9v6M6 7v10M18 7v10M21 9v6M6 12h12"/></svg>',
+};
+const WK_ACTION_LABEL = { upload: "Upload to Garmin", download: "Use Garmin's version", clone: "Clone", delete: "Delete" };
+const STRIP = [["all", "All workouts", ""], ["attention", "Need a look", "warn"], ["ok", "Up to date", ""], ["notuploaded", "Not on Garmin", ""], ["garminonly", "Only on Garmin", ""]];
+function renderWorkoutStrip(live) {
+  const box = $("wstrip"), counts = WLM.statusCounts(live, rowState);
+  box.hidden = !live.length;
+  $("wsub").textContent = [garminOn(W.profile) ? "Garmin library" : "Plans", W.profile, live.length ? `${live.length} workout${live.length === 1 ? "" : "s"}` : ""].filter(Boolean).join(" · ");
+  box.replaceChildren();
+  for (const [key, label, tone] of STRIP) {
+    const b = document.createElement("button"), n = document.createElement("b"), t = document.createElement("small");
+    b.type = "button"; b.className = "tl " + (counts[key] && tone ? tone : ""); b.dataset.s = key;
+    b.setAttribute("aria-pressed", String(W.status === key));
+    n.textContent = String(counts[key]); t.textContent = label; b.append(n, t);
+    b.onclick = () => { W.status = W.status === key ? "all" : key; renderRows(); };
+    box.append(b);
+  }
+  if (counts.checking) { const note = document.createElement("small"); note.className = "wchecking"; note.textContent = `Checking ${counts.checking} against Garmin…`; box.append(note); }
 }
 
 function renderRows() {
@@ -3694,19 +4208,22 @@ function renderRows() {
   for (const r of rows) {
     const d = document.createElement("div");
     d.className = "wrow" + (r.key === W.selected ? " active" : "");
-    d.innerHTML = '<span class="n"></span><span class="chip"></span><small></small><span class="wact"></span>';
-    const [n, chip, small, acts] = d.children;
+    d.style.setProperty("--c", planTypeColor(r.workoutType));
+    d.innerHTML = '<span class="ti" aria-hidden="true"></span><span class="n"></span><span class="chip"></span><small></small><span class="wact"></span>';
+    const [ti, n, chip, small, acts] = d.children;
+    ti.innerHTML = r.workoutType === "strength_training" ? WK_ICONS.strength : WK_ICONS.run;
     n.textContent = r.workoutName;
     const [label, cls] = ROW_CHIPS[rowState(r)];
     chip.textContent = label; chip.className = "chip " + cls;
-    small.textContent = [r.workoutType, r.updatedDate && /^\d{4}-/.test(r.updatedDate) ? "updated " + r.updatedDate.slice(0, 10) : "", ...[...new Set(r.plans.map((p) => planName(p.path)))]].filter(Boolean).join(" · ");
-    for (const a of rowActions(r)) {
-      const b = document.createElement("button");
-      b.innerHTML = ICONS[a.icon]; b.title = a.title; b.setAttribute("aria-label", a.title); b.disabled = !a.enabled;
-      if (a.danger) b.className = "danger";
-      b.onclick = (e) => { e.stopPropagation(); guard(() => (a.direct ? a.direct(r) : withRow(r.key, a.run)))(); };
-      acts.append(b);
-    }
+    const next = WLM.nextDate(r, env.today);
+    small.textContent = [prettyName(r.workoutType || "other"), ...[...new Set(r.plans.map((p) => planName(p.path)))], next ? "Next " + fmtDate(next, { weekday: "short", day: "numeric", month: "short" }) : r.updatedDate && /^\d{4}-/.test(r.updatedDate) ? "updated " + r.updatedDate.slice(0, 10) : ""].filter(Boolean).join(" · ");
+    const more = document.createElement("button");
+    more.className = "more"; more.type = "button"; more.textContent = "⋯"; more.title = "Upload, download, clone, delete"; more.setAttribute("aria-label", `Actions for ${r.workoutName}`); more.setAttribute("aria-haspopup", "menu");
+    more.onclick = (e) => {
+      e.stopPropagation();
+      openPlanMenu(more, rowActions(r).map((a) => ({ label: WK_ACTION_LABEL[a.icon], title: a.title, disabled: !a.enabled, danger: !!a.danger, run: () => (a.direct ? a.direct(r) : withRow(r.key, a.run)) })));
+    };
+    acts.append(more);
     d.onclick = guard(() => selectRow(r.key));
     el.append(d);
   }
@@ -3852,25 +4369,34 @@ function bindExplanations() {
  * the more sets: a set counts for a muscle the exercise works first, and half a set for one it helps. null when no exercise has known muscles.
  */
 function muscleEl(exercises) {
-  const t = MuscleMap.tally(exercises);
-  if (!t.muscles.length) return null;
-  const by = new Map(t.muscles.map((m) => [m.id, m]));
-  const paint = (id) => { const m = by.get(id); return m ? { fill: MuscleMap.fillOf(m.score, t.max), title: `${m.label}: ${MuscleMap.setsOf(m.score)} sets (${m.direct} direct${m.indirect ? `, ${m.indirect} indirect` : ""})` } : null; };
-  const box = mk("div", "mm"), figs = mk("div", "mm-figs"), side = mk("div", "mm-side"), list = mk("ul", "mm-list");
+  const T = MuscleMap.detail(exercises);
+  if (!T.muscles.length) return null;
+  const by = new Map(T.muscles.map((m) => [m.id, m]));
+  const paint = (id) => { const m = by.get(id); return m ? { fill: m.direct > 0 ? actHeat(m.score / T.max) : "url(#mmhat)", title: `${m.label}: ${MuscleMap.setsOf(m.score)} sets (${m.direct} direct${m.indirect ? `, ${m.indirect} indirect` : ""})` } : { fill: "var(--mm-idle)" }; };
+  const box = mk("div", "mm mmc"), figs = mk("div", "ammf"), side = mk("div", "mmside"), list = mk("div", "ammlist"), foot = mk("div", "mmfoot");
   figs.innerHTML = MuscleMap.figure("front", paint) + MuscleMap.figure("back", paint); // the text is this page's own: muscle names and numbers
-  for (const m of t.muscles) {
-    const li = mk("li"), dot = mk("i");
-    dot.style.background = MuscleMap.fillOf(m.score, t.max);
-    li.append(dot, mk("span", "", m.label), mk("b", "", MuscleMap.setsOf(m.score)));
-    list.append(li);
-  }
-  const key = mk("div", "mm-key"), bar = mk("i");
-  bar.style.background = `linear-gradient(90deg, ${MuscleMap.fillOf(0.01, 1)}, ${MuscleMap.fillOf(1, 1)})`;
-  const [info, note] = help("muscles", "A set counts once for each muscle the exercise works first, and half for each it helps.", "the sets per muscle");
-  key.append("fewer sets", bar, "more", info);
-  const unknown = t.unknown.reduce((n, x) => n + x.sets, 0);
-  side.append(list, key, note);
-  if (unknown) side.append(mk("div", "mm-note", `${unknown} set${unknown === 1 ? "" : "s"} of ${[...new Set(t.unknown.map((x) => WM.prettyName(String(x.name).replace(/ /g, "_"))))].join(", ")} not counted: no muscles known.`));
+  let all = false;
+  const toggle = mk("button", "plink", ""); toggle.type = "button";
+  const draw = () => {
+    list.replaceChildren();
+    for (const m of all ? T.muscles : T.muscles.slice(0, 5)) {
+      const x = m.score / T.max, row = mk("div", "ammrow"), bar = mk("span", "ammbar"), fill = mk("i");
+      fill.style.width = `${Math.max(8, x * 100)}%`;
+      fill.style.background = m.direct > 0 ? actHeat(x) : "repeating-linear-gradient(135deg, var(--accent) 0 3px, transparent 3px 6px)";
+      bar.append(fill);
+      row.append(mk("span", "ammnm", m.label), bar, mk("b", "", MuscleMap.setsOf(m.score)));
+      list.append(row);
+    }
+    toggle.textContent = all ? "Show less ‹" : `Show all ${T.muscles.length} ›`; toggle.hidden = T.muscles.length <= 5;
+    toggle.setAttribute("aria-expanded", String(all));
+  };
+  toggle.onclick = () => { all = !all; draw(); };
+  draw();
+  const [info, note] = help("muscles", "A set counts once for each muscle the exercise works first, and half for each it helps. Darker means more sets; hatched means only helped.", "the sets per muscle");
+  foot.append(mk("span", "", "Planned sets per muscle"), info, toggle);
+  side.append(list, foot, note);
+  const unknown = T.unknown.reduce((n, x) => n + x.sets, 0);
+  if (unknown) side.append(mk("div", "mm-note", `${unknown} set${unknown === 1 ? "" : "s"} of ${[...new Set(T.unknown.map((x) => WM.prettyName(String(x.name).replace(/ /g, "_"))))].join(", ")} not counted: no muscles known.`));
   box.append(figs, side);
   return box;
 }
@@ -4075,9 +4601,11 @@ function renderDetail() {
   if (d.plans.length) {
     const list = document.createElement("div"); list.className = "plans";
     for (const p of d.plans) {
-      const line = document.createElement("div"), a = text("a", "", `${p.path} #${p.index + 1}`);
-      a.onclick = guard(() => openPlanWorkout(p.path, p.workout));
-      line.append(a); list.append(line);
+      const line = document.createElement("div"), info = document.createElement("div"), open = text("button", "", "Open plan ›"), days = [].concat(p.workout.scheduledDate ?? []);
+      line.className = "wplan";
+      info.append(text("b", "", p.path.split("/").pop()), text("small", "", [`${p.path.split("/").slice(0, -1).join("/")} · workout ${p.index + 1}`, days.length ? days.slice(0, 3).map((x) => fmtDate(x, { weekday: "short", day: "numeric", month: "short" })).join(", ") + (days.length > 3 ? "…" : "") : ""].filter(Boolean).join(" · ")));
+      open.type = "button"; open.onclick = guard(() => openPlanWorkout(p.path, p.workout));
+      line.append(info, open); list.append(line);
     }
     add(section("In plans", list));
   }
@@ -8053,6 +8581,7 @@ const THEME_KEY = "viewTheme", OLD_THEME_KEY = "todayTheme";
 function setTheme(theme, save) {
   const light = theme === "light";
   document.body.dataset.theme = light ? "light" : "dark";
+  if (monaco && monaco.editor) monaco.editor.setTheme(monacoThemeName());
   for (const btn of document.querySelectorAll(".themebtn")) {
     btn.setAttribute("aria-label", light ? "Switch to dark theme" : "Switch to light theme");
     btn.title = btn.getAttribute("aria-label");
@@ -8755,7 +9284,7 @@ undoKeys($("wdForm"), () => dlgEditor);
 function ensureDialogEditor() {
   if (dlgEditor) return;
   dlgEditor = monaco.editor.create($("wdEditor"), {
-    model: monaco.editor.createModel("", "json", monaco.Uri.parse(WORKOUT_URI)), theme: "vs-dark", automaticLayout: true,
+    model: monaco.editor.createModel("", "json", monaco.Uri.parse(WORKOUT_URI)), theme: monacoThemeName(), automaticLayout: true,
     minimap: { enabled: false }, tabSize: 2, scrollBeyondLastLine: false, ...monacoLayoutOptions(),
   });
   let timer;
@@ -8975,6 +9504,22 @@ const deleteRow = (row) => row.key.startsWith("g:")
   : withRow(row.key, deleteSelected);
 
 /** The File and Garmin dropdowns: a button toggles its menu; a click elsewhere, Escape, or choosing an item closes it. */
+function bindGarminDrawer() {
+  $("garminBtn").onclick = openGarminDrawer;
+  const dlg = $("gdrawer"), close = () => dlg.close();
+  for (const b of dlg.querySelectorAll(".gact")) b.onclick = () => {
+    GD.action = b.dataset.action;
+    const list = gdList();
+    GD.pick = PM.defaultPick(GD.action, list, gdState(list));
+    renderGarminDrawer();
+  };
+  $("gdOnly").onclick = () => { const list = gdList(); GD.pick = PM.defaultPick(GD.action, list, gdState(list)); renderGarminDrawer(); };
+  $("gdClose").onclick = $("gdCancel").onclick = close;
+  $("gdGo").onclick = guard(() => garminRun(GD.action, GD.pick));
+  dlg.addEventListener("click", (e) => { if (e.target === dlg) close(); }); // the backdrop
+  dlg.addEventListener("close", () => $("garminBtn").setAttribute("aria-expanded", "false"));
+}
+
 function bindMenus() {
   const close = () => document.querySelectorAll(".dd.open").forEach((d) => { d.classList.remove("open"); d.querySelector(".menubtn").setAttribute("aria-expanded", "false"); });
   document.querySelectorAll(".dd > .menubtn").forEach((b) => (b.onclick = () => {
@@ -8995,7 +9540,6 @@ function bindWorkoutsView() {
   $("wProfile").onchange = guard(() => { W.profile = $("wProfile").value; W.rows = []; clearDetail(); return loadWorkouts(); });
   $("wFilter").oninput = () => { W.filter = $("wFilter").value; renderRows(); };
   $("wSort").onchange = () => { W.sort = $("wSort").value; try { localStorage.setItem(WSORT_KEY, W.sort); } catch {} renderRows(); };
-  $("wStatus").onchange = () => { W.status = $("wStatus").value; renderRows(); };
   $("wPlanFilter").onchange = () => { W.plan = $("wPlanFilter").value; renderRows(); };
   $("wUpcoming").onclick = () => { W.upcoming = !W.upcoming; renderRows(); };
   $("wClear").onclick = () => { W.filter = ""; $("wFilter").value = ""; W.status = "all"; W.plan = "all"; W.types.clear(); W.upcoming = false; renderRows(); };
@@ -9023,10 +9567,36 @@ function monacoLayoutOptions() {
     ? { fontSize: 14, wordWrap: "on", lineNumbers: "off", glyphMargin: false, lineDecorationsWidth: 6, renderLineHighlight: "none", padding: { top: 8, bottom: 8 }, scrollbar: { verticalScrollbarSize: 8 } }
     : { fontSize: 13, wordWrap: "off", lineNumbers: "on", glyphMargin: true, lineDecorationsWidth: 10, renderLineHighlight: "line", padding: { top: 0, bottom: 0 }, scrollbar: { verticalScrollbarSize: 14 } };
 }
+/** Monaco in the page's own colours (the palette of the mock: Ember, dark and light), chosen with the page's theme. */
+const MONACO_THEMES = {
+  "ember-dark": { base: "vs-dark", bg: "#120e0b", fg: "#fbf3ea", key: "7cc4ff", str: "ffb35c", num: "2dd4bf", pun: "8f8478", line: "#1d1712", gutter: "#978b7d", select: "#ff9f2e44" },
+  "ember-light": { base: "vs", bg: "#fffdf8", fg: "#1d1610", key: "2b6fc0", str: "a24a05", num: "0f7f75", pun: "6f6252", line: "#f6efe3", gutter: "#7a6d5c", select: "#d9770633" },
+};
+const monacoThemeName = () => (document.body.dataset.theme === "light" ? "ember-light" : "ember-dark");
+function defineMonacoThemes() {
+  for (const [name, t] of Object.entries(MONACO_THEMES)) {
+    monaco.editor.defineTheme(name, {
+      base: t.base, inherit: true,
+      rules: [
+        { token: "string.key.json", foreground: t.key }, { token: "string.value.json", foreground: t.str }, { token: "number", foreground: t.num },
+        { token: "keyword.json", foreground: t.num }, { token: "delimiter", foreground: t.pun }, { token: "delimiter.bracket.json", foreground: t.pun },
+        { token: "delimiter.comma.json", foreground: t.pun }, { token: "delimiter.colon.json", foreground: t.pun },
+      ],
+      colors: {
+        "editor.background": t.bg, "editor.foreground": t.fg, "editorGutter.background": t.bg, "editorLineNumber.foreground": t.gutter,
+        "editorLineNumber.activeForeground": t.fg, "editor.lineHighlightBackground": t.line, "editor.lineHighlightBorder": t.line,
+        "editorCursor.foreground": t.key === "7cc4ff" ? "#ff9f2e" : "#d97706", "editor.selectionBackground": t.select,
+        "editorWidget.background": t.bg, "editorIndentGuide.background1": t.line, "scrollbarSlider.background": t.gutter + "55",
+      },
+    });
+  }
+  monaco.editor.setTheme(monacoThemeName());
+}
 require(["vs/editor/editor.main"], async (m) => {
   monaco = m;
+  defineMonacoThemes();
   editor = monaco.editor.create($("editor"), {
-    model: monaco.editor.createModel("", "json", monaco.Uri.parse(PLAN_URI)), theme: "vs-dark", automaticLayout: true,
+    model: monaco.editor.createModel("", "json", monaco.Uri.parse(PLAN_URI)), theme: monacoThemeName(), automaticLayout: true,
     minimap: { enabled: false }, tabSize: 2, formatOnPaste: true, scrollBeyondLastLine: false,
     ...monacoLayoutOptions(),
   });
@@ -9055,9 +9625,14 @@ require(["vs/editor/editor.main"], async (m) => {
   $("format").onclick = format; $("reload").onclick = reload; $("history").onclick = showHistory; $("dup").onclick = () => duplicate();
   $("rename").onclick = rename; $("delete").onclick = () => remove();
   $("archive").onclick = () => (isArchived(current.path) ? unarchive() : archive());
-  $("menu").onclick = toggleMenu;
-  for (const [id, action] of Object.entries(GARMIN_ACTIONS)) $(id).onclick = guard(() => garminRun(action));
-  $("actions").addEventListener("click", (e) => e.target.closest("button") && document.body.classList.remove("menu-open"));
+  bindGarminDrawer();
+  $("outAdd").onclick = guard(addPlanWorkout);
+  for (const id of ["vpill", "checksBtn"]) $(id).onclick = () => {
+    const open = !$("problemsPane").classList.contains("open");
+    setChecksOpen(open);
+    if (open && mobileQuery.matches) setTab("problems");
+  };
+  editor.onDidChangeCursorPosition((e) => { $("mpos").textContent = `Ln ${e.position.lineNumber}, Col ${e.position.column}`; });
   document.querySelectorAll("#tabbar button[data-tab]").forEach((b) => (b.onclick = () => { setView("plans"); setTab(b.dataset.tab); }));
   $("syncRefresh").onclick = guard(() => refreshSync(true));
   $("profile").onchange = () => { setButtons(); renderFiles(); refreshSync(true); renderPlanForm(true); }; // the Garmin buttons follow the profile chosen
