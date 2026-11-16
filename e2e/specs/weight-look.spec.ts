@@ -319,7 +319,8 @@ test.describe("the chart, the weeks and the calories", () => {
     const over = chartOf(alice, "weight").locator(".rc-over"), box = (await over.boundingBox())!;
     await over.click({ position: { x: box.width * 0.9, y: box.height / 2 } });
     await expect(alice.locator("#bstrip [aria-current]")).toHaveCount(1);
-    await expect(chip(alice, today())).not.toHaveAttribute("aria-current", "date");
+    // today may be outside the week the strip shows (on a Monday the week before), so only a chip that is there can be checked
+    await expect(alice.locator(`#bstrip button.fwd[data-day="${today()}"][aria-current]`)).toHaveCount(0);
     await alice.evaluate(() => localStorage.removeItem("weightUnit"));
   });
 

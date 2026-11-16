@@ -115,8 +115,12 @@ test.describe("the week on a phone", () => {
     await alice.locator("#rPrev").tap();
     await expect(alice.locator("#rDate")).not.toHaveValue(today);
     const picked = await alice.locator("#rDate").inputValue();
-    await alice.locator(`#rstrip button.fwd[data-day="${today}"]`).tap();
-    await expect(alice.locator("#rDate")).toHaveValue(today);
+    // a past day of the week the strip shows, other than today (on a Monday today is in the week after it)
+    const other = alice.locator("#rstrip button.fwd:not(:disabled):not(.sel):not(.today)").first();
+    const day = (await other.getAttribute("data-day"))!;
+    await other.tap();
+    await expect(alice.locator("#rDate")).toHaveValue(day);
+    expect(day < today).toBe(true);
     expect(picked < today).toBe(true);
   });
 });
