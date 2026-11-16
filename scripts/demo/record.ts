@@ -228,7 +228,7 @@ const SCENES: Scene[] = [
       await s.pause(700);
       await s.click(page.locator("#filelist .file").filter({ hasText: "half-marathon-build" }), { wait: 1400 });
       // the interval workout in the form: one rep more, and a faster pace on the reps
-      await s.click(form.locator(".wf-pw").filter({ hasText: "Intervals 6 x 800 m" }), { wait: 1600 });
+      await s.click(page.locator("#outline .row.wk .name").filter({ hasText: "Intervals 6 x 800 m" }), { wait: 1600 });
       await s.click(form.locator(".wf-rep").getByRole("button", { name: "Times: one more" }), { wait: 900 });
       const from = form.getByLabel("Pace from");
       await s.click(from, { wait: 200 });
