@@ -12,9 +12,17 @@ const aboutButton = (page: Page, body: string) => page.locator(`${body} .rfoot`)
 const aboutNote = (page: Page, body: string) => page.locator(`${body} .rfoot .help`);
 const card = (page: Page, heading: string) => page.locator(".scard").filter({ has: page.locator("h2", { hasText: heading }) });
 
-async function openSettings(page: Page): Promise<void> {
+type Section = "overview" | "connections" | "goals" | "display" | "signin";
+const SECTION_OF: Record<string, Section> = { "Nutrition goals": "goals", Units: "display", "Garmin account": "connections", "Renpho scale": "connections", "Web sign-in": "signin" };
+/** Shows a section of Settings (the list of sections is on the left). */
+async function showSection(page: Page, section: Section): Promise<void> {
+  await page.locator(`#sbody .snav [data-section="${section}"]`).click();
+  await expect(page.locator(`#sbody .spane[data-section="${section}"] .scard`).first()).toBeVisible({ timeout: 15_000 });
+}
+async function openSettings(page: Page, section: Section = "goals"): Promise<void> {
   await openView(page, "settings");
-  await expect(page.locator("#sbody .scard")).toHaveCount(5, { timeout: 15_000 });
+  await expect(page.locator("#sbody .snav")).toBeVisible({ timeout: 15_000 });
+  await showSection(page, section);
 }
 
 test.describe("each note behind its ⓘ", () => {
@@ -55,6 +63,7 @@ test.describe("each note behind its ⓘ", () => {
       ["Renpho scale", "About the Renpho scale", "It only reads from Renpho."],
       ["Web sign-in", "About the web sign-in", "The password is kept as a hash."],
     ] as const) {
+      await showSection(alice, SECTION_OF[heading]);
       const c = card(alice, heading), note = c.locator("h2 + .help");
       await expect(note).toBeHidden();
       await c.locator("h2").getByRole("button", { name: about }).click();

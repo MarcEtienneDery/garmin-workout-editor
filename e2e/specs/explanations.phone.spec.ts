@@ -8,17 +8,24 @@ const pageWidth = (page: Page) => page.evaluate(() => ({ scroll: document.docume
 
 test("the ⓘ buttons of Settings are at least 32 px both ways, and their notes keep the page its width", async ({ alice }) => {
   await openView(alice, "settings");
-  await expect(alice.locator("#sbody .scard")).toHaveCount(5, { timeout: 15_000 });
-  const infos = alice.locator("#sbody button.infob:visible");
-  expect(await infos.count()).toBeGreaterThanOrEqual(5);
-  for (const box of await infos.evaluateAll((els) => els.map((el) => el.getBoundingClientRect()).map((r) => ({ w: r.width, h: r.height })))) {
-    expect(box.w).toBeGreaterThanOrEqual(32);
-    expect(box.h).toBeGreaterThanOrEqual(32);
+  await expect(alice.locator("#sbody .snav")).toBeVisible({ timeout: 15_000 });
+  let seen = 0;
+  for (const section of ["connections", "goals", "display", "signin"]) { // the list of sections is the home screen: each opens over the whole screen
+    await alice.locator(`#sbody .snav [data-section="${section}"]`).tap();
+    await expect(alice.locator(`#sbody .spane[data-section="${section}"]`)).toBeVisible();
+    const infos = alice.locator("#sbody button.infob:visible");
+    seen += await infos.count();
+    for (const box of await infos.evaluateAll((els) => els.map((el) => el.getBoundingClientRect()).map((r) => ({ w: r.width, h: r.height })))) {
+      expect(box.w).toBeGreaterThanOrEqual(32);
+      expect(box.h).toBeGreaterThanOrEqual(32);
+    }
+    for (const button of await infos.all()) await button.click();
+    await expect(alice.locator("#sbody .help:visible")).toHaveCount(await infos.count());
+    const w = await pageWidth(alice);
+    expect(w.scroll).toBeLessThanOrEqual(w.client);
+    await alice.locator("#sbody .sback").tap();
   }
-  for (const button of await infos.all()) await button.click();
-  await expect(alice.locator("#sbody .help:visible")).toHaveCount(await infos.count());
-  const w = await pageWidth(alice);
-  expect(w.scroll).toBeLessThanOrEqual(w.client);
+  expect(seen).toBeGreaterThanOrEqual(5);
 });
 
 test("About these numbers opens at the foot of the Food view without widening the page", async ({ alice }) => {

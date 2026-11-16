@@ -258,6 +258,7 @@ test.describe("The workout form: strength", () => {
   test("Settings in kg: weights are shown in kg and a weight typed in kg is kept in lb", async ({ me, profile }) => {
     const path = await makePlan(profile.api, profile.name);
     await openView(me, "settings");
+    await me.locator("#sbody .snav [data-section='display']").click();
     await me.getByRole("button", { name: "Kilograms (kg)" }).click();
     await expect(me.getByRole("button", { name: "Kilograms (kg)" })).toHaveAttribute("aria-pressed", "true");
     await openPlan(me, path);

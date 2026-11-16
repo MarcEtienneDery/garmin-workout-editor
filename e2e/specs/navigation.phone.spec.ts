@@ -60,7 +60,7 @@ const settled: Record<string, (page: Page) => Promise<void>> = {
   recovery: (page) => expect(page.locator("#rbody")).not.toContainText("Loading…"),
   weight: (page) => expect(page.locator("#bbody")).not.toContainText("Loading…"),
   food: (page) => expect(page.locator("#fbody .fmeal").first()).toBeVisible(),
-  settings: (page) => expect(page.locator("#sbody h2").first()).toBeVisible(),
+  settings: (page) => expect(page.locator("#sbody .snav")).toBeVisible(),
 };
 
 test.describe("the strip of views", () => {
@@ -183,6 +183,6 @@ test.describe("the header and the account menu", () => {
     await alice.locator("#openSettings").tap();
     await expect(alice.locator("body")).toHaveAttribute("data-view", "settings");
     await expect(alice.locator("#accountMenu")).toBeHidden();
-    await expect(alice.locator("#sbody h2").first()).toBeVisible();
+    await expect(alice.locator("#sbody .snav")).toBeVisible();
   });
 });

@@ -516,6 +516,7 @@ test.describe("Food goals: the profiles and the goals' own rules", () => {
   test("the Settings card counts the goals set, and shows the calorie goal in its field", async ({ me, profile }) => {
     await setGoals(profile.api, { kcal: 2000, proteinG: 100, sodiumMg: 2300 });
     await openView(me, "settings");
+    await me.locator("#sbody .snav [data-section='goals']").click();
     await expect(me.locator(".scard").filter({ hasText: "Nutrition goals" }).locator(".chip")).toHaveText("3 set");
     await expect(me.locator("#s-goal_kcal")).toHaveValue("2000");
     await expect(me.locator("#s-goal_proteinG")).toHaveValue("100");

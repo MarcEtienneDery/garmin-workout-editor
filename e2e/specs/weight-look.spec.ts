@@ -463,6 +463,7 @@ test.describe("the Settings form takes the weight goal in the unit", () => {
     test.setTimeout(90_000);
     const goals = async () => ((await (await profile.api.get("/api/settings")).json()) as any).goals;
     await openView(me, "settings");
+    await me.locator("#sbody .snav [data-section='goals']").click();
     const field = me.getByLabel("Weight goal (lb)");
     await expect(field).toHaveAttribute("placeholder", "no goal");
     await field.fill("176.4");
@@ -480,6 +481,7 @@ test.describe("the Settings form takes the weight goal in the unit", () => {
 
     await me.evaluate(() => localStorage.setItem("weightUnit", "kg"));
     await me.reload({ waitUntil: "domcontentloaded" });
+    await me.locator("#sbody .snav [data-section='goals']").click();
     await expect(me.getByLabel("Weight goal (kg)")).toHaveValue(String(Math.round(kg * 10) / 10));
     await me.getByLabel("Weight goal (kg)").fill("");
     await me.getByRole("button", { name: "Save goals" }).click();
@@ -491,11 +493,13 @@ test.describe("the Settings form takes the weight goal in the unit", () => {
   test("says what is wrong with a weight goal out of range, and the count of goals is of the food goals", async ({ me, profile }) => {
     await profile.api.post("/api/settings/goals", { data: { action: "save", goals: { weightKg: 70 } } });
     await openView(me, "settings");
+    await me.locator("#sbody .snav [data-section='goals']").click();
     await expect(me.locator(".scard", { has: me.getByRole("heading", { name: "Nutrition goals" }) }).locator(".chip").first()).toHaveText("none set"); // the weight to aim for is not a goal of the day
     await me.getByLabel("Weight goal (lb)").fill("4");
     await me.getByRole("button", { name: "Save goals" }).click();
     await expect(me.getByText(/must be a number of kilograms from 20 to 400/)).toBeVisible();
     await me.getByRole("button", { name: "Clear all goals" }).click();
+    await me.getByRole("dialog").getByRole("button", { name: "Clear all" }).click(); // it asks first
     expect(((await (await profile.api.get("/api/settings")).json()) as any).goals.values).toEqual({});
   });
 

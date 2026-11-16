@@ -260,6 +260,7 @@ test.describe("Today on a phone", () => {
 test.describe("Settings on a phone", () => {
   test("the form is one column, and its fields are 40 px tall with 16 px text", async ({ alice }) => {
     await openView(alice, "settings");
+    await alice.locator("#sbody .snav [data-section='goals']").tap(); // a section opens over the whole screen
     await expect(alice.locator("#sbody h2").first()).toBeVisible();
     expect(await columnsOf(alice, "#sbody .sform")).toBe(1);
     const fields = await alice.locator("#sbody input:not([type=checkbox]), #sbody select").evaluateAll((els) =>
@@ -283,10 +284,13 @@ test.describe("Settings on a phone", () => {
 
   test("the sections scroll: the password form at the bottom is reachable", async ({ alice }) => {
     await openView(alice, "settings");
+    await alice.locator("#sbody .snav [data-section='connections']").tap(); // the longest section: Garmin and the Renpho scale with its log
     const scroller = alice.locator("#sscroll");
     await expect(alice.locator("#sbody h2").first()).toBeVisible();
     const overflows = await scroller.evaluate((el) => el.scrollHeight > el.clientHeight);
     expect(overflows).toBe(true);
+    await alice.locator("#sbody .sback").tap();
+    await alice.locator("#sbody .snav [data-section='signin']").tap();
     const change = alice.locator("#sbody button", { hasText: "Change password" });
     await change.scrollIntoViewIfNeeded();
     await expect(change).toBeInViewport();
