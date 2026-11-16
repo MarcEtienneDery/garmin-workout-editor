@@ -395,7 +395,7 @@ test.describe("the Garmin account card, for a profile without a login", () => {
     await garminCard(me).getByLabel("Email", { exact: true }).fill("runner@example.com");
     await garminCard(me).getByRole("button", { name: "Connect Garmin" }).click();
     await slow(errLine(garminCard(me))).toHaveText("Enter the password.");
-    slow((await settingsOf(profile.api)).garmin).toEqual({ connected: false, email: null, hasPassword: false });
+    slow((await settingsOf(profile.api)).garmin).toEqual({ connected: false, email: null, hasPassword: false, check: null });
   });
 
   test("an email that is not one is refused: \"Enter the account's email address.\"", async ({ me, profile }) => {
