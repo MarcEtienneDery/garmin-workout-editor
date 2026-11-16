@@ -261,7 +261,9 @@ const SCENES: Scene[] = [
   {
     name: "calendar",
     start: "/#calendar",
-    ready: (page) => page.locator(".cband").first().waitFor(),
+    // the month grid (the page opens on the week board, which keeps the choice in the browser)
+    before: (page) => page.addInitScript(() => { try { localStorage.setItem("calendarView", "month"); } catch { /* the week stays */ } }),
+    ready: (page) => page.locator("#cgrid .cday").first().waitFor(),
     run: async (s, page) => {
       await s.pause(1500);
       await s.click(page.locator("#cModes button[data-mode=plans]"), { wait: 1500 });
