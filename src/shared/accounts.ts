@@ -230,7 +230,7 @@ export function savePrefs(store: SqliteStore, profile: string, input: { weightUn
 export function settingsView(store: SqliteStore, profile: string, now = Date.now()) {
   return {
     profile,
-    garmin: garminAccount(profile),
+    garmin: { ...garminAccount(profile), check: store.credentials.lastCheck(profile, "garmin") }, // check: what the last test of the login said, and when (null: never, or the login changed since)
     web: { hasPassword: store.profiles.webPasswordHash(profile) !== null },
     // the daily food goals by key (with `kcalBurnPct`, the share of the burned calories the calorie goal adds), and what each can be set for (label, unit, whether it is a floor, a ceiling, an aim or the burn)
     goals: { values: getGoals(store, profile), fields: SETTING_FIELDS.map(({ max: _max, ...field }) => field) },

@@ -653,6 +653,11 @@ function recentRuns(profile: string): RunSample[] {
 // ── Activities view: what the activities table holds, never a call to Garmin on a read ──
 
 /** The profile a read is about, or null when none is configured (nothing is stored then). */
+/** What GET /api/settings and the writes to it answer: the profile's settings, with the Food AI status the Food view gets (which AI, the daily limit, the estimates left today). */
+function settingsAnswer(profile: string) {
+  return { ...settingsView(store(), profile), ai: foodAiStatus(profile, localToday(store(), profile)) };
+}
+
 function profileOrNull(who: Principal, requested: unknown): string | null {
   try {
     return profileFor(who, "", requested);
@@ -1443,7 +1448,7 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
     case "GET /api/settings": {
       const profile = profileOrNull(who, url.searchParams.get("profile"));
       if (!profile) return send(res, 200, { profile: null });
-      return send(res, 200, settingsView(store(), profile));
+      return send(res, 200, settingsAnswer(profile));
     }
 
     case "POST /api/settings/garmin": {
@@ -1457,12 +1462,13 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
         else if (body.action === "test") {
           if (getSettings().mock) throw new HttpError(409, "Mock mode: Garmin writes are disabled.");
           result = await testGarminLogin(profile);
+          store().credentials.recordCheck(profile, "garmin", result.ok === true, String(result.message ?? ""));
         } else throw new HttpError(400, `Unknown action "${body.action}".`);
       } catch (error) {
         if (error instanceof SettingsError) throw new HttpError(400, error.message);
         throw error;
       }
-      return send(res, 200, { ...result, ...settingsView(store(), profile) });
+      return send(res, 200, { ...result, ...settingsAnswer(profile) });
     }
 
     case "POST /api/settings/goals": {
@@ -1477,7 +1483,7 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
         if (error instanceof NutritionError) throw new HttpError(400, error.message);
         throw error;
       }
-      return send(res, 200, settingsView(store(), profile));
+      return send(res, 200, settingsAnswer(profile));
     }
 
     case "POST /api/settings/prefs": {
@@ -1490,7 +1496,7 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
         if (error instanceof SettingsError) throw new HttpError(400, error.message);
         throw error;
       }
-      return send(res, 200, settingsView(store(), profile));
+      return send(res, 200, settingsAnswer(profile));
     }
 
     case "POST /api/settings/web": {
@@ -1504,7 +1510,7 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
         if (error instanceof SettingsError) throw new HttpError(400, error.message);
         throw error;
       }
-      return send(res, 200, settingsView(store(), profile));
+      return send(res, 200, settingsAnswer(profile));
     }
 
     case "POST /api/profiles": {
@@ -1543,7 +1549,7 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
         if (error instanceof SettingsError) throw new HttpError(400, error.message);
         throw error;
       }
-      return send(res, 200, { ...result, ...settingsView(store(), profile) });
+      return send(res, 200, { ...result, ...settingsAnswer(profile) });
     }
 
     case "GET /api/settings/renpho/fit": {

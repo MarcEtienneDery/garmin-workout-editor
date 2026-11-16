@@ -1359,9 +1359,10 @@ describe("web plan editor", () => {
         expect((await call("GET", "/api/settings")).json).toEqual({ profile: null });
         addProfile("MED");
         const out = (await call("GET", "/api/settings")).json;
-        expect(out).toEqual(expect.objectContaining({ profile: "MED", garmin: { connected: true, email: "a@b.c", hasPassword: true }, web: { hasPassword: false } }));
+        expect(out).toEqual(expect.objectContaining({ profile: "MED", garmin: { connected: true, email: "a@b.c", hasPassword: true, check: null }, web: { hasPassword: false } }));
         expect(out.renpho).toEqual(expect.objectContaining({ account: null, settings: expect.objectContaining({ fetchEnabled: false, pushEnabled: false }), log: [], recent: [] }));
         expect(out.encryption).toEqual({ enabled: false, plain: 1 }); // the Garmin login is the one password kept
+        expect(out.ai).toEqual({ enabled: expect.any(Boolean), remaining: expect.any(Number), limit: expect.any(Number), backend: expect.anything() }); // the Food AI, as the Food view gets it
         expect(JSON.stringify(out)).not.toMatch(/"x"|password":"/);
       });
 
@@ -1379,15 +1380,19 @@ describe("web plan editor", () => {
 
       it("saves the Garmin login in the database, checks it and removes it, the profile staying", async () => {
         addProfile("MED", undefined, false);
-        expect((await call("GET", "/api/settings")).json.garmin).toEqual({ connected: false, email: null, hasPassword: false });
+        expect((await call("GET", "/api/settings")).json.garmin).toEqual({ connected: false, email: null, hasPassword: false, check: null });
         expect((await call("POST", "/api/settings/garmin", { action: "save", email: "new@x.y", password: "" })).json.error).toBe("Enter the password.");
         const saved = await call("POST", "/api/settings/garmin", { action: "save", email: "new@x.y", password: "newpw" });
         expect(saved.status).toBe(200);
-        expect(saved.json.garmin).toEqual({ connected: true, email: "new@x.y", hasPassword: true });
+        expect(saved.json.garmin).toEqual({ connected: true, email: "new@x.y", hasPassword: true, check: null });
         expect(JSON.stringify(saved.json)).not.toContain("newpw");
         expect(store().credentials.get("MED", "garmin")).toEqual(expect.objectContaining({ email: "new@x.y", password: "newpw" }));
-        expect((await call("POST", "/api/settings/garmin", { action: "test" })).json).toEqual(expect.objectContaining({ ok: true, message: "Garmin accepted the login." }));
+        const tested = (await call("POST", "/api/settings/garmin", { action: "test" })).json;
+        expect(tested).toEqual(expect.objectContaining({ ok: true, message: "Garmin accepted the login." }));
         expect(st.testGarminLogin).toHaveBeenCalledWith("MED");
+        expect(tested.garmin.check).toEqual({ ok: true, message: "Garmin accepted the login.", at: expect.any(Number) }); // what the test said is kept, for the Overview to tell when it was
+        expect((await call("GET", "/api/settings")).json.garmin.check.ok).toBe(true);
+        expect((await call("POST", "/api/settings/garmin", { action: "save", email: "other@x.y", password: "otherpw" })).json.garmin.check).toBeNull(); // a login that changed has not been checked
         expect((await call("POST", "/api/settings/garmin", { action: "remove" })).json.garmin.connected).toBe(false);
         expect(store().profiles.has("MED")).toBe(true);
         expect((await call("POST", "/api/settings/garmin", { action: "import-env" })).status).toBe(400);
