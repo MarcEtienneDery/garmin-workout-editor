@@ -48,7 +48,7 @@ A band for the day's workout, **go-harder**, **as-planned** or **back-off**, wit
 
 ### Weight
 
-![The weight view: last weigh-in, trend, the weight, body fat, muscle and calories charts, then a longer range in kilograms](docs/media/weight.webp)
+![The weight view: its trend with one cursor, then the Body tab with body fat, muscle and BMI, where the change came from, and a longer range in kilograms](docs/media/weight.webp)
 
 The weigh-ins from Garmin or a Renpho scale (with or without Garmin): the straight line through them and where it goes, a week at a time, the calories burned and eaten, and what the scale measured of the body.
 

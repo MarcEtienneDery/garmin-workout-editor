@@ -340,14 +340,16 @@ const SCENES: Scene[] = [
   {
     name: "weight",
     start: "/#weight",
-    ready: (page) => page.locator("#bbody .rfig").first().waitFor(),
+    ready: (page) => page.locator("#bbody .bchart").first().waitFor(),
     run: async (s, page) => {
       await s.pause(1500);
       await s.sweep(page.locator("#bbody svg.rcsvg").first(), 0.05, 0.95, 2500);
+      // the Body tab: the body fat, muscle and calories charts
+      await s.click(page.locator("#bTabs").getByRole("button", { name: "Body", exact: true }), { wait: 1500 });
       await s.click(page.locator("#bRange"), { wait: 300 });
       await page.locator("#bRange").selectOption("90");
       await s.pause(1500);
-      await s.click(page.getByRole("button", { name: "kg", exact: true }), { wait: 1500 });
+      await s.click(page.locator("#bUnits button[data-unit=kg]"), { wait: 1500 });
     },
   },
   {
