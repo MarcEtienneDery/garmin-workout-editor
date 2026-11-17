@@ -2319,6 +2319,25 @@
     #wTypes { flex-wrap:nowrap; overflow-x:auto; } #wview .tchip { flex:none; }
     #wview :is(#wsearch input, #wFilters select) { font-size:16px; }
   }
+
+  /* The top of each view on a phone. The view's own name is already lit in the app bar, so its big title is dropped (a screen reader
+     still reads it), the controls that stacked share a line, and the week strip is a shorter row: the content starts a third higher. */
+  @media (max-width:900px) {
+    :is(#tview, #fview, #cview, #rview, #bview, #aview) .wbar { padding-top:8px; padding-bottom:2px; gap:6px; }
+    :is(#tTitle, #aHead, #bTitle) { position:absolute; width:1px; height:1px; margin:-1px; padding:0; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
+    #tview #tAsOf { flex:1 1 auto; }
+    #aview #aModes { order:1; flex:1 1 0; min-width:0; } #aview #aSync { order:2; } #aview #aTheme { order:3; }
+    #aview #aNote:not(.busy):not(.err):not(.none) { display:none; } /* "27 stored, 3 with details" is a detail; the states that need a look stay */
+    :is(#fweek, #rweek, #bweek) { padding-top:6px; padding-bottom:0; }
+    :is(#fview .fwd, #rview .rwd, #bview .bwd) { min-height:64px; padding:6px 2px 5px; gap:0 4px; }
+    :is(#fview .fwd, #rview .rwd) { display:grid; grid-template-columns:auto auto; justify-content:center; align-content:center; } /* the ring and its number side by side */
+    :is(#fview .fwd, #rview .rwd) > :is(small:first-child, b) { grid-column:1 / -1; justify-self:center; }
+    :is(#fview .fwd, #rview .rwd) .fwring { width:22px; height:22px; }
+    :is(#rview .rwn, #bview .bdv) { position:absolute; width:1px; height:1px; margin:-1px; overflow:hidden; clip:rect(0 0 0 0); } /* the words under the number: the day itself says them */
+    #bview #brangebar { padding-top:8px; } #bview #brangebar h3 { display:none; } /* the label repeats the range beside it */
+    #pview #toolbar { padding-top:8px; padding-bottom:6px; }
+    #pview #emode { flex:0 0 auto; order:2; } #pview #emode button { flex:none; padding:0 14px; } /* Form / JSON beside Save, not a line of its own */
+  }
 </style>
 </head>
 <body data-view="today">

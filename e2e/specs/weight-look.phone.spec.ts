@@ -76,11 +76,12 @@ test.describe("the Weight part on a phone", () => {
     }
   });
 
-  test("the title is one line with the parts under it, and the unit and the range share a line", async ({ alice }) => {
+  test("the title is dropped from the top for the room, the tabs and the theme button share a line, and the unit and the range share a line", async ({ alice }) => {
     await openWeight(alice);
-    const [title, tabs, units, range] = await Promise.all(["#bTitle", "#bTabs", "#bUnits", "#bRange"].map(async (s) => (await alice.locator(s).boundingBox())!));
-    expect(title.height).toBeLessThan(70);
-    expect(tabs.y).toBeGreaterThanOrEqual(title.y + title.height - 1);
+    const [title, tabs, units, range, theme] = await Promise.all(["#bTitle", "#bTabs", "#bUnits", "#bRange", "#bTheme"].map(async (s) => (await alice.locator(s).boundingBox())!));
+    expect(title.height).toBeLessThan(5); // still in the page for a screen reader, but it takes no row
+    expect(tabs.y).toBeLessThan(80);
+    expect(Math.abs(tabs.y - theme.y)).toBeLessThan(12);
     expect(Math.abs(units.y - range.y)).toBeLessThan(8);
   });
 
