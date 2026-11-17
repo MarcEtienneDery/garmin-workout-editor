@@ -2338,6 +2338,19 @@
     #pview #toolbar { padding-top:8px; padding-bottom:6px; }
     #pview #emode { flex:0 0 auto; order:2; } #pview #emode button { flex:none; padding:0 14px; } /* Form / JSON beside Save, not a line of its own */
   }
+
+  /* ...and the top scrolls away with the content: on a phone the view itself is the one scroller (as the Calendar's already is), so the
+     bars and the week strip leave the screen as the page is read, and a swipe down brings them back. The meal dock of Food stays at the foot. */
+  @media (max-width:900px) {
+    :is(#tview, #fview, #rview, #bview) { overflow-y:auto; overscroll-behavior:contain; }
+    :is(#tview, #fview, #rview, #bview) > * { flex:none; }
+    :is(#tscroll, #fscroll, #rscroll, #bscroll) { flex:1 0 auto; overflow:visible; } /* grows to fill a short page, so the dock keeps its place */
+    #fdock { position:sticky; bottom:0; z-index:5; }
+    body:not([data-wpane="detail"]) #aview { overflow-y:auto; overscroll-behavior:contain; } /* the list; an open record keeps its own scroller */
+    body:not([data-wpane="detail"]) #aview > * { flex:none; }
+    body:not([data-wpane="detail"]) :is(#aview #amain, #aview #ascroll) { overflow:visible; }
+    #cview #cbar { position:static; } #cview .wday { scroll-margin-top:12px; }
+  }
 </style>
 </head>
 <body data-view="today">
@@ -2768,6 +2781,8 @@
 <script>
 const $ = (id) => document.getElementById(id);
 const mobileQuery = matchMedia("(max-width: 900px)");
+/** What scrolls a view's page: its own scroll box, or the view itself on a phone, where the top scrolls away with the content. */
+const scrollBox = (box, view) => (mobileQuery.matches ? $(view) : $(box));
 
 // ── Mobile navigation (tabs + actions menu; the desktop layout ignores both) ──
 function setTab(tab) {
@@ -6681,7 +6696,7 @@ function renderRecovery() {
   $("rRange").value = String(R.range);
   for (const [id, tab] of RECOVERY_TABS) $(id).setAttribute("aria-pressed", String(R.tab === tab));
   renderWellnessNote(R);
-  const keep = $("rscroll").scrollTop;
+  const keep = scrollBox("rscroll", "rview").scrollTop;
   box.replaceChildren();
   box.dataset.tab = R.tab;
   const hasData = !!(R.loaded && d && d.profile && d.sync && d.sync.days);
@@ -6698,7 +6713,7 @@ function renderRecovery() {
   }
   if (R.tab === "trends") recoveryTrends(box, d); else if (R.tab === "data") recoveryData(box, d); else recoveryVerdict(box, d);
   box.append(aboutFoot("recovery", "The band is a heuristic from watch data to adjust training, not medical advice; its thresholds are in src/shared/readiness.ts. A day's sleep and HRV are the night before. " + syncRule(true)));
-  $("rscroll").scrollTop = keep;
+  scrollBox("rscroll", "rview").scrollTop = keep;
 }
 
 /** The half circle of the score: its three zones (the one the score is in at full strength), a tick at a normal day and a marker at the score. */
@@ -6889,7 +6904,7 @@ function renderRawResponses(V, d, kinds) {
 
 function bindRecoveryView() {
   $("vRecovery").onclick = () => setView("recovery");
-  for (const [id, tab] of RECOVERY_TABS) $(id).onclick = () => { if (R.tab !== tab) { R.tab = tab; $("rscroll").scrollTop = 0; renderRecovery(); } };
+  for (const [id, tab] of RECOVERY_TABS) $(id).onclick = () => { if (R.tab !== tab) { R.tab = tab; scrollBox("rscroll", "rview").scrollTop = 0; renderRecovery(); } };
   matchMedia("(max-width: 1100px)").addEventListener("change", () => { if (document.body.dataset.view === "recovery" && R.loaded) renderRecovery(); }); // the charts are drawn for the room they get
   $("rPrev").onclick = () => R.data && goRecoveryDay(RM.addDays(R.date || R.data.today, -1)); // from the day asked for, which the drawn one trails while an answer is awaited
   $("rNext").onclick = () => R.data && goRecoveryDay(RM.addDays(R.date || R.data.today, 1)); // from the day asked for, which the drawn one trails while an answer is awaited
@@ -7191,7 +7206,7 @@ function renderWeight() {
   renderWellnessNote(B);
   $("bRange").value = String(B.range);
   $("bUnits").querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.unit === B.unit)));
-  const keep = $("bscroll").scrollTop;
+  const keep = scrollBox("bscroll", "bview").scrollTop;
   box.replaceChildren();
   $("bTabs").hidden = true; $("brangebar").hidden = true; renderWeightWeek(d, false);
   if (!B.loaded) { box.append(mk("div", "empty", "Loading…")); return; }
@@ -7215,12 +7230,12 @@ function renderWeight() {
     if (B.tab === "body") weightBodyTab(box, d); else if (B.tab === "data") weightData(box, d, garminRows); else weightMain(box, d);
   }
   box.append(aboutFoot("weight", "The trend is a straight line through the weigh-ins shown: one weigh-in moves a kilo or more with water and meals." + (garminRows ? " Calories burned are Garmin's estimate from the watch. " + syncRule(false) : " The numbers are the scale's, as Renpho sent them.")));
-  $("bscroll").scrollTop = keep;
+  scrollBox("bscroll", "bview").scrollTop = keep;
 }
 
 function bindWeightView() {
   $("vWeight").onclick = () => setView("weight");
-  for (const [id, tab] of WEIGHT_TABS) $(id).onclick = () => { if (B.tab !== tab) { B.tab = tab; $("bscroll").scrollTop = 0; renderWeight(); } };
+  for (const [id, tab] of WEIGHT_TABS) $(id).onclick = () => { if (B.tab !== tab) { B.tab = tab; scrollBox("bscroll", "bview").scrollTop = 0; renderWeight(); } };
   matchMedia("(max-width: 1100px)").addEventListener("change", () => { if (document.body.dataset.view === "weight" && B.loaded) renderWeight(); }); // the charts are drawn for the room they get
   $("bPrev").onclick = () => B.data && goWeightDay(RM.addDays(B.data.date, -1)); // from the day shown
   $("bNext").onclick = () => B.data && goWeightDay(RM.addDays(B.data.date, 1));
@@ -7580,7 +7595,7 @@ function renderFood() {
   $("fToday").hidden = !(d && d.date && d.date < d.today);
   for (const [id, tab] of [["fTabLog", "log"], ["fTabIns", "insights"]]) $(id).setAttribute("aria-pressed", String(F.tab === tab));
   note.className = "empty err"; note.textContent = F.error; note.hidden = !F.error;
-  const keep = $("fscroll").scrollTop, typing = keptFocus();
+  const keep = scrollBox("fscroll", "fview").scrollTop, typing = keptFocus();
   box.replaceChildren();
   box.dataset.tab = F.tab;
   renderDock(); renderFoodWeek(d);
@@ -7589,7 +7604,7 @@ function renderFood() {
   if (!d || !d.profile) { box.append(mk("div", "empty", "No Garmin profile is configured.")); return; }
   if (F.tab === "insights") foodInsights(box, d); else foodLog(box, d);
   box.append(aboutFoot("food", "Calories and macros are estimates. A day with nothing logged is unknown, not zero. A nutrient counts only the foods that state it: “≥” means some do not. Search and barcode foods come from Open Food Facts, made by its users: check the package when it matters. " + aiWho(d.ai) + (NM.hasBurn(d) ? " Burned is the watch's count: today's is so far. The food log stays here; Garmin cannot store it." : " The food log stays here.")));
-  $("fscroll").scrollTop = keep;
+  scrollBox("fscroll", "fview").scrollTop = keep;
   renderSheet(typing);
 }
 
@@ -8500,7 +8515,7 @@ function goFoodDay(date) {
 function bindFoodView() {
   $("vFood").onclick = () => setView("food");
   const go = goFoodDay;
-  for (const [id, tab] of [["fTabLog", "log"], ["fTabIns", "insights"]]) $(id).onclick = () => { if (F.tab !== tab) { F.tab = tab; $("fscroll").scrollTop = 0; renderFood(); } };
+  for (const [id, tab] of [["fTabLog", "log"], ["fTabIns", "insights"]]) $(id).onclick = () => { if (F.tab !== tab) { F.tab = tab; scrollBox("fscroll", "fview").scrollTop = 0; renderFood(); } };
   mobileQuery.addEventListener("change", () => { if (document.body.dataset.view === "food" && F.loaded) renderFood(); }); // the bar to add a food moves from the card to the foot of the screen and back
   $("fPrev").onclick = () => F.data && go(RM.addDays(F.date || F.data.today, -1)); // from the day asked for, which the drawn one trails while an answer is awaited
   $("fNext").onclick = () => F.data && go(RM.addDays(F.date || F.data.today, 1)); // from the day asked for, which the drawn one trails while an answer is awaited
@@ -8586,7 +8601,7 @@ function renderToday() {
   const fresh = ready ? TM.freshness(d, Date.now()) : null;
   $("tAsOf").textContent = fresh ? fresh.text : ""; $("tAsOf").classList.toggle("stale", !!(fresh && fresh.stale));
   renderTodayNote(T);
-  const keep = $("tscroll").scrollTop;
+  const keep = scrollBox("tscroll", "tview").scrollTop;
   box.replaceChildren();
   if (!T.loaded) { box.append(mk("div", "empty", "Loading…")); return; }
   if (T.error && !d) { box.append(mk("div", "msg err", T.error)); return; }
@@ -8618,7 +8633,7 @@ function renderToday() {
   if (ahead.length) row.append(todayAhead(ahead));
   box.append(row);
   box.append(aboutFoot("today", (d.health ? "Steps, Body Battery and sleep are as of the watch's last sync (the time at the top). Intensity minutes count from Monday, a vigorous minute twice. " : "") + "Workouts are the plans' scheduledDate" + (d.health ? ", not Garmin's calendar" : "") + "; one is done once an activity is started from it. Food is measured against the goals in Settings." + (d.health ? " " + syncRule(true) : "")));
-  $("tscroll").scrollTop = keep;
+  scrollBox("tscroll", "tview").scrollTop = keep;
 }
 
 /**

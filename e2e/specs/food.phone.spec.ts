@@ -178,9 +178,9 @@ test.describe("the bar at the bottom and the sheet", () => {
     expect(dock.y + dock.height).toBeGreaterThanOrEqual(alice.viewportSize()!.height - 1);
     for (const h of await heights(alice.locator("#fdock button"))) expect(h).toBeGreaterThanOrEqual(44);
     // the page scrolls above it: the last of the page is not hidden under the bar
-    await alice.locator("#fscroll").evaluate((el) => el.scrollTo(0, el.scrollHeight));
-    const scroller = (await alice.locator("#fscroll").boundingBox())!;
-    expect(scroller.y + scroller.height).toBeLessThanOrEqual(dock.y + 1);
+    await alice.locator("#fview").evaluate((el) => el.scrollTo(0, el.scrollHeight));
+    const page = (await alice.locator("#fbody").boundingBox())!;
+    expect(page.y + page.height).toBeLessThanOrEqual(dock.y + 1);
   });
 
   test("the search in the bar opens the sheet over the whole screen, on the foods used lately", async ({ alice }) => {
