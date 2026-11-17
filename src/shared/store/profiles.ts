@@ -14,7 +14,8 @@ export const PROFILE_SCHEMA = `
 CREATE TABLE IF NOT EXISTS profiles (
   name              TEXT PRIMARY KEY,
   created_at        INTEGER NOT NULL,
-  web_password_hash TEXT
+  web_password_hash TEXT,
+  welcome_pending   INTEGER NOT NULL DEFAULT 0
 ) WITHOUT ROWID;
 CREATE TABLE IF NOT EXISTS profile_prefs (
   profile    TEXT PRIMARY KEY,
@@ -22,6 +23,12 @@ CREATE TABLE IF NOT EXISTS profile_prefs (
   updated_at INTEGER NOT NULL
 ) WITHOUT ROWID;
 `;
+
+/** A database made before the welcome flow existed gets the column when it is opened; its profiles have nothing pending. */
+export function migrateProfiles(db: Database): void {
+  const columns = new Set(db.prepare("PRAGMA table_info(profiles)").all().map((column) => column.name));
+  if (!columns.has("welcome_pending")) db.exec("ALTER TABLE profiles ADD COLUMN welcome_pending INTEGER NOT NULL DEFAULT 0");
+}
 
 /** How a profile likes things shown. weightUnit: the unit the editor shows weights in (plans keep lb whatever it is). */
 export interface Prefs {
@@ -141,6 +148,15 @@ export class ProfileTable {
   /** The hash of the profile's web sign-in password, or null when it has none. */
   webPasswordHash(name: string): string | null {
     return (this.db.prepare("SELECT web_password_hash FROM profiles WHERE name = ?").get(name)?.web_password_hash as string | null | undefined) ?? null;
+  }
+
+  /** Whether the profile has yet to see the welcome flow (set when a person signs up with an invite, cleared when they finish or skip it). */
+  welcomePending(name: string): boolean {
+    return this.db.prepare("SELECT welcome_pending FROM profiles WHERE name = ?").get(name)?.welcome_pending === 1;
+  }
+
+  setWelcomePending(name: string, pending: boolean): void {
+    this.db.prepare("UPDATE profiles SET welcome_pending = ? WHERE name = ?").run(pending ? 1 : 0, name);
   }
 
   /** The profiles that can sign in to the web editor. */

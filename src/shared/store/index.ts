@@ -3,7 +3,7 @@ import { getDataRoot } from "../profileLoader";
 import { SqliteStore } from "./sqliteStore";
 
 export * from "./types";
-export { MAX_PROFILE_NAME, normalizeLogicalPath, profileOfPath, summarizeText } from "./paths";
+export { MAX_PROFILE_NAME, normalizeLogicalPath, profileOfPath, profileReaches, summarizeText } from "./paths";
 export { exportFiles } from "./transfer";
 export { SqliteStore, KEEP_REVISIONS } from "./sqliteStore";
 export * from "./activities";
@@ -11,7 +11,9 @@ export { LimitTable, TokenTable, type GarminLimit, type StoredToken } from "./to
 export * from "./wellness";
 export * from "./credentials";
 export { SessionTable, type StoredSession } from "./sessions";
+export { MCP_TOKEN_PREFIX, McpTokenTable, looksLikeMcpToken, type McpTokenInfo } from "./mcpTokens";
 export { PrefsTable, ProfileTable, WEIGHT_UNITS, type Prefs, decoyCheck, isProfileName } from "./profiles";
+export { InviteError, InviteTable, MAX_INVITE_USES, MAX_NOTE, displayCode, normalizeCode, type Invite, type InviteProblem, type InviteStatus } from "./invites";
 export { SealKeyError, sealing } from "./seal";
 export * from "./renpho";
 export * from "./nutrition";

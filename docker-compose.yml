@@ -51,6 +51,9 @@ services:
       # behind the Cloudflare tunnel or a reverse proxy: which header names the visitor, so the wrong-password limit counts each one
       # apart (cloudflare, or proxy for X-Forwarded-For). Empty: the connection's own address, which behind a proxy is the proxy's.
       TRUST_PROXY: ${TRUST_PROXY:-}
+      # where the MCP server is reached from outside (https://<your-hostname>, no /mcp): Settings → Claude (MCP) puts it in the lines it gives
+      # a profile to set Claude up with. Empty: the lines carry a placeholder host.
+      MCP_PUBLIC_URL: ${MCP_PUBLIC_URL:-}
       # the Food view's AI box: empty means it is off (the page says how to set it up)
       FOOD_AI_BACKEND: ${FOOD_AI_BACKEND:-}
       CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}

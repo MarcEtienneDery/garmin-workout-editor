@@ -62,6 +62,7 @@ test.describe("each note behind its ⓘ", () => {
       ["Garmin account", "About the Garmin account", "Connect it to sync activities and health data"],
       ["Renpho scale", "About the Renpho scale", "It only reads from Renpho."],
       ["Web sign-in", "About the web sign-in", "The password is kept as a hash."],
+      ["Claude (MCP)", "About the MCP token", "only a hash of it is kept"],
     ] as const) {
       await showSection(alice, SECTION_OF[heading]);
       const c = card(alice, heading), note = c.locator("h2 + .help");

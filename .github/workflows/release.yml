@@ -1,0 +1,92 @@
+name: release
+
+# On every push to main:  test  ->  build + push the image to GHCR  ->  ask the DEPLOY repo (MarcEtienneDery/homelab) to deploy it.
+# The deploy repo's `bump-garmin` workflow validates the tag and commits it to its main; Doco CD on the home server polls that repo
+# and deploys the commit. GitHub never connects to the server. Roll back by `git revert`-ing the bump commit in the DEPLOY repo
+# (see its docs/RUNBOOK.md), not here.
+#
+# One-time setup (repo secret):
+#   DEPLOY_REPO_TOKEN  fine-grained PAT, repository access = MarcEtienneDery/homelab ONLY, permissions = Actions: read and write.
+#                      Nothing else: no Contents, no Pull requests, no Workflows. It can therefore only trigger bump-garmin.yml
+#                      in the deploy repo; it cannot change any file there. Fine-grained PATs expire (max 1 year): set a reminder.
+#   The GHCR package stays private. The first push from this workflow creates it and links it to this repo; check its visibility
+#   in GitHub -> Packages after the first run (a public source repo can make a new package public by default).
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false # never cancel a half-finished release; the next one queues
+
+env:
+  IMAGE: ghcr.io/marcetiennedery/garmin-workout-editor
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24 # same major as the Dockerfile's node:24-slim
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npm test
+
+  image:
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: meta
+        run: echo "tag=sha-${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          push: true
+          provenance: false # keep a plain single-manifest image
+          tags: ${{ env.IMAGE }}:${{ steps.meta.outputs.tag }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    needs: image
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {} # uses DEPLOY_REPO_TOKEN only
+    env:
+      GH_TOKEN: ${{ secrets.DEPLOY_REPO_TOKEN }}
+      TAG: ${{ needs.image.outputs.tag }}
+    steps:
+      - name: Ask the deploy repo to deploy this image
+        run: |
+          set -euo pipefail
+          [ -n "$GH_TOKEN" ] || { echo "::error::secret DEPLOY_REPO_TOKEN is not set"; exit 1; }
+          gh workflow run bump-garmin.yml --repo MarcEtienneDery/homelab --ref main -f tag="$TAG"
+          echo "Asked MarcEtienneDery/homelab to deploy ${TAG}. Follow it in that repo's Actions tab (bump-garmin)."

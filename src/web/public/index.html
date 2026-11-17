@@ -100,13 +100,49 @@
   body.explain .infob { display:none; }
   /* ── Sign-in form: covers the page until there is a login ── */
   #login { position:fixed; inset:0; z-index:100; display:flex; align-items:center; justify-content:center; padding:16px; background:var(--bg); overflow:auto; }
-  #loginForm { width:100%; max-width:340px; display:grid; gap:12px; padding:24px; background:var(--panel); border:1px solid var(--line); border-radius:6px; box-shadow:0 8px 24px rgba(0,0,0,.4); }
-  #loginForm h2 { margin:0; font-size:18px; }
-  #loginForm p { margin:0; color:var(--dim); }
-  #loginForm label { display:grid; gap:4px; color:var(--dim); }
-  #loginForm input { width:100%; padding:7px 8px; color:var(--fg); }
-  #loginForm button { padding:8px 10px; }
-  #loginError { color:var(--err); }
+  :is(#loginForm, #signupForm) { width:100%; max-width:340px; display:grid; gap:12px; padding:24px; background:var(--panel); border:1px solid var(--line); border-radius:6px; box-shadow:0 8px 24px rgba(0,0,0,.4); }
+  :is(#loginForm, #signupForm) h2 { margin:0; font-size:18px; }
+  :is(#loginForm, #signupForm) p { margin:0; color:var(--dim); }
+  :is(#loginForm, #signupForm) label { display:grid; gap:4px; color:var(--dim); }
+  :is(#loginForm, #signupForm) input { width:100%; padding:7px 8px; color:var(--fg); }
+  :is(#loginForm, #signupForm) button { padding:8px 10px; }
+  #loginError, #signupError { color:var(--err); }
+  button.linkbtn { background:none; border:0; color:var(--accent); }
+  button.linkbtn:hover:not(:disabled) { background:none; text-decoration:underline; }
+  :is(#loginForm, #signupForm) button.linkbtn { padding:2px 0; }
+  #signupCode, .icode { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; letter-spacing:.06em; }
+  #signupNote.ok { color:var(--ok); }
+  /* ── Settings: the MCP token and the lines that set an assistant up ── */
+  .mcpnew { display:grid; gap:6px; justify-items:start; margin:8px 0; padding:10px 12px; border:1px solid var(--accent); border-radius:4px; background:rgba(14,122,209,.1); }
+  .mcptoken, .mcpcode { font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; overflow-wrap:anywhere; user-select:all; }
+  .mcpnew .sline { margin:0; }
+  .mcpsnip { margin-top:12px; } .mcpsnip h4 { margin:0; font-size:12px; text-transform:uppercase; letter-spacing:.05em; color:var(--dim); }
+  .mcpcode { margin:6px 0 0; padding:8px 10px; background:var(--bg); border:1px solid var(--line); border-radius:4px; white-space:pre-wrap; }
+  .mcpsnip .sbtns { margin-top:6px; align-items:center; } .mcpnote { color:var(--dim); line-height:1.5; flex:1 1 220px; }
+  /* ── Settings: the invites the admin has made ── */
+  .invrow { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:2px 10px; align-items:center; padding:8px 0; border-top:1px solid var(--line); }
+  .invrow .icode { font-size:14px; display:flex; gap:8px; align-items:center; flex-wrap:wrap; } .invrow .icode b { font-weight:600; }
+  .invrow .icode > :not(b) { font-family:system-ui,sans-serif; letter-spacing:0; }
+  .invrow small { color:var(--dim); grid-column:1; overflow-wrap:anywhere; } .invrow .ilink { user-select:all; }
+  .invrow .sbtns { margin:0; grid-column:2; grid-row:1 / span 3; }
+  .invrow.fresh { background:rgba(14,122,209,.12); margin:0 -8px; padding:8px; border-radius:4px; }
+  .invrow.dead .icode b { color:var(--dim); }
+  @media (max-width:700px) { .invrow { grid-template-columns:minmax(0,1fr); } .invrow .sbtns { grid-column:1; grid-row:auto; margin-top:6px; } }
+  /* ── The welcome flow a new profile sees once ── */
+  #ftue { width:min(560px, 96vw); }
+  #ftue .dhead .linkbtn { padding:0; } #ftue .fdots { display:flex; gap:6px; } #ftue .fdots i { width:8px; height:8px; border-radius:50%; background:var(--line); } #ftue .fdots i.on { background:var(--accent); } #ftue .fdots i.past { background:var(--ok); }
+  #ftue .dbody { display:grid; gap:12px; padding:16px; align-content:start; min-height:300px; }
+  #ftue h2 { margin:0; font-size:20px; } #ftue p { margin:0; color:var(--dim); line-height:1.5; }
+  #ftue .fcards { display:grid; gap:8px; }
+  #ftue .fcard { display:grid; gap:2px; padding:10px 12px; border:1px solid var(--line); border-radius:6px; background:var(--bg); text-align:left; color:var(--fg); }
+  #ftue .fcard small { color:var(--dim); font-size:12px; line-height:1.5; }
+  #ftue button.fcard:hover { border-color:var(--accent); background:var(--bg); }
+  #ftue .pfield { display:grid; gap:4px; color:var(--dim); } #ftue .pfield input { width:100%; min-width:0; }
+  #ftue .fline { min-height:1.4em; } #ftue .fline.err { color:var(--err); } #ftue .fline.ok { color:var(--ok); }
+  @media (max-width:700px) {
+    #ftue { width:100vw; max-width:100vw; height:var(--vvh, 100dvh); max-height:var(--vvh, 100dvh); border:0; border-radius:0; }
+    #ftue[open] { display:flex; flex-direction:column; } #ftue .dbody { flex:1; overflow:auto; min-height:0; } #ftue input { font-size:16px; min-height:40px; } #ftue .dfoot button, #ftue .fcard { min-height:44px; }
+  }
   /* ── Plan view: is each workout up to date on Garmin? ── */
   .chip { font-size:11px; line-height:16px; padding:0 7px; border-radius:9px; border:1px solid var(--line); color:var(--dim); white-space:nowrap; flex:none; }
   .chip.ok { color:var(--ok); border-color:#2d6a5c; } .chip.warn { color:var(--warn); border-color:#7a6a3d; } .chip.err { color:var(--err); border-color:#8a4a40; }
@@ -653,6 +689,7 @@
   .faithumbs { display:flex; gap:10px; flex-wrap:wrap; margin:0 0 10px; } .faithumb { position:relative; }
   .faithumb img { display:block; width:64px; height:64px; object-fit:cover; border-radius:4px; border:1px solid var(--line); }
   .faithumb button { position:absolute; top:-7px; right:-7px; width:22px; height:22px; padding:0; border-radius:50%; line-height:1; font-size:12px; }
+  .fconf b { font-weight:600; } .fconf b.c-high { color:var(--ok); } .fconf b.c-medium { color:var(--warn); } .fconf b.c-low { color:var(--err); } .fconf .ctip { color:var(--fg); }
   .faires { margin-top:10px; } .fair { padding:6px 0; border-top:1px solid var(--line); }
   .fairt { display:flex; gap:8px; align-items:flex-start; } .fain { flex:1 1 0; min-width:0; overflow-wrap:anywhere; } .fain span { display:block; color:var(--dim); font-size:12px; } .fairm { padding:2px 8px; }
   .fair .fpq { margin-top:4px; } .fair .fpq select { background:#333; color:var(--fg); border:1px solid var(--line); border-radius:3px; padding:4px 6px; font:inherit; } .fair .fpq .fairk { flex:1 1 auto; text-align:right; font-weight:600; white-space:nowrap; }
@@ -2293,6 +2330,18 @@
     <label>Password<input id="loginPass" name="password" type="password" autocomplete="current-password" required></label>
     <div id="loginError" role="alert" hidden></div>
     <button id="loginSubmit" class="primary" type="submit">Sign in</button>
+    <button id="toSignup" class="linkbtn" type="button">Have an invite code? Create an account</button>
+  </form>
+  <form id="signupForm" method="post" action="/api/signup" hidden>
+    <h2>Create your account</h2>
+    <p id="signupNote">Enter the invite code you were sent, then choose a profile name and a password.</p>
+    <label>Invite code<input id="signupCode" name="invite" type="text" autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false" maxlength="14" placeholder="XXXX-XXXX-XXXX" required></label>
+    <label>Profile name<input id="signupName" name="username" type="text" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="64" required></label>
+    <label>Password<input id="signupPass" name="new-password" type="password" autocomplete="new-password" required></label>
+    <label>Repeat the password<input id="signupPass2" name="new-password-confirm" type="password" autocomplete="new-password" required></label>
+    <div id="signupError" role="alert" hidden></div>
+    <button id="signupSubmit" class="primary" type="submit">Create account</button>
+    <button id="toSignin" class="linkbtn" type="button">I already have an account</button>
   </form>
 </div>
 <header>
@@ -2313,6 +2362,7 @@
     <div class="menu" id="accountMenu">
       <div class="who"><small>Signed in as</small><b id="accountWho"></b><small id="accountRole"></small></div>
       <button id="openSettings">Settings</button>
+      <button id="welcomeBtn" hidden title="Go through the welcome steps again">Welcome tour</button>
       <button id="explainBtn" aria-pressed="false" title="Show every note on what the numbers mean and how things work, instead of each behind its ⓘ">Show explanations</button>
       <hr>
       <button id="logout">Sign out</button>
@@ -2662,6 +2712,12 @@
   <div class="dfoot"><span class="spacer"></span><button id="pdlgCancel">Cancel</button><button id="pdlgOk" class="primary">Add profile</button></div>
 </dialog>
 
+<dialog id="ftue" aria-labelledby="ftueTitle">
+  <div class="dhead"><span class="fdots" id="ftueDots" aria-hidden="true"></span><span class="spacer" style="flex:1"></span><button id="ftueSkip" class="linkbtn" type="button">Skip setup</button></div>
+  <div class="dbody" id="ftueBody"></div>
+  <div class="dfoot"><button id="ftueBack" type="button">Back</button><span class="spacer"></span><button id="ftueNext" class="primary" type="button">Next</button></div>
+</dialog>
+
 <dialog id="hdlg">
   <div class="dhead"><b id="hdlgTitle"></b></div>
   <div class="dbody"><div id="hdlgText" class="meta"></div><div class="hlist" id="hdlgList"></div></div>
@@ -2683,6 +2739,7 @@
 <script src="/barcodeScanner.js"></script>
 <script src="/foodPhoto.js"></script>
 <script src="/settingsModel.js"></script>
+<script src="/welcomeModel.js"></script>
 <script src="/navModel.js"></script>
 <script src="/syncActivityModel.js"></script>
 <script src="/trendCharts.js"></script>
@@ -2875,12 +2932,15 @@ function renderAccount() {
   $("accountWho").textContent = name;
   $("accountRole").textContent = local ? "No login is needed on this address." : user.admin ? "Administrator: all profiles." : "Profile login: your plans and Garmin account.";
   $("logout").hidden = local;
+  $("welcomeBtn").hidden = !(user && !user.admin); // the admin has no profile to take through it
   $("accountBtn").title = local ? "Local access" : "Signed in as " + name;
 }
 
 function showLogin(message) {
   const wasHidden = $("login").hidden;
   $("login").hidden = false;
+  $("signupForm").hidden = true;
+  $("loginForm").hidden = false;
   $("loginError").hidden = !message;
   $("loginError").textContent = message || "";
   if (!wasHidden) return;
@@ -2898,7 +2958,11 @@ async function bootSession() {
     if (res.ok) me = data;
   } catch {} // server unreachable: carry on, the first request reports it
   renderAccount();
-  if (me && me.authRequired && !me.user) showLogin(); else signedIn();
+  const signedOut = !!(me && me.authRequired && !me.user);
+  if (!signedOut) dropInviteFromUrl(); // already in (or no login needed): the invite in the address is of no use
+  if (signedOut && inviteInUrl) showSignup(inviteInUrl, true);
+  else if (signedOut) showLogin();
+  else signedIn();
 }
 
 $("loginForm").onsubmit = async (e) => {
@@ -2921,6 +2985,71 @@ $("loginForm").onsubmit = async (e) => {
     $("loginError").hidden = false;
     $("loginError").textContent = err.message;
     $("loginPass").select();
+  } finally { submit.disabled = false; }
+};
+
+// ── Sign-up with an invite ─────────────────────────────────────────────
+// A person makes their own profile with the code the admin gave them, typed or carried by a link (/?invite=XXXX-XXXX-XXXX), and is signed in
+// as it. Wrong codes are counted per address by the server, like wrong passwords. The profile is then taken through the welcome steps once.
+const WelM = WelcomeModel;
+let inviteInUrl = WelM.inviteFromSearch(location.search); // read at once: the first navSync() may rewrite the address
+
+function dropInviteFromUrl() {
+  inviteInUrl = "";
+  const url = new URL(location.href);
+  if (!url.searchParams.has("invite")) return;
+  url.searchParams.delete("invite");
+  try { history.replaceState(history.state, "", url.pathname + url.search + url.hash); } catch { /* the address stays as it was */ }
+}
+
+function signupSay(text, cls = "") {
+  const error = $("signupError");
+  error.hidden = !text; error.textContent = text || ""; error.style.color = cls === "warn" ? "var(--warn)" : "";
+}
+
+/** Show the sign-up form; from a link (`fromLink`) the code is checked at once, so a code that has expired is said before anything is typed. */
+async function showSignup(code, fromLink) {
+  $("login").hidden = false;
+  $("loginForm").hidden = true;
+  $("signupForm").hidden = false;
+  document.body.classList.remove("menu-open");
+  signupSay("");
+  $("signupNote").className = "";
+  if (code) $("signupCode").value = WelM.formatCode(code);
+  ($("signupCode").value ? $("signupName") : $("signupCode")).focus();
+  if (!fromLink || WelM.codeProblem(code)) return;
+  try {
+    const { res, data } = await request("GET", "/api/invite?code=" + encodeURIComponent(code));
+    if (res.ok) { $("signupNote").textContent = "Your invite is ready. Choose a profile name and a password."; $("signupNote").className = "ok"; }
+    else signupSay(data.error || res.statusText, "warn");
+  } catch { /* the form still works: the sign-up itself reports what is wrong */ }
+}
+
+$("toSignup").onclick = () => showSignup("", false);
+$("toSignin").onclick = () => { signupSay(""); showLogin(); $("loginUser").focus(); };
+$("signupCode").oninput = (e) => { const at = e.target.selectionStart, before = e.target.value; e.target.value = WelM.formatCode(before); if (at === before.length) e.target.setSelectionRange(e.target.value.length, e.target.value.length); };
+
+$("signupForm").onsubmit = async (e) => {
+  e.preventDefault();
+  const code = $("signupCode").value, name = $("signupName").value.trim(), password = $("signupPass").value, confirm = $("signupPass2").value;
+  const problem = WelM.codeProblem(code) || SettingsModel.profileProblem(name, password, confirm);
+  if (problem) return signupSay(problem);
+  const submit = $("signupSubmit");
+  submit.disabled = true; signupSay("");
+  try {
+    const { res, data } = await request("POST", "/api/signup", { code, name, password, confirm });
+    if (!res.ok) throw new Error(data.error || res.statusText);
+    try { localStorage.setItem(LAST_USER_KEY, data.user.name); } catch {}
+    const before = me && me.user; // set when a session ended while the page was open
+    me = data;
+    for (const id of ["signupPass", "signupPass2", "signupCode"]) $(id).value = ""; // a password does not stay in the page
+    $("login").hidden = true;
+    dropInviteFromUrl();
+    renderAccount();
+    if (!before) signedIn(); else { leaving = true; location.reload(); } // start from the new profile's data
+  } catch (err) {
+    signupSay(err.message);
+    if (/password/i.test(err.message)) $("signupPass").select();
   } finally { submit.disabled = false; }
 };
 
@@ -8186,7 +8315,7 @@ async function aiEstimate() {
   try {
     const r = await api("POST", "/api/foods/ai", { profile: F.profile, text: ai.text, images: ai.photos.map(({ mediaType, data }) => ({ mediaType, data })), defaultMeal: targetMeal() });
     if (run !== ai.run) return; // another profile was chosen meanwhile
-    ai.result = { rows: NM.aiRows(r.items), note: r.note, none: !r.items.length };
+    ai.result = { rows: NM.aiRows(r.items), note: r.note, none: !r.items.length, confidence: NM.aiConfidence(r.confidence, r.improve) };
     if (F.data && F.data.ai) F.data.ai.remaining = r.remaining;
   } catch (e) {
     if (run === ai.run) ai.error = e.message;
@@ -8286,10 +8415,20 @@ function aiPreview(result) {
   clear.onclick = () => { F.ai.result = null; renderFood(); };
   acts.append(log, again, clear);
   box.append(total);
+  if (result.confidence) box.append(aiConfidenceLine(result.confidence));
   if (result.note) box.append(mk("div", "fnote", result.note));
   box.append(acts);
   paint();
   return box;
+}
+
+/** "Confidence: Medium · Say how big the bowl was": how sure the AI is, coloured by the level, and the few words that would sharpen the estimate. */
+function aiConfidenceLine(c) {
+  const line = mk("div", "fnote fconf");
+  if (c.label) line.append(mk("b", "c-" + c.level, c.label));
+  if (c.label && c.tip) line.append(" · ");
+  if (c.tip) line.append(mk("span", "ctip", c.tip));
+  return line;
 }
 
 /** One estimated food: its name and what was assumed, the amount eaten (a grams box that rescales the numbers, when it can), its meal, and a button to leave it out. */
@@ -8643,7 +8782,7 @@ function bindTodayView() {
 // to the server, never back). The Renpho card also monitors the sync: its state, the weigh-ins kept as Renpho sent them
 // and the log. The logic (times, states, how a weigh-in reads) is settingsModel.js.
 const SetM = SettingsModel;
-const S = { profile: null, data: null, error: "", loaded: false, run: 0, busy: "", from: "plans", polling: false, msg: {}, draft: {}, section: null, sample: 55, previewUpdate: null };
+const S = { profile: null, data: null, error: "", loaded: false, run: 0, busy: "", from: "plans", polling: false, msg: {}, draft: {}, section: null, sample: 55, previewUpdate: null, invites: null, newInvite: "", mcpToken: null }; // mcpToken: { profile, token } of a token just made, kept in this page only
 
 async function loadSettings() {
   await garminReady;
@@ -8656,6 +8795,8 @@ async function loadSettings() {
   let d;
   try { d = await api("GET", `/api/settings${S.profile ? `?profile=${encodeURIComponent(S.profile)}` : ""}`); }
   catch (e) { if (run === S.run) { S.error = e.message; S.loaded = true; renderSettings(); } return; }
+  if (run !== S.run) return;
+  if (garmin.user && garmin.user.admin) { try { S.invites = (await api("GET", "/api/invites")).invites; } catch { S.invites = null; } } // the admin's, not a profile's
   if (run !== S.run) return;
   S.data = d; S.error = ""; S.loaded = true;
   renderSettings();
@@ -8699,8 +8840,9 @@ async function settingsPost(area, body, doneNote) {
   try {
     const r = await api("POST", `/api/settings/${area}`, { profile: S.profile, ...body });
     S.data = r;
+    if (area === "mcp") S.mcpToken = r.token ? { profile: S.profile, token: r.token } : null; // shown now, never again
     if (area === "web") await keepSignedIn(body.password); // before anything else asks the server: the old session is over
-    if (area !== "goals" && (area !== "renpho" || body.action === "save" || body.action === "remove")) await loadGarmin(); // what the profile has connected decides which views show
+    if (area !== "goals" && area !== "mcp" && (area !== "renpho" || body.action === "save" || body.action === "remove")) await loadGarmin(); // what the profile has connected decides which views show
     S.msg[area] = r.run ? { ok: !r.run.error && r.run.ran, text: runText(r.run) } : r.message !== undefined ? { ok: r.ok, text: r.message } : doneNote ? { ok: true, text: doneNote } : null;
     if (body.action === "save" || body.action === "remove") for (const k of ["gEmail", "gPass", "rEmail", "rPass", "rArea", "wPass", "wPass2"]) delete S.draft[k];
     if (area === "goals") for (const k of Object.keys(S.draft)) if (k.startsWith("goal_")) delete S.draft[k]; // the fields show what was saved
@@ -8854,6 +8996,47 @@ function webCard(d) {
   return card;
 }
 
+/**
+ * Setting an assistant up to use this profile's tools: a token that reaches this profile and no other, and the lines to paste into Claude
+ * (the connector address, the Claude Code command, a config entry). The server keeps only a hash of the token, so it is shown once, when it
+ * is made; until the page is reloaded the lines carry it, after that a placeholder. The lines are settingsModel.js (mcpSnippets).
+ */
+function mcpCard(d) {
+  const m = d.mcp, now = Date.now(), card = mk("div", "scard"), fresh = S.mcpToken && S.mcpToken.profile === S.profile ? S.mcpToken.token : null;
+  card.append(...scardHead("Claude (MCP)", mk("span", "chip " + (m.token ? "ok" : ""), m.token ? "token set" : "no token"), help("mcp", "Lets an AI assistant such as Claude use this editor's tools as this profile: read and change its plans, log its food, read its activities and health data, and use its Garmin account if one is connected. A token reaches this profile only, never another one, with the same reach as this profile's sign-in. The token is shown once, when it is made: only a hash of it is kept. Making a new token stops the old one at once. The server's own MCP_AUTH_TOKEN, which reaches every profile, is not affected.", "the MCP token")));
+  if (m.token) card.append(sline("dim", SetM.mcpTokenLine(m.token, now)));
+  if (fresh) {
+    const box = mk("div", "mcpnew");
+    box.append(mk("b", "", "Your new token"), mk("code", "mcptoken", fresh), sline("warn", "Copy it now: it is not shown again. The lines below carry it until you leave this page."));
+    const copy = mk("button", "", "Copy token"); copy.type = "button"; copy.onclick = guard(() => copyText(fresh, "Token"));
+    box.append(copy);
+    card.append(box);
+  }
+  if (m.token && !m.url) card.append(sline("warn", "The address of the MCP server is not set, so the lines below have a placeholder for it: replace https://<your-mcp-host> with where the server is reached from outside. Set MCP_PUBLIC_URL on the web service (see the README) and it is filled in here."));
+  if (m.token && !fresh) card.append(sline("dim", "The lines below have <your-token> where the token goes: it was shown only when it was made. Make a new one to get lines you can paste as they are."));
+  if (m.token) for (const snip of SetM.mcpSnippets({ url: m.url, token: fresh, profile: S.profile })) {
+    const part = mk("div", "mcpsnip");
+    part.append(mk("h4", "", snip.title), mk("pre", "mcpcode", snip.text));
+    const row = mk("div", "sbtns"), copy = mk("button", "", "Copy"); copy.type = "button"; copy.onclick = guard(() => copyText(snip.text, snip.title));
+    row.append(copy, mk("small", "mcpnote", snip.note));
+    part.append(row);
+    card.append(part);
+  }
+  const buttons = mk("div", "sbtns");
+  buttons.append(m.token
+    ? sbtn("Make a new token", async () => {
+        if (await confirmDialog({ title: "Make a new token?", text: "The old token stops working at once: every assistant that uses it has to be set up again with the new one.", ok: "Make a new token", danger: true })) await settingsPost("mcp", { action: "create" }, "New token made.");
+      }, { key: "mcp:create" })
+    : sbtn("Make a token", () => settingsPost("mcp", { action: "create" }, "Token made."), { cls: "primary", key: "mcp:create" }));
+  if (m.token) buttons.append(sbtn("Remove the token", async () => {
+    if (await confirmDialog({ title: "Remove the token?", text: "Every assistant that uses it loses access at once.", ok: "Remove", danger: true })) await settingsPost("mcp", { action: "remove" }, "Token removed.");
+  }, { key: "mcp:remove" }));
+  card.append(buttons);
+  if (!m.token) card.append(sline("dim", "No assistant can use this profile through the MCP server yet. Make a token, then paste the lines it gives you into Claude."));
+  const msg = messageLine("mcp"); if (msg) card.append(msg);
+  return card;
+}
+
 function renphoCard(d) {
   const r = d.renpho, s = r.settings, st = r.state, now = Date.now(), card = mk("div", "scard");
   const status = SetM.renphoStatus(r, now);
@@ -8959,6 +9142,76 @@ async function downloadFit() {
   document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+/** Copy text to the clipboard; a page served over plain http has no clipboard API, so a hidden field is selected and copied instead. */
+async function copyText(text, what) {
+  let ok = false;
+  try { if (navigator.clipboard && window.isSecureContext) { await navigator.clipboard.writeText(text); ok = true; } } catch { /* try the field */ }
+  if (!ok) {
+    const field = mk("textarea"); field.value = text; field.style.cssText = "position:fixed;opacity:0";
+    document.body.append(field); field.select();
+    try { ok = document.execCommand("copy"); } catch { /* not allowed here */ }
+    field.remove();
+  }
+  toast(ok ? `${what} copied.` : `Could not copy: select the ${what.toLowerCase()} and copy it by hand.`, ok ? 2500 : 6000);
+}
+
+/** Post an invite action (create, revoke, remove); the answer is the whole list, and for a new invite its code. */
+async function invitesPost(body, doneNote) {
+  if (S.busy) return;
+  S.busy = "invites:" + body.action; renderSettings();
+  try {
+    const r = await api("POST", "/api/invites", body);
+    S.invites = r.invites;
+    if (r.created) { S.newInvite = r.created; for (const k of ["inv_note", "inv_uses", "inv_days"]) delete S.draft[k]; }
+    S.msg.invites = doneNote ? { ok: true, text: doneNote } : null;
+  } catch (e) { S.msg.invites = { ok: false, text: e.message }; }
+  finally { S.busy = ""; renderSettings(); }
+}
+
+/**
+ * The invites the admin has made: a form for a new one (a note for yourself, how many people, how long) and the list, each with the
+ * link to send and the code. They belong to the site, not to the profile chosen above.
+ */
+function invitesCard() {
+  const list = S.invites, now = Date.now(), card = mk("div", "scard"), active = list.filter(WelM.isActive).length;
+  card.append(...scardHead("Invites", mk("span", "chip " + (active ? "ok" : ""), active ? `${active} active` : "none active"), help("invites", "An invite lets someone make their own profile from the sign-in page: they open its link (or type its code), choose a name and a password, and are taken through a short welcome. It works for the number of people you set until it expires; cancel it to stop it at once. Profiles already made from it stay. Invites are for the whole site, not for the profile chosen above.", "invites")));
+  const form = mk("div", "sform");
+  sfield(form, "Note", "inv_note", { placeholder: "who it is for (only you see it)", maxlength: 60 });
+  sfield(form, "People", "inv_uses", { value: "1", placeholder: "how many can use it" }).inputMode = "numeric";
+  const label = mk("label", "", "Expires"), days = mk("select");
+  days.id = "s-inv_days"; label.htmlFor = days.id;
+  for (const c of WelM.EXPIRY_CHOICES) days.add(new Option(c.label, c.days === null ? "never" : String(c.days)));
+  days.value = S.draft.inv_days ?? "7"; days.onchange = () => { S.draft.inv_days = days.value; };
+  form.append(label, days);
+  card.append(form);
+  const buttons = mk("div", "sbtns");
+  buttons.append(sbtn("Make an invite", () => invitesPost({ action: "create", note: S.draft.inv_note ?? "", maxUses: S.draft.inv_uses ?? "1", days: (S.draft.inv_days ?? "7") === "never" ? null : Number(S.draft.inv_days ?? "7") }, "Invite made: send its link or its code."), { cls: "primary", key: "invites:create" }));
+  card.append(buttons);
+  const msg = messageLine("invites"); if (msg) card.append(msg);
+  if (!list.length) card.append(sline("dim", "No invites yet. Make one, then send its link."));
+  for (const inv of list) {
+    const st = WelM.inviteState(inv, now), live = WelM.isActive(inv), row = mk("div", "invrow" + (live ? "" : " dead") + (inv.code === S.newInvite ? " fresh" : ""));
+    const head = mk("div", "icode"), link = WelM.inviteLink(location.origin, inv.code), code = WelM.formatCode(inv.code);
+    head.append(mk("b", "", code), mk("span", "chip " + st.cls, st.label));
+    if (inv.note) head.append(mk("span", "", inv.note));
+    row.append(head, mk("small", "", st.line));
+    if (live) row.append(mk("small", "ilink", link));
+    const acts = mk("div", "sbtns");
+    if (live) acts.append(
+      sbtn("Copy link", () => copyText(link, "Link"), { cls: inv.code === S.newInvite ? "primary" : "" }),
+      sbtn("Copy code", () => copyText(code, "Code")),
+      sbtn("Cancel", async () => {
+        if (await confirmDialog({ title: "Cancel this invite?", text: `${code} stops working at once. Profiles already made from it stay.`, ok: "Cancel invite", danger: true })) await invitesPost({ action: "revoke", code: inv.code }, "Invite cancelled.");
+      }),
+    );
+    else acts.append(sbtn("Remove", () => invitesPost({ action: "remove", code: inv.code }, "Invite removed.")));
+    row.append(acts);
+    card.append(row);
+  }
+  return card;
+}
+
+
 /** How the profile has things shown: the unit of lifting weights (the plans keep lb, whatever it is). */
 function unitsCard() {
   const unit = weightUnitOf(S.profile), card = mk("div", "scard");
@@ -9049,7 +9302,7 @@ function renderSettings() {
       if (phone) { const back = mk("button", "sback", "‹ Settings"); back.type = "button"; back.onclick = () => { S.section = null; renderSettings(); $("sscroll").scrollTop = 0; }; pane.append(back); }
       pane.dataset.section = section;
       const enc = d.encryption;
-      pane.append(...({ overview: () => settingsOverview(d), connections: () => [garminCard(d), renphoCard(d), settingsFoodAi(d)], goals: () => [settingsPreview(d), goalsCard(d)], display: () => settingsDisplay(), signin: () => [webCard(d), settingsEncryption(enc)], profiles: () => [settingsProfiles(d)] }[section] || (() => []))());
+      pane.append(...({ overview: () => settingsOverview(d), connections: () => [garminCard(d), renphoCard(d), settingsFoodAi(d)], goals: () => [settingsPreview(d), goalsCard(d)], display: () => settingsDisplay(), signin: () => [webCard(d), mcpCard(d), settingsEncryption(enc)], profiles: () => [settingsProfiles(d), ...(S.invites && settingsAdmin() ? [invitesCard()] : [])] }[section] || (() => []))());
       grid.append(pane);
     }
     box.append(grid);
@@ -9215,6 +9468,149 @@ async function addProfile() {
   for (const V of [T, F, A, R, B, W]) if (!V.profile) V.profile = added.name;
   setView("settings");
   guard(loadSettings)();
+}
+
+// ── Welcome: the steps a profile that just signed up goes through once ───────────
+// Welcome, optional food goals, optional Garmin, and where to start. Nothing here is required: a step can be skipped, the whole flow can
+// (Skip setup, Escape, Back on a phone), and either way it is not shown again (POST /api/welcome). The account menu's Welcome tour replays it.
+// What each step sets goes through the same endpoints as Settings. The steps and the goals check are welcomeModel.js and settingsModel.js.
+const Wel = { i: 0, steps: [], profile: "", kcal: "", protein: "", email: "", pass: "", connected: false, goals: {}, busy: false, line: null, finished: true };
+
+async function openWelcome() {
+  const dlg = $("ftue");
+  if (dlg.open || !me || !me.user || me.user.admin) return;
+  await garminReady;
+  Object.assign(Wel, { i: 0, steps: WelM.welcomeSteps({ garmin: !garmin.mock }), profile: me.user.name, kcal: "", protein: "", email: "", pass: "", connected: false, goals: {}, busy: false, line: null, finished: false });
+  try { // what the profile has already (a replay): the fields start from it
+    const d = await api("GET", `/api/settings?profile=${encodeURIComponent(Wel.profile)}`);
+    Wel.goals = d.goals.values;
+    Wel.kcal = d.goals.values.kcal === undefined ? "" : String(d.goals.values.kcal);
+    Wel.protein = d.goals.values.proteinG === undefined ? "" : String(d.goals.values.proteinG);
+    Wel.connected = !!d.garmin.connected; Wel.email = d.garmin.email || "";
+  } catch { /* the steps start empty */ }
+  renderWelcome();
+  dlg.showModal(); navDialog(dlg);
+  dlg.onclose = () => { if (!Wel.finished) finishWelcome(null); }; // Escape, or Back on a phone, is a skip
+  focusWelcome();
+}
+
+/** Close the flow and remember it was seen; then go to a view if one was chosen. */
+async function finishWelcome(view) {
+  const dlg = $("ftue"), settled = dlg.settled;
+  Wel.finished = true; Wel.pass = "";
+  if (dlg.open) dlg.close();
+  await settled; // the dialog's history entry is gone before the next view is shown
+  if (me && me.user && me.user.welcome) {
+    try { await api("POST", "/api/welcome", { action: "done" }); delete me.user.welcome; }
+    catch (e) { toast("Could not save that the welcome is done: " + e.message, 6000); }
+  }
+  if (view) setView(view);
+}
+
+function focusWelcome() {
+  const first = $("ftueBody").querySelector("input, .fcard");
+  (first || $("ftueNext")).focus({ preventScroll: true });
+}
+
+function renderWelcome() {
+  const body = $("ftueBody"), step = Wel.steps[Wel.i], last = Wel.i === Wel.steps.length - 1;
+  body.replaceChildren();
+  $("ftueDots").replaceChildren(...Wel.steps.map((_, i) => mk("i", i === Wel.i ? "on" : i < Wel.i ? "past" : "")));
+  $("ftueBack").hidden = Wel.i === 0; $("ftueBack").disabled = Wel.busy;
+  $("ftueNext").hidden = last; $("ftueNext").disabled = Wel.busy;
+  $("ftueNext").textContent = step === "garmin" && !Wel.connected ? "Skip for now" : step === "goals" && !Wel.kcal.trim() && !Wel.protein.trim() ? "Skip for now" : "Next";
+  const title = mk("h2"); title.id = "ftueTitle";
+  const line = mk("div", "fline" + (Wel.line ? (Wel.line.ok ? " ok" : " err") : "")); line.setAttribute("role", "status"); line.textContent = Wel.line ? Wel.line.text : "";
+  const para = (text) => mk("p", "", text);
+  const field = (label, key, { type = "text", placeholder = "", mode = "", onEnter } = {}) => {
+    const wrap = mk("label", "pfield"), input = mk("input");
+    input.type = type; input.value = Wel[key]; input.placeholder = placeholder; input.autocomplete = type === "password" ? "current-password" : "off"; input.spellcheck = false; input.disabled = Wel.busy || (key === "email" || key === "pass") && Wel.connected;
+    if (mode) input.inputMode = mode;
+    input.oninput = () => { Wel[key] = input.value; if (key === "kcal" || key === "protein") $("ftueNext").textContent = !Wel.kcal.trim() && !Wel.protein.trim() ? "Skip for now" : "Next"; };
+    input.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); onEnter(); } };
+    wrap.append(mk("span", "", label), input);
+    return wrap;
+  };
+  const cards = (items) => { const box = mk("div", "fcards"); for (const [t, text] of items) { const c = mk("div", "fcard"); c.append(mk("b", "", t), mk("small", "", text)); box.append(c); } return box; };
+
+  if (step === "welcome") {
+    title.textContent = `Welcome, ${Wel.profile}`;
+    body.append(title, para("Here is what you can do. It takes a minute to set up, none of it is required, and you can change everything later in Settings."), cards([
+      ["Plan", "Write training plans, see them on a calendar and as a picture of each workout's steps."],
+      ["Eat", "Log food by typing, scanning a barcode or taking a photo, and watch each day against your goals."],
+      ["Recover", "With a Garmin watch or a Renpho scale: activities, sleep, HRV and weight in one place."],
+    ]), para("Garmin is optional. Plans, the calendar and the food log work without it."));
+  } else if (step === "goals") {
+    title.textContent = "Daily food goals";
+    body.append(title, para("Optional. The Food view measures each day against these. Leave a field empty for no goal; more goals are in Settings."),
+      field("Calories (kcal)", "kcal", { placeholder: "for example 2200", mode: "decimal", onEnter: guard(nextWelcome) }),
+      field("Protein (g)", "protein", { placeholder: "for example 120", mode: "decimal", onEnter: guard(nextWelcome) }), line);
+  } else if (step === "garmin") {
+    title.textContent = "Connect Garmin";
+    body.append(title, para("Optional. With a Garmin login the editor syncs your activities and health data and sends workouts to your watch. It stays on this server, and you can remove it in Settings."));
+    if (Wel.connected) body.append(line.textContent ? line : sline("ok", "Garmin is connected."));
+    else {
+      body.append(field("Garmin email", "email", { onEnter: guard(connectGarmin) }), field("Garmin password", "pass", { type: "password", onEnter: guard(connectGarmin) }), line);
+      const connect = mk("button", "primary", Wel.busy ? "Checking…" : "Connect Garmin"); connect.type = "button"; connect.disabled = Wel.busy; connect.onclick = guard(connectGarmin);
+      body.append(connect);
+    }
+  } else if (step === "start") {
+    title.textContent = "You're all set";
+    body.append(title, para("Where do you want to start? The welcome tour stays in the account menu."));
+    const box = mk("div", "fcards");
+    for (const st of WelM.STARTS) { const c = mk("button", "fcard"); c.type = "button"; c.append(mk("b", "", st.title), mk("small", "", st.text)); c.onclick = guard(() => finishWelcome(st.view)); box.append(c); }
+    body.append(box);
+  }
+}
+
+async function nextWelcome() {
+  if (Wel.busy) return;
+  if (Wel.steps[Wel.i] === "goals" && !(await saveWelcomeGoals())) return;
+  Wel.line = null; Wel.i = Math.min(Wel.i + 1, Wel.steps.length - 1);
+  renderWelcome(); focusWelcome();
+}
+
+/** Save the goals typed in the second step (nothing typed sets nothing); false while there is something to fix. */
+async function saveWelcomeGoals() {
+  const r = SetM.goalsPatch({ kcal: Wel.kcal, proteinG: Wel.protein }, WelM.GOAL_FIELDS, Wel.goals);
+  if (r.error) { Wel.line = { ok: false, text: r.error }; renderWelcome(); return false; }
+  if (!Object.keys(r.goals).length) return true;
+  Wel.busy = true; renderWelcome();
+  try {
+    Wel.goals = (await api("POST", "/api/settings/goals", { profile: Wel.profile, action: "save", goals: r.goals })).goals.values;
+    Wel.kcal = Wel.goals.kcal === undefined ? "" : String(Wel.goals.kcal); Wel.protein = Wel.goals.proteinG === undefined ? "" : String(Wel.goals.proteinG); // as saved
+    return true;
+  } catch (e) { Wel.line = { ok: false, text: e.message }; return false; }
+  finally { Wel.busy = false; renderWelcome(); }
+}
+
+/** Save the Garmin login and try it; a login Garmin refuses is taken out again, so the sync never retries a wrong password. */
+async function connectGarmin() {
+  if (Wel.busy) return;
+  const email = Wel.email.trim(), password = Wel.pass;
+  if (!email || !password) { Wel.line = { ok: false, text: "Enter the email and the password of the Garmin account." }; renderWelcome(); return; }
+  Wel.busy = true; Wel.line = { ok: true, text: "Checking the login with Garmin…" }; renderWelcome();
+  try {
+    await api("POST", "/api/settings/garmin", { profile: Wel.profile, action: "save", email, password });
+    let result;
+    try { result = await api("POST", "/api/settings/garmin", { profile: Wel.profile, action: "test" }); } catch (e) { result = { ok: false, message: e.message }; }
+    if (result.ok) {
+      Wel.connected = true; Wel.pass = ""; Wel.line = { ok: true, text: result.message || "Garmin accepted the login." };
+      Object.assign(S, { data: null, loaded: false });
+      await loadGarmin(); // the views that need Garmin show now
+    } else {
+      await api("POST", "/api/settings/garmin", { profile: Wel.profile, action: "remove" }).catch(() => {});
+      Wel.line = { ok: false, text: result.message || "Garmin refused the login." };
+    }
+  } catch (e) { Wel.line = { ok: false, text: e.message }; }
+  finally { Wel.busy = false; renderWelcome(); }
+}
+
+function bindWelcome() {
+  $("ftueNext").onclick = guard(nextWelcome);
+  $("ftueBack").onclick = () => { if (Wel.busy || Wel.i === 0) return; Wel.line = null; Wel.i--; renderWelcome(); focusWelcome(); };
+  $("ftueSkip").onclick = guard(() => finishWelcome(null));
+  $("welcomeBtn").onclick = guard(async () => { $("account").classList.remove("open"); $("accountBtn").setAttribute("aria-expanded", "false"); await openWelcome(); });
 }
 
 function bindSettingsView() {
@@ -9685,6 +10081,7 @@ const garminReady = sessionReady.then(() => {
   guard(refreshFiles)();
   return loadGarmin(); // the Workouts view waits for it
 });
+garminReady.then(() => { if (me && me.user && me.user.welcome) guard(openWelcome)(); }); // a profile that just signed up, or left the welcome unfinished
 bindWorkoutsView();
 bindCalendarView();
 bindRecoveryView();
@@ -9692,6 +10089,7 @@ bindWeightView();
 bindFoodView();
 bindTodayView();
 bindSettingsView();
+bindWelcome();
 bootSession();
 setView(startView || "today"); // the view in the address, else the landing view: this loads it once the session is there
 </script>

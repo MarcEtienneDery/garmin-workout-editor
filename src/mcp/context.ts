@@ -1,9 +1,10 @@
+import { AsyncLocalStorage } from "async_hooks";
 import * as os from "os";
 import * as path from "path";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { GarminClient } from "../shared/garminClient";
 import { GarminNotConnectedError, ProfileConfig, findProfile, garminConnected, getAvailableProfiles, getMockProfile, loadProfile, unknownProfileMessage } from "../shared/profileLoader";
-import { type DocMeta, StoreError, getStore, normalizeLogicalPath } from "../shared/store";
+import { type DocMeta, StoreError, getStore, normalizeLogicalPath, profileReaches } from "../shared/store";
 import WorkoutEditor from "../workoutEditor";
 import ActivityExporter from "../activityExporter";
 import { captureLogs, CaptureOutcome } from "./logCapture";
@@ -31,6 +32,26 @@ export function getSettings(): Readonly<McpSettings> {
   return settings;
 }
 
+// ─── Scope (a connection that is one profile) ───────────────────────────────
+
+// The MCP server's own token reaches every profile. A profile's token (Settings → Claude (MCP)) reaches that profile only: the HTTP
+// transport runs the whole request, and so every tool it calls, inside runScoped, and the two places everything goes through, the profile
+// a tool acts on (resolveProfileName) and the documents it reads or writes (logicalPath, mayReach), keep to it. Fail closed: a connection
+// that is scoped never falls back to the default profile or to the only profile there is.
+const scope = new AsyncLocalStorage<{ profile: string }>();
+
+/** Run `fn` (an MCP request) as the profile alone. */
+export const runScoped = <T>(profile: string, fn: () => T): T => scope.run({ profile }, fn);
+
+/** The profile this connection is limited to; undefined for the server's own token and for stdio. */
+export const scopedProfile = (): string | undefined => scope.getStore()?.profile;
+
+/** Whether this connection may reach a document (the same reach as the profile's web sign-in); true when it is not scoped. */
+export function mayReach(logical: string, owner: string | null): boolean {
+  const only = scopedProfile();
+  return only === undefined || profileReaches(only, logical, owner);
+}
+
 // ─── Sessions (one cached Garmin client per profile) ────────────────────────
 
 export interface Session {
@@ -44,6 +65,11 @@ export interface Session {
 const sessions = new Map<string, Session>();
 
 export function resolveProfileName(requested?: string): string {
+  const only = scopedProfile();
+  if (only) {
+    if (requested && findProfile(requested) !== only) throw new Error(`Profile "${requested}" is not available: this connection can only use the profile "${only}".`);
+    return only;
+  }
   const name = requested || settings.defaultProfile;
   if (name) return findProfile(name) ?? name;
 
@@ -163,12 +189,15 @@ export function getDataExporter(): ActivityExporter {
  * Only .json documents under the two roots exist; hidden segments and ".." are rejected.
  */
 export function logicalPath(input: string): string {
+  let logical: string;
   try {
-    return normalizeLogicalPath(input);
+    logical = normalizeLogicalPath(input);
   } catch (error) {
     if (error instanceof StoreError) throw new Error(error.message);
     throw error;
   }
+  if (!mayReach(logical, getStore().head(logical)?.owner ?? null)) throw new Error(`${logical} belongs to another profile.`);
+  return logical;
 }
 
 /** The parsed content of a stored document. */

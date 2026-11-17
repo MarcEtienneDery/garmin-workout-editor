@@ -48,15 +48,42 @@ afterEach(() => quiet.mockRestore());
 
 describe("estimating a meal", () => {
   it("gives the foods checked by the food log's rules, with the amount and what was assumed", async () => {
-    const { client } = fake(() => reply({ items: [eggs, toast], note: "Assumed 2 large eggs." }));
+    const { client } = fake(() => reply({ items: [eggs, toast], note: "Assumed 2 large eggs.", confidence: "medium", improve: "Say how big the eggs were" }));
     expect(await ask({ client })).toEqual({
       items: [
         { name: "Scrambled eggs", portion: "2 large eggs", meal: "breakfast", amount: 100, unit: "g", kcal: 190, proteinG: 13.2, carbsG: 1.6, fatG: 14.4, nutrients: { cholesterolMg: 370, sodiumMg: 170 } },
         { name: "Whole wheat toast", portion: "1 slice", meal: "breakfast", amount: 32, unit: "g", kcal: 80, proteinG: 4, carbsG: 14, fatG: 1, nutrients: {} },
       ],
       note: "Assumed 2 large eggs.",
+      confidence: "medium",
+      improve: "Say how big the eggs were",
       remaining: DEFAULT_DAILY_LIMIT - 1,
     });
+  });
+
+  it("gives the confidence and the few words that would sharpen the estimate, and cuts a tip that runs on", async () => {
+    const said = (extra: Record<string, unknown>) => ask({ client: fake(() => reply({ items: [eggs], note: "", ...extra })).client });
+    expect(await said({ confidence: "high", improve: "" })).toMatchObject({ confidence: "high", improve: "" });
+    expect(await said({ confidence: "low", improve: "  Weigh   the rice \n" })).toMatchObject({ confidence: "low", improve: "Weigh the rice" });
+    const long = await said({ confidence: "low", improve: "one two three four five six seven eight nine ten" });
+    expect(long.improve).toBe("one two three four five six seven eight");
+  });
+
+  it("leaves a confidence it was not given, or cannot read, unknown rather than guessing one", async () => {
+    const said = (extra: Record<string, unknown>) => ask({ client: fake(() => reply({ items: [eggs], note: "", ...extra })).client });
+    expect(await said({})).toMatchObject({ confidence: null, improve: "" });
+    expect(await said({ confidence: "certain", improve: 7 })).toMatchObject({ confidence: null, improve: "" });
+  });
+
+  it("has no confidence or tip when there is nothing to log", async () => {
+    expect(await ask({ client: fake(() => reply({ items: [], note: "That is not food.", confidence: "high", improve: "Name a food" })).client })).toMatchObject({ items: [], confidence: null, improve: "" });
+  });
+
+  it("asks for the confidence and the tip in the schema and the prompt", () => {
+    expect(ESTIMATE_SCHEMA.required).toEqual(expect.arrayContaining(["confidence", "improve"]));
+    expect(ESTIMATE_SCHEMA.properties.confidence.enum).toEqual(["low", "medium", "high"]);
+    expect(SYSTEM_PROMPT).toMatch(/confidence/);
+    expect(SYSTEM_PROMPT).toMatch(/at most 8 words/);
   });
 
   it("rounds like the log, works the calories out when they are missing and keeps a nutrient it was not given unknown", async () => {
@@ -323,7 +350,7 @@ describe("choosing how to ask Claude", () => {
 describe("estimating through Claude Code", () => {
   /** A server that has a Claude plan and an API key it must not use (no credit on it). */
   const cliEnvSettings = { FOOD_AI_BACKEND: "cli", ANTHROPIC_API_KEY: "sk-api-must-not-be-used", CLAUDE_CODE_OAUTH_TOKEN: "sk-ant-oat01-token" } as NodeJS.ProcessEnv;
-  const resultLine = (over: Record<string, unknown> = {}) => JSON.stringify({ type: "result", subtype: "success", is_error: false, stop_reason: "tool_use", result: "", structured_output: { items: [eggs, toast], note: "Assumed 2 large eggs." }, ...over });
+  const resultLine = (over: Record<string, unknown> = {}) => JSON.stringify({ type: "result", subtype: "success", is_error: false, stop_reason: "tool_use", result: "", structured_output: { items: [eggs, toast], note: "Assumed 2 large eggs.", confidence: "high", improve: "Weigh the eggs" }, ...over });
   const printed = (...lines: string[]): CliOutput => ({ code: 0, stdout: `${[JSON.stringify({ type: "system", subtype: "init" }), ...lines].join("\n")}\n`, stderr: "", timedOut: false });
   const runner = (next: () => CliOutput = () => printed(resultLine())) => jest.fn(async (_call: CliCall) => next());
   const askCli = (run: ReturnType<typeof runner>, over: Partial<Parameters<typeof estimateFoods>[0]> = {}, settings: NodeJS.ProcessEnv = cliEnvSettings) => estimateFoods({ profile: "MED", text: "2 scrambled eggs", defaultMeal: "breakfast", today: TODAY, ...over }, { env: settings, run });
@@ -336,6 +363,8 @@ describe("estimating through Claude Code", () => {
         { name: "Whole wheat toast", portion: "1 slice", meal: "breakfast", amount: 32, unit: "g", kcal: 80, proteinG: 4, carbsG: 14, fatG: 1, nutrients: {} },
       ],
       note: "Assumed 2 large eggs.",
+      confidence: "high",
+      improve: "Weigh the eggs",
       remaining: DEFAULT_DAILY_LIMIT - 1,
     });
     await refusal(askCli(runner(() => printed(resultLine({ structured_output: { items: [{ ...eggs, kcal: -5 }], note: "" } })))), "upstream", /cannot hold/);
@@ -411,7 +440,7 @@ describe("estimating through Gemini", () => {
   const geminiEnv = { FOOD_AI_BACKEND: "gemini", GEMINI_API_KEY: "AIza-test", ANTHROPIC_API_KEY: "sk-api-must-not-be-used", CLAUDE_CODE_OAUTH_TOKEN: "sk-ant-oat01-token" } as NodeJS.ProcessEnv;
   /** What generateContent sends back: the JSON in the first candidate's text, after a thought. */
   const answered = (answer: unknown, over: Record<string, unknown> = {}) => ({ candidates: [{ content: { role: "model", parts: [{ text: "Thinking about eggs", thought: true }, { text: typeof answer === "string" ? answer : JSON.stringify(answer) }] }, finishReason: "STOP", ...over }] });
-  const google = (next: () => unknown = () => ({ status: 200, body: answered({ items: [eggs, toast], note: "Assumed 2 large eggs." }) })) =>
+  const google = (next: () => unknown = () => ({ status: 200, body: answered({ items: [eggs, toast], note: "Assumed 2 large eggs.", confidence: "high", improve: "Weigh the eggs" }) })) =>
     jest.fn(async (_url: string, _init: { headers: Record<string, string>; body: string }) => {
       const out = next();
       if (out instanceof Error) throw out;
@@ -435,6 +464,8 @@ describe("estimating through Gemini", () => {
         { name: "Whole wheat toast", portion: "1 slice", meal: "breakfast", amount: 32, unit: "g", kcal: 80, proteinG: 4, carbsG: 14, fatG: 1, nutrients: {} },
       ],
       note: "Assumed 2 large eggs.",
+      confidence: "high",
+      improve: "Weigh the eggs",
       remaining: DEFAULT_DAILY_LIMIT - 1,
     });
     await refusal(askGemini(google(() => ({ status: 200, body: answered({ items: [{ ...eggs, kcal: -5 }], note: "" }) }))), "upstream", /cannot hold/);

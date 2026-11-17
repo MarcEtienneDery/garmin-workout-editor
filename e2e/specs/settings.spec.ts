@@ -67,7 +67,7 @@ const PROFILE_PASSWORD = "profile pass one";
 
 // ── helpers ──
 
-/** One of the five cards, by its heading. */
+/** One of the six cards, by its heading. */
 const card = (page: Page, heading: string) => page.locator(".scard").filter({ has: page.locator("h2", { hasText: heading }) });
 const goalsCard = (page: Page) => card(page, "Nutrition goals");
 const garminCard = (page: Page) => card(page, "Garmin account");
@@ -81,7 +81,7 @@ const goalField = (page: Page, key: string) => page.locator(`#s-goal_${key}`);
 const okLine = (c: Locator) => c.locator(".sline.ok:visible");
 const errLine = (c: Locator) => c.locator(".sline.err:visible");
 
-/** Open Settings (signed in already) and wait until its five cards are drawn; loaded again once if they are not (see openView). */
+/** Open Settings (signed in already) and wait until its sections are drawn; loaded again once if they are not (see openView). */
 type SettingsSection = "overview" | "connections" | "goals" | "display" | "signin" | "profiles";
 /** Opens Settings and the section asked for (the list of sections is on the left; Overview first). */
 async function openSettings(page: Page, section: SettingsSection = "overview"): Promise<void> {
@@ -721,7 +721,7 @@ test.describe("the web sign-in password card", () => {
       await ready(me);
       await goSection(me, "signin");
       await slow(me.locator("#login")).toBeHidden();
-      await slow(me.locator("#sbody .spane .scard")).toHaveCount(2); // the password and how the saved passwords are kept
+      await slow(me.locator("#sbody .spane .scard")).toHaveCount(3); // the password, the token for Claude (MCP) and how the saved passwords are kept
     } finally {
       await other.close();
     }
@@ -975,13 +975,13 @@ test.describe("a profile's own Settings", () => {
 // ── the Settings view as a whole ──
 
 test.describe("the Settings view", () => {
-  test("the sections hold the cards in order: Overview, Connections (Garmin, Renpho, Food AI), Goals (preview, nutrition goals), Display (appearance, units), Sign-in (web, saved passwords); the note is never shown", async ({ me }) => {
+  test("the sections hold the cards in order: Overview, Connections (Garmin, Renpho, Food AI), Goals (preview, nutrition goals), Display (appearance, units), Sign-in (web, Claude (MCP), saved passwords); the note is never shown", async ({ me }) => {
     const titles = async (section: SettingsSection) => { await goSection(me, section); return me.locator(`#sbody .spane[data-section="${section}"] .scard h2`).allTextContents(); };
     await openSettings(me);
     expect((await titles("connections")).map((s) => s.replace(/\s+/g, " ").trim().split(/ (?=not|connected|on|off)/)[0])).toEqual([expect.stringContaining("Garmin account"), expect.stringContaining("Renpho scale"), expect.stringContaining("Food AI")]);
     expect(await titles("goals")).toEqual([expect.stringContaining("How the Food view will show them"), expect.stringContaining("Nutrition goals")]);
     expect(await titles("display")).toEqual([expect.stringContaining("Appearance"), expect.stringContaining("Units")]);
-    expect(await titles("signin")).toEqual([expect.stringContaining("Web sign-in"), expect.stringContaining("Saved passwords")]);
+    expect(await titles("signin")).toEqual([expect.stringContaining("Web sign-in"), expect.stringContaining("Claude (MCP)"), expect.stringContaining("Saved passwords")]);
     await slow(me.locator("#sNote")).toBeHidden();
   });
 
