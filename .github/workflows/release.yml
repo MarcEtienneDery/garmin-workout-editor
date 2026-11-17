@@ -5,6 +5,10 @@ name: release
 # and deploys the commit. GitHub never connects to the server. Roll back by `git revert`-ing the bump commit in the DEPLOY repo
 # (see its docs/RUNBOOK.md), not here.
 #
+# Run by hand (Actions -> release -> Run workflow, or `gh workflow run release.yml --ref <branch> -f target=dev`) the same steps
+# deploy any branch to the PREVIEW stack (target dev, the default): the home server's `garmin-dev`, on a scrubbed copy of the live
+# data. target=live is only accepted by the deploy repo for a commit that is on main, so a branch cannot reach production this way.
+#
 # One-time setup (repo secret):
 #   DEPLOY_REPO_TOKEN  fine-grained PAT, repository access = MarcEtienneDery/homelab ONLY, permissions = Actions: read and write.
 #                      Nothing else: no Contents, no Pull requests, no Workflows. It can therefore only trigger bump-garmin.yml
@@ -14,7 +18,21 @@ name: release
 on:
   push:
     branches: [main]
+    # None of these go into the image (the Dockerfile copies package*.json, tsconfig.json and src only), so a push that changes
+    # only them does not release (and does not restart the live containers for nothing).
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - ".github/**"
+      - "docker-compose*.yml"
+      - "scripts/dev-deploy.sh"
   workflow_dispatch:
+    inputs:
+      target:
+        description: "Where this ref goes: dev = the preview stack (any branch), live = production (the deploy repo accepts only a commit of main)"
+        type: choice
+        options: [dev, live]
+        default: dev
 
 permissions:
   contents: read
@@ -83,10 +101,12 @@ jobs:
     env:
       GH_TOKEN: ${{ secrets.DEPLOY_REPO_TOKEN }}
       TAG: ${{ needs.image.outputs.tag }}
+      # a push to main always goes to live; a run by hand goes where its `target` input says (default: the preview stack)
+      TARGET: ${{ github.event_name == 'workflow_dispatch' && inputs.target || 'live' }}
     steps:
       - name: Ask the deploy repo to deploy this image
         run: |
           set -euo pipefail
           [ -n "$GH_TOKEN" ] || { echo "::error::secret DEPLOY_REPO_TOKEN is not set"; exit 1; }
-          gh workflow run bump-garmin.yml --repo MarcEtienneDery/homelab --ref main -f tag="$TAG"
-          echo "Asked MarcEtienneDery/homelab to deploy ${TAG}. Follow it in that repo's Actions tab (bump-garmin)."
+          gh workflow run bump-garmin.yml --repo MarcEtienneDery/homelab --ref main -f tag="$TAG" -f target="$TARGET"
+          echo "Asked MarcEtienneDery/homelab to deploy ${TAG} to ${TARGET}. Follow it in that repo's Actions tab (bump-garmin)."
