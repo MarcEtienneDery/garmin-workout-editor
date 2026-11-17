@@ -61,26 +61,24 @@ The views show their numbers and controls, not paragraphs. An explanation (what 
 
 ## Deployment
 
-The MCP server runs in Docker on the NAS as `garmin-mcp`, defined in `~/docker/garmin.yml`; the plan editor runs beside it as `garmin-web` (same image, `node dist/web/server.js`, needs `WEB_AUTH_TOKEN` for the admin login (a profile can have its own sign-in password, set in Settings; the page has a sign-in form and sessions live in memory); nothing is mounted but `/data`, the old `/config` is only needed for one run of `import-env`). It builds from `/home/medery/git/garmin-workout-editor`; the database lives in `~/docker/garmin-mcp/data/garmin.db` (`sqlite_backup` it in `~/docker/backup.sh`). To deploy `main`:
+The app runs in Docker on the NAS (`med-nas`) as `garmin-mcp` (the MCP server) and `garmin-web` (the plan editor: same image, `node dist/web/server.js`; it needs `WEB_AUTH_TOKEN` for the admin login, a profile can have its own sign-in password set in Settings, and sessions live in memory). They mount `/data` (the database) and, read-only, `/config` (the old `.env.<profile>` files, only needed for `import-env`). **This repo only builds the image. The stacks are deployed from the private deploy repo `MarcEtienneDery/homelab` by Doco CD** (`stacks/garmin`, `stacks/garmin-dev`; its `docs/RUNBOOK.md` is the source of truth). `~/docker/garmin.yml` no longer exists (the old hand-run compose files are in `~/docker/.pre-gitops/`): never deploy by hand.
 
-```bash
-git -C /home/medery/git/garmin-workout-editor fetch origin && git -C /home/medery/git/garmin-workout-editor merge --ff-only origin/main
-cd ~/docker && docker compose -f garmin.yml up -d --build
-docker logs --tail 5 garmin-mcp   # expect "listening on http://0.0.0.0:8787/mcp/<token>"
-```
+To deploy `main`: merge to `main`. `.github/workflows/release.yml` runs the tests, builds and pushes `ghcr.io/marcetiennedery/garmin-workout-editor:sha-<12 chars>`, and asks the deploy repo's `bump-garmin` workflow to commit that tag; Doco CD polls the deploy repo every minute and recreates the two containers (about 15 s of outage, about 5 minutes after the merge). A push that changes only markdown, `docs/`, `.github/` or the compose files does not release. Roll back with `git revert` of the bump commit in the deploy repo, not here. Reconnect MCP clients afterwards so they pick up tool changes.
 
-Reconnect MCP clients afterwards so they pick up tool changes.
+The database lives in `~/docker/garmin-mcp/data/garmin.db` (`sqlite3 .backup`-ed by the nightly backup, `host/backup.sh` of the deploy repo).
 
-Live settings are in the two `env_file`s, not in the repo's compose: `CREDENTIALS_KEY` (the **same** value in `./garmin-mcp/.env` and `./garmin-mcp/web.env`; it encrypts the saved Garmin and Renpho passwords, so a lost or changed key means entering them again in Settings) and, in `web.env` only, `TRUST_PROXY=cloudflare` (the web editor is reached through the Cloudflare tunnel, so without it every visitor shares one wrong-password limit and a stranger can lock the sign-in out).
+Live settings are in two SOPS-encrypted env files of the deploy repo (`stacks/garmin/mcp.enc.env` and `stacks/garmin/web.enc.env`, edited with `sops`), not in this repo: `CREDENTIALS_KEY` (the **same** value in both; it encrypts the saved Garmin and Renpho passwords, so a lost or changed key means entering them again in Settings) and, in `web.enc.env` only, `TRUST_PROXY=cloudflare` (the web editor is reached through the Cloudflare tunnel, so without it every visitor shares one wrong-password limit and a stranger can lock the sign-in out).
 
-### Dev environment
+### Preview environment (dev)
 
-`scripts/dev-deploy.sh [--keep-logins] [source-dir]` (compose file `docker-compose.dev.yml`) deploys a second stack, `garmin-dev-web` (port 8798) and `garmin-dev-mcp` (127.0.0.1:8797), built from `source-dir` (default: the checkout the script is in, uncommitted changes included) into the image `garmin-workout-editor-mcp:dev`. Every run stops dev, takes a fresh `sqlite3 .backup` of the live database (live is only read), and replaces dev's copy, so dev edits do not survive a deploy. Its state is in `~/garmin-dev` (outside `~/docker`, so `backup.sh` skips it): `data/garmin.db`, and `tokens.env` with dev's own `MCP_AUTH_TOKEN` and `WEB_AUTH_TOKEN` (made once, never live's). `scripts/dev-deploy.sh down` stops it.
+A second stack, `garmin-dev` (`stacks/garmin-dev` in the deploy repo), runs the same image on a **scrubbed copy of the live database**, to try a change before it reaches `main`: the editor `garmin-dev-web` (LAN port 8798, and HTTPS through the tunnel hostname that points at `http://dev-web:8788`) and the MCP server `garmin-dev-mcp` (127.0.0.1:8797).
 
-- The copy is scrubbed: the Garmin and Renpho logins (`credentials`), the Garmin tokens and the Renpho auto switches are removed, so dev behaves like a profile without Garmin and cannot change the real account (an upload from dev would delete and recreate the live workouts that share its `workoutId`s). `--keep-logins` keeps them.
-- The Claude login for the Food view's AI box (`FOOD_AI_*`, `CLAUDE_CODE_OAUTH_TOKEN`) is copied from live's `web.env` on each deploy, so dev estimates draw from the same plan.
-- Both services join the `cloudflare-tunnel` network as `dev-web` and `dev-mcp`, never `garmin-web`/`garmin-mcp` (that alias would make the tunnel answer from either container). To reach dev over HTTPS (the barcode camera needs it), add a public hostname in the Cloudflare dashboard pointing at `http://dev-web:8788`.
+- **Deploy a branch to it:** `gh workflow run release.yml --ref <branch> -f target=dev` (or Actions → release → Run workflow, pick the branch). CI tests and builds that commit, the deploy repo's `bump-garmin` (`target=dev`) changes the image tag, and Doco CD deploys it, about 5 minutes in all. There is no working-tree deploy: commit what you want to look at (a WIP commit on the branch is fine). `target=live` is only accepted for a commit of `main`, so a branch cannot reach production this way.
+- **Data:** `~/garmin-dev/data/garmin.db` (outside `~/docker`, so the nightly backup skips it). A deploy does not refresh it: run `~/git/homelab/host/garmin-dev-refresh.sh` for a fresh copy of the live database (live is only read; dev edits are thrown away) when you want current data or to re-test a schema migration on real data.
+- **The copy is scrubbed** (the refresh script proves it before dev can see the copy): the Garmin and Renpho logins (`credentials`), the Garmin tokens, the Renpho auto switches and live's browser sessions are removed, so dev behaves like a profile without Garmin and cannot change the real account (an upload from dev would delete and recreate the live workouts that share its `workoutId`s). There is no `--keep-logins` any more.
+- **Sign in:** any user name + dev's own `WEB_AUTH_TOKEN` (`sops decrypt ~/git/homelab/stacks/garmin-dev/web.enc.env`; never live's). The Claude login for the Food view's AI box is a COPY in that same file: renew it there when it is renewed on live.
+- Both services join the `cloudflare-tunnel` network as `dev-web` and `dev-mcp`, never `garmin-web`/`garmin-mcp` (that alias would make the tunnel answer from either container). The tunnel's public hostnames live in the Cloudflare dashboard, not in Git.
 
 ## Git
 
-Work on a feature branch, never commit straight to `main`, and don't push or deploy without the user's go-ahead.
+Work on a feature branch, never commit straight to `main`, and don't push or deploy without the user's go-ahead. A push to `main` releases to production (see Deployment), so look at a change in the preview environment first.
