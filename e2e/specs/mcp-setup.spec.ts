@@ -11,6 +11,8 @@ const slow = expect.configure({ timeout: 30_000 });
 /** The MCP card of Settings, once Settings is drawn. */
 async function openCard(page: Page) {
   await page.goto("/#settings");
+  await slow(page.locator("#sbody .snav")).toBeVisible();
+  await page.locator('#sbody .snav [data-section="signin"]').click(); // the token is kept with the sign-in
   const card = page.locator(".scard").filter({ has: page.locator("h2", { hasText: "Claude (MCP)" }) });
   await slow(card).toBeVisible();
   return card;

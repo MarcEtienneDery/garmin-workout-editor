@@ -13,7 +13,7 @@ const aboutNote = (page: Page, body: string) => page.locator(`${body} .rfoot .he
 const card = (page: Page, heading: string) => page.locator(".scard").filter({ has: page.locator("h2", { hasText: heading }) });
 
 type Section = "overview" | "connections" | "goals" | "display" | "signin";
-const SECTION_OF: Record<string, Section> = { "Nutrition goals": "goals", Units: "display", "Garmin account": "connections", "Renpho scale": "connections", "Web sign-in": "signin" };
+const SECTION_OF: Record<string, Section> = { "Nutrition goals": "goals", Units: "display", "Garmin account": "connections", "Renpho scale": "connections", "Web sign-in": "signin", "Claude (MCP)": "signin" };
 /** Shows a section of Settings (the list of sections is on the left). */
 async function showSection(page: Page, section: Section): Promise<void> {
   await page.locator(`#sbody .snav [data-section="${section}"]`).click();
