@@ -1013,6 +1013,7 @@
   .ammside { display:flex; align-items:center; flex-wrap:wrap; gap:6px 10px; }
   .ammt { min-height:44px; margin:-10px -6px -10px 0; padding:0 6px 0 10px; border:0; background:none !important; color:var(--t-ink) !important; font-weight:600; font-size:13px; cursor:pointer; }
   .ammt:hover { text-decoration:underline; }
+  .ammside > .ammt { margin:0 -6px 0 0; } /* beside the figure's control, or on a line of its own: never tucked up into the line above */
   .ammbody { display:grid; grid-template-columns:auto minmax(0,1fr); gap:16px; align-items:center; }
   .ammleft { display:flex; flex-direction:column; min-width:0; }
   .ammf { display:flex; gap:2px; padding:6px 8px 4px; border-radius:12px; background:var(--t-surface2); }
@@ -1082,7 +1083,8 @@
     #aModes { flex:1 1 auto; } #aModes button { flex:1; padding:0 10px; }
     #aview #aHead { order:1; flex:1 1 60%; } #aSync { order:2; } #aTheme { order:3; } #aModes { order:4; flex:1 1 100%; }
     #aview { display:flex; flex-direction:column; overflow:hidden; padding:0; } #aview #amain, #aview #adetail { flex:1; min-height:0; width:100%; }
-    #afilters { flex-wrap:nowrap; overflow-x:auto; scrollbar-width:none; } #afilters::-webkit-scrollbar { display:none; } #aTypes { flex-wrap:nowrap; } #aview .tchip { flex:none; } .asearch { flex:1 0 180px; } #aview #aRange { flex:none; }
+    /* a phone: the type chips take a line of their own and scroll sideways; the search and the range share the line under them, so nothing overlaps */
+    #afilters { flex-wrap:wrap; overflow:visible; } #aTypes { display:flex; flex:1 0 100%; min-width:0; flex-wrap:nowrap; overflow-x:auto; scrollbar-width:none; } #aTypes::-webkit-scrollbar { display:none; } #aview .tchip { flex:none; } .asearch { flex:1 1 0; min-width:0; } #aview #aRange { flex:none; }
     #aview #ascroll { padding:0 12px 24px; } #aview #abody { padding:0 12px 24px; }
     #adetail > .wbar { display:flex; align-items:center; gap:10px; padding:12px; background:transparent; border-bottom:0; } #adetail > .wbar b { font-size:18px; font-weight:700; }
     .afigs { grid-template-columns:repeat(2,minmax(0,1fr)); } .afig b { font-size:22px; }
@@ -2372,6 +2374,15 @@
     body:not([data-wpane="detail"]) #aview > * { flex:none; }
     body:not([data-wpane="detail"]) :is(#aview #amain, #aview #ascroll) { overflow:visible; }
     #cview #cbar { position:static; } #cview .wday { scroll-margin-top:12px; }
+  }
+
+  /* On a desktop the bar stays where it is and the page scrolls under it: a 12 px band of the view's colour stays at the top of each
+     scroll area, so a card or a row never runs into the bar's edge. The sticky headers in those areas sit below the band. A phone has no
+     bar to clear (the whole view scrolls), so this is for the wide screen only. */
+  @media (min-width:901px) {
+    :is(#tscroll, #fscroll, #rscroll, #bscroll, #sscroll, #ascroll)::before { content:""; display:block; position:sticky; top:0; z-index:4; height:12px; margin-bottom:-12px; background:var(--bg); }
+    #aview #ascroll { padding-top:12px; } #aview .awk, #rview table.rmetrics thead th { top:12px; }
+    #fview .fside, #sview .snav { top:20px; }
   }
 </style>
 </head>
