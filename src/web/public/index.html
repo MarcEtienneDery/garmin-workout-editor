@@ -2382,7 +2382,8 @@
   @media (min-width:901px) {
     :is(#tscroll, #fscroll, #rscroll, #bscroll, #sscroll, #ascroll)::before { content:""; display:block; position:sticky; top:0; z-index:4; height:12px; margin-bottom:-12px; background:var(--bg); }
     #aview #ascroll { padding-top:12px; } #aview .awk, #rview table.rmetrics thead th { top:12px; }
-    #fview .fside, #sview .snav { top:20px; }
+    #tbody, #fbody, #rbody, #sbody { padding-top:12px; } /* the first thing in a view starts just under the band, so none of it is hidden at rest */
+    #fview .fside, #sview .snav { top:12px; }
   }
 </style>
 </head>
