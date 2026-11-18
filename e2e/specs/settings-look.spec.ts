@@ -160,13 +160,16 @@ test.describe("the look", () => {
 });
 
 test.describe("the theme is chosen in Settings only", () => {
-  test("no view has a theme button, and every view takes the choice made in Display", async ({ me }) => {
-    await open(me, "display");
-    await me.locator(".seg button", { hasText: "Light" }).click();
-    for (const view of ["today", "plans", "workouts", "calendar", "activities", "recovery", "weight", "food"]) {
-      await openView(me, view);
-      await expect(me.locator("body")).toHaveAttribute("data-theme", "light");
-      await expect(me.locator(".themebtn")).toHaveCount(0);
+  test("no view has a theme button, and every view takes the choice made in Display", async ({ alice }) => {
+    await open(alice, "display"); // alice has a Garmin login, so every view is in the header
+    await alice.locator(".seg button", { hasText: "Light" }).click();
+    for (const [view, button] of [["today", "vToday"], ["plans", "vPlans"], ["calendar", "vCalendar"], ["activities", "vActivities"], ["recovery", "vRecovery"], ["weight", "vWeight"], ["food", "vFood"]] as const) {
+      await alice.locator(`#${button}`).click(); // the header's own buttons, as a person moves between the views
+      await expect(alice.locator("body")).toHaveAttribute("data-view", view);
+      await expect(alice.locator("body")).toHaveAttribute("data-theme", "light");
+      await expect(alice.locator(".themebtn")).toHaveCount(0);
     }
+    // the Workouts view is not in the header for this profile: the count above covers every button in the page, hidden ones too
+    await expect(alice.locator(".themebtn")).toHaveCount(0);
   });
 });
