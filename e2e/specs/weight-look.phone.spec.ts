@@ -2,7 +2,7 @@
  * The Weight view on a phone: the week as a strip that scrolls to the day shown, the verdict first, the charts drawn narrower so their text can be read,
  * the parts one at a time, the weeks as two lines each, and nothing sticking out sideways, in both themes. alice is read only.
  */
-import { test, expect, openView, today, type Page } from "../support/fixtures";
+import { test, expect, openView, today, type Page, chooseTheme } from "../support/fixtures";
 
 test.setTimeout(60_000);
 
@@ -45,7 +45,7 @@ test.describe("the Weight part on a phone", () => {
   test("shows no more than the screen is wide, in both themes", async ({ alice }) => {
     await openWeight(alice);
     for (const theme of ["dark", "light"]) {
-      if (theme === "light") await alice.locator("#bTheme").tap();
+      if (theme === "light") await chooseTheme(alice, "light");
       await expect(alice.locator("body")).toHaveAttribute("data-theme", theme);
       for (const name of ["Weight", "Body", "Data"] as const) {
         await tab(alice, name).tap();
@@ -68,7 +68,7 @@ test.describe("the Weight part on a phone", () => {
 
   test("its days, the arrows, the parts, the unit and the range are at least 44 px tall and wide", async ({ alice }) => {
     await openWeight(alice);
-    for (const sel of ["#bstrip button.fwd", "#bPrev", "#bNext", "#bTabs button", "#bUnits button", "#bRange", "#bTheme", "#bbody .bhero .blink", "#bbody .bsnap .blink"]) {
+    for (const sel of ["#bstrip button.fwd", "#bPrev", "#bNext", "#bTabs button", "#bUnits button", "#bRange", "#bbody .bhero .blink", "#bbody .bsnap .blink"]) {
       for (const [w, h] of await alice.locator(sel).evaluateAll((els) => els.filter((e) => (e as HTMLElement).offsetParent !== null).map((e) => [Math.round(e.getBoundingClientRect().width), Math.round(e.getBoundingClientRect().height)]))) {
         expect(w, `${sel} width`).toBeGreaterThanOrEqual(44);
         expect(h, `${sel} height`).toBeGreaterThanOrEqual(44);
@@ -76,12 +76,11 @@ test.describe("the Weight part on a phone", () => {
     }
   });
 
-  test("the title is dropped from the top for the room, the tabs and the theme button share a line, and the unit and the range share a line", async ({ alice }) => {
+  test("the title is dropped from the top for the room, the tabs take a line of their own, and the unit and the range share a line", async ({ alice }) => {
     await openWeight(alice);
-    const [title, tabs, units, range, theme] = await Promise.all(["#bTitle", "#bTabs", "#bUnits", "#bRange", "#bTheme"].map(async (s) => (await alice.locator(s).boundingBox())!));
+    const [title, tabs, units, range] = await Promise.all(["#bTitle", "#bTabs", "#bUnits", "#bRange"].map(async (s) => (await alice.locator(s).boundingBox())!));
     expect(title.height).toBeLessThan(5); // still in the page for a screen reader, but it takes no row
     expect(tabs.y).toBeLessThan(80);
-    expect(Math.abs(tabs.y - theme.y)).toBeLessThan(12);
     expect(Math.abs(units.y - range.y)).toBeLessThan(8);
   });
 

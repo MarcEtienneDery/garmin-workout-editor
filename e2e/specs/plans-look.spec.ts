@@ -3,7 +3,7 @@
  * totals, workouts with no day), the ⋯ menus of the files and of the outline, the compact muscle map of a lifting workout, Monaco in the
  * page's colours, both themes, and the sizes of what is touched.
  */
-import { test, expect, openView, mondayOf, daysAhead, today, type Page, type APIRequestContext } from "../support/fixtures";
+import { test, expect, openView, mondayOf, daysAhead, today, type Page, type APIRequestContext, toggleTheme } from "../support/fixtures";
 
 test.describe.configure({ timeout: 60_000 });
 
@@ -211,10 +211,10 @@ test.describe("Monaco in the page's colours", () => {
     const root = me.locator("#editor .monaco-editor").first();
     await expect(root).toHaveClass(/vs-dark/);
     await expect.poll(() => me.locator("#editor .monaco-editor-background").first().evaluate((el) => getComputedStyle(el).backgroundColor)).toBe("rgb(18, 14, 11)");
-    await me.locator("#pTheme").click();
+    await toggleTheme(me);
     await expect.poll(() => me.locator("#editor .monaco-editor-background").first().evaluate((el) => getComputedStyle(el).backgroundColor)).toBe("rgb(255, 253, 248)");
     await expect(root).not.toHaveClass(/vs-dark/);
-    await me.locator("#pTheme").click(); // the choice is kept in the browser: leave it as it was found
+    await toggleTheme(me); // the choice is kept in the browser: leave it as it was found
   });
 });
 

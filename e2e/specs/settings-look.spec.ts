@@ -3,7 +3,7 @@
  * fix for each problem and its four tiles, the goals with a preview that follows what is typed and an unsaved bar, Clear all goals asking
  * first and offering Undo, the Display section, the profiles of the admin, both themes, and the sizes of what is touched.
  */
-import { test, expect, loginAs, ADMIN_TOKEN, type Page } from "../support/fixtures";
+import { test, expect, loginAs, openView, ADMIN_TOKEN, type Page } from "../support/fixtures";
 
 test.describe.configure({ timeout: 60_000 });
 
@@ -155,6 +155,18 @@ test.describe("the look", () => {
       expect(low, `${theme}: text under 4.5 to 1`).toEqual([]);
       const small = await me.evaluate(() => [...document.querySelectorAll<HTMLElement>("#sbody .snav button, #sbody .sbtns button, #sbar button")].filter((e) => e.offsetParent && e.getBoundingClientRect().height < 44).map((e) => e.textContent!.trim().slice(0, 20)));
       expect(small, `${theme}: under 44 px`).toEqual([]);
+    }
+  });
+});
+
+test.describe("the theme is chosen in Settings only", () => {
+  test("no view has a theme button, and every view takes the choice made in Display", async ({ me }) => {
+    await open(me, "display");
+    await me.locator(".seg button", { hasText: "Light" }).click();
+    for (const view of ["today", "plans", "workouts", "calendar", "activities", "recovery", "weight", "food"]) {
+      await openView(me, view);
+      await expect(me.locator("body")).toHaveAttribute("data-theme", "light");
+      await expect(me.locator(".themebtn")).toHaveCount(0);
     }
   });
 });

@@ -78,7 +78,7 @@ test.describe("the week on a phone", () => {
 
   test("its days, the arrows and the tabs are at least 44 px tall and wide", async ({ alice }) => {
     await openFood(alice);
-    for (const sel of ["#fstrip button.fwd", "#fPrev", "#fNext", "#fTabs button", "#fbody .fpill", "#fTheme"]) {
+    for (const sel of ["#fstrip button.fwd", "#fPrev", "#fNext", "#fTabs button", "#fbody .fpill"]) {
       for (const [w, h] of await alice.locator(sel).evaluateAll((els) => els.map((e) => [Math.round(e.getBoundingClientRect().width), Math.round(e.getBoundingClientRect().height)]))) {
         expect(w, `${sel} width`).toBeGreaterThanOrEqual(44);
         expect(h, `${sel} height`).toBeGreaterThanOrEqual(44);

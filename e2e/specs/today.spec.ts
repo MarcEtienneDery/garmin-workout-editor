@@ -4,7 +4,7 @@
  * the fresh profile only. Garmin is not connected for either, so the Sync button and the profile picker are absent for them.
  */
 import type { Page } from "@playwright/test";
-import { test, expect, openView, loginAs, today, daysAgo, daysAhead, ADMIN_TOKEN } from "../support/fixtures";
+import { test, expect, openView, loginAs, today, daysAgo, daysAhead, ADMIN_TOKEN, chooseTheme, toggleTheme } from "../support/fixtures";
 
 // The machine is shared by every spec run at once: a page can take many seconds to answer, so each test has more than the default 30 s.
 test.describe.configure({ timeout: 60_000 });
@@ -227,19 +227,19 @@ test.describe("alice's day", () => {
 
   test("the theme button switches the view between dark and light, says what it will do, and the choice is kept", async ({ alice }) => {
     await openToday(alice);
-    const view = alice.locator("body"), button = alice.locator("#tTheme");
+    const view = alice.locator("body");
     await expect(view).toHaveAttribute("data-theme", "dark");
-    await expect(button).toHaveAttribute("aria-label", "Switch to light theme");
+    await expect(view).toHaveAttribute("data-theme", "dark");
     const darkBg = await alice.locator("#tscroll").evaluate((el) => getComputedStyle(el).backgroundColor);
-    await button.click();
+    await toggleTheme(alice);
     await expect(view).toHaveAttribute("data-theme", "light");
-    await expect(button).toHaveAttribute("aria-label", "Switch to dark theme");
+    await expect(view).toHaveAttribute("data-theme", "light");
     const lightBg = await alice.locator("#tscroll").evaluate((el) => getComputedStyle(el).backgroundColor);
     expect(lightBg).not.toBe(darkBg);
     await alice.reload();
     await expect(alice.locator("#tbody")).not.toContainText("Loading", { timeout: 20_000 });
     await expect(view).toHaveAttribute("data-theme", "light");
-    await button.click();
+    await toggleTheme(alice);
     await expect(view).toHaveAttribute("data-theme", "dark");
   });
 
@@ -256,7 +256,7 @@ test.describe("alice's day", () => {
         return { number: ratio(fg, bg), note: ratio(note, bg) };
       });
     for (const theme of ["dark", "light"]) {
-      if (theme === "light") await alice.locator("#tTheme").click();
+      if (theme === "light") await chooseTheme(alice, "light");
       const { number, note } = await contrast();
       expect(number, `${theme}: the number`).toBeGreaterThanOrEqual(7);
       expect(note, `${theme}: the note under it`).toBeGreaterThanOrEqual(4.5);

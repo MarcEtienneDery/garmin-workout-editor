@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
-<meta name="theme-color" content="#252526">
+<meta name="theme-color" content="#070504">
 <link rel="icon" href="/icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <title>Plan Editor</title>
@@ -2385,6 +2385,20 @@
     #tbody, #fbody, #rbody, #sbody { padding-top:12px; } /* the first thing in a view starts just under the band, so none of it is hidden at rest */
     #fview .fside, #sview .snav { top:12px; }
   }
+  /* The account menu takes the header's colours in dark and light, not the grey of the old menus */
+  header { --nav-panel:#1b1612; }
+  body[data-theme="light"] header { --nav-panel:#ffffff; }
+  header .account > .menu { padding:6px; background:var(--nav-panel); border:1px solid var(--nav-line); border-radius:18px; box-shadow:0 24px 50px -18px rgba(0,0,0,.6); color:var(--nav-fg); }
+  body[data-theme="light"] header .account > .menu { box-shadow:0 18px 36px -20px rgba(60,40,10,.4); }
+  header .account > .menu button { min-height:44px; padding:0 12px; border:0; border-radius:12px; background:none; color:var(--nav-fg); font:600 15px/1.2 "Fira Sans",system-ui,sans-serif; text-align:left; }
+  header .account > .menu button:hover:not(:disabled) { background:var(--nav-hover); }
+  header .account > .menu button.danger { color:var(--err); }
+  header .account > .menu .who { padding:8px 12px 6px; font:400 14px/1.4 "Fira Sans",system-ui,sans-serif; color:var(--nav-dim); }
+  header .account > .menu .who small { color:var(--nav-dim); }
+  header .account > .menu .who b { color:var(--nav-fg); font:700 16px/1.2 "Fira Sans",system-ui,sans-serif; letter-spacing:.02em; }
+  header .account > .menu hr { margin:6px 6px; border:0; border-top:1px solid var(--nav-line); }
+  header #explainBtn::after { background:color-mix(in srgb, var(--nav-fg) 24%, transparent) radial-gradient(circle at 7px 7px, var(--nav-dim) 5px, transparent 5.5px); }
+  header #explainBtn[aria-pressed="true"]::after { background:var(--nav-accent) radial-gradient(circle at 19px 7px, var(--nav-on-accent) 5px, transparent 5.5px); }
 </style>
 </head>
 <body data-view="today">
@@ -2461,7 +2475,6 @@
         <button id="delete" class="danger" disabled>Delete</button>
       </div>
     </div>
-    <button id="pTheme" class="themebtn" type="button" aria-label="Switch to light theme" title="Switch to light theme"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><g class="sun"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></g><path class="moon" d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z"/></svg></button>
   </div>
 </div>
 <main>
@@ -2503,7 +2516,6 @@
     <select id="wProfile" title="Garmin profile" hidden></select>
     <button id="wRefresh" class="round" title="Reload from Garmin" aria-label="Reload from Garmin"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></svg></button>
     <button id="wNew" class="primary">＋ New workout</button>
-    <button id="wTheme" class="themebtn" type="button" aria-label="Switch to light theme" title="Switch to light theme"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><g class="sun"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></g><path class="moon" d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z"/></svg></button>
   </div>
   <div id="wstrip" role="group" aria-label="Show workouts by status" hidden></div>
   <div id="wmain">
@@ -2550,7 +2562,6 @@
         <button data-mode="workouts" aria-pressed="false" title="Which workout is scheduled when">Workouts</button>
       </div>
       <button id="cRefresh" title="Reload the plans">↻</button>
-      <button id="cTheme" class="themebtn" type="button" aria-label="Switch to light theme" title="Switch to light theme"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><g class="sun"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></g><path class="moon" d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z"/></svg></button>
     </div>
     <div id="cNote" class="empty" hidden></div>
     <div id="cscroll">
@@ -2579,7 +2590,6 @@
       <button data-mode="list" aria-pressed="true">Log</button>
       <button data-mode="stats" aria-pressed="false">Progress</button>
     </div>
-    <button id="aTheme" class="themebtn" type="button" aria-label="Switch to light theme" title="Switch to light theme"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><g class="sun"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></g><path class="moon" d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z"/></svg></button>
   </div>
   <div id="aFetch" class="anotebar" hidden></div>
   <div id="afilters">
@@ -2611,7 +2621,6 @@
     <button id="rToday" hidden>Today</button>
     <button id="rSync" title="Fetch the latest from Garmin" hidden>↻ Sync</button>
     <div id="rTabs" class="rtabs" role="group" aria-label="What the view shows" hidden><button id="rTabV" type="button" aria-pressed="true">Verdict</button><button id="rTabT" type="button" aria-pressed="false">Trends</button><button id="rTabD" type="button" aria-pressed="false">Data</button></div>
-    <button id="rTheme" class="themebtn" type="button" aria-label="Switch to light theme" title="Switch to light theme"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><g class="sun"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></g><path class="moon" d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z"/></svg></button>
     <select id="rRange" title="How many days the charts and the table show" aria-label="How many days the charts and the table show" hidden>
       <option value="14">14 days</option><option value="30" selected>30 days</option><option value="60">60 days</option><option value="90">90 days</option>
     </select>
@@ -2630,7 +2639,6 @@
     <h2 id="bTitle">Weight</h2>
     <button id="bSync" title="Fetch the latest from Garmin, new weigh-ins included" hidden>↻ Sync</button>
     <div id="bTabs" class="btabs" role="group" aria-label="What the view shows" hidden><button id="bTabW" type="button" aria-pressed="true">Weight</button><button id="bTabB" type="button" aria-pressed="false" hidden>Body</button><button id="bTabD" type="button" aria-pressed="false">Data</button></div>
-    <button id="bTheme" class="themebtn" type="button" aria-label="Switch to light theme" title="Switch to light theme"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><g class="sun"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></g><path class="moon" d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z"/></svg></button>
   </div>
   <div id="bweek" hidden>
     <button id="bPrev" title="Previous day" aria-label="Previous day">◀</button>
@@ -2655,7 +2663,6 @@
     <div class="fdaypick"><span id="fDayLabel"></span><input type="date" id="fDate" aria-label="Day"></div>
     <button id="fToday" hidden>Today</button>
     <div id="fTabs" class="ftabs" role="group" aria-label="What the view shows"><button id="fTabLog" type="button" aria-pressed="true">Log</button><button id="fTabIns" type="button" aria-pressed="false">Insights</button></div>
-    <button id="fTheme" class="themebtn" type="button" aria-label="Switch to light theme" title="Switch to light theme"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><g class="sun"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></g><path class="moon" d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z"/></svg></button>
   </div>
   <div id="fweek" hidden>
     <button id="fPrev" title="Previous day" aria-label="Previous day">◀</button>
@@ -2677,7 +2684,6 @@
     <span id="tAsOf"></span>
     <span class="tspacer"></span>
     <button id="tSync" title="Fetch the latest from Garmin" hidden>↻ Sync</button>
-    <button id="tTheme" class="themebtn" type="button" aria-label="Switch to light theme" title="Switch to light theme"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><g class="sun"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></g><path class="moon" d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z"/></svg></button>
   </div>
   <div id="tNote" class="empty" hidden></div>
   <div id="tscroll"><div id="tbody"><div class="empty">Loading…</div></div></div>
@@ -8818,16 +8824,12 @@ function todayAhead(ahead) {
 const THEME_KEY = "viewTheme", OLD_THEME_KEY = "todayTheme";
 /**
  * The theme of the views that have been restyled (Today and Food), dark or light, set on <body> so the rail beside them follows: the saved
- * choice, else dark (the rest of the editor is dark until it follows). One choice for all of them, with a button in each view's bar.
+ * choice, else dark (the rest of the editor is dark until it follows). One choice for all of them, made in Settings (Appearance).
  */
 function setTheme(theme, save) {
   const light = theme === "light";
   document.body.dataset.theme = light ? "light" : "dark";
   if (monaco && monaco.editor) monaco.editor.setTheme(monacoThemeName());
-  for (const btn of document.querySelectorAll(".themebtn")) {
-    btn.setAttribute("aria-label", light ? "Switch to dark theme" : "Switch to light theme");
-    btn.title = btn.getAttribute("aria-label");
-  }
   if (save) { try { localStorage.setItem(THEME_KEY, light ? "light" : "dark"); } catch { /* a private window keeps nothing: the choice lasts until the page closes */ } }
 }
 
@@ -8835,7 +8837,6 @@ function bindTheme() {
   let saved = null;
   try { saved = localStorage.getItem(THEME_KEY) || localStorage.getItem(OLD_THEME_KEY); } catch { /* no storage: dark */ }
   setTheme(saved, false);
-  for (const btn of document.querySelectorAll(".themebtn")) btn.onclick = () => setTheme(document.body.dataset.theme === "light" ? "dark" : "light", true);
 }
 
 function bindTodayView() {

@@ -4,7 +4,7 @@
  * alice's days are read only (the oracle is GET /api/wellness as admin); the bands she does not have are made by changing the answer the page gets.
  */
 import type { APIRequestContext, Page } from "@playwright/test";
-import { test, expect, openView, loginAs, ADMIN_TOKEN } from "../support/fixtures";
+import { test, expect, openView, loginAs, ADMIN_TOKEN, chooseTheme, toggleTheme } from "../support/fixtures";
 
 test.describe.configure({ timeout: 60_000 });
 
@@ -324,7 +324,7 @@ test.describe("the look", () => {
   test("the controls of the bar, the week and the tabs are at least 44 px, in both themes", async ({ alice }) => {
     await openRecovery(alice);
     for (const theme of ["dark", "light"]) {
-      if (theme === "light") await alice.locator("#rTheme").click();
+      if (theme === "light") await chooseTheme(alice, "light");
       await expect(alice.locator("body")).toHaveAttribute("data-theme", theme);
       const small = await alice.evaluate(() =>
         [...document.querySelectorAll<HTMLElement>("#rbar button, #rbar .rdaypick, #rweek button")].filter((el) => el.offsetParent !== null).map((el) => [el.id || el.className, Math.round(el.getBoundingClientRect().height)] as const).filter(([, h]) => h < 44),
@@ -335,17 +335,17 @@ test.describe("the look", () => {
 
   test("the theme button switches between dark and light, says what it will do, and the choice is the one of the other views", async ({ alice }) => {
     await openRecovery(alice);
-    const body = alice.locator("body"), button = alice.locator("#rTheme");
+    const body = alice.locator("body");
     await expect(body).toHaveAttribute("data-theme", "dark");
-    await expect(button).toHaveAttribute("aria-label", "Switch to light theme");
+    await expect(body).toHaveAttribute("data-theme", "dark");
     const dark = await color(alice, "#rscroll", "background-color");
-    await button.click();
+    await toggleTheme(alice);
     await expect(body).toHaveAttribute("data-theme", "light");
-    await expect(button).toHaveAttribute("aria-label", "Switch to dark theme");
+    await expect(body).toHaveAttribute("data-theme", "light");
     expect(await color(alice, "#rscroll", "background-color")).not.toBe(dark);
     await alice.locator("#vToday").click();
-    await expect(alice.locator("#tTheme")).toHaveAttribute("aria-label", "Switch to dark theme");
-    await alice.locator("#tTheme").click();
+    await expect(alice.locator("body")).toHaveAttribute("data-theme", "light");
+    await toggleTheme(alice);
     await alice.locator("#vRecovery").click();
     await expect(body).toHaveAttribute("data-theme", "dark");
   });
@@ -354,7 +354,7 @@ test.describe("the look", () => {
     await altered(alice, withBand("go-harder", 76, [1, 1, 1, 2, 1, 1]));
     await openRecovery(alice);
     for (const theme of ["dark", "light"]) {
-      if (theme === "light") await alice.locator("#rTheme").click();
+      if (theme === "light") await chooseTheme(alice, "light");
       await alice.evaluate(() => Promise.all(document.getAnimations().map((a) => a.finished.catch(() => null)))); // the colours have settled
       const low = await alice.evaluate(() => {
         const lum = (css: string) => {
@@ -394,7 +394,7 @@ test.describe("the look", () => {
       await alice.reload();
       await expect(hero(alice)).toHaveClass(new RegExp(`b-${ZONE[band]}`));
       for (const theme of ["dark", "light"]) {
-        if ((await alice.locator("body").getAttribute("data-theme")) !== theme) await alice.locator("#rTheme").click();
+        if ((await alice.locator("body").getAttribute("data-theme")) !== theme) await toggleTheme(alice);
         await alice.evaluate(() => Promise.all(document.getAnimations().map((a) => a.finished.catch(() => null))));
         (seen[theme] ??= []).push(await color(alice, "#rbody .rband"));
       }
@@ -459,7 +459,7 @@ test.describe("the look", () => {
     const c = alice.locator("#rbody .rc", { has: alice.locator("b", { hasText: "Readiness" }) });
     await expect(c.locator("rect.rc-bar.go")).not.toHaveCount(0);
     for (const theme of ["dark", "light"]) {
-      if (theme === "light") await alice.locator("#rTheme").click();
+      if (theme === "light") await chooseTheme(alice, "light");
       const fills = await Promise.all(["go", "plan", "back"].map((z) => c.locator(`rect.rc-bar.${z}`).first().evaluate((el) => getComputedStyle(el).fill)));
       expect(new Set(fills).size, theme).toBe(3);
       const key = await Promise.all(["go", "plan", "back"].map((z) => c.locator(`.rcl i.sw-${z}`).evaluate((el) => getComputedStyle(el).backgroundColor)));

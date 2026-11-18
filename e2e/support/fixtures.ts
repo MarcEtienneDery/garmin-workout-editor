@@ -63,6 +63,14 @@ export async function openView(page: Page, view: string): Promise<void> {
   await expect(page.locator("body")).toHaveAttribute("data-view", view);
 }
 
+/** The theme, set the way Settings > Appearance sets it (the page's own function, which keeps the choice for the views after). */
+export const chooseTheme = (page: Page, theme: "dark" | "light") =>
+  page.evaluate((t) => (window as any).setTheme(t, true), theme);
+
+/** The other theme, as the button that every view's bar had before the theme moved to Settings. */
+export const toggleTheme = (page: Page) =>
+  page.evaluate(() => (window as any).setTheme(document.body.dataset.theme === "light" ? "dark" : "light", true));
+
 let counter = 0;
 const unique = () => `t${Date.now().toString(36)}${(counter++).toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 

@@ -4,7 +4,7 @@
  * the days add up to); the card to add a food (the bar, the meal to add to as pills, the foods used lately); the meals as cards, one with
  * nothing in it a single line. alice's food is read only; anything that logs a food uses a profile of its own (`me`).
  */
-import { test, expect, openView, daysAgo, today, mondayOf, type APIRequestContext, type Page } from "../support/fixtures";
+import { test, expect, openView, daysAgo, today, mondayOf, type APIRequestContext, type Page, chooseTheme } from "../support/fixtures";
 import { MEAL_LABEL, meal, openFood, type Meal } from "../support/food";
 
 test.describe.configure({ timeout: 60_000 });
@@ -303,7 +303,7 @@ test.describe("on a wide screen, in both themes", () => {
   test("the days, the pills and the tabs read: the text of each against its background is at least 4.5 to 1", async ({ alice }) => {
     await openFood(alice);
     for (const theme of ["dark", "light"]) {
-      if (theme === "light") await alice.locator("#fTheme").click();
+      if (theme === "light") await chooseTheme(alice, "light");
       await alice.evaluate(() => Promise.all(document.getAnimations().map((a) => a.finished.catch(() => null)))); // the colours have settled
       const low = await alice.evaluate(() => {
         const lum = (css: string) => {

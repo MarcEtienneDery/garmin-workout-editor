@@ -4,7 +4,7 @@
  * and nothing sticking out sideways in either theme. alice's days are read only.
  */
 import type { Page } from "@playwright/test";
-import { test, expect, openView } from "../support/fixtures";
+import { test, expect, openView, chooseTheme, toggleTheme } from "../support/fixtures";
 
 test.setTimeout(60_000);
 
@@ -67,7 +67,7 @@ test.describe("the Verdict on a phone", () => {
     });
     await openRecovery(alice);
     for (const theme of ["dark", "light"]) {
-      if (theme === "light") await alice.locator("#rTheme").tap();
+      if (theme === "light") await chooseTheme(alice, "light");
       await expect(alice.locator("body")).toHaveAttribute("data-theme", theme);
       await expect(hero(alice)).toHaveClass(/b-back/);
       await expect.poll(() => stickingOut(alice), theme).toEqual([]);
@@ -93,7 +93,7 @@ test.describe("the week on a phone", () => {
 
   test("its days, the arrows, the tabs and the theme button are at least 44 px", async ({ alice }) => {
     await openRecovery(alice);
-    for (const sel of ["#rstrip button.fwd", "#rPrev", "#rNext", "#rTabs button", "#rTheme", "#rbar .rdaypick"]) {
+    for (const sel of ["#rstrip button.fwd", "#rPrev", "#rNext", "#rTabs button", "#rbar .rdaypick"]) {
       for (const [w, h] of await alice.locator(sel).evaluateAll((els) => els.map((e) => [Math.round(e.getBoundingClientRect().width), Math.round(e.getBoundingClientRect().height)]))) {
         expect(w, `${sel} width`).toBeGreaterThanOrEqual(44);
         expect(h, `${sel} height`).toBeGreaterThanOrEqual(44);
@@ -158,7 +158,7 @@ test.describe("the Trends and the Data on a phone", () => {
 
   test("fits the width in the light theme in every part", async ({ alice }) => {
     await openRecovery(alice);
-    await alice.locator("#rTheme").tap();
+    await toggleTheme(alice);
     await expect(alice.locator("body")).toHaveAttribute("data-theme", "light");
     for (const name of ["Verdict", "Trends", "Data"] as const) {
       await part(alice, name).tap();

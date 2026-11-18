@@ -4,7 +4,7 @@
  * palette, and the sizes of the controls. alice's plans are read only; the Move menu needs a plan of a profile's own.
  */
 import type { Page } from "@playwright/test";
-import { test, expect, openView, monthView, type Profile } from "../support/fixtures";
+import { test, expect, openView, monthView, type Profile, chooseTheme, toggleTheme } from "../support/fixtures";
 
 test.describe.configure({ timeout: 60_000 });
 
@@ -31,18 +31,18 @@ async function openCalendar(page: Page): Promise<void> {
 test.describe("the Calendar's themes", () => {
   test("the button in the bar switches between dark and light, says what it will do, and the choice is kept", async ({ alice }) => {
     await openCalendar(alice);
-    const body = alice.locator("body"), button = alice.locator("#cTheme");
+    const body = alice.locator("body");
     await expect(body).toHaveAttribute("data-theme", "dark");
-    await expect(button).toHaveAttribute("aria-label", "Switch to light theme");
+    await expect(body).toHaveAttribute("data-theme", "dark");
     const darkBg = await style(alice, "#cscroll", "background-color");
-    await button.click();
+    await toggleTheme(alice);
     await expect(body).toHaveAttribute("data-theme", "light");
-    await expect(button).toHaveAttribute("aria-label", "Switch to dark theme");
+    await expect(body).toHaveAttribute("data-theme", "light");
     expect(await style(alice, "#cscroll", "background-color")).not.toBe(darkBg);
     await alice.reload();
     await expect(alice.locator("#cgrid .cday").first()).toBeVisible();
     await expect(body).toHaveAttribute("data-theme", "light");
-    await button.click();
+    await toggleTheme(alice);
     await expect(body).toHaveAttribute("data-theme", "dark");
   });
 
@@ -50,22 +50,22 @@ test.describe("the Calendar's themes", () => {
     await openCalendar(alice);
     const rail = () => style(alice, "header", "background-color");
     const dark = await rail();
-    await alice.locator("#cTheme").click();
+    await toggleTheme(alice);
     const light = await rail();
     expect(light).not.toBe(dark);
     await alice.locator("#vFood").click();
-    await expect(alice.locator("#fTheme")).toHaveAttribute("aria-label", "Switch to dark theme");
+    await expect(alice.locator("body")).toHaveAttribute("data-theme", "light");
     expect(await rail()).toBe(light);
-    await alice.locator("#fTheme").click();
+    await toggleTheme(alice);
     await alice.locator("#vCalendar").click();
-    await expect(alice.locator("#cTheme")).toHaveAttribute("aria-label", "Switch to light theme");
+    await expect(alice.locator("body")).toHaveAttribute("data-theme", "dark");
     expect(await rail()).toBe(dark);
   });
 
   test("in both themes the text of the month and of the side keeps its contrast", async ({ alice }) => {
     await openCalendar(alice);
     for (const theme of ["dark", "light"]) {
-      if (theme === "light") await alice.locator("#cTheme").click();
+      if (theme === "light") await chooseTheme(alice, "light");
       const card = await style(alice, "#cscroll", "background-color");
       expect(await contrast(alice, await style(alice, "#cTitle", "color"), await style(alice, "#cview", "background-color")), `${theme}: the month's title`).toBeGreaterThanOrEqual(7);
       expect(await contrast(alice, await style(alice, "#cdow span", "color"), card), `${theme}: the weekdays`).toBeGreaterThanOrEqual(4.5);
@@ -88,7 +88,7 @@ test.describe("the month", () => {
   test("marks today with an accent circle and the day picked with an outline in the same colour", async ({ alice }) => {
     await openCalendar(alice);
     for (const theme of ["dark", "light"]) {
-      if (theme === "light") await alice.locator("#cTheme").click();
+      if (theme === "light") await chooseTheme(alice, "light");
       const accent = await style(alice, "#cgrid .cday.today .dnum", "background-color");
       expect(accent).not.toBe("rgba(0, 0, 0, 0)");
       expect(await contrast(alice, await style(alice, "#cgrid .cday.today .dnum", "color"), accent), `${theme}: today's number`).toBeGreaterThanOrEqual(4.5);
@@ -99,7 +99,7 @@ test.describe("the month", () => {
   test("keeps every plan bar and workout chip readable: white on its colour is at least 4.5 to 1, in both themes", async ({ alice }) => {
     await openCalendar(alice);
     for (const theme of ["dark", "light"]) {
-      if (theme === "light") await alice.locator("#cTheme").click();
+      if (theme === "light") await chooseTheme(alice, "light");
       const pairs = await alice.locator("#cgrid .cbar:not(.window)").evaluateAll((els) => [...new Set(els.map((el) => `${getComputedStyle(el).color}|${getComputedStyle(el).backgroundColor}`))]);
       expect(pairs.length).toBeGreaterThan(1);
       for (const pair of pairs) {
@@ -119,7 +119,7 @@ test.describe("the month", () => {
     const dashed = me.locator("#cgrid .cbar.window").first();
     await expect(dashed).toBeVisible();
     for (const theme of ["dark", "light"]) {
-      if (theme === "light") await me.locator("#cTheme").click();
+      if (theme === "light") await chooseTheme(me, "light");
       expect(await dashed.evaluate((el) => getComputedStyle(el).borderTopStyle)).toBe("dashed");
       const edge = await dashed.evaluate((el) => getComputedStyle(el).borderTopColor);
       expect(await contrast(me, edge, await style(me, "#cscroll", "background-color")), `${theme}: the dashed edge`).toBeGreaterThanOrEqual(3);
@@ -162,7 +162,7 @@ test.describe("the Move menu", () => {
     for (const theme of ["dark", "light"]) {
       if (theme === "light") {
         await me.keyboard.press("Escape");
-        await me.locator("#cTheme").click();
+        await toggleTheme(me);
         await me.locator("#cDay .citem", { hasText: "Morning run" }).getByRole("button", { name: "Move…" }).click();
         await expect(me.locator("#moveMenu")).toBeVisible();
       }
@@ -179,7 +179,7 @@ test.describe("the controls", () => {
   test("the bar's buttons and the mode choices are at least 44 px, in both themes", async ({ alice }) => {
     await openCalendar(alice);
     for (const theme of ["dark", "light"]) {
-      if (theme === "light") await alice.locator("#cTheme").click();
+      if (theme === "light") await chooseTheme(alice, "light");
       const small = await alice.evaluate(() => [...document.querySelectorAll<HTMLElement>("#cbar button")].filter((el) => el.offsetParent !== null).map((el) => [el.id || el.dataset.mode || "", Math.round(el.getBoundingClientRect().height)] as const).filter(([, h]) => h < 44));
       expect(small, `${theme}: controls under 44 px`).toEqual([]);
     }

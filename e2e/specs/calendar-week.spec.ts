@@ -5,7 +5,7 @@
  * profile's own, dated in 2031 so that no other spec's data lands on its weeks.
  */
 import type { APIRequestContext, Locator, Page } from "@playwright/test";
-import { test, expect, openView, today, daysAgo, mondayOf, type Profile } from "../support/fixtures";
+import { test, expect, openView, today, daysAgo, mondayOf, type Profile, chooseTheme } from "../support/fixtures";
 
 test.describe.configure({ timeout: 60_000 });
 
@@ -279,7 +279,7 @@ test.describe("the look of the week", () => {
   test("the text of the summary, the days and the cards keeps its contrast in both themes", async ({ alice }) => {
     await openWeek(alice);
     for (const theme of ["dark", "light"]) {
-      if (theme === "light") await alice.locator("#cTheme").click();
+      if (theme === "light") await chooseTheme(alice, "light");
       const tile = await style(alice, "#cwSum .cws", "background-color");
       expect(await contrast(alice, await style(alice, "#cwSum .cws b", "color"), tile), `${theme}: a number of the summary`).toBeGreaterThanOrEqual(7);
       expect(await contrast(alice, await style(alice, "#cwSum .cws > span", "color"), tile), `${theme}: its note`).toBeGreaterThanOrEqual(4.5);

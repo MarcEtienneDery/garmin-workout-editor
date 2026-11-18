@@ -3,7 +3,7 @@
  * muscle map stacked and compact, Progress's cards one under the other, nothing sticking out sideways, in both themes, and the controls big enough
  * to tap. alice (27 activities, the details of a few, no Garmin login) is read only.
  */
-import { test, expect, openView, type Page } from "../support/fixtures";
+import { test, expect, openView, type Page, toggleTheme } from "../support/fixtures";
 
 test.setTimeout(60_000);
 
@@ -38,10 +38,10 @@ test.describe("the Activities view on a phone", () => {
     const box = (await alice.locator("#aribbon .acard").boundingBox())!;
     expect(box.x + box.width).toBeLessThanOrEqual(412);
     await expect.poll(() => stickingOut(alice)).toEqual([]);
-    await alice.locator("#aTheme").tap();
+    await toggleTheme(alice);
     await expect(alice.locator("body")).toHaveAttribute("data-theme", "light");
     await expect.poll(() => stickingOut(alice)).toEqual([]);
-    await alice.locator("#aTheme").tap();
+    await toggleTheme(alice);
   });
 
   test("tapping a row shows the activity on its own, and the back button brings the Log back where it was", async ({ alice }) => {
@@ -67,12 +67,12 @@ test.describe("the Activities view on a phone", () => {
     expect(e.y, "stacked: the effect under the planned bars").toBeGreaterThanOrEqual(p.y + p.height - 1);
     await expect.poll(() => stickingOut(alice)).toEqual([]);
     await alice.locator("#aBack").tap();
-    await alice.locator("#aTheme").tap();
+    await toggleTheme(alice);
     await alice.locator('#alist .arow[data-id="9018"]').tap();
     await expect(alice.locator("#abody .aplanned")).toBeVisible();
     await expect.poll(() => stickingOut(alice)).toEqual([]);
     await alice.locator("#aBack").tap();
-    await alice.locator("#aTheme").tap();
+    await toggleTheme(alice);
   });
 
   test("a gym session's exercises put the share of the 1RM in each chip, and the chips wrap inside the width", async ({ alice }) => {
@@ -98,10 +98,10 @@ test.describe("the Activities view on a phone", () => {
     await expect(card).toHaveClass(/open/);
     await expect(card.locator(".ammbal")).toBeVisible();
     await expect.poll(() => stickingOut(alice)).toEqual([]);
-    await alice.locator("#aTheme").tap();
+    await toggleTheme(alice);
     await expect(alice.locator("body")).toHaveAttribute("data-theme", "light");
     await expect.poll(() => stickingOut(alice)).toEqual([]);
-    await alice.locator("#aTheme").tap();
+    await toggleTheme(alice);
   });
 
   test("tapping a muscle of the list names it and the exercises that worked it, and tapping elsewhere lets it go", async ({ alice }) => {
@@ -116,7 +116,7 @@ test.describe("the Activities view on a phone", () => {
 
   test("the controls are big enough to tap: the modes, the theme, the filters and the rows are at least 44 px high", async ({ alice }) => {
     await openLog(alice);
-    for (const sel of ["#aModes button", "#aTheme", "#aTypes .tchip", ".asearch", "#aRange", "#alist .arow", "#aribbon .awk12"]) {
+    for (const sel of ["#aModes button", "#aTypes .tchip", ".asearch", "#aRange", "#alist .arow", "#aribbon .awk12"]) {
       for (const [w, h] of await alice.locator(sel).evaluateAll((els) => els.filter((e) => (e as HTMLElement).offsetParent !== null).map((e) => [Math.round(e.getBoundingClientRect().width), Math.round(e.getBoundingClientRect().height)]))) {
         expect(h, `${sel} height`).toBeGreaterThanOrEqual(44);
         expect(w, `${sel} width`).toBeGreaterThanOrEqual(sel.includes("awk12") ? 16 : 44);

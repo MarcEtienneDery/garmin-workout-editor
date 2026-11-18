@@ -5,7 +5,7 @@
  * of food, no Garmin login) is read only: the states she does not have are made by changing her answer on its way to the page (`stub`), and the one
  * test that sets a goal on her takes it off again.
  */
-import { test, expect, openView, loginAs, daysAgo, today, mondayOf, PASSWORD, ADMIN_TOKEN, type APIRequestContext, type Page } from "../support/fixtures";
+import { test, expect, openView, loginAs, daysAgo, today, mondayOf, PASSWORD, ADMIN_TOKEN, type APIRequestContext, type Page, chooseTheme, toggleTheme } from "../support/fixtures";
 
 const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -516,7 +516,7 @@ test.describe("the look, in both themes", () => {
     await stub(alice, (json) => { weighIns(json, (n) => 85 - n * 0.3); json.goalKg = 70; });
     await openWeight(alice);
     for (const theme of ["dark", "light"]) {
-      if (theme === "light") await alice.locator("#bTheme").click();
+      if (theme === "light") await chooseTheme(alice, "light");
       await expect(alice.locator("body")).toHaveAttribute("data-theme", theme);
       await alice.evaluate(() => Promise.all(document.getAnimations().map((a) => a.finished.catch(() => null)))); // the colours have settled
       const low = await alice.evaluate(() => {
@@ -547,7 +547,7 @@ test.describe("the look, in both themes", () => {
 
   test("the controls of the bar, the week and the range are at least 44 px", async ({ alice }) => {
     await openWeight(alice);
-    for (const sel of ["#bTabs button", "#bUnits button", "#bRange", "#bTheme", "#bPrev", "#bNext", "#bstrip button.fwd", "#bbody .bhero .blink"]) {
+    for (const sel of ["#bTabs button", "#bUnits button", "#bRange", "#bPrev", "#bNext", "#bstrip button.fwd", "#bbody .bhero .blink"]) {
       for (const [w, h] of await alice.locator(sel).evaluateAll((els) => els.filter((e) => (e as HTMLElement).offsetParent !== null).map((e) => [Math.round(e.getBoundingClientRect().width), Math.round(e.getBoundingClientRect().height)]))) {
         expect(h, `${sel} height`).toBeGreaterThanOrEqual(44);
         expect(w, `${sel} width`).toBeGreaterThanOrEqual(44);
@@ -555,18 +555,17 @@ test.describe("the look, in both themes", () => {
     }
   });
 
-  test("the button in the bar switches between dark and light, one choice shared with the other views", async ({ alice }) => {
+  test("the theme switches between dark and light, one choice shared with the other views", async ({ alice }) => {
     await openWeight(alice);
     const body = alice.locator("body");
     await expect(body).toHaveAttribute("data-theme", "dark");
-    await alice.locator("#bTheme").click();
+    await toggleTheme(alice);
     await expect(body).toHaveAttribute("data-theme", "light");
-    await expect(alice.locator("#bTheme")).toHaveAttribute("aria-label", "Switch to dark theme");
     expect(await alice.locator("#bscroll").evaluate((el) => getComputedStyle(el).backgroundColor)).not.toBe("rgb(7, 5, 4)");
     await alice.reload({ waitUntil: "domcontentloaded" });
     await expect(hero(alice)).toBeVisible();
     await expect(body).toHaveAttribute("data-theme", "light");
-    await alice.locator("#bTheme").click();
+    await toggleTheme(alice);
     await expect(body).toHaveAttribute("data-theme", "dark");
   });
 

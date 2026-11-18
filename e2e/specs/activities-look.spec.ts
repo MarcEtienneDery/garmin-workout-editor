@@ -5,7 +5,7 @@
  * sizes of the controls. alice (27 activities, the details and the stored sets of a few, no Garmin login) is read only: the states she does not have
  * are made by changing her answer on its way to the page.
  */
-import { test, expect, openView, today, daysAgo, type APIRequestContext, type Page } from "../support/fixtures";
+import { test, expect, openView, today, daysAgo, type APIRequestContext, type Page, chooseTheme, toggleTheme } from "../support/fixtures";
 
 interface Row { id: number; type: string; date: string; speedKph: number | null; km: number | null; name: string }
 async function rowsOf(admin: APIRequestContext): Promise<Row[]> {
@@ -304,7 +304,7 @@ test.describe("the look, in both themes", () => {
     for (const theme of ["dark", "light"]) {
       await alice.locator('#aModes button[data-mode="list"]').click();
       await expect(alice.locator("#alist .arow").first()).toBeVisible();
-      if (theme === "light") await alice.locator("#aTheme").click();
+      if (theme === "light") await chooseTheme(alice, "light");
       await expect(alice.locator("body")).toHaveAttribute("data-theme", theme);
       await alice.evaluate(() => Promise.all(document.getAnimations().map((a) => a.finished.catch(() => null)))); // the colours have settled
       expect(await lowContrast(alice, ["#abar h1", "#aNote", "#aview .arow .nm", "#aview .arow .ameta", "#aview .arow .ak b", "#aview .arow .ak small", "#aribbon .aeyebrow", "#aribbon .aaxis span", "#aTypes .tchip"]), `${theme}: the Log`).toEqual([]);
@@ -318,23 +318,23 @@ test.describe("the look, in both themes", () => {
       await expect(alice.locator("#astats .aoverall")).toBeVisible();
       expect(await lowContrast(alice, ["#astats .aeyebrow", "#astats .aoverall *", "#astats .aheatstats span", "#astats .ammrow", "#astats .ammread", "#astats .ammunder .acchip", "#astats .ammnote", "#astats .ammt", "#astats .amperiods button"]), `${theme}: Progress`).toEqual([]);
     }
-    await alice.locator("#aTheme").click(); // leave her as she was found
+    await toggleTheme(alice); // leave her as she was found
   });
 
   test("the muscle map is drawn in the theme's colours: the idle body and the fills change with the theme", async ({ alice }) => {
     await openProgress(alice);
     const idle = () => alice.locator("#astats .ammc").evaluate((el) => getComputedStyle(el).getPropertyValue("--mm-idle").trim());
     const dark = await idle();
-    await alice.locator("#aTheme").click();
+    await toggleTheme(alice);
     await expect(alice.locator("body")).toHaveAttribute("data-theme", "light");
     const light = await idle();
     expect(light).not.toBe(dark);
-    await alice.locator("#aTheme").click();
+    await toggleTheme(alice);
   });
 
   test("the controls of the bar, the filters and the ribbon are at least 44 px high", async ({ alice }) => {
     await openLog(alice);
-    for (const sel of ["#aModes button", "#aRange", "#aTheme", ".asearch", "#aTypes .tchip", "#aribbon .awk12"]) {
+    for (const sel of ["#aModes button", "#aRange", ".asearch", "#aTypes .tchip", "#aribbon .awk12"]) {
       for (const [w, h] of await alice.locator(sel).evaluateAll((els) => els.filter((e) => (e as HTMLElement).offsetParent !== null).map((e) => [Math.round(e.getBoundingClientRect().width), Math.round(e.getBoundingClientRect().height)]))) {
         expect(h, `${sel} height`).toBeGreaterThanOrEqual(44);
         expect(w, `${sel} width`).toBeGreaterThanOrEqual(sel.includes("awk12") ? 16 : 44);
@@ -346,13 +346,13 @@ test.describe("the look, in both themes", () => {
     await openLog(alice);
     const body = alice.locator("body");
     await expect(body).toHaveAttribute("data-theme", "dark");
-    await alice.locator("#aTheme").click();
+    await toggleTheme(alice);
     await expect(body).toHaveAttribute("data-theme", "light");
-    await expect(alice.locator("#aTheme")).toHaveAttribute("aria-label", "Switch to dark theme");
+    await expect(alice.locator("body")).toHaveAttribute("data-theme", "light");
     await alice.reload({ waitUntil: "domcontentloaded" });
     await expect(alice.locator("#alist .arow").first()).toBeVisible();
     await expect(body).toHaveAttribute("data-theme", "light");
-    await alice.locator("#aTheme").click();
+    await toggleTheme(alice);
     await expect(body).toHaveAttribute("data-theme", "dark");
   });
 });

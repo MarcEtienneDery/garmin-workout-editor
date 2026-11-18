@@ -2,7 +2,7 @@
  * The views on a phone: Activities (list, detail pane, calendar), the Calendar, Recovery, Weight, Today and Settings. Each one fits
  * the 412 px width, its charts scale to it, and its panes move the way a phone expects. alice's data, read only.
  */
-import { test, expect, openView, monthView, type Page, type Profile } from "../support/fixtures";
+import { test, expect, openView, monthView, type Page, type Profile, chooseTheme, toggleTheme } from "../support/fixtures";
 
 // The suite shares this machine with other runs, so a step can take longer than the default 30 s on a loaded box.
 test.setTimeout(60_000);
@@ -229,7 +229,7 @@ test.describe("Today on a phone", () => {
     await openView(alice, "today");
     await expect(alice.locator("#tbody")).not.toContainText("Loading…");
     for (const theme of ["dark", "light"]) {
-      if (theme === "light") await alice.locator("#tTheme").tap();
+      if (theme === "light") await chooseTheme(alice, "light");
       const small = await alice.evaluate(() =>
         [...document.querySelectorAll<HTMLElement>("#tbar button, #tbody .tgo, #tbody .tcal, #tbody .tgauge ~ .tch button, #tbody .twk, #tbody .tfig")]
           .filter((el) => el.offsetParent !== null)
@@ -243,7 +243,7 @@ test.describe("Today on a phone", () => {
   test("the light theme fits the width too", async ({ alice }) => {
     await openView(alice, "today");
     await expect(alice.locator("#tbody")).not.toContainText("Loading…");
-    await alice.locator("#tTheme").tap();
+    await toggleTheme(alice);
     await expect(alice.locator("body")).toHaveAttribute("data-theme", "light");
     await expect.poll(() => stickingOut(alice)).toEqual([]);
   });
@@ -304,7 +304,7 @@ test.describe("the Calendar's new look on a phone", () => {
     await openView(alice, "calendar");
     await expect(alice.locator("#cgrid .cday").first()).toBeVisible();
     for (const theme of ["dark", "light"]) {
-      if (theme === "light") await alice.locator("#cTheme").tap();
+      if (theme === "light") await chooseTheme(alice, "light");
       await expect(alice.locator("body")).toHaveAttribute("data-theme", theme);
       expect(await alice.locator("#cdow").evaluate((el) => getComputedStyle(el).position)).toBe("static");
       await expect.poll(() => stickingOut(alice)).toEqual([]);
@@ -341,7 +341,7 @@ test.describe("the Calendar's week on a phone", () => {
   test("the days are one under another with the numbers of the week on top, and nothing goes sideways in either theme", async ({ alice }) => {
     await openWeek(alice);
     for (const theme of ["dark", "light"]) {
-      if (theme === "light") await alice.locator("#cTheme").tap();
+      if (theme === "light") await chooseTheme(alice, "light");
       await expect(alice.locator("body")).toHaveAttribute("data-theme", theme);
       const lefts = await alice.locator("#cwBoard .wday").evaluateAll((els) => els.map((el) => Math.round(el.getBoundingClientRect().left)));
       expect(new Set(lefts).size).toBe(1);

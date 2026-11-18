@@ -4,7 +4,7 @@
  * all of it. alice's food is read only; anything that logs a food uses a profile of its own (`me`). Open Food Facts is never reached:
  * the search is answered by page.route.
  */
-import { test, expect, openView, daysAgo, today, type Locator, type Page, type Profile } from "../support/fixtures";
+import { test, expect, openView, daysAgo, today, type Locator, type Page, type Profile, chooseTheme, toggleTheme } from "../support/fixtures";
 import { dayButton, openInsights, pickMeal, sheet, sheetTab } from "../support/food";
 
 /** What sticks out past the phone's width, as shown: an element is cut at the edge of any box above it that clips its content. */
@@ -478,7 +478,7 @@ test.describe("the new look on a phone", () => {
   test("the day's bar fits the width with its theme button, and every control is at least 44 px, in both themes", async ({ alice }) => {
     await openFood(alice);
     for (const theme of ["dark", "light"]) {
-      if (theme === "light") await alice.locator("#fTheme").tap();
+      if (theme === "light") await chooseTheme(alice, "light");
       await expect(alice.locator("body")).toHaveAttribute("data-theme", theme);
       const small = await alice.evaluate(() =>
         [...document.querySelectorAll<HTMLElement>("#fbar button, #fbar .fdaypick, #fweek button, #fdock button")].filter((el) => el.offsetParent !== null).map((el) => [el.id || el.className, Math.round(el.getBoundingClientRect().height)] as const).filter(([, h]) => h < 44),
@@ -490,7 +490,7 @@ test.describe("the new look on a phone", () => {
 
   test("the sheet in the light theme fits the screen, and its way-in tabs are tappable", async ({ alice }) => {
     await openFood(alice);
-    await alice.locator("#fTheme").tap();
+    await toggleTheme(alice);
     await alice.locator("#fdSearch").tap();
     await expect(sheet(alice)).toBeVisible();
     await expect.poll(() => stickingOut(alice)).toEqual([]);

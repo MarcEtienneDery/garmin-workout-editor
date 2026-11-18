@@ -3,7 +3,7 @@
  * address, Back and Forward open a view, and that the page raises no error on the way. Reads only: alice's data is never changed.
  */
 import type { Page } from "@playwright/test";
-import { test as base, expect, loginAs, ADMIN_TOKEN } from "../support/fixtures";
+import { test as base, expect, loginAs, ADMIN_TOKEN, toggleTheme } from "../support/fixtures";
 
 /**
  * The server closes an idle connection after a few seconds, and a client that sends on it meets a reset (and a loaded machine answers
@@ -152,7 +152,7 @@ test.describe("the rail", () => {
     await openView(alice, "today");
     const bg = () => alice.locator("header").evaluate((el) => getComputedStyle(el).backgroundColor);
     const dark = await bg();
-    await alice.locator("#tTheme").click();
+    await toggleTheme(alice);
     await expect(alice.locator("body")).toHaveAttribute("data-theme", "light");
     const light = await bg();
     expect(light).not.toBe(dark);

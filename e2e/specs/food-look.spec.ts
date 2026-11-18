@@ -3,7 +3,7 @@
  * by the summary, the meals and the add sheet, the rail following the theme, the AI marked with an icon and not an emoji, and the sizes
  * of the controls. alice's food is read only.
  */
-import { test, expect, openView, daysAgo, type APIRequestContext, type Page } from "../support/fixtures";
+import { test, expect, openView, daysAgo, type APIRequestContext, type Page, chooseTheme, toggleTheme } from "../support/fixtures";
 import { labelOf, openFood, openInsights, sheet, sheetTab } from "../support/food";
 
 test.describe.configure({ timeout: 60_000 });
@@ -25,18 +25,18 @@ const style = (page: Page, selector: string, prop: string) => page.locator(selec
 test.describe("the Food view's themes", () => {
   test("the button in the day's bar switches between dark and light, says what it will do, and the choice is kept", async ({ alice }) => {
     await openFood(alice);
-    const body = alice.locator("body"), button = alice.locator("#fTheme");
+    const body = alice.locator("body");
     await expect(body).toHaveAttribute("data-theme", "dark");
-    await expect(button).toHaveAttribute("aria-label", "Switch to light theme");
+    await expect(body).toHaveAttribute("data-theme", "dark");
     const darkBg = await style(alice, "#fscroll", "background-color");
-    await button.click();
+    await toggleTheme(alice);
     await expect(body).toHaveAttribute("data-theme", "light");
-    await expect(button).toHaveAttribute("aria-label", "Switch to dark theme");
+    await expect(body).toHaveAttribute("data-theme", "light");
     expect(await style(alice, "#fscroll", "background-color")).not.toBe(darkBg);
     await alice.reload();
     await expect(alice.locator("#fbody .fsum")).toBeVisible();
     await expect(body).toHaveAttribute("data-theme", "light");
-    await button.click();
+    await toggleTheme(alice);
     await expect(body).toHaveAttribute("data-theme", "dark");
   });
 
@@ -44,16 +44,16 @@ test.describe("the Food view's themes", () => {
     await openFood(alice);
     const rail = () => style(alice, "header", "background-color");
     const dark = await rail();
-    await alice.locator("#fTheme").click();
+    await toggleTheme(alice);
     const light = await rail();
     expect(light).not.toBe(dark);
     await alice.locator("#vToday").click();
     await expect(alice.locator("body")).toHaveAttribute("data-view", "today");
-    await expect(alice.locator("#tTheme")).toHaveAttribute("aria-label", "Switch to dark theme");
+    await expect(alice.locator("body")).toHaveAttribute("data-theme", "light");
     expect(await rail()).toBe(light);
-    await alice.locator("#tTheme").click(); // back to dark, from Today
+    await toggleTheme(alice); // back to dark, from Today
     await alice.locator("#vFood").click();
-    await expect(alice.locator("#fTheme")).toHaveAttribute("aria-label", "Switch to light theme");
+    await expect(alice.locator("body")).toHaveAttribute("data-theme", "dark");
     expect(await rail()).toBe(dark);
   });
 
@@ -66,7 +66,7 @@ test.describe("the Food view's themes", () => {
   test("in both themes the meals and the summary read as text on their own background", async ({ alice }) => {
     await openFood(alice);
     for (const theme of ["dark", "light"]) {
-      if (theme === "light") await alice.locator("#fTheme").click();
+      if (theme === "light") await chooseTheme(alice, "light");
       const name = await style(alice, "#fbody .fmeal .fmt b", "color"), hint = await style(alice, "#fbody .fmeal .fmt span", "color"), card = await style(alice, "#fbody .fmeal", "background-color");
       expect(await contrast(alice, name, card), `${theme}: a meal's name`).toBeGreaterThanOrEqual(7);
       expect(await contrast(alice, hint, card), `${theme}: its macros`).toBeGreaterThanOrEqual(4.5);
@@ -89,7 +89,7 @@ test.describe("the add sheet", () => {
   test("opens in the theme of the view, with its background and text from the palette", async ({ alice }) => {
     await openFood(alice);
     for (const theme of ["dark", "light"]) {
-      if (theme === "light") await alice.locator("#fTheme").click();
+      if (theme === "light") await chooseTheme(alice, "light");
       await alice.locator("#fdSearch").click();
       await expect(sheet(alice)).toBeVisible();
       const bg = await style(alice, "#fsheet", "background-color"), text = await style(alice, "#fsheet .fsh-head b", "color");
@@ -124,7 +124,7 @@ test.describe("the controls", () => {
   test("the day's bar and the bar at the foot are at least 44 px, in both themes", async ({ alice }) => {
     await openFood(alice);
     for (const theme of ["dark", "light"]) {
-      if (theme === "light") await alice.locator("#fTheme").click();
+      if (theme === "light") await chooseTheme(alice, "light");
       const small = await alice.evaluate(() =>
         [...document.querySelectorAll<HTMLElement>("#fbar button, #fbar .fdaypick, #fweek button, #fdock button")].filter((el) => el.offsetParent !== null).map((el) => [el.id || el.className, Math.round(el.getBoundingClientRect().height)] as const).filter(([, h]) => h < 44),
       );
@@ -299,7 +299,7 @@ test.describe("the goal on the charts", () => {
     await openFood(me);
     await openInsights(me);
     for (const theme of ["dark", "light"]) {
-      if (theme === "light") await me.locator("#fTheme").click();
+      if (theme === "light") await chooseTheme(me, "light");
       const over = await calories(me).locator("svg .rc-bar.over").evaluate((el) => getComputedStyle(el).fill);
       const normal = await calories(me).locator("svg .rc-bar:not(.over)").first().evaluate((el) => getComputedStyle(el).fill);
       expect(over, `${theme}: over against the other bars`).not.toBe(normal);
