@@ -462,8 +462,6 @@
   #tview button:disabled { opacity:.55; cursor:default; }
   #tview button.primary { background:var(--accent); border-color:transparent; color:var(--t-on-accent); }
   #tview select { min-height:44px; padding:0 12px; background:var(--panel); color:var(--fg); border:1px solid var(--t-line2); border-radius:999px; font:inherit; }
-  .themebtn { width:44px; min-height:44px; padding:0; display:inline-grid; place-items:center; } .themebtn svg { width:18px; height:18px; }
-  body[data-theme="light"] .themebtn .sun, body:not([data-theme="light"]) .themebtn .moon { display:none; }
   #tNote { padding:0 clamp(16px,2.6vw,34px); }
   #tscroll { background:var(--bg); }
   #tbody { max-width:1280px; padding:10px clamp(16px,2.6vw,34px) 40px; }
@@ -863,7 +861,6 @@
   #aModes button, #aModes button:first-child, #aModes button:last-child { min-height:44px; margin:0; padding:0 22px; border:0; border-radius:999px; background:transparent; color:var(--dim); font-weight:600; }
   #aModes button:hover:not(:disabled):not([aria-pressed="true"]) { background:var(--t-surface2); color:var(--fg); }
   #aModes button[aria-pressed="true"] { background:var(--accent); color:var(--t-on-accent); }
-  #aview .themebtn { width:44px; min-width:44px; height:44px; padding:0; }
   .anotebar { display:flex; flex-wrap:wrap; align-items:center; gap:8px 14px; margin:0 0 14px; padding:10px 16px; border-radius:14px; background:var(--t-surface2); color:var(--dim); font-size:13.5px; }
   .anotebar button { min-height:44px; padding:0 16px; border-radius:999px; font-weight:600; }
   /* the filters */
@@ -1308,7 +1305,6 @@
   /* the bar: profile, the day (◀ a pill that opens the calendar ▶), Today, the theme */
   #fbar { display:flex; align-items:center; justify-content:stretch; gap:8px; padding:18px clamp(16px,2.6vw,34px) 6px; background:transparent; border-bottom:0; }
   #fbar #fProfile { flex:none; max-width:36%; margin-right:0; }
-  :is(#fview, #rview, #bview, #aview) .themebtn { border-radius:50%; background:transparent; border:1px solid var(--t-line2); }
   #fPrev, #fNext { width:44px; min-width:44px; height:44px; padding:0; border-radius:50%; background:var(--panel); border:1px solid var(--line); font-size:13px; }
   #fPrev:disabled, #fNext:disabled { opacity:.4; }
   #fToday { min-height:44px; padding:0 18px; border-radius:999px; font-weight:600; }
@@ -1442,7 +1438,6 @@
   #fTabs button, #fTabs button:first-child, #fTabs button:last-child { min-height:44px; margin:0; padding:0 22px; border:0; border-radius:999px; background:transparent; color:var(--dim); font-weight:600; }
   #fTabs button:hover:not(:disabled):not([aria-pressed="true"]) { background:var(--t-surface2); color:var(--fg); }
   #fTabs button[aria-pressed="true"] { background:var(--accent); color:var(--t-on-accent); }
-  :is(#fview, #rview, #bview, #aview) .themebtn { width:44px; min-width:44px; height:44px; padding:0; }
   /* the week: a day each, its calories against its goal as a ring; ◀ ▶ step a day */
   #fweek { display:flex; align-items:center; gap:8px; max-width:1280px; padding:8px clamp(16px,2.6vw,34px) 2px; }
   #fweek[hidden] { display:none; }
@@ -1823,7 +1818,7 @@
   #cview { grid-template-columns:minmax(0,1fr) 340px; gap:0 16px; padding-right:16px; }
   #cbar { gap:8px; padding:18px 0 10px 16px; background:transparent; border-bottom:0; }
   #cTitle { min-width:0; flex:1 1 auto; font-size:clamp(22px,2.6vw,30px); font-weight:700; letter-spacing:-.02em; }
-  #cPrev, #cNext, #cRefresh, #cview .themebtn { width:44px; min-width:44px; height:44px; padding:0; border-radius:50%; background:var(--panel); border:1px solid var(--line); }
+  #cPrev, #cNext, #cRefresh { width:44px; min-width:44px; height:44px; padding:0; border-radius:50%; background:var(--panel); border:1px solid var(--line); }
   #cToday { min-height:44px; padding:0 18px; border-radius:999px; font-weight:600; }
   :is(#cModes, #cViews) { padding:2px; gap:2px; background:var(--panel); border:1px solid var(--line); border-radius:999px; }
   :is(#cModes, #cViews) button, :is(#cModes, #cViews) button:first-child, :is(#cModes, #cViews) button:last-child { min-height:44px; margin:0; padding:0 16px; border:0; border-radius:999px; background:transparent; color:var(--dim); font-weight:600; }
@@ -2066,9 +2061,8 @@
   #pview #garminBtn { background:color-mix(in srgb, var(--garmin) 14%, var(--panel)); border:1px solid var(--garmin); color:var(--fg); display:inline-flex; align-items:center; gap:8px; }
   #pview #garminBtn b { color:var(--garmin); font-size:12px; }
   #pview #garminBtn:hover:not(:disabled) { background:color-mix(in srgb, var(--garmin) 24%, var(--panel)); }
-  #pview :is(#fileBtn, .themebtn) { width:44px; height:44px; min-height:44px; padding:0; border-radius:50%; font-size:20px; line-height:1; background:var(--panel); border:1px solid var(--line); }
+  #pview #fileBtn { width:44px; height:44px; min-height:44px; padding:0; border-radius:50%; font-size:20px; line-height:1; background:var(--panel); border:1px solid var(--line); }
   #pview #fileBtn::after { content:none; }
-  #pview .themebtn svg { width:18px; height:18px; margin:auto; }
   #pview #profile { min-height:44px; border-radius:999px; padding:0 14px; max-width:180px; }
   #pview .dd > .menu { top:calc(100% + 6px); left:auto; right:0; min-width:230px; padding:6px; background:var(--panel); border:1px solid var(--t-line2); border-radius:16px; box-shadow:0 24px 50px -16px #000; }
   #pview .menu button, #pmenu button { display:flex; align-items:center; justify-content:space-between; gap:12px; width:100%; min-height:44px; padding:0 12px; border:0; border-radius:10px; background:none; color:var(--fg); font-weight:500; text-align:left; }
@@ -2276,8 +2270,8 @@
   #wtitle { display:flex; flex-direction:column; flex:1 1 280px; min-width:0; }
   #wtitle h2 { margin:0; font-size:clamp(22px,2.6vw,30px); font-weight:700; letter-spacing:-.02em; line-height:1.15; }
   #wsub { font:500 12px "Fira Code",ui-monospace,monospace; color:var(--dim); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  #wview :is(#wRefresh, .themebtn) { width:44px; height:44px; min-height:44px; padding:0; border-radius:50%; background:var(--panel); border:1px solid var(--line); display:grid; place-items:center; }
-  #wview :is(#wRefresh, .themebtn) svg { width:18px; height:18px; }
+  #wview #wRefresh { width:44px; height:44px; min-height:44px; padding:0; border-radius:50%; background:var(--panel); border:1px solid var(--line); display:grid; place-items:center; }
+  #wview #wRefresh svg { width:18px; height:18px; }
   #wview #wNew { min-height:44px; padding:0 20px; border-radius:999px; font-weight:700; }
   #wview #wProfile { min-height:44px; border-radius:999px; padding:0 14px; }
   #wstrip { flex:none; display:grid; grid-template-columns:repeat(5, minmax(0,1fr)); gap:10px; margin-bottom:12px; }
