@@ -1,15 +1,3 @@
-/*
- * exerciseMuscles.js — the muscles each Garmin exercise works, written out one exercise at a time.
- *
- * Every name in src/exercise-category-map.json (Garmin's exercise list, which is also what a plan may use) has a line here:
- *   NAME: [[primary muscles], [secondary muscles]]
- * A primary muscle is one the exercise works first, a secondary one a muscle that helps. Muscle ids are the ones in muscleMap.js.
- * NONE is an exercise that trains no muscle for this view: cardio and machines, warm-ups, mobility drills and stretches.
- * The lines follow Garmin's categories, so a new exercise goes under its own. A test fails for a name in the map with no line
- * here, for a line with no name in the map, and for a muscle that is not drawn.
- *
- * A plain script, like muscleMap.js: the page loads it first, and the tests require() it.
- */
 (function (root, factory) {
   const api = factory();
   if (typeof module === "object" && module.exports) module.exports = api;
@@ -20,7 +8,6 @@
   const NONE = [[], []];
 
   return {
-    // BANDED_EXERCISES
     AB_TWIST: [["obliques"], ["abs"]],
     BACK_EXTENSION: [["lowerBack", "glutes"], ["hamstrings"]],
     BANDED_EXERCISES: NONE,
@@ -56,7 +43,6 @@
     TRICEP_KICKBACK: [["triceps"], ["chest", "frontDelts"]],
     WALL_CRAWL_WITH_EXTERNAL_ROTATION: [["rearDelts"], ["upperBack", "traps"]],
 
-    // BATTLE_ROPE
     ALTERNATING_FIGURE_EIGHT: [["frontDelts", "sideDelts"], ["forearms", "abs", "lats"]],
     ALTERNATING_JUMP_WAVE: [["frontDelts", "quads"], ["glutes", "calves", "forearms", "abs"]],
     ALTERNATING_KNEELING_TO_STANDING_WAVE: [["frontDelts", "quads"], ["glutes", "calves", "forearms", "abs"]],
@@ -86,7 +72,6 @@
     ULTIMATE_WARRIOR: [["frontDelts", "sideDelts"], ["forearms", "abs", "lats"]],
     UPPER_CUTS: [["frontDelts", "sideDelts"], ["biceps", "forearms", "abs"]],
 
-    // BENCH_PRESS
     ALTERNATING_DUMBBELL_CHEST_PRESS: [["chest"], ["triceps", "frontDelts"]],
     ALTERNATING_DUMBBELL_CHEST_PRESS_ON_SWISS_BALL: [["chest"], ["triceps", "frontDelts"]],
     BARBELL_BENCH_PRESS: [["chest"], ["triceps", "frontDelts"]],
@@ -116,11 +101,9 @@
     WEIGHTED_ONE_ARM_FLOOR_PRESS: [["chest"], ["triceps", "frontDelts"]],
     WIDE_GRIP_BARBELL_BENCH_PRESS: [["chest"], ["triceps", "frontDelts"]],
 
-    // BIKE_OUTDOOR
     BIKE: NONE,
     BIKE_OUTDOOR: NONE,
 
-    // CALF_RAISE
     CALF_RAISE: [["calves"], []],
     DONKEY_CALF_RAISE: [["calves"], []],
     SEATED_CALF_RAISE: [["calves"], []],
@@ -144,7 +127,6 @@
     _3_WAY_WEIGHTED_CALF_RAISE: [["calves"], []],
     _3_WAY_WEIGHTED_SINGLE_LEG_CALF_RAISE: [["calves"], []],
 
-    // CARDIO
     BOB_AND_WEAVE_CIRCLE: NONE,
     CARDIO: NONE,
     CARDIO_CORE_CRAWL: [["abs"], ["frontDelts", "quads"]],
@@ -169,7 +151,6 @@
     WEIGHTED_SQUAT_JACKS: [["quads", "glutes"], ["hamstrings", "adductors", "calves"]],
     WEIGHTED_TRIPLE_UNDER: NONE,
 
-    // CARRY
     BAR_HOLDS: [["forearms"], []],
     CARRY: [["forearms", "traps"], ["abs", "obliques"]],
     DUMBBELL_WAITER_CARRY: [["forearms", "traps"], ["abs", "obliques"]],
@@ -181,7 +162,6 @@
     HEX_DUMBBELL_HOLD: [["forearms"], []],
     OVERHEAD_CARRY: [["forearms", "traps"], ["abs", "obliques"]],
 
-    // CHOP
     CABLE_PULL_THROUGH: [["glutes", "hamstrings", "lowerBack"], ["quads", "traps", "forearms", "upperBack"]],
     CABLE_ROTATIONAL_LIFT: [["obliques"], ["abs"]],
     CABLE_WOODCHOP: [["obliques"], ["abs"]],
@@ -207,7 +187,6 @@
     WEIGHTED_HALF_KNEELING_ROTATION: [["obliques"], ["abs"]],
     WEIGHTED_POWER_SQUAT_CHOPS: [["quads", "glutes"], ["hamstrings", "adductors", "calves"]],
 
-    // CORE
     ABS_JABS: [["abs"], ["obliques"]],
     ALTERNATING_PLATE_REACH: [["abs"], ["obliques"]],
     ALTERNATING_SLIDE_OUT: [["abs"], ["obliques"]],
@@ -265,7 +244,6 @@
     WEIGHTED_WINDMILL_SWITCHES: [["obliques"], ["abs"]],
     WINDMILL_SWITCHES: [["obliques"], ["abs"]],
 
-    // CRUNCH
     BICYCLE_CRUNCH: [["abs"], ["obliques"]],
     CABLE_CRUNCH: [["abs"], ["obliques"]],
     CIRCULAR_ARM_CRUNCH: [["abs"], ["obliques"]],
@@ -353,7 +331,6 @@
     WEIGHTED_THORACIC_CRUNCHES_ON_FOAM_ROLLER: [["abs"], ["obliques"]],
     WEIGHTED_TOES_TO_BAR: [["abs"], ["obliques"]],
 
-    // CURL
     ALTERNATING_DUMBBELL_BICEPS_CURL: [["biceps"], ["forearms"]],
     ALTERNATING_DUMBBELL_BICEPS_CURL_ON_SWISS_BALL: [["biceps"], ["forearms"]],
     ALTERNATING_INCLINE_DUMBBELL_BICEPS_CURL: [["biceps"], ["forearms"]],
@@ -403,7 +380,6 @@
     TWISTING_STANDING_DUMBBELL_BICEPS_CURL: [["biceps"], ["forearms"]],
     WIDE_GRIP_EZ_BAR_BICEPS_CURL: [["biceps"], ["forearms"]],
 
-    // DEADLIFT
     BARBELL_DEADLIFT: [["glutes", "hamstrings", "lowerBack"], ["quads", "traps", "forearms", "upperBack"]],
     BARBELL_STRAIGHT_LEG_DEADLIFT: [["hamstrings", "glutes"], ["lowerBack", "forearms"]],
     DEADLIFT: [["glutes", "hamstrings", "lowerBack"], ["quads", "traps", "forearms", "upperBack"]],
@@ -430,13 +406,10 @@
     TRAP_BAR_DEADLIFT: [["glutes", "hamstrings", "lowerBack"], ["quads", "traps", "forearms", "upperBack"]],
     WIDE_GRIP_BARBELL_DEADLIFT: [["glutes", "hamstrings", "lowerBack"], ["quads", "traps", "forearms", "upperBack"]],
 
-    // ELLIPTICAL
     ELLIPTICAL: NONE,
 
-    // FLOOR_CLIMB
     FLOOR_CLIMB: NONE,
 
-    // FLYE
     CABLE_CROSSOVER: [["chest"], ["triceps", "frontDelts"]],
     DECLINE_DUMBBELL_FLYE: [["chest"], ["triceps", "frontDelts"]],
     DUMBBELL_FLYE: [["chest"], ["triceps", "frontDelts"]],
@@ -448,7 +421,6 @@
     SINGLE_ARM_STANDING_CABLE_REVERSE_FLYE: [["rearDelts"], ["upperBack", "traps"]],
     SWISS_BALL_DUMBBELL_FLYE: [["chest"], ["triceps", "frontDelts"]],
 
-    // HIP_RAISE
     BARBELL_HIP_THRUST_ON_FLOOR: [["glutes"], ["hamstrings"]],
     BARBELL_HIP_THRUST_WITH_BENCH: [["glutes"], ["hamstrings"]],
     BENT_KNEE_SWISS_BALL_REVERSE_HIP_RAISE: [["glutes"], ["hamstrings"]],
@@ -494,7 +466,6 @@
     WEIGHTED_SINGLE_LEG_HIP_RAISE_WITH_FOOT_ON_MEDICINE_BALL: [["glutes"], ["hamstrings"]],
     WEIGHTED_SINGLE_LEG_HIP_RAISE_WITH_HEAD_ON_BOSU_BALL: [["glutes"], ["hamstrings"]],
 
-    // HIP_STABILITY
     BAND_SIDE_LYING_LEG_RAISE: [["glutes"], ["hamstrings"]],
     DEAD_BUG: [["abs"], ["obliques"]],
     EXTERNAL_HIP_RAISE: [["glutes"], ["hamstrings"]],
@@ -532,14 +503,12 @@
     WEIGHTED_STANDING_REAR_LEG_RAISE: [["glutes"], ["hamstrings"]],
     WEIGHTED_SUPINE_HIP_INTERNAL_ROTATION: [["glutes"], []],
 
-    // HIP_SWING
     HIP_SWING: [["glutes", "hamstrings"], ["lowerBack", "frontDelts", "forearms"]],
     ONE_ARM_SWING: [["glutes", "hamstrings"], ["lowerBack", "frontDelts", "forearms"]],
     SINGLE_ARM_DUMBBELL_SWING: [["glutes", "hamstrings"], ["lowerBack", "frontDelts", "forearms"]],
     SINGLE_ARM_KETTLEBELL_SWING: [["glutes", "hamstrings"], ["lowerBack", "frontDelts", "forearms"]],
     STEP_OUT_SWING: [["glutes", "hamstrings"], ["lowerBack", "frontDelts", "forearms"]],
 
-    // HYPEREXTENSION
     BACK_EXTENSION_WITH_OPPOSITE_ARM_AND_LEG_REACH: [["lowerBack", "glutes"], ["hamstrings"]],
     BASE_ROTATIONS: [["obliques"], ["abs"]],
     BENT_KNEE_REVERSE_HYPEREXTENSION: [["lowerBack", "glutes"], ["hamstrings"]],
@@ -580,18 +549,15 @@
     WEIGHTED_SWISS_BALL_HYPEREXTENSION: [["lowerBack", "glutes"], ["hamstrings"]],
     WEIGHTED_SWISS_BALL_OPPOSITE_ARM_AND_LEG_LIFT: [["lowerBack", "glutes"], ["hamstrings"]],
 
-    // INDOOR_BIKE
     AIR_BIKE: NONE,
     ASSAULT_BIKE: NONE,
     INDOOR_BIKE: NONE,
     STATIONARY_BIKE: NONE,
 
-    // LADDER
     AGILITY: NONE,
     LADDER: NONE,
     SPEED: NONE,
 
-    // LATERAL_RAISE
     ALTERNATING_LATERAL_RAISE_WITH_STATIC_HOLD: [["sideDelts"], ["traps", "frontDelts"]],
     BAR_MUSCLE_UP: [["lats"], ["biceps", "upperBack", "forearms"]],
     BENT_OVER_LATERAL_RAISE: [["sideDelts"], ["traps", "frontDelts"]],
@@ -629,7 +595,6 @@
     WEIGHTED_WALL_SLIDE: [["rearDelts"], ["upperBack", "traps"]],
     _45_DEGREE_CABLE_EXTERNAL_ROTATION: [["rearDelts"], ["upperBack", "traps"]],
 
-    // LEG_CURL
     BAND_GOOD_MORNING: [["lowerBack", "hamstrings", "glutes"], []],
     BAR_GOOD_MORNING: [["lowerBack", "hamstrings", "glutes"], []],
     GOOD_MORNING: [["lowerBack", "hamstrings", "glutes"], []],
@@ -645,7 +610,6 @@
     WEIGHTED_LEG_CURL: [["hamstrings"], ["glutes", "calves"]],
     ZERCHER_GOOD_MORNING: [["lowerBack", "hamstrings", "glutes"], []],
 
-    // LEG_RAISE
     HANGING_KNEE_RAISE: [["abs"], ["obliques"]],
     HANGING_LEG_RAISE: [["abs"], ["obliques"]],
     HANGING_SINGLE_LEG_RAISE: [["abs"], ["obliques"]],
@@ -670,7 +634,6 @@
     WEIGHTED_REVERSE_LEG_RAISE_ON_SWISS_BALL: [["abs"], ["obliques"]],
     WEIGHTED_SINGLE_LEG_LOWERING_DRILL: [["abs"], ["obliques"]],
 
-    // LUNGE
     ALTERNATING_BARBELL_FORWARD_LUNGE: [["quads", "glutes"], ["hamstrings", "adductors", "calves"]],
     ALTERNATING_DUMBBELL_LUNGE: [["quads", "glutes"], ["hamstrings", "adductors", "calves"]],
     ALTERNATING_DUMBBELL_LUNGE_WITH_REACH: [["quads", "glutes"], ["hamstrings", "adductors", "calves"]],
@@ -763,7 +726,6 @@
     WEIGHTED_WALKING_LUNGE: [["quads", "glutes"], ["hamstrings", "adductors", "calves"]],
     WIDE_GRIP_OVERHEAD_BARBELL_SPLIT_SQUAT: [["quads", "glutes"], ["hamstrings", "adductors", "calves"]],
 
-    // OLYMPIC_LIFT
     BARBELL_HANG_POWER_CLEAN: [["glutes", "quads", "traps"], ["hamstrings", "lowerBack", "frontDelts", "forearms"]],
     BARBELL_HANG_POWER_SNATCH: [["glutes", "quads", "traps"], ["hamstrings", "lowerBack", "frontDelts", "forearms"]],
     BARBELL_HANG_PULL: [["glutes", "quads", "traps"], ["hamstrings", "lowerBack", "frontDelts", "forearms"]],
@@ -795,7 +757,6 @@
     SPLIT_JERK: [["glutes", "quads", "traps"], ["hamstrings", "lowerBack", "frontDelts", "forearms"]],
     SQUAT_CLEAN_AND_JERK: [["glutes", "quads", "traps"], ["hamstrings", "lowerBack", "frontDelts", "forearms"]],
 
-    // PLANK
     BEAR_CRAWL: [["abs"], ["frontDelts", "quads"]],
     CROSS_BODY_MOUNTAIN_CLIMBER: [["abs"], ["obliques"]],
     ELBOW_PLANK_PIKE_JACKS: [["abs"], ["obliques"]],
@@ -928,7 +889,6 @@
     _45_DEGREE_PLANK: [["abs"], ["obliques"]],
     _90_DEGREE_STATIC_HOLD: [["abs"], ["obliques"]],
 
-    // PLYO
     ALTERNATING_JUMP_LUNGE: [["quads", "glutes"], ["hamstrings", "adductors", "calves"]],
     BARBELL_JUMP_SQUAT: [["quads", "glutes"], ["hamstrings", "adductors", "calves"]],
     BODY_WEIGHT_JUMP_SQUAT: [["quads", "glutes"], ["hamstrings", "adductors", "calves"]],
@@ -969,7 +929,6 @@
     WEIGHTED_SQUAT_JUMPS_IN_AND_OUT: [["quads", "glutes"], ["hamstrings", "adductors", "calves"]],
     WEIGHTED_SQUAT_JUMP_ONTO_BOX: [["quads", "glutes"], ["hamstrings", "adductors", "calves"]],
 
-    // PULL_UP
     BANDED_PULL_UPS: [["lats"], ["biceps", "upperBack", "forearms"]],
     BAND_ASSISTED_CHIN_UP: [["lats", "biceps"], ["upperBack", "forearms"]],
     BAND_ASSISTED_PULL_UP: [["lats"], ["biceps", "upperBack", "forearms"]],
@@ -1017,7 +976,6 @@
     WIDE_GRIP_PULL_UP: [["lats"], ["biceps", "upperBack", "forearms"]],
     _30_DEGREE_LAT_PULLDOWN: [["lats"], ["biceps", "upperBack", "forearms"]],
 
-    // PUSH_UP
     ALTERNATING_HANDS_MEDICINE_BALL_PUSH_UP: [["chest"], ["triceps", "frontDelts"]],
     ALTERNATING_STAGGERED_PUSH_UP: [["chest"], ["triceps", "frontDelts"]],
     BICEPS_PUSH_UP: [["chest"], ["triceps", "frontDelts"]],
@@ -1108,7 +1066,6 @@
     WIDE_GRIP_PUSH_UP: [["chest"], ["triceps", "frontDelts"]],
     WIDE_HANDS_PUSH_UP: [["chest"], ["triceps", "frontDelts"]],
 
-    // ROW
     ALTERNATING_DUMBBELL_ROW: [["lats", "upperBack"], ["biceps", "rearDelts", "forearms"]],
     BANDED_FACE_PULLS: [["rearDelts"], ["upperBack", "traps"]],
     BARBELL_ROW: [["lats", "upperBack"], ["biceps", "rearDelts", "forearms"]],
@@ -1161,19 +1118,16 @@
     WEIGHTED_TRX_INVERTED_ROW: [["lats", "upperBack"], ["biceps", "rearDelts", "forearms"]],
     WIDE_GRIP_SEATED_CABLE_ROW: [["lats", "upperBack"], ["biceps", "rearDelts", "forearms"]],
 
-    // RUN
     JOG: NONE,
     RUN: NONE,
     RUN_OR_WALK: NONE,
     SPRINT: NONE,
     WALK: NONE,
 
-    // RUN_INDOOR
     INDOOR_TRACK_RUN: NONE,
     RUN_INDOOR: NONE,
     TREADMILL: NONE,
 
-    // SANDBAG
     AROUND_THE_WORLD: [["obliques"], ["abs"]],
     BACK_SQUAT: [["quads", "glutes"], ["hamstrings", "adductors", "calves"]],
     BEAR_CRAWL_PULL_THROUGH: [["abs", "lats"], ["obliques", "forearms", "upperBack"]],
@@ -1187,7 +1141,6 @@
     SHOULDERING: [["glutes", "hamstrings", "lowerBack"], ["quads", "traps", "forearms"]],
     SHOVELING: [["lowerBack", "forearms"], ["glutes", "obliques"]],
 
-    // SHOULDER_PRESS
     ALTERNATING_DUMBBELL_SHOULDER_PRESS: [["frontDelts"], ["sideDelts", "triceps", "traps"]],
     ARNOLD_PRESS: [["frontDelts"], ["sideDelts", "triceps", "traps"]],
     BARBELL_FRONT_SQUAT_TO_PUSH_PRESS: [["quads", "frontDelts"], ["glutes", "triceps"]],
@@ -1218,7 +1171,6 @@
     WEIGHTED_INVERTED_SHOULDER_PRESS: [["frontDelts"], ["sideDelts", "triceps", "traps"]],
     WEIGHT_PLATE_FRONT_RAISE: [["frontDelts"], ["sideDelts", "chest"]],
 
-    // SHOULDER_STABILITY
     BAND_EXTERNAL_ROTATION: [["rearDelts"], ["upperBack", "traps"]],
     BAND_INTERNAL_ROTATION: [["rearDelts"], ["upperBack", "traps"]],
     BENT_ARM_LATERAL_RAISE_AND_EXTERNAL_ROTATION: [["rearDelts"], ["upperBack", "traps"]],
@@ -1257,7 +1209,6 @@
     WEIGHTED_SWISS_BALL_Y_RAISE: [["rearDelts"], ["upperBack", "traps"]],
     _90_DEGREE_CABLE_EXTERNAL_ROTATION: [["rearDelts"], ["upperBack", "traps"]],
 
-    // SHRUG
     BARBELL_JUMP_SHRUG: [["traps"], ["upperBack", "forearms"]],
     BARBELL_SHRUG: [["traps"], ["upperBack", "forearms"]],
     BARBELL_UPRIGHT_ROW: [["sideDelts", "traps"], ["frontDelts", "biceps"]],
@@ -1280,7 +1231,6 @@
     WIDE_GRIP_BARBELL_SHRUG: [["traps"], ["upperBack", "forearms"]],
     WIDE_GRIP_JUMP_SHRUG: [["traps"], ["upperBack", "forearms"]],
 
-    // SIT_UP
     ALTERNATING_SIT_UP: [["abs"], ["obliques"]],
     BENT_KNEE_V_UP: [["abs"], ["obliques"]],
     BUTTERFLY_SIT_UP: [["abs"], ["obliques"]],
@@ -1323,7 +1273,6 @@
     WEIGHTED_X_ABS: [["abs"], ["obliques"]],
     X_ABS: [["abs"], ["obliques"]],
 
-    // SLED
     BACKWARD_DRAG: [["quads", "glutes"], ["hamstrings", "calves"]],
     CHEST_PRESS: [["chest"], ["triceps", "frontDelts"]],
     FORWARD_DRAG: [["quads", "glutes"], ["hamstrings", "calves"]],
@@ -1331,12 +1280,10 @@
     PUSH: [["quads", "glutes"], ["hamstrings", "calves"]],
     SLED: [["quads", "glutes"], ["hamstrings", "calves"]],
 
-    // SLEDGE_HAMMER
     HAMMER_SLAM: [["lats", "abs"], ["frontDelts", "triceps", "forearms"]],
     LATERAL_SWING: [["obliques"], ["abs", "lats", "forearms"]],
     SLEDGE_HAMMER: [["lats", "abs"], ["frontDelts", "triceps", "forearms"]],
 
-    // SQUAT
     AIR_SQUAT: [["quads", "glutes"], ["hamstrings", "adductors", "calves"]],
     ALTERNATING_BOX_DUMBBELL_STEP_UPS: [["quads", "glutes"], ["hamstrings", "adductors", "calves"]],
     BACK_SQUATS: [["quads", "glutes"], ["hamstrings", "adductors", "calves"]],
@@ -1436,10 +1383,8 @@
     WIDE_STANCE_GOBLET_SQUAT: [["quads", "glutes"], ["hamstrings", "adductors", "calves"]],
     ZERCHER_SQUAT: [["quads", "glutes"], ["hamstrings", "adductors", "calves"]],
 
-    // STAIR_STEPPER
     STAIR_STEPPER: NONE,
 
-    // SUSPENSION
     CHEST_FLY: [["chest"], ["triceps", "frontDelts"]],
     DIP: [["triceps", "chest"], ["frontDelts"]],
     HAMSTRING_CURL: [["hamstrings"], ["glutes", "calves"]],
@@ -1460,11 +1405,9 @@
     TRICEP_PRESS: [["triceps"], ["chest", "frontDelts"]],
     Y_FLY: [["rearDelts", "traps"], ["upperBack", "sideDelts"]],
 
-    // TIRE
     FLIP: [["glutes", "quads"], ["hamstrings", "lowerBack", "traps", "forearms", "chest"]],
     TIRE: [["glutes", "quads"], ["hamstrings", "lowerBack", "traps", "forearms", "chest"]],
 
-    // TOTAL_BODY
     BARBELL_BURPEE: [["quads", "chest"], ["glutes", "triceps", "frontDelts", "abs"]],
     BURPEE: [["quads", "chest"], ["glutes", "triceps", "frontDelts", "abs"]],
     BURPEE_BOX_JUMP: [["quads", "chest"], ["glutes", "triceps", "frontDelts", "abs"]],
@@ -1485,7 +1428,6 @@
     WEIGHTED_SQUAT_THRUSTS: [["quads", "chest"], ["glutes", "triceps", "frontDelts", "abs"]],
     WEIGHTED_STANDING_T_ROTATION_BALANCE: [["obliques"], ["abs"]],
 
-    // TRICEPS_EXTENSION
     ALTERNATING_DUMBBELL_LYING_TRICEPS_EXTENSION: [["triceps"], ["chest", "frontDelts"]],
     BENCH_DIP: [["triceps"], ["chest", "frontDelts"]],
     BODY_WEIGHT_DIP: [["triceps", "chest"], ["frontDelts"]],
@@ -1531,7 +1473,6 @@
     WEIGHTED_SUSPENDED_DIP: [["triceps", "chest"], ["frontDelts"]],
     WEIGHTED_TABLETOP_DIP: [["triceps"], ["chest", "frontDelts"]],
 
-    // WARM_UP
     ANKLE_CIRCLES: NONE,
     ANKLE_DORSIFLEXION_WITH_BAND: NONE,
     ANKLE_INTERNAL_ROTATION: NONE,

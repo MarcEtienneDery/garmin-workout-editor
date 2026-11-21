@@ -1,9 +1,3 @@
-/**
- * Finding a food in the Food view's add sheet: the search (Open Food Facts through the server), the meal chosen at its top, the
- * barcode typed or scanned, the foods used lately (Recent), the quick-add strip under the summary, the picker that sets the quantity,
- * changing a logged food by its quantity or by another food, and the camera for a barcode. Open Food Facts is never reached: each
- * lookup is answered by stubFoods.
- */
 import { test, expect, openView, today, daysAgo, type Page, type APIRequestContext } from "../support/fixtures";
 import { type Meal, labelOf, meal as section, openRow, openSheet, pickMeal, sheet, sheetMeal, sheetTab } from "../support/food";
 
@@ -11,10 +5,6 @@ type Answer = { status?: number; json: any };
 type Lookup = (url: URL) => Answer | Promise<Answer>;
 interface Asked { search: URL[]; barcode: URL[] }
 
-/**
- * Answers the page's lookups (the search and the barcode). A lookup that is not stubbed is answered empty, so nothing reaches
- * Open Food Facts. What was asked is recorded in order, by the URL the page asked.
- */
 async function stubFoods(page: Page, stub: { search?: Lookup; barcode?: Lookup } = {}): Promise<Asked> {
   const asked: Asked = { search: [], barcode: [] };
   await page.route("**/api/foods/search*", async (route) => {
@@ -32,25 +22,21 @@ async function stubFoods(page: Page, stub: { search?: Lookup; barcode?: Lookup }
   return asked;
 }
 
-/** A gate a stubbed lookup waits at until the test opens it, so that the page can be seen while it is under way. */
 function gate(): { wait: Promise<void>; open: () => void } {
   let open!: () => void;
   const wait = new Promise<void>((resolve) => (open = resolve));
   return { wait, open };
 }
 
-// Foods as Open Food Facts answers them in a search: per 100 g, the nutrients the index holds, a portion for the granola bars.
 const GRANOLA_HIT = {
   code: "3017620422003", name: "Granola bars", brand: "Nature Valley", per100: { kcal: 450, proteinG: 8, carbsG: 62, fatG: 17 },
   nutrients: { fiberG: 4 }, complete: false, unit: "g", canada: true, servingG: 40, servingText: "1 bar (40 g)",
 };
 const OATS_HIT = { code: null, name: "Rolled oats", brand: null, per100: { kcal: 380, proteinG: 13, carbsG: 60, fatG: 7 }, nutrients: {}, complete: false, unit: "g", canada: false, servingG: null, servingText: null };
 const OAT_DRINK_HIT = { code: "5000159407236", name: "Oat drink", brand: null, per100: { kcal: 45, proteinG: 1, carbsG: 7, fatG: 1.5 }, nutrients: {}, complete: false, unit: "ml", canada: true, servingG: null, servingText: null };
-// the product's own page: every nutrient it has, and the portion
 const GRANOLA_FULL = { ...GRANOLA_HIT, complete: true, nutrients: { fiberG: 4, sodiumMg: 60 }, servingG: 42, servingText: "1 bar (42 g)" };
 const OAT_DRINK_FULL = { ...OAT_DRINK_HIT, complete: true, nutrients: { fiberG: 0.8, sodiumMg: 60 }, servingG: 250, servingText: "1 cup (250 ml)" };
 
-// Foods logged before, as the log holds them (a product keeps the quantity it was scaled from).
 const OATMEAL = { name: "Oatmeal", kcal: 300, proteinG: 10, carbsG: 54, fatG: 5, nutrients: { fiberG: 4 } };
 const BANANA = { name: "Banana", kcal: 105, proteinG: 1, carbsG: 27, fatG: 0 };
 const WRAP = { name: "Chicken wrap", kcal: 520, proteinG: 34, carbsG: 48, fatG: 20 };
@@ -62,7 +48,6 @@ const GRANOLA_LOGGED = { name: "Granola bars (Nature Valley) · 2 × 40 g", kcal
 
 interface Logged { id: number; meal: string; name: string; kcal: number; proteinG: number; carbsG: number; fatG: number; nutrients: Record<string, number>; product: unknown }
 
-/** The foods of the log on a day, each with its meal. */
 async function logged(api: APIRequestContext, day = today()): Promise<Logged[]> {
   const res = await api.get(`/api/nutrition?date=${day}`);
   expect(res.ok()).toBeTruthy();
@@ -70,38 +55,31 @@ async function logged(api: APIRequestContext, day = today()): Promise<Logged[]> 
   return body.day.meals.flatMap((m: any) => m.entries.map((e: any) => ({ ...e, meal: m.meal })));
 }
 
-/** Logs foods in a meal of a day through the API, and gives back their ids. */
 async function seed(api: APIRequestContext, day: string, meal: string, items: Record<string, unknown>[]): Promise<number[]> {
   const res = await api.post("/api/nutrition", { data: { action: "add", day, meal, items } });
   expect(res.ok()).toBeTruthy();
   return (await res.json()).added;
 }
 
-/** The sheet's search box, the list under it (the foods used lately, then Open Food Facts' results), a result by its name, and the picker. */
 const searchBox = (page: Page) => page.locator("#fsh").getByRole("searchbox", { name: "Search a food" });
 const results = (page: Page) => page.locator("#fsh .fresults");
 const hit = (page: Page, name: string) => results(page).locator("button.fr:not(.frec)", { hasText: name });
 const picker = (page: Page) => page.locator("#fsh .fpick");
-/** The picker's Add, which names the meal it adds to: "Add to Breakfast". */
 const addButton = (page: Page) => picker(page).getByRole("button", { name: /^Add to / });
 
-/** The rows of the foods used lately, under the sheet's search box. */
 const recentRows = (page: Page) => page.locator("#fsh .frec");
 
-/** Opens the Food view, then the add sheet on a meal (from its +), on the search. */
 async function openSearch(page: Page, m: Meal = "breakfast") {
   await openView(page, "food");
   await openSheet(page, m);
   await expect(searchBox(page)).toBeVisible();
 }
 
-/** Opens a food's details in a meal (the sheet shut first) and gives its Change button. */
 async function openEntry(page: Page, m: Meal, name: string) {
   await openRow(page, m, name);
   return section(page, m).getByRole("button", { name: `Change ${name}` });
 }
 
-/** The camera dialog of the Scan button. */
 const scanDialog = (page: Page) => page.locator("#scandlg");
 
 test.describe("the search box", () => {
@@ -124,7 +102,6 @@ test.describe("the search box", () => {
     await me.clock.runFor(1000);
     await searchBox(me).pressSequentially("c");
     await me.clock.runFor(1000);
-    // the query of the first search is the three letters: "ab" asked nothing, or it would be first in the list
     await expect.poll(() => asked.search.map((u) => u.searchParams.get("q"))).toEqual(["abc"]);
     await expect(hit(me, "Rolled oats")).toBeVisible();
   });
@@ -184,7 +161,6 @@ test.describe("the search box", () => {
     const row = hit(me, "Granola bars");
     await expect(row.locator(".frb")).toHaveText("Nature Valley");
     await expect(row.locator(".frm")).toHaveText("450 kcal · P 8 · C 62 · F 17 per 100 g");
-    // a food with no brand shows none
     await expect(hit(me, "Rolled oats").locator(".frb")).toHaveCount(0);
     await expect(hit(me, "Rolled oats").locator(".frm")).toHaveText("380 kcal · P 13 · C 60 · F 7 per 100 g");
   });
@@ -194,7 +170,7 @@ test.describe("the search box", () => {
     await openSearch(me);
     await searchBox(me).fill("granola");
     await expect(results(me).locator(".fgroup").filter({ hasText: "Sold in Canada" })).toBeVisible();
-    const headings = await results(me).locator(".fgroup").allTextContents(); // the headings are drawn in capitals, so the text is read as written
+    const headings = await results(me).locator(".fgroup").allTextContents();
     expect(headings).toEqual(["Open Food Facts", "Sold in Canada", "Other countries"]);
     const names = await results(me).locator("button.fr b").allTextContents();
     expect(names).toEqual(["Granola bars", "Oat drink", "Rolled oats"]);
@@ -262,11 +238,10 @@ test.describe("the search box", () => {
     });
     await openSearch(me);
     await searchBox(me).fill("granola");
-    await inFlight.wait; // the search for "granola" is on its way before the words change
+    await inFlight.wait;
     await searchBox(me).fill("oats");
     await expect(hit(me, "Rolled oats")).toBeVisible();
     slow.open();
-    // the late answer for "granola" is not shown: the list still holds the oats
     await expect(hit(me, "Granola bars")).toHaveCount(0);
     await expect(results(me).locator("button.fr")).toHaveCount(1);
   });
@@ -316,7 +291,7 @@ test.describe("the meal at the top of the sheet", () => {
     await picker(me).getByRole("spinbutton", { name: "Quantity" }).fill("60");
     await sheetMeal(me, "lunch").click();
     await expect(addButton(me)).toHaveText("Add to Lunch");
-    await expect(picker(me).getByRole("spinbutton", { name: "Quantity" })).toHaveValue("60"); // the quantity typed stays
+    await expect(picker(me).getByRole("spinbutton", { name: "Quantity" })).toHaveValue("60");
     await addButton(me).click();
     await expect(section(me, "lunch").locator(".fe .fn", { hasText: "Rolled oats · 60 g" })).toBeVisible();
     expect((await logged(profile.api))[0].meal).toBe("lunch");
@@ -623,7 +598,6 @@ test.describe("barcodes", () => {
     await expect(me.locator("#fsh .fsh-note")).toHaveText("3017620422003 is not in Open Food Facts, or has no nutrition values. Enter it by hand.");
     await expect(sheetTab(me, "By hand")).toHaveAttribute("aria-selected", "true");
     expect(asked.search).toHaveLength(0);
-    // the food typed in goes to the meal the sheet was on
     await me.locator("#fsh form.fform .fname").fill("Local granola");
     await me.locator('#fsh form.fform input[aria-label="kcal"]').fill("210");
     await me.locator("#fsh form.fform").getByRole("button", { name: "Add to Snacks" }).click();
@@ -867,7 +841,6 @@ test.describe("foods used lately (Recent)", () => {
 });
 
 test.describe("quick add", () => {
-  /** The strip of foods to log again in a tap, under the summary, and its meal. */
   const strip = (page: Page) => page.locator("#fbody .fquick");
   const chips = (page: Page) => strip(page).locator("button.fchip");
 
@@ -881,7 +854,7 @@ test.describe("quick add", () => {
     await oatmeal.click();
     await expect(me.locator("#toast")).toContainText("Added Oatmeal to Breakfast.");
     await expect(section(me, "breakfast").locator(".fe .fn")).toHaveText(["Oatmeal"]);
-    await expect(sheet(me)).toBeHidden(); // a tap logs it where it is: nothing opens
+    await expect(sheet(me)).toBeHidden();
     await me.locator("#toast").getByRole("button", { name: "Undo" }).click();
     await expect(me.locator("#toast")).toContainText("Removed 1 food.");
     await expect(section(me, "breakfast").locator(".fe")).toHaveCount(0);

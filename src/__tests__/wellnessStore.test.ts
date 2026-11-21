@@ -67,7 +67,7 @@ describe("the wellness table", () => {
 
   it("forgets the stored weigh-in answers that held none, so Garmin is asked again, and keeps the ones that did", () => {
     store.wellness.put("MED", "2026-01-01", "weight", noWeighIn);
-    store.wellness.put("MED", "2026-01-02", "weight", undefined); // an answer of nothing
+    store.wellness.put("MED", "2026-01-02", "weight", undefined);
     store.wellness.put("MED", "2026-01-03", "weight", weightResponse());
     store.wellness.put("MED", "2026-01-04", "weight", noWeighIn);
     store.wellness.put("MED", "2026-01-01", "summary", summaryResponse());
@@ -76,9 +76,9 @@ describe("the wellness table", () => {
     expect(store.wellness.get("MED", "2026-01-01", "weight")).toBeNull();
     expect(store.wellness.get("MED", "2026-01-02", "weight")).toBeNull();
     expect(store.wellness.get("MED", "2026-01-03", "weight")).not.toBeNull();
-    expect(store.wellness.get("MED", "2026-01-04", "weight")).not.toBeNull(); // outside the days
-    expect(store.wellness.get("MED", "2026-01-01", "summary")).not.toBeNull(); // another kind
-    expect(store.wellness.get("SAM", "2026-01-01", "weight")).not.toBeNull(); // another profile
+    expect(store.wellness.get("MED", "2026-01-04", "weight")).not.toBeNull();
+    expect(store.wellness.get("MED", "2026-01-01", "summary")).not.toBeNull();
+    expect(store.wellness.get("SAM", "2026-01-01", "weight")).not.toBeNull();
   });
 
   it("reads the breathing of a day from the respiration response, and from the summary and sleep when it is missing", () => {
@@ -98,8 +98,8 @@ describe("the wellness table", () => {
     store.wellness.put("MED", "2026-01-02", "heart_rate", { restingHeartRate: 48, lastSevenDaysAvgRestingHeartRate: 49 });
     store.wellness.put("MED", "2026-01-02", "hrv", null);
     const [m] = store.wellness.metrics("MED", "2026-01-02", "2026-01-02");
-    expect(m.hrvLastNight).toBe(49); // the night's HRV from the sleep response, as the HRV one is empty
-    expect(m.restingHr).toBe(48); // the heart-rate kind before the sleep one
+    expect(m.hrvLastNight).toBe(49);
+    expect(m.restingHr).toBe(48);
     expect(m.restingHr7d).toBe(49);
     expect(m.hrvBalancedLow).toBeNull();
     expect(m.bodyBatteryWake).toBeNull();
@@ -124,8 +124,8 @@ describe("the wellness sync lease", () => {
     expect(t.claim("MED", "a", 1000, 0)).toBe(true);
     expect(t.claim("MED", "b", 1000, 500)).toBe(false);
     expect(t.renew("MED", "a", 1000, 600)).toBe(true);
-    expect(t.claim("MED", "b", 1000, 1500)).toBe(false); // renewed to 1600
-    expect(t.claim("MED", "b", 1000, 1700)).toBe(true); // it ran out
+    expect(t.claim("MED", "b", 1000, 1500)).toBe(false);
+    expect(t.claim("MED", "b", 1000, 1700)).toBe(true);
     expect(t.renew("MED", "a", 1000, 1800)).toBe(false);
     t.release("MED", "b", 1900);
     expect(t.state("MED").holder).toBeNull();

@@ -1,12 +1,3 @@
-/**
- * lifetimeStats.ts — what the stored activities add up to over a lifetime, for runs and for strength training.
- *
- * Nothing here is kept as a second copy: the totals and records are worked out from the activities table, and the answer
- * is remembered only while the table has not changed (see ActivityTable.fingerprint). A new activity, or the details of
- * one that arrived later, change the fingerprint, so the next look works it out again and the numbers are always current.
- *
- * Distances are meters, times seconds, loads pounds, dates the strings of the rows (YYYY-MM-DD; local time).
- */
 import { slimStored } from "../activityExporter";
 import { type BestLift, bestLifts, epley, expandSets, liftSets } from "./oneRepMax";
 import type { ActivityTable, LifetimeRow } from "./store/activities";
@@ -22,67 +13,49 @@ export interface RunStats {
   runs: number;
   meters: number;
   seconds: number;
-  /** Climb over all the runs, in meters. */
   gain: number;
-  /** Seconds per km over all of it; null without distance. */
   avgPaceSec: number | null;
   longest: (Effort & { meters: number; seconds: number }) | null;
-  /** The fastest average pace of a run of at least 3 km. */
   bestPace: (Effort & { meters: number; paceSec: number }) | null;
   biggestClimb: (Effort & { gain: number }) | null;
-  /** The week (its Monday) and the month (YYYY-MM) with the most distance. */
   biggestWeek: { start: string; meters: number; runs: number } | null;
   biggestMonth: { month: string; meters: number; runs: number } | null;
-  /** The fastest time over each distance the watch timed inside a run, shortest distance first. */
   efforts: (Effort & { meters: number; seconds: number })[];
   vo2max: {
     latest: { value: number; date: string } | null;
     best: { value: number; date: string } | null;
-    /** Every day a run stated a VO2max, oldest first (the last of a day when there were two), for the chart over time. */
     series: { date: string; value: number }[];
   };
 }
 
 export interface ExerciseStats {
   name: string;
-  /** Activities it was done in, sets and reps counted, and the load (reps × weight). */
   sessions: number;
   sets: number;
   reps: number;
   volume: number;
-  /**
-   * The best estimated one-rep max (Epley, sets of up to 12 counted reps) with the set it came from: the max the % of 1RM
-   * section measures against. Null when no set can say (bodyweight, no counted reps).
-   */
   best: BestLift | null;
-  /** The heaviest weight lifted. */
   heaviest: { weight: number; reps: number; date: string } | null;
   firstDate: string;
   lastDate: string;
-  /** The best estimated one-rep max of each session that can say, oldest first (a sparkline of the lift over time). */
   history: { date: string; oneRm: number }[];
 }
 
-/** One strength session's exercises and the sets of each, for the muscles a period trained. */
 export interface RecentSession {
   date: string;
   exercises: { name: string; sets: number }[];
 }
 
-/** How far before the latest session the sessions kept for the muscle map reach: more than the longest period the page shows (12 weeks). */
 export const RECENT_DAYS = 120;
 
 export interface StrengthStats {
   sessions: number;
   seconds: number;
-  /** From the list items, so they cover every session. */
   sets: number;
   reps: number;
-  /** From the exercise sets of the sessions whose details are stored; `detailed` says how many that is. */
   volume: number;
   detailed: number;
   exercises: ExerciseStats[];
-  /** The sessions with details of the last RECENT_DAYS days before the newest one, oldest first, with their sets per exercise. */
   recent: RecentSession[];
 }
 
@@ -107,34 +80,28 @@ export interface LifetimeStats {
   byType: { type: string; count: number; seconds: number; meters: number }[];
   running: RunStats | null;
   strength: StrengthStats | null;
-  /** Newest year first. */
   years: YearStats[];
 }
 
 export interface LifetimeInput {
   profile: string;
   rows: LifetimeRow[];
-  /** The fastest split the watch timed inside an activity: its distance and time. */
   splits: { id: string; meters: number; seconds: number }[];
-  /** The exercise sets of the strength sessions whose details are stored. */
   lifts: { id: string; date: string; sets: ExerciseSet[] | undefined }[];
 }
 
 const RUN = "running";
 const STRENGTH = "strength_training";
-/** A pace over less than this says little about a runner. */
 const MIN_PACE_METERS = 3000;
 
 const day = (startLocal: string): string => startLocal.slice(0, 10);
 
-/** The Monday of the week a date (YYYY-MM-DD) falls in. */
 export function mondayOf(date: string): string {
   const d = new Date(`${date}T00:00:00Z`);
   const back = (d.getUTCDay() + 6) % 7;
   return new Date(d.getTime() - back * 86_400_000).toISOString().slice(0, 10);
 }
 
-/** The group with the biggest total; the later one (the map is filled oldest first) wins a tie. */
 function top<T extends { meters: number }>(groups: Map<string, T>): [string, T] | null {
   let best: [string, T] | null = null;
   for (const entry of groups) if (!best || entry[1].meters >= best[1].meters) best = entry;
@@ -151,7 +118,7 @@ function runStats(rows: LifetimeRow[], splits: LifetimeInput["splits"]): RunStat
   let latest: { value: number; date: string } | null = null, bestVo2: { value: number; date: string } | null = null;
   const series: { date: string; value: number }[] = [];
   const weeks = new Map<string, { meters: number; runs: number }>(), months = new Map<string, { meters: number; runs: number }>();
-  for (const r of runs) { // oldest first
+  for (const r of runs) {
     const m = r.distance ?? 0, s = r.duration ?? 0, date = day(r.startLocal);
     if (m > 0 && (!longest || m > longest.meters)) longest = { ...who(r), meters: Math.round(m), seconds: Math.round(s) };
     if (m >= MIN_PACE_METERS && s > 0) {
@@ -198,7 +165,7 @@ function strengthStats(rows: LifetimeRow[], lifts: LifetimeInput["lifts"]): Stre
 
   const by = new Map<string, ExerciseStats>();
   let volume = 0, detailed = 0;
-  const ordered = [...lifts].sort((x, y) => x.date.localeCompare(y.date)); // oldest first
+  const ordered = [...lifts].sort((x, y) => x.date.localeCompare(y.date));
   const sessionsDone: RecentSession[] = [];
   for (const a of ordered) {
     const sets = liftSets(a.sets);
@@ -235,7 +202,6 @@ function strengthStats(rows: LifetimeRow[], lifts: LifetimeInput["lifts"]): Stre
   };
 }
 
-/** The lifetime numbers over some stored activities. Pure: what goes in is what comes out. */
 export function computeLifetime(input: LifetimeInput): LifetimeStats {
   const rows = [...input.rows].sort((a, b) => a.startLocal.localeCompare(b.startLocal));
   const types = new Map<string, { type: string; count: number; seconds: number; meters: number }>();
@@ -266,16 +232,9 @@ export function computeLifetime(input: LifetimeInput): LifetimeStats {
   };
 }
 
-// ── From the database ────────────────────────────────────────────────────
 
-/** What was worked out, per table and profile, with the fingerprint it was worked out for. */
 const caches = new WeakMap<ActivityTable, Map<string, { key: string; stats: LifetimeStats }>>();
 
-/**
- * The profile's lifetime stats, read from the activities table. The answer is kept while the table's fingerprint is the
- * same, so a page that asks again costs one small query; when an activity is added, or one gets its details, the numbers
- * are worked out again.
- */
 export function lifetimeStats(activities: ActivityTable, profile: string): LifetimeStats {
   let cache = caches.get(activities);
   if (!cache) caches.set(activities, (cache = new Map()));

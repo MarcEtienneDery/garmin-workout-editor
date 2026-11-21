@@ -107,12 +107,12 @@ describe("where a day stands", () => {
   it("calls a floor reached at the goal, a ceiling over above it, and an aim on within 10 %", () => {
     log([{ name: "Big", kcal: 2150, proteinG: 150, carbsG: 250, fatG: 90, nutrients: { fiberG: 30, sodiumMg: 2400 } }]);
     const by = Object.fromEntries(goalProgress(goals, dayOf()).map((r) => [r.key, r]));
-    expect(by.proteinG).toMatchObject({ state: "ok", left: -10 }); // a floor passed
-    expect(by.kcal).toMatchObject({ state: "ok", pct: 108 }); // 8 % above an aim
+    expect(by.proteinG).toMatchObject({ state: "ok", left: -10 });
+    expect(by.kcal).toMatchObject({ state: "ok", pct: 108 });
     expect(by.carbsG).toMatchObject({ state: "ok", pct: 100 });
     expect(by.fatG).toMatchObject({ state: "over", pct: 129, left: -20 });
-    expect(by.fiberG).toMatchObject({ state: "ok", pct: 100 }); // exactly the floor
-    expect(by.sodiumMg).toMatchObject({ state: "over", left: -100 }); // a ceiling passed
+    expect(by.fiberG).toMatchObject({ state: "ok", pct: 100 });
+    expect(by.sodiumMg).toMatchObject({ state: "over", left: -100 });
   });
 
   it("is short of an aim below 90 % and over it above 110 %", () => {
@@ -128,8 +128,8 @@ describe("where a day stands", () => {
     log([{ name: "Oats", kcal: 150, nutrients: { fiberG: 4 } }, { name: "Egg", kcal: 80 }]);
     const by = Object.fromEntries(goalProgress(goals, dayOf()).map((r) => [r.key, r]));
     expect(by.fiberG).toMatchObject({ amount: 4, partial: true, state: "short", left: 26 });
-    expect(by.sodiumMg).toMatchObject({ amount: null, state: "unknown", partial: false }); // not 0 of 2300
-    expect(by.kcal).toMatchObject({ amount: 230 }); // the macros are counted for every food
+    expect(by.sodiumMg).toMatchObject({ amount: null, state: "unknown", partial: false });
+    expect(by.kcal).toMatchObject({ amount: 230 });
   });
 });
 
@@ -154,9 +154,9 @@ describe("a calorie goal that follows the burn", () => {
     expect(setGoals(store, "MED", { kcal: 2200, kcalBurnPct: 50 })).toEqual({ kcal: 2200, kcalBurnPct: 50 });
     expect(kcalGoalOf(getGoals(store, "MED"), 620)).toBe(2510);
     expect(kcalGoalOf({ kcal: 2200, kcalBurnPct: 100 }, 333)).toBe(2533);
-    expect(kcalGoalOf({ kcal: 2200, kcalBurnPct: 33 }, 101)).toBe(2233); // 33.33 added, rounded
+    expect(kcalGoalOf({ kcal: 2200, kcalBurnPct: 33 }, 101)).toBe(2233);
     expect(kcalGoalOf({ kcal: 2200, kcalBurnPct: 50 }, 0)).toBe(2200);
-    expect(kcalGoalOf({ kcalBurnPct: 50 }, 620)).toBeNull(); // no calorie goal, nothing to add to
+    expect(kcalGoalOf({ kcalBurnPct: 50 }, 620)).toBeNull();
   });
 
   it("measures the day against the adjusted goal, and says how it came about", () => {
@@ -169,9 +169,9 @@ describe("a calorie goal that follows the burn", () => {
     log([{ name: "Rice", kcal: 1000 }]);
     const [row] = goalProgress({ kcal: 2200, kcalBurnPct: 50 }, dayOf(), null);
     expect(row).toMatchObject({ goal: 2200, adjust: { base: 2200, pct: 50, activeKcal: null, added: null } });
-    const [none] = goalProgress({ kcal: 2200, kcalBurnPct: 50 }, dayOf("SAM"), null); // nothing logged
+    const [none] = goalProgress({ kcal: 2200, kcalBurnPct: 50 }, dayOf("SAM"), null);
     expect(none).toMatchObject({ goal: 2200, amount: null, state: "unknown", adjust: { added: null } });
-    expect(goalProgress({ kcal: 2200, kcalBurnPct: 50 }, dayOf(), 0)[0]).toMatchObject({ goal: 2200, adjust: { activeKcal: 0, added: 0 } }); // a burn of 0 is known
+    expect(goalProgress({ kcal: 2200, kcalBurnPct: 50 }, dayOf(), 0)[0]).toMatchObject({ goal: 2200, adjust: { activeKcal: 0, added: 0 } });
   });
 
   it("leaves the other goals alone", () => {
@@ -185,8 +185,8 @@ describe("a calorie goal that follows the burn", () => {
     setGoals(store, "MED", { kcal: 2000 });
     expect(setGoals(store, "MED", { kcalBurnPct: "50" })).toEqual({ kcal: 2000, kcalBurnPct: 50 });
     expect(setGoals(store, "MED", { kcalBurnPct: 62.6 })).toEqual({ kcal: 2000, kcalBurnPct: 63 });
-    expect(setGoals(store, "MED", { kcal: 1800 })).toEqual({ kcal: 1800, kcalBurnPct: 63 }); // stays
-    expect(setGoals(store, "MED", { kcalBurnPct: null })).toEqual({ kcal: 1800 }); // fixed again
+    expect(setGoals(store, "MED", { kcal: 1800 })).toEqual({ kcal: 1800, kcalBurnPct: 63 });
+    expect(setGoals(store, "MED", { kcalBurnPct: null })).toEqual({ kcal: 1800 });
     for (const bad of [0, -5, 101, "lots", Infinity]) expect(() => setGoals(store, "MED", { kcalBurnPct: bad })).toThrow(/share of the active calories/);
     expect(getGoals(store, "MED")).toEqual({ kcal: 1800 });
   });
@@ -194,7 +194,7 @@ describe("a calorie goal that follows the burn", () => {
   it("needs a calorie goal: asking for it with none is refused, and removing the goal drops it", () => {
     expect(() => setGoals(store, "MED", { kcalBurnPct: 50 })).toThrow(/Set a calorie goal/);
     expect(getGoals(store, "MED")).toEqual({});
-    expect(setGoals(store, "MED", { kcal: 2000, kcalBurnPct: 50 })).toEqual({ kcal: 2000, kcalBurnPct: 50 }); // both at once
+    expect(setGoals(store, "MED", { kcal: 2000, kcalBurnPct: 50 })).toEqual({ kcal: 2000, kcalBurnPct: 50 });
     expect(setGoals(store, "MED", { kcal: null })).toEqual({});
     expect(getGoals(store, "MED")).toEqual({});
   });
@@ -216,7 +216,7 @@ describe("the weight goal", () => {
     expect(setGoals(store, "MED", { kcal: 2200, weightKg: 79.456 })).toEqual({ kcal: 2200, weightKg: 79.46 });
     expect(setGoals(store, "MED", { weightKg: "80,5" })).toEqual({ kcal: 2200, weightKg: 80.5 });
     expect(getGoals(store, "MED")[WEIGHT_KEY]).toBe(80.5);
-    expect(setGoals(store, "MED", { kcal: 2000 })).toEqual({ kcal: 2000, weightKg: 80.5 }); // left out: it stays
+    expect(setGoals(store, "MED", { kcal: 2000 })).toEqual({ kcal: 2000, weightKg: 80.5 });
     expect(setGoals(store, "MED", { weightKg: null })).toEqual({ kcal: 2000 });
     expect(setGoals(store, "MED", { weightKg: 75 })).toEqual({ kcal: 2000, weightKg: 75 });
     expect(setGoals(store, "MED", { weightKg: " " })).toEqual({ kcal: 2000 });

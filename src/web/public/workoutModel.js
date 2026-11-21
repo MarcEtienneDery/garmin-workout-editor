@@ -1,12 +1,3 @@
-/*
- * workoutModel.js — what one workout looks like as a picture: its step tree, a timeline of coloured
- * segments, the text on each card, and the estimated totals.
- *
- * Pure functions on the plan-format workout ({ workoutType, steps: [...] }), shared by the page
- * (which loads this as a plain script before its own code) and by the tests (which require() it).
- * Steps are the flat list the plan files use: a repeat is a run of consecutive steps that carry the
- * same repeatGroupIndex and a numberOfRepeats above 1. Nested repeatSteps are understood too.
- */
 (function (root, factory) {
   const api = factory();
   if (typeof module === "object" && module.exports) module.exports = api;
@@ -14,26 +5,23 @@
 })(typeof self !== "undefined" ? self : this, function () {
   "use strict";
 
-  const ASSUMED_PACE = 360; // seconds per km, for steps that give a distance or a time but no pace target
-  const SECONDS_PER_REP = 3; // a rep step has no duration of its own; the estimate counts this much per rep
-  const MIN_RUNS = 3; // fewer runs than this say too little about how fast you go
-  const NEAREST_RUNS = 5; // runs at the closest heart rate that set the pace of a heart-rate step
-  const MAX_SEGMENTS = 160; // beyond this, repeats are drawn once, as one wide segment
+  const ASSUMED_PACE = 360;
+  const SECONDS_PER_REP = 3;
+  const MIN_RUNS = 3;
+  const NEAREST_RUNS = 5;
+  const MAX_SEGMENTS = 160;
 
   const num = (v) => (typeof v === "number" && isFinite(v) ? v : 0);
   const pad = (n) => String(n).padStart(2, "0");
   const prettyName = (key) => String(key).toLowerCase().split("_").filter(Boolean).map((x) => x.charAt(0).toUpperCase() + x.slice(1)).join(" ");
   const isStep = (s) => s !== null && typeof s === "object" && !Array.isArray(s);
 
-  // ── Formatting ──────────────────────────────────────────────────────────
 
-  /** 45 -> "0:45", 3725 -> "1:02:05" */
   function clock(seconds) {
     const s = Math.round(seconds), h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
     return h ? `${h}:${pad(m)}:${pad(s % 60)}` : `${m}:${pad(s % 60)}`;
   }
 
-  /** 45 -> "45 s", 1500 -> "25 min", 3900 -> "1 h 05 min" */
   function duration(seconds) {
     const s = Math.round(seconds);
     if (s < 60) return `${s} s`;
@@ -41,33 +29,28 @@
     return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${pad(m % 60)} min`;
   }
 
-  /** 800 -> "800 m", 11800 -> "11.8 km" */
   function distance(meters) {
     return meters < 1000 ? `${Math.round(meters)} m` : `${+(meters / 1000).toFixed(2)} km`;
   }
 
-  /** m/s -> "5:00" per km */
   function pace(speed) {
     return clock(1000 / speed);
   }
 
   const LB_PER_KG = 2.20462262;
-  /** A weight kept in lb, in the unit asked for: 195 -> "195 lb", or "88.5 kg". */
   function weight(lb, unit) {
     return unit === "kg" ? `${Math.round((lb / LB_PER_KG) * 10) / 10} kg` : `${Math.round(lb * 10) / 10} lb`;
   }
 
-  // ── What a step is and what it asks for ─────────────────────────────────
 
   const KIND = { warmup: "warmup", cooldown: "cooldown", recovery: "recovery", rest: "rest", interval: "work", exercise: "work", repeat: "work" };
   const kindOf = (st) => KIND[st.stepType] || "other";
   const KIND_LABEL = { warmup: "Warm up", cooldown: "Cool down", recovery: "Recover", rest: "Rest", other: "Other" };
   const SPORT_LABEL = { running: "Run", cycling: "Ride", swimming: "Swim" };
-  const GENERIC_EXERCISE = new Set(["RUN", "CARDIO"]); // names that say nothing a step's type has not said
+  const GENERIC_EXERCISE = new Set(["RUN", "CARDIO"]);
 
   const isRun = (w, st) => (w && w.workoutType === "running") || (st && st.exerciseName === "RUN");
 
-  /** An exercise done for a number of reps: the cards for these list their sets together. */
   const isSet = (st) => !!st.exerciseName && st.endCondition === "reps" && ["interval", "exercise", "other"].includes(st.stepType);
 
   function titleOf(st, w) {
@@ -78,11 +61,6 @@
     return { title: KIND_LABEL[kind], subtitle: exercise };
   }
 
-  /**
-   * Learns how fast you run from past runs ({ pace: seconds per km, hr: average bpm }, as GET /api/runs lists them),
-   * to time the steps that name no pace: a step with a heart-rate target takes the median pace of the runs nearest
-   * that heart rate, any other step the easy pace (the median of the easier half of the runs). null when there are too few runs.
-   */
   function pacerFrom(runs) {
     const list = (Array.isArray(runs) ? runs : []).filter((r) => r && num(r.pace) > 0 && num(r.hr) > 0);
     if (list.length < MIN_RUNS) return null;
@@ -95,7 +73,6 @@
     };
   }
 
-  /** The target, as text, plus a number on a per-kind scale for the height of its bar. `w` (its workout) says whether a cadence is a ride's (rpm). */
   function targetOf(st, w) {
     const a = num(st.targetValueOne), b = num(st.targetValueTwo), lo = Math.min(a || b, b || a), hi = Math.max(a, b);
     const span = (f, unit) => `${lo === hi ? f(lo) : `${f(lo)}–${f(hi)}`}${unit}`;
@@ -104,7 +81,6 @@
         if (!lo) return null;
         return !b && a <= 5 ? { label: "Heart rate", value: `Zone ${a}`, kind: "hr", mid: 0 } : { label: "Heart rate", value: span(String, " bpm"), kind: "hr", mid: (lo + hi) / 2 };
       case "pace.zone":
-        // the values are speeds in m/s; a pace lists the faster end first
         return lo ? { label: "Pace", value: `${lo === hi ? pace(lo) : `${pace(hi)}–${pace(lo)}`} /km`, kind: "speed", mid: (lo + hi) / 2 } : null;
       case "speed.zone":
         return lo ? { label: "Speed", value: span((v) => (v * 3.6).toFixed(1), " km/h"), kind: "speed", mid: (lo + hi) / 2 } : null;
@@ -119,24 +95,18 @@
     }
   }
 
-  /** What ends the step, as one of seconds, meters, reps; lap is true when only the lap button ends it. */
   function measure(st) {
     const v = num(st.endConditionValue);
     if (st.endCondition === "reps") return { reps: v || num(st.reps) };
     if (st.endCondition === "time") return { seconds: v || num(st.durationSeconds) };
     if (st.endCondition === "distance") return { meters: v || num(st.distanceMeters) };
     if (!st.endCondition) return st.stepType === "rest" ? { seconds: v || num(st.durationSeconds) } : {};
-    // lap.button and the rest: a duration or distance written beside it is the plan, the button is how it ends
     const lap = st.endCondition === "lap.button";
     if (num(st.durationSeconds)) return { seconds: st.durationSeconds, lap };
     if (num(st.distanceMeters)) return { meters: st.distanceMeters, lap };
     return lap ? { lap } : { other: { name: st.endCondition, value: v } };
   }
 
-  /**
-   * Seconds and meters of one run through the step. A step's own pace target sets its speed; with none, the pacer's
-   * pace for its heart-rate target or its easy pace, and with no pacer 6:00/km. Those are assumed. open: nothing says how long.
-   */
   function stepMetrics(st, w, pacer) {
     const m = measure(st), target = targetOf(st, w), run = isRun(w, st);
     let seconds = m.seconds || 0, meters = m.meters || 0, assumed = false, paceFrom = null;
@@ -160,7 +130,6 @@
 
   const loadOf = (st) => num(st.weight) || num(st.weightPercentage);
 
-  /** The text on a step's card: a title and the values that go under it, each with a label. A weight is in `unit` (lb unless kg). */
   function describeStep(st, w, unit) {
     const { title, subtitle } = titleOf(st, w), m = measure(st), metrics = [];
     if (m.seconds) metrics.push({ value: clock(m.seconds), label: m.lap ? "Time (lap button)" : "Time" });
@@ -176,7 +145,6 @@
     return { kind: kindOf(st), title, subtitle, metrics, open: !!m.lap && !m.seconds && !m.meters };
   }
 
-  /** The line a set has on its exercise's card. */
   function describeSet(st, times, unit) {
     return {
       times,
@@ -186,10 +154,6 @@
     };
   }
 
-  // ── The step tree ───────────────────────────────────────────────────────
-  // step: one step, once | sets: one exercise's consecutive sets | group: steps done N times.
-  // Every node has a key, which ties a card to its segments in the profile; steps carry their
-  // position in the list (index), which is how a difference with Garmin names them.
 
   function buildTree(steps) {
     let key = 0;
@@ -223,7 +187,6 @@
         }
         i += members.length;
         if (times <= 1 || st.repeatGroupIndex === undefined || st.repeatGroupIndex === null) {
-          // a group that repeats once is just its steps
           for (const m of members) add(out, m.st, m.index, 1);
         } else if (members.length === 1) add(out, st, index, times);
         else {
@@ -239,10 +202,8 @@
     return nodes;
   }
 
-  /** A group of more than one exercise, done in rounds. */
   const isSuperset = (group) => new Set(group.children.flatMap((c) => (c.kind === "sets" ? [c.name] : []))).size > 1;
 
-  // ── The profile ─────────────────────────────────────────────────────────
 
   const TIER = { warmup: 0.5, cooldown: 0.5, work: 0.8, recovery: 0.3, rest: 0.2, other: 0.6 };
 
@@ -268,11 +229,9 @@
     return segs;
   }
 
-  /** Give each segment a weight (its width) and a height (0 to 1) for the bar chart. */
   function shape(segs, w) {
     const known = segs.reduce((t, s) => t + s.seconds, 0) || segs.length * 60;
     for (const s of segs) {
-      // lap-button steps and steps of unknown length get a placeholder of at least three minutes, so they show; short ones get a minimum
       s.weight = s.seconds ? Math.max(s.seconds, known * 0.012) : Math.max(known * 0.12, 180);
     }
     const levels = {}, loads = {};
@@ -292,7 +251,6 @@
     return segs;
   }
 
-  /** Everything the picture needs for one workout. options.pacer (from pacerFrom) times the steps that name no pace; options.unit says weights in kg. */
   function analyze(w, options) {
     const pacer = (options && options.pacer) || null, unit = (options && options.unit) || "lb";
     const steps = w && Array.isArray(w.steps) ? w.steps.filter(isStep) : [];
@@ -325,7 +283,6 @@
     };
   }
 
-  /** Positions (0-based) of the steps that a list of differences from Garmin names. */
   function changedSteps(differences) {
     const out = new Set();
     for (const d of differences || []) {

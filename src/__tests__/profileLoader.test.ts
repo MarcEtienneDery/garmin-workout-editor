@@ -97,7 +97,6 @@ describe("the profile registry", () => {
     process.env.GARMIN_STORE_PATH = path.join(dir, "old.db");
     getStore();
     closeStore();
-    // an older database: the registry table is not there yet, but the data is
     const { DatabaseSync } = require("node:sqlite");
     const db = new DatabaseSync(process.env.GARMIN_STORE_PATH);
     db.exec("DROP TABLE profiles");
@@ -107,10 +106,10 @@ describe("the profile registry", () => {
     db.prepare("INSERT INTO wellness (profile, day, kind, fetched_at, data) VALUES ('bad name!', '2026-01-01', 'sleep', 1, '{}')").run();
     db.close();
 
-    expect(getAvailableProfiles()).toEqual(["Old_One", "Owner", "PlanOnly"]); // a name that is no profile name is left out
+    expect(getAvailableProfiles()).toEqual(["Old_One", "Owner", "PlanOnly"]);
     getStore().profiles.add("Later");
     closeStore();
-    expect(getAvailableProfiles()).toEqual(["Later", "Old_One", "Owner", "PlanOnly"]); // not taken again once the table has a row
+    expect(getAvailableProfiles()).toEqual(["Later", "Old_One", "Owner", "PlanOnly"]);
   });
 
   it("refuses a name that is not a profile name", () => {
@@ -135,7 +134,7 @@ describe("the profile registry", () => {
     expect(getStore().profiles.checkWebPassword("MED", "wrong")).toBe(false);
     expect(getStore().profiles.checkWebPassword("NOBODY", "correct horse")).toBe(false);
     expect(getStore().profiles.withWebPassword()).toEqual(["MED"]);
-    getStore().profiles.setWebPassword("MED", "correct horse"); // the same password, another salt
+    getStore().profiles.setWebPassword("MED", "correct horse");
     expect(getStore().profiles.webPasswordHash("MED")).not.toBe(hash);
     getStore().profiles.setWebPassword("MED", null);
     expect(getStore().profiles.withWebPassword()).toEqual([]);

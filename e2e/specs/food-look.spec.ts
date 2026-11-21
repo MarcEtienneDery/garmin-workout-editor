@@ -1,14 +1,8 @@
-/**
- * The Food view's look: the dark and the light theme (one choice, shared with Today, with a button in the day's bar), the palette read
- * by the summary, the meals and the add sheet, the rail following the theme, the AI marked with an icon and not an emoji, and the sizes
- * of the controls. alice's food is read only.
- */
 import { test, expect, openView, daysAgo, type APIRequestContext, type Page, chooseTheme, toggleTheme } from "../support/fixtures";
 import { labelOf, openFood, openInsights, sheet, sheetTab } from "../support/food";
 
 test.describe.configure({ timeout: 60_000 });
 
-/** Contrast ratio (1 to 21) of two CSS colours, as the page computes them. */
 const contrast = (page: Page, a: string, b: string) =>
   page.evaluate(
     ([x, y]) => {
@@ -51,7 +45,7 @@ test.describe("the Food view's themes", () => {
     await expect(alice.locator("body")).toHaveAttribute("data-view", "today");
     await expect(alice.locator("body")).toHaveAttribute("data-theme", "light");
     expect(await rail()).toBe(light);
-    await toggleTheme(alice); // back to dark, from Today
+    await toggleTheme(alice);
     await alice.locator("#vFood").click();
     await expect(alice.locator("body")).toHaveAttribute("data-theme", "dark");
     expect(await rail()).toBe(dark);
@@ -79,7 +73,7 @@ test.describe("the Food view's themes", () => {
     await openFood(alice);
     expect(parseFloat(await style(alice, "#fbody .fmeal", "border-top-left-radius"))).toBeGreaterThanOrEqual(16);
     expect(await style(alice, "#fbody .fsum .fctr b", "font-family")).toContain("Fira Code");
-    const colour = (key: string) => style(alice, `#fbody .fsum .fmacs .fmr.${key}`, "--c"); // the macro's colour, whether or not the day has any of it logged
+    const colour = (key: string) => style(alice, `#fbody .fsum .fmacs .fmr.${key}`, "--c");
     const [protein, carbs, fat] = [await colour("protein"), await colour("carbs"), await colour("fat")];
     expect(new Set([protein, carbs, fat]).size).toBe(3);
   });
@@ -144,7 +138,6 @@ test.describe("the controls", () => {
   });
 });
 
-/** The text of the charts as it is shown: its size in px (the drawing is scaled to the card), and whether each label is wholly inside its drawing. */
 const chartText = (page: Page) =>
   page.evaluate(() =>
     [...document.querySelectorAll<SVGSVGElement>("#fbody .rcsvg")].map((svg) => {
@@ -169,7 +162,7 @@ test.describe("the disposition of the Food view", () => {
     expect(add.left).toBeGreaterThanOrEqual(main.left - 1);
     expect(summary.left).toBeGreaterThanOrEqual(side.left - 1);
     expect(Math.abs(summary.top - add.top)).toBeLessThan(8);
-    expect(meal.top).toBeGreaterThan(add.bottom - 1); // the meals come under the card to add
+    expect(meal.top).toBeGreaterThan(add.bottom - 1);
   });
 
   test("the Insights are tiles over charts two across (the weekdays among them), with the table of every day under them, in the width of the page", async ({ alice }) => {
@@ -233,7 +226,6 @@ test.describe("the disposition of the Food view", () => {
   });
 });
 
-/** Three finished days against a 2,000 kcal / 100 g protein goal: over it, on it and under it (under counts as on target). */
 async function logThreeDays(api: APIRequestContext): Promise<void> {
   const goals = await api.post("/api/settings/goals", { data: { action: "save", goals: { kcal: 2000, proteinG: 100 } } });
   expect(goals.ok()).toBeTruthy();
@@ -279,8 +271,8 @@ test.describe("the goal on the charts", () => {
     await openFood(me);
     await openInsights(me);
     await expect(calories(me).locator("svg .rc-bar")).toHaveCount(1);
-    await expect(calories(me).locator("svg .rc-bar.over")).toHaveCount(1); // the bar is drawn in its colour, as it will be if the day ends so
-    await expect(calories(me).locator(".rcs")).toHaveCount(0); // but today is not counted, so there is nothing to say
+    await expect(calories(me).locator("svg .rc-bar.over")).toHaveCount(1);
+    await expect(calories(me).locator(".rcs")).toHaveCount(0);
   });
 
   test("has neither the colour nor the line without a calorie goal", async ({ me, profile }) => {

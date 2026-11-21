@@ -19,12 +19,10 @@ export * from "./renpho";
 export * from "./nutrition";
 export { FoodCacheTable } from "./foods";
 
-/** Where the SQLite database lives: GARMIN_STORE_PATH, else <data root>/garmin.db. */
 export const getStorePath = (): string => (process.env.GARMIN_STORE_PATH ? path.resolve(process.env.GARMIN_STORE_PATH) : path.join(getDataRoot(), "garmin.db"));
 
 let open: { file: string; store: SqliteStore } | undefined;
 
-/** The store for this process, opened on first use (and again if the database path changes). */
 export function getStore(): SqliteStore {
   const file = getStorePath();
   if (open?.file === file) return open.store;

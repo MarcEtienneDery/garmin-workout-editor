@@ -1,14 +1,8 @@
-/**
- * The header's status (syncActivityModel.js): a pill that says a sync is running, or that Garmin is answering 429 (Too Many Requests).
- * The page asks GET /api/sync-activity; the server's side of that is covered by the unit tests, so here the answer is given by the spec
- * and only what the page makes of it is looked at. Reads only: alice's data is never changed.
- */
 import type { Page } from "@playwright/test";
 import { test, expect, openView } from "../support/fixtures";
 
 const idle = { syncing: [], limit: null };
 
-/** Answer the header's question with `profiles` (a function, to change the answer between asks). */
 async function answerWith(page: Page, profiles: () => unknown): Promise<void> {
   await page.route("**/api/sync-activity", (route) => route.fulfill({ json: { now: Date.now(), profiles: profiles() } }));
 }
@@ -30,7 +24,7 @@ test.describe("the header status", () => {
     await expect(pill).toContainText("Syncing activities and health data…");
     await expect(pill).toHaveAttribute("title", /runs in the background/);
     running = false;
-    await expect(pill).toBeHidden({ timeout: 15_000 }); // it asks again in 3 seconds while a sync runs
+    await expect(pill).toBeHidden({ timeout: 15_000 });
   });
 
   test("says Garmin answered 429, with the advice to leave it alone", async ({ alice }) => {
@@ -42,7 +36,7 @@ test.describe("the header status", () => {
     await expect(pill).toHaveClass(/warn/);
     await expect(pill).toHaveAttribute("title", /HTTP 429, Too Many Requests/);
     await expect(pill).toHaveAttribute("title", /3 requests refused/);
-    await pill.click(); // a phone has no hover: a tap shows the same words
+    await pill.click();
     await expect(alice.locator("#toast")).toContainText("can make it last longer");
   });
 

@@ -1,15 +1,9 @@
 import { StoreError, type DocSummary } from "./types";
 
-/** Most characters of a profile name: it is a folder name (data/<name>/), so it must fit one. */
 export const MAX_PROFILE_NAME = 64;
 export const PROFILE_NAME_REGEX = new RegExp(`^[a-zA-Z0-9_-]{1,${MAX_PROFILE_NAME}}$`);
 export const MAX_SUMMARY_BYTES = 5 * 1024 * 1024;
 
-/**
- * Canonical form of a logical path ("workout-plans/x.json", "data/MED/x.json"). Only .json
- * documents under those two roots exist; data/ documents sit in a profile folder; no hidden or
- * relative segments.
- */
 export function normalizeLogicalPath(logicalPath: string): string {
   if (typeof logicalPath !== "string" || logicalPath.includes("\0")) {
     throw new StoreError("invalid_path", "Invalid path");
@@ -33,22 +27,15 @@ export function normalizeLogicalPath(logicalPath: string): string {
   return normalized;
 }
 
-/** The profile a data/<profile>/ path belongs to; undefined under workout-plans/. */
 export function profileOfPath(logicalPath: string): string | undefined {
   return /^data\/([^/]+)\//.exec(logicalPath)?.[1];
 }
 
-/**
- * Whether a login that is ONE profile (a profile's web sign-in, a profile's MCP token) may reach a document: its own data/<profile>/ folder
- * and, under workout-plans/, the plans that are shared (no owner) or its own. `owner` is the document's owner, null when it has none or
- * does not exist yet.
- */
 export function profileReaches(profile: string, logicalPath: string, owner: string | null): boolean {
   const folder = profileOfPath(logicalPath);
   return folder ? folder === profile : owner === null || owner === profile;
 }
 
-/** Cheap description of a plan document for list views. */
 export function summarizeText(text: string): DocSummary {
   if (Buffer.byteLength(text) > MAX_SUMMARY_BYTES) return {};
   try {
@@ -60,6 +47,6 @@ export function summarizeText(text: string): DocSummary {
     if (typeof data?.weekEnd === "string") summary.weekEnd = data.weekEnd;
     return summary;
   } catch {
-    return {}; // listed anyway; the editor flags it
+    return {};
   }
 }

@@ -1,8 +1,3 @@
-/**
- * The food log's tools: log what was eaten per meal, read it back with the totals and the calories Garmin says were burned,
- * correct an entry, delete one. They touch the database only (Garmin has nowhere to keep food), so they work without a
- * Garmin login and in mock mode. The logic is shared/nutrition.ts, which the web view uses too.
- */
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { MAX_ITEMS, MAX_RANGE_DAYS, MEALS, addFoods, averageOf, changeFood, deleteFoods, nutritionDays, totalsOf } from "../../shared/nutrition";
@@ -23,11 +18,6 @@ const foodFields = {
   fatG: grams.optional().describe("Fat in grams."),
 };
 
-/**
- * The nutrients beyond the macros, one optional number each. They are the ones on a Canadian Nutrition Facts table; the unit is in the name
- * (G grams, Mg milligrams). `clearable`: a null removes the value from an entry that has one (a change), as there is no other way to say
- * "that was wrong, it is not known".
- */
 const nutrientsArg = (clearable: boolean) => {
   const shape = Object.fromEntries(
     NUTRIENTS.map((def) => {
@@ -37,7 +27,7 @@ const nutrientsArg = (clearable: boolean) => {
   );
   return z
     .object(shape)
-    .strict() // a misspelt key ("fibreG") is an error the assistant can read, not a nutrient quietly dropped
+    .strict()
     .optional()
     .describe(
       clearable
@@ -46,7 +36,6 @@ const nutrientsArg = (clearable: boolean) => {
     );
 };
 
-/** Run a nutrition tool body: a refused food is an error the assistant can read and fix. */
 const run = (fn: () => unknown) => runTool(async () => fn());
 
 export interface LogMealArgs {
@@ -71,7 +60,6 @@ export function logMeal(args: LogMealArgs) {
     burnedKcal: shown.burnedKcal,
     burnedSoFar: shown.burnedSoFar,
     netKcal: shown.netKcal,
-    // where the day stands now against each daily goal the person set (none set: an empty list)
     goalProgress: goalProgress(getGoals(store, profile), shown, shown.activeKcal),
   };
 }
@@ -94,7 +82,6 @@ export function getNutrition(args: GetNutritionArgs) {
     from,
     to,
     today,
-    // the daily goals the person set (`kind`: min is a floor, max a ceiling, target an aim) and where the last day of the range stands against them
     goals: goalList(goals),
     kcalBurnPct: goals[BURN_KEY] ?? null,
     weightGoalKg: goals[WEIGHT_KEY] ?? null,
@@ -121,7 +108,6 @@ export function setNutritionGoals(args: SetGoalsArgs) {
   return { profile, goals: goalList(goals), kcalBurnPct: goals[BURN_KEY] ?? null, weightGoalKg: goals[WEIGHT_KEY] ?? null, today, goalProgress: goalProgress(goals, shown, shown.activeKcal) };
 }
 
-/** One optional number per goal; a null removes the goal. */
 const goalsArg = z
   .object(
     Object.fromEntries(
@@ -209,7 +195,7 @@ export function registerNutritionTools(server: McpServer): void {
     },
     ({ profile, id, date, ...patch }) =>
       run(() => {
-        const name = dataProfile(profile), { product: _product, ...entry } = changeFood(getStore(), name, id, { ...patch, day: date }); // the product (per-100 g numbers) is the page's, for changing the quantity
+        const name = dataProfile(profile), { product: _product, ...entry } = changeFood(getStore(), name, id, { ...patch, day: date });
         return { profile: name, entry };
       })
   );

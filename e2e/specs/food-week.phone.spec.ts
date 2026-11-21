@@ -1,8 +1,3 @@
-/**
- * The Food view's reworked layout on a phone: the week as a strip that scrolls to the day shown, the summary first and the card to add a
- * food under it, the bar to add at the foot of the screen (not in the card), the meals as pills that scroll, the Insights in two columns of
- * tiles, and nothing sticking out sideways. alice's food is read only.
- */
 import { test, expect, openView, today, type Page } from "../support/fixtures";
 
 test.setTimeout(60_000);
@@ -12,7 +7,6 @@ async function openFood(page: Page) {
   await expect(page.locator("#fbody .fmeal").first()).toBeVisible();
 }
 
-/** What sticks out past the phone's width, as shown (an element is cut at the edge of any box above it that clips its content). */
 async function stickingOut(page: Page): Promise<string[]> {
   return page.evaluate(() => {
     const width = document.documentElement.clientWidth;

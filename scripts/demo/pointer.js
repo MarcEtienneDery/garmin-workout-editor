@@ -1,9 +1,3 @@
-/*
- * Loaded into every page the recorder (record.ts) drives, before the page's own scripts: headless Chrome draws no pointer, so
- * this draws one. An arrow follows the mouse, a ring shows where it clicks, a white dot where a finger taps. They live in a popover,
- * shown again whenever a dialog opens and at each click, so they stay above a modal dialog (the top layer) too. Plain JavaScript,
- * passed to the page as it is.
- */
 (() => {
   const add = () => {
     if (document.getElementById("demo-layer")) return;
@@ -26,12 +20,11 @@
     if (navigator.maxTouchPoints > 0) arrow.classList.add("touch");
     layer.appendChild(arrow);
     document.body.appendChild(layer);
-    // the last element shown in the top layer is drawn over the others: show the layer again after a dialog
     const raise = () => {
       try {
         if (layer.matches(":popover-open")) layer.hidePopover();
         layer.showPopover();
-      } catch { /* no popover in this browser: the layer stays under dialogs */ }
+      } catch { }
     };
     raise();
     new MutationObserver(() => setTimeout(raise, 0)).observe(document.body, { subtree: true, attributes: true, attributeFilter: ["open"] });

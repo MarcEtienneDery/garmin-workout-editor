@@ -2,7 +2,6 @@ import * as fs from "fs";
 import * as path from "path";
 import type { SqliteStore } from "./sqliteStore";
 
-/** Write every document as a plain file under `dir` (same logical paths), e.g. as a copy to keep elsewhere. */
 export function exportFiles(store: SqliteStore, dir: string): string[] {
   const written: string[] = [];
   for (const meta of store.list()) {

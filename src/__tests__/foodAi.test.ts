@@ -15,11 +15,9 @@ const jpeg = { mediaType: "image/jpeg", data: JPEG };
 const eggs = { name: "Scrambled eggs", portion: "2 large eggs", meal: "breakfast", amount: 100, unit: "g", kcal: 190, proteinG: 13.2, carbsG: 1.6, fatG: 14.4, nutrients: { cholesterolMg: 370, sodiumMg: 170 } };
 const toast = { name: "Whole wheat toast", portion: "1 slice", meal: "breakfast", amount: 32, unit: "g", kcal: 80, proteinG: 4, carbsG: 14, fatG: 1, nutrients: {} };
 
-/** What Claude's API sends back, with the JSON in a text block. */
 const reply = (answer: unknown, over: Record<string, unknown> = {}) =>
   ({ id: "msg_1", type: "message", role: "assistant", model: DEFAULT_MODEL, stop_reason: "end_turn", content: [{ type: "text", text: typeof answer === "string" ? answer : JSON.stringify(answer) }], ...over }) as unknown as Anthropic.Message;
 
-/** A client whose answers come from `next`, and the calls it was given. */
 function fake(next: () => unknown = () => reply({ items: [eggs], note: "Assumed 2 large eggs." })) {
   const create = jest.fn(async (_params: Anthropic.MessageCreateParamsNonStreaming) => {
     const out = next();
@@ -89,7 +87,7 @@ describe("estimating a meal", () => {
   it("rounds like the log, works the calories out when they are missing and keeps a nutrient it was not given unknown", async () => {
     const { client } = fake(() => reply({ items: [{ ...eggs, kcal: undefined, proteinG: 10.04, carbsG: 0, fatG: 10, nutrients: { fiberG: 0 } }], note: "" }));
     const [food] = (await ask({ client })).items;
-    expect(food).toMatchObject({ kcal: 130, proteinG: 10, fatG: 10, nutrients: { fiberG: 0 } }); // 0 is a stated zero; the other eight nutrients are absent
+    expect(food).toMatchObject({ kcal: 130, proteinG: 10, fatG: 10, nutrients: { fiberG: 0 } });
     expect(Object.keys(food.nutrients)).toEqual(["fiberG"]);
   });
 
@@ -127,7 +125,7 @@ describe("estimating a meal", () => {
     expect(Object.keys(item.properties.nutrients.properties)).toEqual(NUTRIENTS.map((n) => n.key));
     expect(item.properties.nutrients.required).toBeUndefined();
     expect(item.required).toEqual(expect.arrayContaining(["name", "portion", "meal", "amount", "unit", "kcal", "proteinG", "carbsG", "fatG", "nutrients"]));
-    expect(JSON.stringify(ESTIMATE_SCHEMA)).not.toMatch(/"(minimum|maximum|minLength|maxLength)"/); // structured outputs take none; parseFood checks the ranges
+    expect(JSON.stringify(ESTIMATE_SCHEMA)).not.toMatch(/"(minimum|maximum|minLength|maxLength)"/);
   });
 });
 
@@ -162,7 +160,7 @@ describe("estimating from photos", () => {
     const { client, create } = fake();
     await refusal(ask({ client }, { images }), "input", message as RegExp);
     expect(create).not.toHaveBeenCalled();
-    expect(foodAiStatus("MED", TODAY, env).remaining).toBe(DEFAULT_DAILY_LIMIT); // and it is not counted
+    expect(foodAiStatus("MED", TODAY, env).remaining).toBe(DEFAULT_DAILY_LIMIT);
   });
 
   it("names the photo that is wrong when there are several", () => {
@@ -244,7 +242,6 @@ describe("when the estimate cannot be made", () => {
 
   it("puts the failure of the call in words, keeps the SDK's message to itself and logs the class", async () => {
     const h = () => new Headers();
-    // the body the API sends; the SDK puts it in the error's message, which is why that message must not reach the page
     const body = (message: string) => ({ type: "error", error: { type: "invalid_request_error", message } });
     const cases: [Error, RegExp][] = [
       [new Anthropic.AuthenticationError(401, body("invalid x-api-key sk-secret"), undefined, h()), /refused the API key/],
@@ -278,8 +275,8 @@ describe("the day's limit and the one at a time", () => {
     expect((await ask({ client, env: small })).remaining).toBe(0);
     await refusal(ask({ client, env: small }), "limit", /limit of 2/);
     expect(create).toHaveBeenCalledTimes(2);
-    expect((await ask({ client, env: small }, { profile: "SAM" })).remaining).toBe(1); // each profile has its own
-    expect((await ask({ client, env: small }, { today: "2026-10-27" })).remaining).toBe(1); // and each day
+    expect((await ask({ client, env: small }, { profile: "SAM" })).remaining).toBe(1);
+    expect((await ask({ client, env: small }, { today: "2026-10-27" })).remaining).toBe(1);
     expect(foodAiStatus("MED", TODAY, small).remaining).toBe(0);
   });
 
@@ -292,7 +289,7 @@ describe("the day's limit and the one at a time", () => {
     const failing = fake(() => new Anthropic.RateLimitError(429, {}, "slow", new Headers()));
     await refusal(ask({ client: failing.client }), "upstream");
     expect(foodAiStatus("MED", TODAY, env).remaining).toBe(DEFAULT_DAILY_LIMIT);
-    await refusal(ask({ client: fake(() => reply("nonsense")).client }), "upstream"); // an answer was made (and paid for): counted
+    await refusal(ask({ client: fake(() => reply("nonsense")).client }), "upstream");
     expect(foodAiStatus("MED", TODAY, env).remaining).toBe(DEFAULT_DAILY_LIMIT - 1);
   });
 
@@ -308,7 +305,7 @@ describe("the day's limit and the one at a time", () => {
     const slow = { messages: { create: jest.fn(() => new Promise<Anthropic.Message>((resolve) => { finish = resolve; })) } };
     const first = ask({ client: slow });
     await refusal(ask({ client: fake().client }), "busy", /already running/);
-    expect((await ask({ client: fake().client }, { profile: "SAM" })).items).toHaveLength(1); // another profile is not held up
+    expect((await ask({ client: fake().client }, { profile: "SAM" })).items).toHaveLength(1);
     finish(reply({ items: [eggs], note: "" }));
     expect((await first).items).toHaveLength(1);
     expect((await ask({ client: fake().client })).items).toHaveLength(1);
@@ -348,7 +345,6 @@ describe("choosing how to ask Claude", () => {
 });
 
 describe("estimating through Claude Code", () => {
-  /** A server that has a Claude plan and an API key it must not use (no credit on it). */
   const cliEnvSettings = { FOOD_AI_BACKEND: "cli", ANTHROPIC_API_KEY: "sk-api-must-not-be-used", CLAUDE_CODE_OAUTH_TOKEN: "sk-ant-oat01-token" } as NodeJS.ProcessEnv;
   const resultLine = (over: Record<string, unknown> = {}) => JSON.stringify({ type: "result", subtype: "success", is_error: false, stop_reason: "tool_use", result: "", structured_output: { items: [eggs, toast], note: "Assumed 2 large eggs.", confidence: "high", improve: "Weigh the eggs" }, ...over });
   const printed = (...lines: string[]): CliOutput => ({ code: 0, stdout: `${[JSON.stringify({ type: "system", subtype: "init" }), ...lines].join("\n")}\n`, stderr: "", timedOut: false });
@@ -436,9 +432,7 @@ describe("estimating through Claude Code", () => {
 });
 
 describe("estimating through Gemini", () => {
-  /** A server set to Gemini, with keys for the other two it must not use. */
   const geminiEnv = { FOOD_AI_BACKEND: "gemini", GEMINI_API_KEY: "AIza-test", ANTHROPIC_API_KEY: "sk-api-must-not-be-used", CLAUDE_CODE_OAUTH_TOKEN: "sk-ant-oat01-token" } as NodeJS.ProcessEnv;
-  /** What generateContent sends back: the JSON in the first candidate's text, after a thought. */
   const answered = (answer: unknown, over: Record<string, unknown> = {}) => ({ candidates: [{ content: { role: "model", parts: [{ text: "Thinking about eggs", thought: true }, { text: typeof answer === "string" ? answer : JSON.stringify(answer) }] }, finishReason: "STOP", ...over }] });
   const google = (next: () => unknown = () => ({ status: 200, body: answered({ items: [eggs, toast], note: "Assumed 2 large eggs.", confidence: "high", improve: "Weigh the eggs" }) })) =>
     jest.fn(async (_url: string, _init: { headers: Record<string, string>; body: string }) => {
@@ -451,7 +445,6 @@ describe("estimating through Gemini", () => {
     estimateFoods({ profile: "MED", text: "2 scrambled eggs", defaultMeal: "breakfast", today: TODAY, ...over }, { env: settings, fetch: send });
   const failed = (status: number, code: string, message = "") => () => ({ status, body: { error: { code: status, status: code, message } } });
   const ok = () => ({ status: 200, body: answered({ items: [eggs], note: "" }) });
-  /** Each call's answer in turn, the last for every call after. */
   const inTurn = (...next: (() => unknown)[]) => {
     let i = 0;
     return () => next[Math.min(i++, next.length - 1)]();
@@ -496,7 +489,7 @@ describe("estimating through Gemini", () => {
     const answered1st = google();
     await askGemini(answered1st, {}, twoModels);
     expect(models(answered1st)).toEqual(["gemini-3.6-flash"]);
-    const declined = google(inTurn(() => ({ status: 200, body: answered("", { finishReason: "SAFETY" }) }), ok)); // an answer made is the answer
+    const declined = google(inTurn(() => ({ status: 200, body: answered("", { finishReason: "SAFETY" }) }), ok));
     await refusal(askGemini(declined, {}, twoModels), "refused");
     expect(models(declined)).toEqual(["gemini-3.6-flash"]);
     for (const everyModel of [failed(400, "INVALID_ARGUMENT", "API key not valid."), failed(403, "PERMISSION_DENIED"), failed(400, "FAILED_PRECONDITION", "User location is not supported for the API use.")]) {
@@ -540,6 +533,6 @@ describe("estimating through Gemini", () => {
     await refusal(askGemini(google(() => ({ status: 200, body: answered("", { finishReason: "SAFETY" }) }))), "refused", /declined/);
     await refusal(askGemini(google(() => ({ status: 200, body: { promptFeedback: { blockReason: "PROHIBITED_CONTENT" } } }))), "refused", /declined/);
     expect(remaining()).toBe(DEFAULT_DAILY_LIMIT - 4);
-    expect(JSON.stringify(quiet.mock.calls)).not.toMatch(/API key not valid|overloaded|AIza/); // the log has the status and Google's code only
+    expect(JSON.stringify(quiet.mock.calls)).not.toMatch(/API key not valid|overloaded|AIza/);
   });
 });

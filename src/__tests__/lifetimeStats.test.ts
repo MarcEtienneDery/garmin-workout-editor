@@ -12,10 +12,10 @@ const input = (over: Partial<LifetimeInput> = {}): LifetimeInput => ({ profile: 
 
 describe("weeks", () => {
   it("start on Monday", () => {
-    expect(mondayOf("2026-10-12")).toBe("2026-10-12"); // a Monday
-    expect(mondayOf("2026-10-18")).toBe("2026-10-12"); // the Sunday after
+    expect(mondayOf("2026-10-12")).toBe("2026-10-12");
+    expect(mondayOf("2026-10-18")).toBe("2026-10-12");
     expect(mondayOf("2026-10-19")).toBe("2026-10-19");
-    expect(mondayOf("2026-01-01")).toBe("2025-12-29"); // across a year
+    expect(mondayOf("2026-01-01")).toBe("2025-12-29");
   });
 });
 
@@ -25,7 +25,7 @@ describe("the overall numbers", () => {
       rows: [
         row("1", "2025-12-31 08:00:00", "running", { distance: 10000, duration: 3000, calories: 600 }),
         row("2", "2026-01-02 08:00:00", "strength_training", { duration: 2400, calories: 300, sets: 12, reps: 100 }),
-        row("3", "2026-01-02 18:00:00", "running", { distance: 5000, duration: 1500, calories: 300 }), // the same day: one active day
+        row("3", "2026-01-02 18:00:00", "running", { distance: 5000, duration: 1500, calories: 300 }),
         row("4", "2026-03-01 08:00:00", "cycling", { distance: 20000, duration: 3600 }),
       ],
     }));
@@ -54,17 +54,17 @@ describe("the overall numbers", () => {
 
 describe("running", () => {
   const rows = [
-    row("1", "2026-09-07 08:00:00", "running", { distance: 5000, duration: 1500, gain: 20, vo2: 50 }), // Monday of a week
+    row("1", "2026-09-07 08:00:00", "running", { distance: 5000, duration: 1500, gain: 20, vo2: 50 }),
     row("2", "2026-09-09 08:00:00", "running", { distance: 12000, duration: 3720, gain: 150, vo2: 52 }),
-    row("3", "2026-09-14 08:00:00", "running", { distance: 8000, duration: 2160, gain: 40, vo2: null }), // 4:30/km, the best pace
-    row("4", "2026-09-15 08:00:00", "running", { distance: 1000, duration: 200, gain: 0 }), // too short for a best pace
-    row("5", "2026-09-16 08:00:00", "cycling", { distance: 40000, duration: 4000, gain: 500 }), // not a run
+    row("3", "2026-09-14 08:00:00", "running", { distance: 8000, duration: 2160, gain: 40, vo2: null }),
+    row("4", "2026-09-15 08:00:00", "running", { distance: 1000, duration: 200, gain: 0 }),
+    row("5", "2026-09-16 08:00:00", "cycling", { distance: 40000, duration: 4000, gain: 500 }),
   ];
   const splits = [
     { id: "1", meters: 1000, seconds: 290 }, { id: "2", meters: 1000, seconds: 301.25 }, { id: "3", meters: 1000, seconds: 268 },
-    { id: "2", meters: 5000, seconds: 1480 }, { id: "3", meters: 5000, seconds: 1400 }, { id: "5", meters: 1000, seconds: 100 }, // a ride is left out
-    { id: "9", meters: 1000, seconds: 50 }, // an activity that is not stored
-    { id: "1", meters: 1609, seconds: 0 }, // no time
+    { id: "2", meters: 5000, seconds: 1480 }, { id: "3", meters: 5000, seconds: 1400 }, { id: "5", meters: 1000, seconds: 100 },
+    { id: "9", meters: 1000, seconds: 50 },
+    { id: "1", meters: 1609, seconds: 0 },
   ];
   const run = () => computeLifetime(input({ rows, splits })).running!;
 
@@ -114,7 +114,7 @@ describe("strength", () => {
   const rows = [
     row("1", "2026-09-01 08:00:00", "strength_training", { duration: 3000, sets: 6, reps: 40 }),
     row("2", "2026-09-08 08:00:00", "strength_training", { duration: 3600, sets: 8, reps: 50 }),
-    row("3", "2026-09-15 08:00:00", "strength_training", { duration: 1800, sets: 3, reps: 10 }), // details not stored
+    row("3", "2026-09-15 08:00:00", "strength_training", { duration: 1800, sets: 3, reps: 10 }),
   ];
   const lifts: LifetimeInput["lifts"] = [
     { id: "1", date: "2026-09-01", sets: [
@@ -136,21 +136,19 @@ describe("strength", () => {
 
   it("totals each exercise over the sessions it was in, busiest first", () => {
     const e = lift().exercises;
-    expect(e.map((x) => x.name)).toEqual(["Barbell Bench Press", "Chin Up", "Plank"]); // sessions, then volume
+    expect(e.map((x) => x.name)).toEqual(["Barbell Bench Press", "Chin Up", "Plank"]);
     const bench = e[0];
     expect(bench).toEqual(expect.objectContaining({ sessions: 2, sets: 7, reps: 29, firstDate: "2026-09-01", lastDate: "2026-09-08" }));
-    // 3 x 5 x 200 + (0 x 135 + 3 x 225 + 6 x 200 + 5 x 205)
     expect(bench.volume).toBe(3000 + 675 + 1200 + 1025);
-    expect(lift().volume).toBe(bench.volume + 0 + 0); // chin up (no weight) and plank add no load
+    expect(lift().volume).toBe(bench.volume + 0 + 0);
   });
 
   it("names the best estimated 1RM and the heaviest set of each exercise", () => {
     const bench = lift().exercises[0];
-    // 200 x 5 = 233.3, 225 x 3 = 247.5, 200 x 6 = 240, 205 x 5 = 239.2
     expect(bench.best).toEqual({ oneRm: 247.5, weight: 225, reps: 3, date: "2026-09-08" });
     expect(bench.heaviest).toEqual({ weight: 225, reps: 3, date: "2026-09-08" });
     const chin = lift().exercises.find((x) => x.name === "Chin Up")!;
-    expect(chin.best).toBeNull(); // bodyweight
+    expect(chin.best).toBeNull();
     expect(chin.heaviest).toBeNull();
     expect(lift().exercises.find((x) => x.name === "Plank")!.reps).toBe(60);
   });
@@ -158,7 +156,7 @@ describe("strength", () => {
   it("keeps the best estimated 1RM of each session an exercise was in, oldest first, for a sparkline", () => {
     const e = lift().exercises;
     expect(e.find((x) => x.name === "Barbell Bench Press")!.history).toEqual([{ date: "2026-09-01", oneRm: 233.3 }, { date: "2026-09-08", oneRm: 247.5 }]);
-    expect(e.find((x) => x.name === "Chin Up")!.history).toEqual([]); // bodyweight: no estimate
+    expect(e.find((x) => x.name === "Chin Up")!.history).toEqual([]);
     expect(e.find((x) => x.name === "Plank")!.history).toEqual([]);
   });
 
@@ -174,7 +172,7 @@ describe("strength", () => {
     const old = { id: "0", date: "2026-04-01", sets: [{ exerciseName: "Squat", category: "SQUAT", sets: 2, reps: 5, weight: 100 }] };
     const near = { id: "9", date: "2026-05-15", sets: [{ exerciseName: "Squat", category: "SQUAT", sets: 3, reps: 5, weight: 100 }] };
     const s = computeLifetime(input({ rows: [...rows, row("0", "2026-04-01 08:00:00", "strength_training"), row("9", "2026-05-15 08:00:00", "strength_training")], lifts: [old, near, ...lifts] })).strength!;
-    expect(s.recent.map((x) => x.date)).toEqual(["2026-05-15", "2026-09-01", "2026-09-08"]); // 2026-05-15 is 116 days before 2026-09-08, 2026-04-01 is 160
+    expect(s.recent.map((x) => x.date)).toEqual(["2026-05-15", "2026-09-01", "2026-09-08"]);
     expect(computeLifetime(input({ rows })).strength!.recent).toEqual([]);
   });
 
@@ -228,7 +226,7 @@ describe("from the database", () => {
   it("keeps its answer while the table is the same, and works it out again when an activity is added or gets its details", () => {
     keep(item(1, "2026-09-01", "running"));
     const first = lifetimeStats(store.activities, "MED");
-    expect(lifetimeStats(store.activities, "MED")).toBe(first); // the very same answer, not worked out again
+    expect(lifetimeStats(store.activities, "MED")).toBe(first);
 
     keep(item(2, "2026-09-02", "running"));
     const second = lifetimeStats(store.activities, "MED");

@@ -72,7 +72,6 @@ let rpcId = 0;
 const post = (url: string, body: unknown, headers: Record<string, string> = {}) =>
   fetch(url, { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json, text/event-stream", ...headers }, body: JSON.stringify(body) });
 
-/** Call a tool over HTTP with a token in the path (or as a Bearer header), and read what it answered. */
 async function tool(token: string, name: string, args: Record<string, unknown> = {}, via: "path" | "bearer" = "path") {
   const body = { jsonrpc: "2.0", id: ++rpcId, method: "tools/call", params: { name, arguments: args } };
   const res = via === "path" ? await post(`${base}/mcp/${token}`, body) : await post(`${base}/mcp`, body, { Authorization: `Bearer ${token}` });
@@ -80,7 +79,7 @@ async function tool(token: string, name: string, args: Record<string, unknown> =
   const result = ((await res.json()) as any).result;
   const text: string = result.content[0].text;
   let value: any = text;
-  if (!result.isError) { try { value = JSON.parse(text); } catch { /* plain text */ } }
+  if (!result.isError) { try { value = JSON.parse(text); } catch { } }
   return { isError: result.isError === true, value, text };
 }
 
@@ -95,7 +94,7 @@ describe("a profile's MCP token", () => {
     expect(store.mcpTokens.profileOf(token)).toBe("ALICE");
     closeStore();
     const raw = fs.readdirSync(path.join(dir, "data")).filter((f) => f.endsWith(".db")).map((f) => fs.readFileSync(path.join(dir, "data", f)).toString("latin1")).join("");
-    expect(raw).not.toContain(token); // only its hash is in the database
+    expect(raw).not.toContain(token);
     expect(raw).not.toContain(token.slice(MCP_TOKEN_PREFIX.length));
   });
 
@@ -119,7 +118,7 @@ describe("a profile's MCP token", () => {
     expect(store.mcpTokens.info("BOB")?.lastUsedAt).toBeNull();
     store.mcpTokens.profileOf(token, 10_000);
     expect(store.mcpTokens.info("BOB")?.lastUsedAt).toBe(10_000);
-    store.mcpTokens.profileOf(token, 60_000); // a minute later: not written again
+    store.mcpTokens.profileOf(token, 60_000);
     expect(store.mcpTokens.info("BOB")?.lastUsedAt).toBe(10_000);
     store.mcpTokens.profileOf(token, 10_000 + 5 * 60_000);
     expect(store.mcpTokens.info("BOB")?.lastUsedAt).toBe(10_000 + 5 * 60_000);
@@ -133,7 +132,7 @@ describe("a profile's MCP token", () => {
     expect(of("ftp://mcp.example.com")).toBeNull();
     expect(of("https://mcp.example.com")).toBe("https://mcp.example.com");
     expect(of(" https://mcp.example.com/ ")).toBe("https://mcp.example.com");
-    expect(of("https://mcp.example.com/mcp")).toBe("https://mcp.example.com"); // the lines add /mcp themselves
+    expect(of("https://mcp.example.com/mcp")).toBe("https://mcp.example.com");
     expect(of("https://example.com/garmin/mcp/")).toBe("https://example.com/garmin");
     expect(of("http://10.0.0.2:8787?x=1#y")).toBe("http://10.0.0.2:8787");
   });
@@ -144,7 +143,7 @@ describe("a connection made with a profile's token", () => {
     expect((await tool(tokenA, "list_profiles")).value.profiles).toEqual(["ALICE"]);
     expect((await tool(tokenA, "list_profiles", {}, "bearer")).value.profiles).toEqual(["ALICE"]);
     const body = { jsonrpc: "2.0", id: 1, method: "tools/list" };
-    expect((await post(`${base}/mcp/${tokenA.slice(0, -1)}0`, body)).status).toBe(404); // a token that was never made
+    expect((await post(`${base}/mcp/${tokenA.slice(0, -1)}0`, body)).status).toBe(404);
     expect((await post(`${base}/mcp/gwm_${"0".repeat(64)}`, body)).status).toBe(404);
     expect((await post(`${base}/mcp`, body, { Authorization: "Bearer nope" })).status).toBe(404);
     expect((await post(`${base}/mcp`, body)).status).toBe(404);
@@ -165,7 +164,6 @@ describe("a connection made with a profile's token", () => {
   });
 
   it("acts as its profile without being told which, though two profiles exist", async () => {
-    // the server's token has to name one of two profiles; a profile's token never has to
     const admin = await tool(ADMIN, "get_nutrition", {});
     expect(admin.isError).toBe(true);
     expect(admin.text).toMatch(/Multiple profiles/);
@@ -184,7 +182,6 @@ describe("a connection made with a profile's token", () => {
     expect((await tool(tokenA, "get_nutrition", { profile: "BOB" })).isError).toBe(true);
     expect((await tool(tokenA, "get_activities", { profile: "BOB" })).isError).toBe(true);
     expect((await tool(tokenA, "get_wellness", { profile: "NOBODY" })).isError).toBe(true);
-    // nothing was written under the other profile
     expect(JSON.stringify((await tool(tokenB, "get_nutrition", {})).value)).not.toContain("Cake");
     expect(JSON.stringify((await tool(ADMIN, "get_nutrition", { profile: "BOB" })).value)).not.toContain("Cake");
   });
@@ -212,7 +209,7 @@ describe("a connection made with a profile's token", () => {
       expect((await tool(tokenA, "upsert_plan_workout", { path: theirs, workout: { workoutName: "X", workoutType: "running", distanceMeters: 1000 } })).isError).toBe(true);
       expect((await tool(tokenA, "upload_workouts", { path: theirs, dryRun: true })).isError).toBe(true);
     }
-    expect(getStore().get("workout-plans/bob-own.json")?.text).toBe(PLAN); // untouched
+    expect(getStore().get("workout-plans/bob-own.json")?.text).toBe(PLAN);
     expect(getStore().head("workout-plans/bob-own.json")?.archivedAt).toBeNull();
     expect((await tool(ADMIN, "read_plan", { path: "workout-plans/bob-own.json" })).isError).toBe(false);
   });
@@ -223,7 +220,6 @@ describe("a connection made with a profile's token", () => {
     expect(getStore().head("workout-plans/alice-new.json")?.owner).toBe("ALICE");
     expect((await tool(tokenB, "read_plan", { path: "workout-plans/alice-new.json" })).isError).toBe(true);
     expect((await tool(tokenB, "write_plan", { path: "workout-plans/alice-new.json", content: { workouts: [] } })).isError).toBe(true);
-    // a name another profile's plan has is not one it can take over
     expect((await tool(tokenA, "write_plan", { path: "workout-plans/bob-own.json", content: JSON.parse(PLAN) })).isError).toBe(true);
     expect(getStore().head("workout-plans/bob-own.json")?.owner).toBe("BOB");
   });

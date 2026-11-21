@@ -1,11 +1,3 @@
-/**
- * The demo database: one profile, Sam, who looks like a runner halfway through a half-marathon block. Nothing here is anyone's
- * data: the numbers come from a seeded random generator, so every run of `npm run demo` (and every recording of the README's
- * GIFs) shows the same picture, dated around the day it runs. The route is a real foot route along Montréal's Lachine Canal
- * (route.json, from OpenStreetMap through OSRM), so the map has streets under it.
- *
- * Sam has no Garmin login: the views that need one (Workouts, the Garmin menu) stay off, the others read what is stored here.
- */
 import { getStore, type FoodFields, type Meal } from "../../src/shared/store";
 import { toNewActivity } from "../../src/shared/activitySync";
 import route from "./route.json";
@@ -17,10 +9,9 @@ export const DEMO_ADMIN_TOKEN = "demo-admin-token";
 const DAY = 86_400_000;
 const iso = (d: Date) => d.toISOString().slice(0, 10);
 const day = (offset: number) => iso(new Date(Date.now() + offset * DAY));
-const weekday = (d: string) => (new Date(`${d}T00:00:00Z`).getUTCDay() + 6) % 7; // Monday 0
+const weekday = (d: string) => (new Date(`${d}T00:00:00Z`).getUTCDay() + 6) % 7;
 const mondayOffset = -weekday(day(0));
 
-/** mulberry32: the same numbers on every run. */
 function prng(seed: number) {
   return () => {
     seed |= 0;
@@ -34,9 +25,7 @@ const rand = prng(20261031);
 const between = (lo: number, hi: number) => lo + rand() * (hi - lo);
 const round = (n: number, step = 1) => Math.round(n / step) * step;
 
-// ─── the plans ────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
-/** m/s from a pace in min:sec per km. */
 const mps = (min: number, sec: number) => Math.round((1000 / (min * 60 + sec)) * 1000) / 1000;
 const hrZone = (lo: number, hi: number) => ({ targetType: "heart.rate.zone", targetValueOne: lo, targetValueTwo: hi });
 const power = (lo: number, hi: number) => ({ targetType: "power.zone", targetValueOne: lo, targetValueTwo: hi });
@@ -44,13 +33,9 @@ const time = (seconds: number) => ({ endCondition: "time", endConditionValue: se
 const dist = (meters: number) => ({ endCondition: "distance", endConditionValue: meters, distanceMeters: meters });
 const lap = { endCondition: "lap.button", endConditionValue: 0 };
 
-// A repeat is a run of steps that share a repeatGroupIndex and a numberOfRepeats, as the plans write them: repeat() makes the run, steps() numbers it.
-/** These steps done `times` times. */
 const repeat = (times: number, ...steps: object[]) => steps.map((st) => ({ ...st, numberOfRepeats: times }));
-/** An exercise done `sets` times: `reps` reps (at `weight` lb), `rest` seconds after each set. */
 const set = (exerciseName: string, reps: number, weight: number | undefined, rest: number, sets: number) =>
   repeat(sets, { stepType: "interval", exerciseName, targetType: "no.target", endCondition: "reps", endConditionValue: reps, reps, ...(weight ? { weight } : {}), restTimeSeconds: rest });
-/** The steps as the plans hold them: one flat list numbered from 1, each repeat (a part given as a list) with an index of its own (0, 1, …). */
 function steps(...parts: (object | object[])[]): object[] {
   let group = 0;
   return parts
@@ -62,7 +47,6 @@ function steps(...parts: (object | object[])[]): object[] {
     .map((st, i) => ({ ...st, stepOrder: i + 1 }));
 }
 
-/** The workouts of the build, with the weekday each falls on, counted from today's (so today always has the tempo). */
 const BUILD = [
   {
     at: 0,
@@ -140,7 +124,6 @@ const BUILD = [
 ];
 
 const BUILD_WEEKS = [-3, -2, -1, 0, 1, 2, 3];
-/** The day of a build workout in a week (0 is this week), or null when that falls outside it. */
 const buildDay = (week: number, at: number) => day(mondayOffset + week * 7 + ((weekday(day(0)) + at) % 7));
 
 function buildPlan() {
@@ -224,12 +207,11 @@ const ideasPlan = () => ({
   ],
 });
 
-// ─── the activities ───────────────────────────────────────────────────────────────────────────────────────────────────────
 
 interface Run {
   name: string;
   km: number;
-  pace: number; // seconds a km
+  pace: number;
   hr: number;
   label: string;
   aerobic: number;
@@ -308,7 +290,6 @@ const other = (offset: number, hour: number, type: string, name: string, minutes
   return item;
 };
 
-/** Garmin's sets of a strength session, weights in grams; the bar grows a little each week. */
 function strengthSets(progress: number) {
   const lb = (n: number) => Math.round(n * 453.592);
   const lifts: [string, string, number, number, number][] = [
@@ -330,15 +311,14 @@ function strengthSets(progress: number) {
 
 function activities(store: ReturnType<typeof getStore>) {
   const strength: [any, number][] = [];
-  // Ten weeks: three weeks of base before the build, then the build up to yesterday.
   for (let week = -10; week <= 0; week++) {
     const inBuild = week >= BUILD_WEEKS[0];
-    const k = week + 10; // 0 … 10, how far along
+    const k = week + 10;
     for (const { at, workout } of BUILD) {
       const d = buildDay(week, at);
       const offset = Math.round((Date.parse(`${d}T00:00:00Z`) - Date.parse(`${day(0)}T00:00:00Z`)) / DAY);
-      if (offset >= 0) continue; // today's tempo is still to do
-      if (inBuild && week === -1 && at === 3) continue; // one easy run skipped: the calendar shows it missed
+      if (offset >= 0) continue;
+      if (inBuild && week === -1 && at === 3) continue;
       const id = inBuild ? workout.workoutId : undefined;
       const pace = (base: number) => Math.round(base - k * 1.5 + between(-6, 6));
       if (at === 0) runAt(offset, 8, { name: inBuild ? workout.workoutName : "Tempo run", km: 9.5 + between(-0.3, 0.6), pace: pace(292), hr: 158, label: "TEMPO", aerobic: 3.8, workoutId: id });
@@ -355,15 +335,12 @@ function activities(store: ReturnType<typeof getStore>) {
 
   store.activities.insertNew(DEMO_USER, acts.map((a) => toNewActivity(a)!));
 
-  // The strength sessions carry their sets, so the gym's muscles and % of 1RM are drawn.
   for (const [a, k] of strength) store.activities.setDetail(DEMO_USER, String(a.activityId), { activityId: a.activityId, summaryDTO: { directWorkoutRpe: 70, calories: a.calories }, fullExerciseSets: strengthSets(k), ...(a.workoutId ? { metadataDTO: { associatedWorkoutId: a.workoutId } } : {}) });
 
-  // The last two runs of each kind have their charts: the route along the canal, the series, the laps.
   const runs = acts.filter((a) => a.activityType.typeKey === "running").sort((a, b) => b.startTimeGMT.localeCompare(a.startTimeGMT));
   for (const name of ["Intervals 6 x 800 m", "Easy run", "Long run", "Tempo 3 x 2 km"]) for (const a of runs.filter((r) => r.activityName === name).slice(0, 2)) charted(store, a);
 }
 
-/** The laps of a run as the watch splits it: the structured workout's steps, or a lap a km. */
 function lapsOf(a: any): { meters: number; pace: number; hr: number; kind: string; step?: number }[] {
   const pace = a.duration / (a.distance / 1000);
   if (a.activityName.startsWith("Intervals")) {
@@ -383,7 +360,6 @@ function lapsOf(a: any): { meters: number; pace: number; hr: number; kind: strin
   return out;
 }
 
-/** The route, run as many times round as the distance needs, with the distance along it at each point. */
 function routeFor(meters: number) {
   const pts = route as [number, number][];
   const leg = (a: [number, number], b: [number, number]) => {
@@ -403,7 +379,7 @@ function charted(store: ReturnType<typeof getStore>, a: any) {
   const laps = lapsOf(a);
   const rows: { metrics: number[] }[] = [];
   let meters = 0, seconds = 0, hr = 105;
-  const step = 15; // a sample every 15 s
+  const step = 15;
   for (const lap of laps) {
     const end = meters + lap.meters;
     while (meters < end) {
@@ -435,7 +411,6 @@ function charted(store: ReturnType<typeof getStore>, a: any) {
   });
 }
 
-// ─── health ───────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 function health(store: ReturnType<typeof getStore>) {
   const runDays = new Set(acts.filter((a) => a.activityType.typeKey !== "walking").map((a) => a.startTimeGMT.slice(0, 10)));
@@ -443,7 +418,6 @@ function health(store: ReturnType<typeof getStore>) {
   for (let d = -69; d <= 0; d++) {
     const date = day(d);
     const trained = runDays.has(date);
-    // A rough patch two weeks ago (a cold): lower HRV, higher resting HR, poorer sleep.
     const dip = d >= -16 && d <= -13 ? 1 : 0;
     const hrv = Math.round(60 + 3 * Math.sin(d / 5) + between(-4, 4) - dip * 12);
     hrvWeek = [...hrvWeek.slice(-6), hrv];
@@ -463,7 +437,7 @@ function health(store: ReturnType<typeof getStore>) {
     });
     const active = trained ? round(between(750, 1100)) : round(between(380, 600));
     const wake = Math.max(30, Math.min(98, Math.round(score - 5 + between(-6, 8) - dip * 15)));
-    const partOfDay = d === 0 ? 0.45 : 1; // today: as far as the watch has synced
+    const partOfDay = d === 0 ? 0.45 : 1;
     store.wellness.put(DEMO_USER, date, "summary", {
       calendarDate: date,
       totalSteps: round((trained ? between(12_000, 17_000) : between(6_500, 10_500)) * partOfDay),
@@ -500,7 +474,6 @@ function health(store: ReturnType<typeof getStore>) {
   }
 }
 
-// ─── food ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 type Food = [name: string, kcal: number, p: number, c: number, f: number, nutrients?: Record<string, number>];
 const MENU: Record<Meal, Food[][]> = {
@@ -531,7 +504,6 @@ function food(store: ReturnType<typeof getStore>) {
   const add = (date: string, meal: Meal, foods: Food[]) => foods.forEach(([name, kcal, proteinG, carbsG, fatG, nutrients]) => items.push({ day: date, meal, name, kcal, proteinG, carbsG, fatG, nutrients }));
   for (let d = -21; d <= -1; d++)
     for (const meal of Object.keys(MENU) as Meal[]) if (meal !== "snack" || rand() < 0.75) add(day(d), meal, MENU[meal][Math.floor(rand() * MENU[meal].length)]);
-  // Today, so far: breakfast and lunch.
   add(day(0), "breakfast", MENU.breakfast[0]);
   add(day(0), "lunch", MENU.lunch[0]);
   store.nutrition.add(DEMO_USER, items, "web");

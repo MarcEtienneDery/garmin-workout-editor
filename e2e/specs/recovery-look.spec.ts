@@ -1,8 +1,3 @@
-/**
- * The Recovery view's new look and its parts: the week of verdicts to pick the day from, the Verdict (the gauge, the band, what would change it,
- * each signal against the person's own normal, last night, the load before), the Trends and the Data, both themes, the sizes of the controls.
- * alice's days are read only (the oracle is GET /api/wellness as admin); the bands she does not have are made by changing the answer the page gets.
- */
 import type { APIRequestContext, Page } from "@playwright/test";
 import { test, expect, openView, loginAs, ADMIN_TOKEN, chooseTheme, toggleTheme } from "../support/fixtures";
 
@@ -40,7 +35,6 @@ async function openRecovery(page: Page) {
   await expect(hero(page)).toBeVisible();
 }
 
-/** The page gets the answer with `change` made to it: a band and signals alice does not have. */
 async function altered(page: Page, change: (w: Wellness) => void) {
   await page.route(/\/api\/wellness\?/, async (route) => {
     const res = await route.fetch();
@@ -58,7 +52,6 @@ const withBand = (band: string, score: number, scores: number[], extra: (w: Well
 
 const color = (page: Page, selector: string, prop = "color") => page.locator(selector).first().evaluate((el, p) => getComputedStyle(el).getPropertyValue(p), prop);
 
-// ── the week ──────────────────────────────────────────────────────────────────────────────────────
 
 test.describe("the week of verdicts", () => {
   test("has the seven days of the week the day is in, Monday first, each with its weekday, number, score and band", async ({ alice, admin }) => {
@@ -89,7 +82,7 @@ test.describe("the week of verdicts", () => {
     }
     const arc = await chip(alice, known[0].day).locator(".fwring .arc").getAttribute("stroke-dasharray");
     const [on, all] = arc!.split(" ").map(Number);
-    expect(on / all).toBeCloseTo(known[0].score! / 100, 2); // the ring is filled as far as the score
+    expect(on / all).toBeCloseTo(known[0].score! / 100, 2);
   });
 
   test("a day to come cannot be opened", async ({ alice, admin }) => {
@@ -132,7 +125,6 @@ test.describe("the week of verdicts", () => {
   });
 });
 
-// ── the tabs ──────────────────────────────────────────────────────────────────────────────────────
 
 test.describe("the Verdict, the Trends and the Data", () => {
   test("open on the Verdict; each part draws its own and the others' are gone", async ({ alice }) => {
@@ -198,7 +190,6 @@ test.describe("a profile with nothing stored", () => {
   });
 });
 
-// ── the verdict ───────────────────────────────────────────────────────────────────────────────────
 
 test.describe("the verdict", () => {
   test("draws the gauge: the three zones, the one the score is in at full strength, and the marker where the score is", async ({ alice, admin }) => {
@@ -234,7 +225,7 @@ test.describe("the verdict", () => {
     await openRecovery(alice);
     await expect(hero(alice)).toHaveClass(/b-back/);
     await expect(hero(alice).locator(".rband")).toHaveText("Back off");
-    await expect(hero(alice).locator("path.gz.on")).toHaveClass(/z-plan/); // the score alone would be As planned: the zone is the score's, the band is the HRV's
+    await expect(hero(alice).locator("path.gz.on")).toHaveClass(/z-plan/);
     await expect(hero(alice).locator(".rchange")).toHaveText("HRV well below your range sets Back off whatever the rest says. As planned comes back when HRV is back in your range.");
   });
 
@@ -269,8 +260,8 @@ test.describe("the verdict", () => {
     await expect(hero(alice)).toBeVisible();
     const lit = alice.locator("#rbody .rsigcard .rsig");
     const fills = await lit.evaluateAll((els) => els.map((e) => getComputedStyle(e.querySelector(".meter i.on")!).backgroundColor));
-    expect(new Set(fills).size).toBeGreaterThanOrEqual(4); // rose, amber, neutral, green: told apart
-    expect(fills[3]).toBe(fills[4]); // good is green either way
+    expect(new Set(fills).size).toBeGreaterThanOrEqual(4);
+    expect(fills[3]).toBe(fills[4]);
   });
 
   test("last night: the time, the score, the stages, and how much of the need it was", async ({ alice, admin }) => {
@@ -302,7 +293,6 @@ test.describe("the verdict", () => {
     await expect(bar.locator(".t u")).toHaveCount(1);
     await expect(bar.locator(".n")).toContainText(`${Math.round(load.ratio! * 100)} % of your usual`);
     await expect(bar.locator(".t")).toHaveAttribute("aria-label", /% of your usual$/);
-    // a lighter load and a heavier one are told apart by colour
     await altered(alice, (w) => { w.readiness.load = { ...w.readiness.load!, ratio: 0.6, acute: 390, intensity: null }; });
     await alice.reload();
     await expect(hero(alice)).toBeVisible();
@@ -318,7 +308,6 @@ test.describe("the verdict", () => {
   });
 });
 
-// ── the look: both themes, the sizes of the controls ──────────────────────────────────────────────
 
 test.describe("the look", () => {
   test("the controls of the bar, the week and the tabs are at least 44 px, in both themes", async ({ alice }) => {
@@ -355,7 +344,7 @@ test.describe("the look", () => {
     await openRecovery(alice);
     for (const theme of ["dark", "light"]) {
       if (theme === "light") await chooseTheme(alice, "light");
-      await alice.evaluate(() => Promise.all(document.getAnimations().map((a) => a.finished.catch(() => null)))); // the colours have settled
+      await alice.evaluate(() => Promise.all(document.getAnimations().map((a) => a.finished.catch(() => null))));
       const low = await alice.evaluate(() => {
         const lum = (css: string) => {
           const unit = css.startsWith("color(srgb") ? 1 : 255;

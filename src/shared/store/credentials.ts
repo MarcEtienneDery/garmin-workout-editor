@@ -1,11 +1,3 @@
-/**
- * credentials.ts — the logins of each profile for the services the app talks to (Garmin Connect, Renpho), kept in the
- * database like the Garmin tokens, so the Settings view can set them and the MCP server and the web editor, two
- * processes, both see a change at once.
- *
- * The password is encrypted when CREDENTIALS_KEY is set (see seal.ts) and kept as given when it is not; it is never sent
- * back to a browser: the Settings view only learns that one is set.
- */
 import { open, seal, isSealed, sealing } from "./seal";
 import type { Database } from "./sqliteStore";
 
@@ -40,42 +32,36 @@ export interface Credential {
 export class CredentialTable {
   constructor(private readonly db: Database) {}
 
-  /** The login; throws SealKeyError when its password is encrypted and CREDENTIALS_KEY is missing or wrong. */
   get(profile: string, service: CredentialService): Credential | null {
     const r = this.db.prepare("SELECT email, password, updated_at FROM credentials WHERE profile = ? AND service = ?").get(profile, service);
     if (!r) return null;
     const context = `${profile}|${service}`, password = open(r.password, context);
-    // a password saved before there was a key is encrypted the first time it is read with one
     if (sealing() && !isSealed(r.password)) this.db.prepare("UPDATE credentials SET password = ? WHERE profile = ? AND service = ?").run(seal(password, context), profile, service);
     return { email: r.email, password, updatedAt: r.updated_at };
   }
 
-  /** Keep what the last check of the login said (the Settings view tells when it was accepted or refused). */
   recordCheck(profile: string, service: CredentialService, ok: boolean, message: string, now = Date.now()): void {
     this.db
       .prepare("INSERT INTO login_checks (profile, service, ok, message, checked_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT (profile, service) DO UPDATE SET ok = excluded.ok, message = excluded.message, checked_at = excluded.checked_at")
       .run(profile, service, ok ? 1 : 0, message.slice(0, 500), now);
   }
 
-  /** The last check of the login, or null when it was never checked (or the login changed since). */
   lastCheck(profile: string, service: CredentialService): { ok: boolean; message: string; at: number } | null {
     const r = this.db.prepare("SELECT ok, message, checked_at FROM login_checks WHERE profile = ? AND service = ?").get(profile, service);
     return r ? { ok: r.ok === 1, message: r.message as string, at: r.checked_at as number } : null;
   }
 
   put(profile: string, service: CredentialService, email: string, password: string, now = Date.now()): void {
-    this.db.prepare("DELETE FROM login_checks WHERE profile = ? AND service = ?").run(profile, service); // a login that changed has not been checked
+    this.db.prepare("DELETE FROM login_checks WHERE profile = ? AND service = ?").run(profile, service);
     this.db
       .prepare("INSERT INTO credentials (profile, service, email, password, updated_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT (profile, service) DO UPDATE SET email = excluded.email, password = excluded.password, updated_at = excluded.updated_at")
       .run(profile, service, email, seal(password, `${profile}|${service}`), now);
   }
 
-  /** How many passwords are stored as plain text, which the Settings view warns about. */
   plainCount(): number {
     return this.db.prepare("SELECT COUNT(*) AS n FROM credentials WHERE password NOT LIKE 'enc1:%'").get()!.n as number;
   }
 
-  /** What to tell the person at start-up when saved passwords sit in the database as plain text (no CREDENTIALS_KEY); null when none do. */
   plainWarning(): string | null {
     const plain = this.plainCount();
     return plain > 0 && !sealing() ? `CREDENTIALS_KEY is not set: ${plain} saved Garmin/Renpho password${plain === 1 ? " is" : "s are"} stored as plain text in the database. Set it on every service that shares the database.` : null;
@@ -86,7 +72,6 @@ export class CredentialTable {
     this.db.prepare("DELETE FROM login_checks WHERE profile = ? AND service = ?").run(profile, service);
   }
 
-  /** The profiles that have a login for the service, by name. */
   profiles(service: CredentialService): string[] {
     return this.db.prepare("SELECT profile FROM credentials WHERE service = ? ORDER BY profile").all(service).map((r) => r.profile as string);
   }

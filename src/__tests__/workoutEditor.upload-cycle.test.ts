@@ -1,39 +1,6 @@
-/**
- * Integration test: Workout upload cycle verification
- *
- * This test ensures data integrity through the complete cycle:
- * 1. Fetch workout raw from Garmin
- * 2. Transform to simplified format
- * 3. Retransform back to Garmin format
- * 4. Upload to Garmin
- * 5. Download the new raw
- * 6. Verify initial raw === final raw
- *
- * Also tests with small modifications like weight, sets, reps.
- *
- * Running with Real Garmin API:
- * ==========================
- * By default, these tests use mocked Garmin API calls.
- * 
- * To run against the REAL Garmin API:
- * 1. Set environment variables:
- *    export USE_REAL_GARMIN_API=true
- *    export GARMIN_EMAIL=your.email@example.com
- *    export GARMIN_PASSWORD=your_password
- * 
- * 2. Run the tests:
- *    npm test -- src/__tests__/workoutEditor.upload-cycle.test.ts
- *
- * WARNING: Real API tests will:
- * - Create actual workouts in your Garmin account
- * - Attempt to delete them after testing (but may leave orphans on failure)
- * - Count against API rate limits
- * - Require valid Garmin credentials
- */
 
 const USE_REAL_API = process.env.USE_REAL_GARMIN_API === "true";
 
-// Conditionally mock the Garmin API - only mock when NOT using real API
 if (!USE_REAL_API) {
   jest.mock("@flow-js/garmin-connect", () => ({
     GarminConnect: jest.fn().mockImplementation(function() {
@@ -43,7 +10,6 @@ if (!USE_REAL_API) {
         getWorkouts: jest.fn().mockResolvedValue([]),
         getWorkoutDetail: jest.fn().mockResolvedValue(null),
         createWorkout: jest.fn().mockImplementation(async (workout: any) => {
-          // Mock: return the same workout with a generated ID
           return {
             ...workout,
             workoutId: Math.floor(Math.random() * 1000000) + 10000,
@@ -67,13 +33,12 @@ describe("Workout Upload Cycle Integration Tests", () => {
   let tempDir: string;
   let editor: WorkoutEditor;
   let garminClient: GarminClient;
-  const createdWorkoutIds: number[] = []; // Track workouts for cleanup
+  const createdWorkoutIds: number[] = [];
 
   beforeEach(() => {
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "garmin-upload-cycle-"));
     
     if (USE_REAL_API) {
-      // Use real Garmin credentials from environment
       const email = process.env.GARMIN_EMAIL;
       const password = process.env.GARMIN_PASSWORD;
       
@@ -84,9 +49,8 @@ describe("Workout Upload Cycle Integration Tests", () => {
       }
       
       console.log(`\n🌐 Running tests with REAL Garmin API (${email})`);
-      garminClient = new GarminClient(email, password, false); // Not mock mode
+      garminClient = new GarminClient(email, password, false);
     } else {
-      // Use mock client
       resetMockClient();
       garminClient = new GarminClient("test@example.com", "password123", true);
     }
@@ -95,7 +59,6 @@ describe("Workout Upload Cycle Integration Tests", () => {
   });
 
   afterEach(async () => {
-    // Cleanup: delete any workouts created during real API tests
     if (USE_REAL_API && createdWorkoutIds.length > 0) {
       console.log(`\n🧹 Cleaning up ${createdWorkoutIds.length} created workout(s)...`);
       const client = (garminClient as any).client;
@@ -109,19 +72,14 @@ describe("Workout Upload Cycle Integration Tests", () => {
         }
       }
       
-      createdWorkoutIds.length = 0; // Clear array
+      createdWorkoutIds.length = 0;
     }
     
-    // Clean up temp directory
     if (fs.existsSync(tempDir)) {
       fs.rmSync(tempDir, { recursive: true });
     }
   });
 
-  /**
-   * Helper: Load the real "Copy of Squat day" workout from actual Garmin data
-   * This is a complex real-world workout with multiple repeat groups
-   */
   const getSampleRawWorkout = (): any => {
     return {
       workoutId: 1491352606,
@@ -795,10 +753,6 @@ describe("Workout Upload Cycle Integration Tests", () => {
     };
   };
 
-  /**
-   * Helper: Load the real "Run interval Tuesday" running workout from actual Garmin data
-   * This is a running workout with heart rate zones and repeat groups
-   */
   const getSampleRunningWorkout = (): any => {
     return {
       workoutId: 1393595227,
@@ -1079,9 +1033,6 @@ describe("Workout Upload Cycle Integration Tests", () => {
     };
   };
 
-  /**
-   * Helper: Deep compare two raw workouts (ignore certain volatile fields)
-   */
   const compareRawWorkouts = (initial: any, final: any): { identical: boolean; differences: string[] } => {
     const differences: string[] = [];
 
@@ -1102,7 +1053,6 @@ describe("Workout Upload Cycle Integration Tests", () => {
       return Number(step.weightValue);
     };
 
-    // Compare high-level fields
     if (initial.workoutName !== final.workoutName) {
       differences.push(`workoutName: "${initial.workoutName}" vs "${final.workoutName}"`);
     }
@@ -1115,7 +1065,6 @@ describe("Workout Upload Cycle Integration Tests", () => {
       );
     }
 
-    // Compare segments
     const initialSegments = initial.workoutSegments || [];
     const finalSegments = final.workoutSegments || [];
 
@@ -1124,7 +1073,6 @@ describe("Workout Upload Cycle Integration Tests", () => {
       return { identical: false, differences };
     }
 
-    // Compare steps in each segment
     for (let segIdx = 0; segIdx < initialSegments.length; segIdx++) {
       const initialSteps = initialSegments[segIdx].workoutSteps || [];
       const finalSteps = finalSegments[segIdx].workoutSteps || [];
@@ -1140,7 +1088,6 @@ describe("Workout Upload Cycle Integration Tests", () => {
         const initialStep = initialSteps[stepIdx];
         const finalStep = finalSteps[stepIdx];
 
-        // Skip ID fields as they may be regenerated
         if (initialStep.type !== finalStep.type) {
           differences.push(
             `Step ${stepIdx} type: "${initialStep.type}" vs "${finalStep.type}"`
@@ -1176,7 +1123,6 @@ describe("Workout Upload Cycle Integration Tests", () => {
           );
         }
 
-        // Compare logical weight in lbs (allow 1% tolerance for rounding)
         const initialWeightLbs = normalizeWeightToLbs(initialStep);
         const finalWeightLbs = normalizeWeightToLbs(finalStep);
 
@@ -1200,12 +1146,10 @@ describe("Workout Upload Cycle Integration Tests", () => {
 
   describe("E2E: Full upload cycle - data integrity", () => {
     it("should maintain structural parity through transform -> retransform -> upload -> redownload cycle", async () => {
-      // Step 1: Get initial raw workout
       const initialRaw = getSampleRawWorkout();
       const initialRawPath = path.join(tempDir, "initial-raw.json");
       fs.writeFileSync(initialRawPath, JSON.stringify([initialRaw], null, 2));
 
-      // Step 2: Transform to simplified format
       const transformed = (editor as any).transformWorkouts([initialRaw]);
       const transformedPath = path.join(tempDir, "transformed.json");
       fs.writeFileSync(transformedPath, JSON.stringify(transformed, null, 2));
@@ -1216,10 +1160,8 @@ describe("Workout Upload Cycle Integration Tests", () => {
       expect(transformedWorkout.steps).toBeDefined();
       expect(transformedWorkout.steps?.length).toBeGreaterThan(0);
 
-      // Step 3: Retransform back to Garmin format
       const retransformed = (editor as any).buildGarminWorkoutDetail(transformedWorkout);
 
-      // Step 4: Extract the raw format from retransformed
       const finalRaw = {
         workoutId: initialRaw.workoutId,
         workoutName: retransformed.workoutName,
@@ -1227,22 +1169,18 @@ describe("Workout Upload Cycle Integration Tests", () => {
         workoutSegments: retransformed.workoutSegments,
       };
 
-      // Step 5: Verify structure is preserved
       expect(finalRaw.workoutName).toBe(initialRaw.workoutName);
       expect(finalRaw.sportType.sportTypeKey).toBe(initialRaw.sportType.sportTypeKey);
       expect(finalRaw.workoutSegments.length).toBeGreaterThan(0);
       expect(finalRaw.workoutSegments[0].workoutSteps.length).toBeGreaterThan(0);
 
-      // Step 6: Recursively find all exercises (including in repeat groups)
       const findExercises = (steps: any[]): string[] => {
         const exercises: string[] = [];
         for (const step of steps) {
-          // Both "exercise" and "interval" steps can have exercise names in Garmin format
           if (step.exerciseName && step.stepType?.stepTypeKey && 
               ["exercise", "interval"].includes(step.stepType.stepTypeKey)) {
             exercises.push(step.exerciseName);
           }
-          // Also check nested steps in RepeatGroupDTO
           if (step.workoutSteps && Array.isArray(step.workoutSteps)) {
             exercises.push(...findExercises(step.workoutSteps));
           }
@@ -1256,7 +1194,6 @@ describe("Workout Upload Cycle Integration Tests", () => {
       expect(initialExercises.length).toBeGreaterThan(0);
       expect(finalExercises.length).toBeGreaterThan(0);
 
-      // Most exercises should be preserved
       const commonExercises = initialExercises.filter((e: string) => finalExercises.includes(e));
       expect(commonExercises.length).toBeGreaterThan(0);
     });
@@ -1301,17 +1238,14 @@ describe("Workout Upload Cycle Integration Tests", () => {
         ],
       };
 
-      // Transform and retransform
       const transformed = (editor as any).transformWorkouts([workoutWithRepeat]);
       expect(transformed[0].steps).toBeDefined();
 
-      // Check that repeat group was flattened
       const flatSteps = transformed[0].steps;
       const repeatStep = flatSteps?.find((s: WorkoutStep) => s.numberOfRepeats === 3);
       expect(repeatStep).toBeDefined();
       expect(repeatStep?.numberOfRepeats).toBe(3);
 
-      // Retransform back
       const retransformed = (editor as any).buildGarminWorkoutDetail(transformed[0]);
       const finalRaw = {
         workoutId: workoutWithRepeat.workoutId,
@@ -1333,21 +1267,17 @@ describe("Workout Upload Cycle Integration Tests", () => {
 
   describe("E2E: Upload cycle with small modifications", () => {
     it("should handle weight modification through full cycle", async () => {
-      // Initial workout
       const initialRaw = getSampleRawWorkout();
 
-      // Transform
       const transformed = (editor as any).transformWorkouts([initialRaw]);
       const workout = transformed[0];
 
-      // Modify weight (first exercise step)
       const exerciseSteps = workout.steps?.filter((s: WorkoutStep) => s.weight !== undefined && s.weight > 0);
       expect(exerciseSteps?.length).toBeGreaterThan(0);
 
       const originalWeight = exerciseSteps![0].weight;
-      exerciseSteps![0].weight = (originalWeight || 15) * 1.1; // Increase by 10%
+      exerciseSteps![0].weight = (originalWeight || 15) * 1.1;
 
-      // Retransform
       const retransformed = (editor as any).buildGarminWorkoutDetail(workout);
       const finalRaw = {
         workoutId: initialRaw.workoutId,
@@ -1356,7 +1286,6 @@ describe("Workout Upload Cycle Integration Tests", () => {
         workoutSegments: retransformed.workoutSegments,
       };
 
-      // Verify weight was increased
       const stepToModify = exerciseSteps![0];
       const finalExercises = finalRaw.workoutSegments[0].workoutSteps
         .filter((s: any) => s.exerciseName === stepToModify.exerciseName);
@@ -1366,7 +1295,6 @@ describe("Workout Upload Cycle Integration Tests", () => {
       const initialWeight = initialStep?.weightValue || 0;
       const finalWeight = finalExercises[0]?.weightValue || 0;
 
-      // Should be approximately 10% higher (allowing for rounding)
       if (initialWeight > 0 && finalWeight > 0) {
         const ratio = finalWeight / initialWeight;
         expect(ratio).toBeCloseTo(1.1, 1);
@@ -1376,19 +1304,16 @@ describe("Workout Upload Cycle Integration Tests", () => {
     it("should handle reps modification through full cycle", async () => {
       const initialRaw = getSampleRawWorkout();
 
-      // Transform
       const transformed = (editor as any).transformWorkouts([initialRaw]);
       const workout = transformed[0];
 
-      // Modify reps (find first exercise with reps/endConditionValue)
       const exerciseStep = workout.steps?.find((s: WorkoutStep) => s.reps && s.exerciseName);
       expect(exerciseStep).toBeDefined();
 
       const originalReps = exerciseStep!.reps || 0;
-      exerciseStep!.reps = 12; // Modify reps
+      exerciseStep!.reps = 12;
       exerciseStep!.endConditionValue = 12;
 
-      // Retransform
       const retransformed = (editor as any).buildGarminWorkoutDetail(workout);
       const finalRaw = {
         workoutId: initialRaw.workoutId,
@@ -1396,7 +1321,6 @@ describe("Workout Upload Cycle Integration Tests", () => {
         workoutSegments: retransformed.workoutSegments,
       };
 
-      // Verify reps were updated
       const finalExerciseStep = finalRaw.workoutSegments[0].workoutSteps
         .find((s: any) => s.exerciseName === exerciseStep!.exerciseName);
 
@@ -1406,18 +1330,15 @@ describe("Workout Upload Cycle Integration Tests", () => {
     it("should handle exercise name modification through full cycle", async () => {
       const initialRaw = getSampleRawWorkout();
 
-      // Transform
       const transformed = (editor as any).transformWorkouts([initialRaw]);
       const workout = transformed[0];
 
-      // Modify first exercise name
       const exerciseToModify = workout.steps?.find((s: WorkoutStep) => s.exerciseName);
       expect(exerciseToModify).toBeDefined();
 
       const originalName = exerciseToModify!.exerciseName!;
       exerciseToModify!.exerciseName = "MODIFIED_" + originalName;
 
-      // Retransform
       const retransformed = (editor as any).buildGarminWorkoutDetail(workout);
       const finalRaw = {
         workoutId: initialRaw.workoutId,
@@ -1425,43 +1346,37 @@ describe("Workout Upload Cycle Integration Tests", () => {
         workoutSegments: retransformed.workoutSegments,
       };
 
-      // Verify exercise was changed
       const finalStep = finalRaw.workoutSegments[0].workoutSteps
         .find((s: any) => s.exerciseName === "MODIFIED_" + originalName);
       
       expect(finalStep).toBeDefined();
       expect(finalStep.exerciseName).toBe("MODIFIED_" + originalName);
 
-      // Original should not exist
       const oldStep = finalRaw.workoutSegments[0].workoutSteps
         .find((s: any) => s.exerciseName === originalName);
-      // Note: oldStep might exist if it's inside a repeat group, but the modified one should exist at top level
       expect(finalStep).toBeDefined();
     });
 
     it("should handle multiple modifications simultaneously", async () => {
       const initialRaw = getSampleRawWorkout();
 
-      // Transform
       const transformed = (editor as any).transformWorkouts([initialRaw]);
       const workout = transformed[0];
 
-      // Get first two exercises with weight for modification
       const exercises = workout.steps?.filter((s: WorkoutStep) => s.exerciseName && s.weight) || [];
       expect(exercises.length).toBeGreaterThanOrEqual(2);
 
       const bench = exercises[0];
       const squat = exercises[1];
 
-      bench.weight = (bench.weight || 100) * 1.25; // +25%
-      bench.reps = (bench.reps || 10) - 2; // Fewer reps
+      bench.weight = (bench.weight || 100) * 1.25;
+      bench.reps = (bench.reps || 10) - 2;
       bench.endConditionValue = bench.reps;
 
-      squat.weight = (squat.weight || 100) * 0.9; // -10%
-      squat.reps = (squat.reps || 10) + 2; // More reps
+      squat.weight = (squat.weight || 100) * 0.9;
+      squat.reps = (squat.reps || 10) + 2;
       squat.endConditionValue = squat.reps;
 
-      // Retransform
       const retransformed = (editor as any).buildGarminWorkoutDetail(workout);
       const finalRaw = {
         workoutId: initialRaw.workoutId,
@@ -1469,7 +1384,6 @@ describe("Workout Upload Cycle Integration Tests", () => {
         workoutSegments: retransformed.workoutSegments,
       };
 
-      // Helper to find exercises recursively in potentially nested structures
       const findExercise = (exerciseName: string, steps: any[]): any => {
         for (const step of steps) {
           if (step.exerciseName === exerciseName) return step;
@@ -1484,7 +1398,6 @@ describe("Workout Upload Cycle Integration Tests", () => {
       const finalBench = findExercise(bench.exerciseName, finalRaw.workoutSegments[0].workoutSteps);
       const finalSquat = findExercise(squat.exerciseName, finalRaw.workoutSegments[0].workoutSteps);
 
-      // Verify all modifications were applied
       expect(finalBench).toBeDefined();
       expect(finalSquat).toBeDefined();
       expect(finalBench.endConditionValue).toBe(bench.reps);
@@ -1501,7 +1414,6 @@ describe("Workout Upload Cycle Integration Tests", () => {
       const mockClient = getMockClient();
       const createWorkoutMock = mockClient.createWorkout;
 
-      // Should be able to call upload (with mock)
       const garminFormatWorkout = (editor as any).buildGarminWorkoutDetail(workout);
       
       expect(garminFormatWorkout.workoutName).toBe("Copy of Squat day");
@@ -1513,31 +1425,25 @@ describe("Workout Upload Cycle Integration Tests", () => {
       const invalidWorkout: DetailedWorkout = {
         workoutId: 1,
         workoutName: "Invalid",
-        // Missing required fields
       };
 
-      // Should throw validation error
       expect(() => (editor as any).validateWorkout(invalidWorkout)).toThrow();
     });
   });
 
-  // Real API Integration Test - only runs when USE_REAL_GARMIN_API=true
   (USE_REAL_API ? describe : describe.skip)("E2E: Real Garmin API Upload/Download Cycle", () => {
     it("should upload workout to real Garmin API and download it back", async () => {
       const initialRaw = getSampleRawWorkout();
       
-      // Use a unique workout name for testing
       const testWorkoutName = `Test Workout ${Date.now()}`;
       initialRaw.workoutName = testWorkoutName;
 
-      // Step 1: Transform to simplified format
       const transformed = (editor as any).transformWorkouts([initialRaw]);
       const workout = transformed[0];
       workout.workoutName = testWorkoutName;
 
       console.log(`\n📤 Uploading workout: ${testWorkoutName}`);
 
-      // Step 2: Build Garmin format and upload
       const garminFormatWorkout = (editor as any).buildGarminWorkoutDetail(workout);
       const client = (garminClient as any).client;
       
@@ -1554,10 +1460,8 @@ describe("Workout Upload Cycle Integration Tests", () => {
         throw error;
       }
 
-      // Wait a bit for Garmin to process
       await new Promise(resolve => setTimeout(resolve, 2000));
 
-      // Step 3: Download the workout back
       console.log(`📥 Downloading workout: ${uploadedWorkout.workoutId}`);
       let downloadedWorkout: any;
       try {
@@ -1569,14 +1473,12 @@ describe("Workout Upload Cycle Integration Tests", () => {
         throw error;
       }
 
-      // Step 4: Compare structures
       console.log(`🔍 Comparing initial vs downloaded workout...`);
       expect(downloadedWorkout.workoutName).toBe(testWorkoutName);
       expect(downloadedWorkout.sportType?.sportTypeKey).toBe(initialRaw.sportType.sportTypeKey);
       expect(downloadedWorkout.workoutSegments).toBeDefined();
       expect(downloadedWorkout.workoutSegments.length).toBeGreaterThan(0);
 
-      // Verify key structural elements
       const { identical, differences } = compareRawWorkouts(initialRaw, downloadedWorkout);
       
       if (!identical) {
@@ -1584,7 +1486,6 @@ describe("Workout Upload Cycle Integration Tests", () => {
         differences.slice(0, 5).forEach(diff => console.log(`     - ${diff}`));
       }
 
-      // Core structure should match
       expect(downloadedWorkout.workoutId).toBe(uploadedWorkout.workoutId);
       console.log(`   ✓ Upload/download cycle successful!`);
     });
@@ -1594,20 +1495,17 @@ describe("Workout Upload Cycle Integration Tests", () => {
       const testWorkoutName = `Modified Test ${Date.now()}`;
       initialRaw.workoutName = testWorkoutName;
 
-      // Transform and modify
       const transformed = (editor as any).transformWorkouts([initialRaw]);
       const workout = transformed[0];
       workout.workoutName = testWorkoutName;
 
-      // Find and modify first exercise with weight
       const exercise = workout.steps?.find((s: WorkoutStep) => s.weight && s.weight > 0);
       if (exercise) {
         const originalWeight = exercise.weight!;
-        exercise.weight = originalWeight * 1.5; // Increase by 50%
+        exercise.weight = originalWeight * 1.5;
         console.log(`\n✏️  Modified weight: ${originalWeight} → ${exercise.weight} lbs`);
       }
 
-      // Upload
       console.log(`📤 Uploading modified workout: ${testWorkoutName}`);
       const garminFormatWorkout = (editor as any).buildGarminWorkoutDetail(workout);
       const client = (garminClient as any).client;
@@ -1616,14 +1514,11 @@ describe("Workout Upload Cycle Integration Tests", () => {
       createdWorkoutIds.push(uploadedWorkout.workoutId);
       console.log(`   ✓ Uploaded (ID: ${uploadedWorkout.workoutId})`);
 
-      // Wait for processing
       await new Promise(resolve => setTimeout(resolve, 2000));
 
-      // Download and verify
       console.log(`📥 Downloading to verify modifications...`);
       const downloadedWorkout = await client.getWorkoutDetail(uploadedWorkout.workoutId);
       
-      // Transform downloaded workout to check modifications
       const downloadedTransformed = (editor as any).transformWorkouts([downloadedWorkout]);
       const downloadedExercise = downloadedTransformed[0].steps?.find(
         (s: WorkoutStep) => s.exerciseName === exercise?.exerciseName
@@ -1688,22 +1583,18 @@ describe("Workout Upload Cycle Integration Tests", () => {
       const transformed = (editor as any).transformWorkouts([stepsWorkout]);
       expect(transformed[0].steps).toBeDefined();
 
-      // Verify step types are present (note: rest is merged into exercise steps during transform)
       const stepTypes = transformed[0].steps?.map((s: WorkoutStep) => s.stepType);
       expect(stepTypes).toContain("warmup");
       expect(stepTypes).toContain("exercise");
-      // Rest is merged into the preceding exercise step as restTimeSeconds
       expect(stepTypes).toContain("recovery");
       expect(stepTypes).toContain("cooldown");
 
-      // Retransform and verify
       const retransformed = (editor as any).buildGarminWorkoutDetail(transformed[0]);
       const finalSteps = retransformed.workoutSegments[0].workoutSteps;
 
       const finalStepTypes = finalSteps.map((s: any) => s.stepType?.stepTypeKey);
       expect(finalStepTypes).toContain("warmup");
       expect(finalStepTypes).toContain("exercise");
-      // Rest steps are re-expanded during unflatten
       expect(finalStepTypes).toContain("rest");
       expect(finalStepTypes).toContain("recovery");
       expect(finalStepTypes).toContain("cooldown");
@@ -1745,11 +1636,9 @@ describe("Workout Upload Cycle Integration Tests", () => {
       const transformed = (editor as any).transformWorkouts([zonesWorkout]);
       expect(transformed[0].steps).toBeDefined();
 
-      // Verify targets preserved
       const steps = transformed[0].steps;
       expect(steps?.some((s: WorkoutStep) => s.targetType === "heart.rate.zone")).toBe(true);
 
-      // Retransform
       const retransformed = (editor as any).buildGarminWorkoutDetail(transformed[0]);
       const finalSteps = retransformed.workoutSegments[0].workoutSteps;
 
@@ -1789,7 +1678,6 @@ describe("Workout Upload Cycle Integration Tests", () => {
     it("should maintain structural parity through running workout transform → retransform → upload → redownload cycle", async () => {
       const initialRaw = getSampleRunningWorkout();
 
-      // Transform to simplified format
       const transformed = (editor as any).transformWorkouts([initialRaw]);
       expect(transformed).toHaveLength(1);
       const workout = transformed[0];
@@ -1798,7 +1686,6 @@ describe("Workout Upload Cycle Integration Tests", () => {
       expect(workout.steps).toBeDefined();
       expect(workout.steps?.length).toBeGreaterThan(0);
 
-      // Retransform back to Garmin format
       const retransformed = (editor as any).buildGarminWorkoutDetail(workout);
       expect(retransformed.workoutName).toBe("Run interval Tuesday ");
       expect(retransformed.workoutSegments).toBeDefined();
@@ -1811,13 +1698,11 @@ describe("Workout Upload Cycle Integration Tests", () => {
         workoutSegments: retransformed.workoutSegments,
       };
 
-      // Compare structures
       expect(finalRaw.workoutId).toBe(initialRaw.workoutId);
       expect(finalRaw.workoutName).toBe(initialRaw.workoutName);
       expect(finalRaw.sportType.sportTypeKey).toBe(initialRaw.sportType.sportTypeKey);
       expect(finalRaw.workoutSegments.length).toBe(initialRaw.workoutSegments.length);
 
-      // Verify intervals and recovery steps exist in final
       const hasIntervals = finalRaw.workoutSegments[0].workoutSteps.some(
         (s: any) => s.stepType?.stepTypeKey === "interval" || (s.workoutSteps && s.workoutSteps.some((ws: any) => ws.stepType?.stepTypeKey === "interval"))
       );
@@ -1827,15 +1712,12 @@ describe("Workout Upload Cycle Integration Tests", () => {
     it("should preserve heart rate zones through running workout cycle", async () => {
       const initialRaw = getSampleRunningWorkout();
 
-      // Transform
       const transformed = (editor as any).transformWorkouts([initialRaw]);
       const workout = transformed[0];
 
-      // Find interval steps with heart rate zones
       const intervalSteps = workout.steps?.filter((s: WorkoutStep) => s.stepType === "interval") || [];
       expect(intervalSteps.length).toBeGreaterThan(0);
 
-      // Verify zones exist
       intervalSteps.forEach((step: WorkoutStep) => {
         if (step.targetType === "heart.rate.zone") {
           expect(step.targetValueOne).toBeDefined();
@@ -1843,7 +1725,6 @@ describe("Workout Upload Cycle Integration Tests", () => {
         }
       });
 
-      // Retransform
       const retransformed = (editor as any).buildGarminWorkoutDetail(workout);
       const finalRaw = {
         workoutId: initialRaw.workoutId,
@@ -1851,7 +1732,6 @@ describe("Workout Upload Cycle Integration Tests", () => {
         workoutSegments: retransformed.workoutSegments,
       };
 
-      // Verify zones preserved in final
       const findIntervals = (steps: any[]): any[] => {
         let intervals: any[] = [];
         for (const step of steps) {
@@ -1879,11 +1759,9 @@ describe("Workout Upload Cycle Integration Tests", () => {
     it("should handle heart rate zone modification through running workout cycle", async () => {
       const initialRaw = getSampleRunningWorkout();
 
-      // Transform
       const transformed = (editor as any).transformWorkouts([initialRaw]);
       const workout = transformed[0];
 
-      // Modify first interval's HR zone
       const intervalStep = workout.steps?.find((s: WorkoutStep) => s.stepType === "interval");
       expect(intervalStep).toBeDefined();
 
@@ -1892,11 +1770,9 @@ describe("Workout Upload Cycle Integration Tests", () => {
         max: intervalStep!.targetValueTwo,
       };
 
-      // Adjust zone higher by 10 bpm
       intervalStep!.targetValueOne = (intervalStep!.targetValueOne || 150) + 10;
       intervalStep!.targetValueTwo = (intervalStep!.targetValueTwo || 170) + 10;
 
-      // Retransform
       const retransformed = (editor as any).buildGarminWorkoutDetail(workout);
       const finalRaw = {
         workoutId: initialRaw.workoutId,
@@ -1904,7 +1780,6 @@ describe("Workout Upload Cycle Integration Tests", () => {
         workoutSegments: retransformed.workoutSegments,
       };
 
-      // Find the modified interval in final
       const findInterval = (steps: any[]): any => {
         for (const step of steps) {
           if (step.stepType?.stepTypeKey === "interval") return step;
@@ -1925,18 +1800,15 @@ describe("Workout Upload Cycle Integration Tests", () => {
     it("should handle interval duration modification through running workout cycle", async () => {
       const initialRaw = getSampleRunningWorkout();
 
-      // Transform
       const transformed = (editor as any).transformWorkouts([initialRaw]);
       const workout = transformed[0];
 
-      // Modify first interval duration (from 120 to 180 seconds)
       const intervalStep = workout.steps?.find((s: WorkoutStep) => s.stepType === "interval");
       expect(intervalStep).toBeDefined();
 
       const originalDuration = intervalStep!.endConditionValue;
-      intervalStep!.endConditionValue = 180; // 3 minutes instead of 2
+      intervalStep!.endConditionValue = 180;
 
-      // Retransform
       const retransformed = (editor as any).buildGarminWorkoutDetail(workout);
       const finalRaw = {
         workoutId: initialRaw.workoutId,
@@ -1944,7 +1816,6 @@ describe("Workout Upload Cycle Integration Tests", () => {
         workoutSegments: retransformed.workoutSegments,
       };
 
-      // Verify duration was updated
       const findInterval = (steps: any[]): any => {
         for (const step of steps) {
           if (step.stepType?.stepTypeKey === "interval") return step;
@@ -1964,17 +1835,14 @@ describe("Workout Upload Cycle Integration Tests", () => {
     it("should preserve running workout repeat groups through cycle", async () => {
       const initialRaw = getSampleRunningWorkout();
 
-      // Transform
       const transformed = (editor as any).transformWorkouts([initialRaw]);
       const workout = transformed[0];
 
-      // Count repeat iterations from initial structure
       const initialRepeatGroups = initialRaw.workoutSegments[0].workoutSteps.filter(
         (s: any) => s.type === "RepeatGroupDTO"
       );
-      expect(initialRepeatGroups.length).toBe(2); // 2x repeats and 4x repeats
+      expect(initialRepeatGroups.length).toBe(2);
 
-      // Retransform
       const retransformed = (editor as any).buildGarminWorkoutDetail(workout);
       const finalRaw = {
         workoutId: initialRaw.workoutId,
@@ -1982,13 +1850,11 @@ describe("Workout Upload Cycle Integration Tests", () => {
         workoutSegments: retransformed.workoutSegments,
       };
 
-      // Find repeat groups in final
       const finalRepeatGroups = finalRaw.workoutSegments[0].workoutSteps.filter(
         (s: any) => s.type === "RepeatGroupDTO"
       );
       expect(finalRepeatGroups.length).toBeGreaterThan(0);
 
-      // Verify iteration counts match
       initialRepeatGroups.forEach((initial: any, idx: number) => {
         if (finalRepeatGroups[idx]) {
           expect(finalRepeatGroups[idx].numberOfIterations).toBe(initial.numberOfIterations);

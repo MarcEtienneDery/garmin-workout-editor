@@ -1,9 +1,3 @@
-/**
- * The Calendar's week view, the one it opens on: seven days with a card for each workout (its type, distance and time, its profile, the plan
- * it is in, a tick when it was done), what the week adds up to against the week before, the workout picked shown in full at the side, and the
- * move by drag, by the ⋯ on a card or by Move… in the side. alice's plans are read only and fall around today; the moves use a plan of a
- * profile's own, dated in 2031 so that no other spec's data lands on its weeks.
- */
 import type { APIRequestContext, Locator, Page } from "@playwright/test";
 import { test, expect, openView, today, daysAgo, mondayOf, type Profile, chooseTheme } from "../support/fixtures";
 
@@ -23,14 +17,13 @@ async function openWeek(page: Page): Promise<void> {
   await expect(page.locator("#cwBoard .wday")).toHaveCount(7);
 }
 
-/** A plan file of the profile's, dated in 2031, and the week of its Monday shown (by its row in the legend). */
 async function openOnPlan(page: Page, profile: Profile, suffix: string, workouts: object[], monday = "2031-09-01"): Promise<{ path: string; name: string }> {
   const name = `${profile.name}-${suffix}`, path = `workout-plans/${name}.json`;
   const res = await profile.api.put(enc(path), { data: { text: JSON.stringify({ weekStart: "2031-09-01", weekEnd: "2031-09-07", workouts }), create: true } });
   expect(res.status(), await res.text()).toBe(201);
   await openWeek(page);
   await page.locator("#cLegend .citem", { hasText: name }).click();
-  await expect(page.locator("#cTitle")).toHaveText(weekTitle(monday)); // the week the plan starts in
+  await expect(page.locator("#cTitle")).toHaveText(weekTitle(monday));
   return { path, name };
 }
 
@@ -48,7 +41,7 @@ test.describe("the week", () => {
     await expect(alice.locator("#cwBoard .wday.today")).toHaveCount(1);
     await expect(day(alice, today())).toHaveClass(/today/);
     await expect(alice.locator("#cViews button[data-view=week]")).toHaveAttribute("aria-pressed", "true");
-    await expect(alice.locator("#cModes")).toBeHidden(); // the modes are the month's
+    await expect(alice.locator("#cModes")).toBeHidden();
   });
 
   test("the arrows move a week, Today comes back, and they say week", async ({ alice }) => {
@@ -79,7 +72,6 @@ test.describe("the week", () => {
   test("a strength workout has no profile to draw, and says its time", async ({ alice }) => {
     await alice.locator("body").evaluate(() => undefined);
     await openView(alice, "calendar");
-    // the next days that have it: go forward to a week with Full body strength
     const strength = alice.locator("#cwBoard .wcard", { hasText: "Full body strength" });
     for (let i = 0; i < 2 && !(await strength.count()); i++) await alice.locator("#cNext").click();
     await expect(strength.first()).toBeVisible();
@@ -125,7 +117,7 @@ test.describe("what the week adds up to", () => {
       { workoutName: "Last week", workoutType: "running", scheduledDate: "2031-08-26", steps: [{ stepType: "interval", targetType: "no.target", endCondition: "time", endConditionValue: 3600 }] },
       { workoutName: "This week", workoutType: "running", scheduledDate: "2031-09-03", steps: [{ stepType: "interval", targetType: "no.target", endCondition: "time", endConditionValue: 5400 }] },
     ], "2031-08-25");
-    await me.locator("#cNext").click(); // the plan starts a week early: the week of the 1st is the next
+    await me.locator("#cNext").click();
     await expect(me.locator("#cTitle")).toHaveText(weekTitle("2031-09-01"));
     await expect(me.locator("#cwSum .cws").nth(2).locator("span")).toHaveText("▲ 50 % on last week");
     await me.locator("#cPrev").click();
@@ -242,7 +234,7 @@ test.describe("week and month", () => {
     await expect(alice.locator("#cwBoard")).toBeHidden();
     await expect(alice.locator("#cModes")).toBeVisible();
     await alice.reload();
-    await expect(alice.locator("#cgrid .cday").first()).toBeVisible(); // the month stays the month
+    await expect(alice.locator("#cgrid .cday").first()).toBeVisible();
     await alice.locator("#cgrid .cday.today").first().click({ position: { x: 6, y: 6 } });
     await alice.locator("#cDay .cwlink").click();
     await expect(alice.locator("#cwBoard .wday")).toHaveCount(7);
@@ -268,7 +260,7 @@ test.describe("the look of the week", () => {
   const contrast = (page: Page, a: string, b: string) =>
     page.evaluate(([x, y]) => {
       const lum = (css: string) => {
-        const scale = css.startsWith("color(") ? 255 : 1; // a colour the browser mixed is written color(srgb 0.9 0.9 0.8), each part 0 to 1
+        const scale = css.startsWith("color(") ? 255 : 1;
         const [r, g, bl] = (css.match(/[\d.]+/g) ?? []).slice(0, 3).map(Number).map((v) => { const c = (v * scale) / 255; return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; });
         return 0.2126 * r + 0.7152 * g + 0.0722 * bl;
       };

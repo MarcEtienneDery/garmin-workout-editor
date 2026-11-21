@@ -1,8 +1,3 @@
-/**
- * The Calendar's look: the dark and the light theme (one choice with Today and Food, a button in the bar), the month as one card, the
- * plan bars and workout chips readable on it, the side as cards that follow the mode, the rail following the theme, the Move menu in the
- * palette, and the sizes of the controls. alice's plans are read only; the Move menu needs a plan of a profile's own.
- */
 import type { Page } from "@playwright/test";
 import { test, expect, openView, monthView, type Profile, chooseTheme, toggleTheme } from "../support/fixtures";
 

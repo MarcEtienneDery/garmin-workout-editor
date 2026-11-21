@@ -9,7 +9,7 @@ const DAY = 86_400_000;
 const tokens = { oauth1: { token: "t1", secret: "s1" }, oauth2: { access_token: "a2", refresh_token: "r2" } };
 
 let dir: string;
-let dataDir: string; // the profile's data directory, as a GarminClient is given it
+let dataDir: string;
 let saved: string | undefined;
 beforeEach(() => {
   dir = fs.mkdtempSync(path.join(os.tmpdir(), "token-cache-"));
@@ -48,7 +48,7 @@ describe("the Garmin token cache", () => {
     cache.saveToken(EMAIL, tokens.oauth1, tokens.oauth2);
     expect(cache.loadToken("someone@else.com")).toBeNull();
     expect(cache.hasCachedToken("someone@else.com")).toBe(false);
-    expect(cache.loadToken(EMAIL)).not.toBeNull(); // the other account's look did not clear it
+    expect(cache.loadToken(EMAIL)).not.toBeNull();
   });
 
   it("keeps a login however old: only Garmin refusing the session ends it, not a number of days", () => {
@@ -71,8 +71,8 @@ describe("the Garmin token cache", () => {
 
   it("clears the tokens, and is quiet about clearing what was never there", () => {
     const cache = new TokenCache(dataDir);
-    expect(() => cache.clearToken()).not.toThrow(); // no database, no file
-    expect(fs.existsSync(process.env.GARMIN_STORE_PATH!)).toBe(false); // and looking did not create one
+    expect(() => cache.clearToken()).not.toThrow();
+    expect(fs.existsSync(process.env.GARMIN_STORE_PATH!)).toBe(false);
     cache.saveToken(EMAIL, tokens.oauth1, tokens.oauth2);
     cache.clearToken();
     expect(cache.hasCachedToken(EMAIL)).toBe(false);
@@ -90,8 +90,8 @@ describe("the Garmin token cache", () => {
       expect(new TokenCache(dataDir).loadToken(EMAIL)).toEqual({ oauth1Token: tokens.oauth1, oauth2Token: tokens.oauth2 });
       expect(fs.existsSync(file)).toBe(false);
       expect(getStore().tokens.get("MED")!.email).toBe(EMAIL);
-      expect(getStore().tokens.get("MED")!.savedAt).toBeLessThan(Date.now() - DAY / 2); // the age of the file's login is kept, not reset
-      expect(new TokenCache(dataDir).loadToken(EMAIL)).toEqual({ oauth1Token: tokens.oauth1, oauth2Token: tokens.oauth2 }); // now from the database
+      expect(getStore().tokens.get("MED")!.savedAt).toBeLessThan(Date.now() - DAY / 2);
+      expect(new TokenCache(dataDir).loadToken(EMAIL)).toEqual({ oauth1Token: tokens.oauth1, oauth2Token: tokens.oauth2 });
     });
 
     it("is also taken in when only asked whether a token exists", () => {
@@ -113,11 +113,11 @@ describe("the Garmin token cache", () => {
       expect(new TokenCache(dataDir).loadToken(EMAIL)).toBeNull();
       expect(fs.existsSync(file)).toBe(true);
 
-      new TokenCache(dataDir).saveToken(EMAIL, "fresh1", "fresh2"); // a login replaces the old file for good
+      new TokenCache(dataDir).saveToken(EMAIL, "fresh1", "fresh2");
       expect(fs.existsSync(file)).toBe(false);
-      const older = legacy({ oauth1Token: "old1", oauth2Token: "old2" }); // a day old
-      expect(new TokenCache(dataDir).loadToken(EMAIL)).toEqual({ oauth1Token: "fresh1", oauth2Token: "fresh2" }); // not overwritten by the older file
-      expect(fs.existsSync(older)).toBe(false); // and the file does not linger
+      const older = legacy({ oauth1Token: "old1", oauth2Token: "old2" });
+      expect(new TokenCache(dataDir).loadToken(EMAIL)).toEqual({ oauth1Token: "fresh1", oauth2Token: "fresh2" });
+      expect(fs.existsSync(older)).toBe(false);
     });
 
     it("replaces the database's login when it is newer: a login made elsewhere and copied in by hand", () => {
@@ -125,7 +125,7 @@ describe("the Garmin token cache", () => {
       const copied = legacy({ oauth1Token: "new1", oauth2Token: "new2", timestamp: Date.now() - 1000 });
       expect(new TokenCache(dataDir).loadToken(EMAIL)).toEqual({ oauth1Token: "new1", oauth2Token: "new2" });
       expect(fs.existsSync(copied)).toBe(false);
-      expect(new TokenCache(dataDir).loadToken(EMAIL)).toEqual({ oauth1Token: "new1", oauth2Token: "new2" }); // and it stays in the database
+      expect(new TokenCache(dataDir).loadToken(EMAIL)).toEqual({ oauth1Token: "new1", oauth2Token: "new2" });
     });
 
     it("is removed by clearToken too", () => {

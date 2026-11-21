@@ -5,7 +5,6 @@ import { metricsFor } from "./fixtures/wellness";
 const DATE = "2026-10-18";
 const day = (back: number) => new Date(Date.parse(`${DATE}T00:00:00Z`) - back * 86_400_000).toISOString().slice(0, 10);
 
-/** A normal day: HRV in its band, resting heart rate 50, a full night, a charged battery, a calm day before. */
 const normal = (d: string, over: Partial<DayMetrics> = {}): DayMetrics =>
   metricsFor(d, {
     hrvLastNight: 57, hrvWeeklyAvg: 55, hrvLowUpper: 46, hrvBalancedLow: 50, hrvBalancedHigh: 65, hrvStatus: "BALANCED",
@@ -13,7 +12,6 @@ const normal = (d: string, over: Partial<DayMetrics> = {}): DayMetrics =>
     bodyBatteryWake: 75, avgStress: 28, ...over,
   });
 
-/** Four weeks of normal days, then the day asked about. */
 const month = (today: Partial<DayMetrics> = {}, yesterday: Partial<DayMetrics> = {}): DayMetrics[] => [
   ...Array.from({ length: 28 }, (_, i) => normal(day(28 - i), i === 27 ? yesterday : {})),
   normal(DATE, today),
@@ -23,7 +21,6 @@ const session = (daysBefore: number, hour: number, over: Partial<LoadRow> = {}):
   id: `${daysBefore}-${hour}`, type: "running", name: "Run", seconds: 3600, avgHr: 150, maxHr: 180, rpe: 50,
   startLocal: `${day(daysBefore)} ${String(hour).padStart(2, "0")}:00:00`, ...over,
 });
-/** A steady month of training: an hour at RPE 5 every other day. */
 const usualTraining = (): LoadRow[] => Array.from({ length: 15 }, (_, i) => session(2 + i * 2, 8));
 
 describe("readiness", () => {
@@ -39,7 +36,7 @@ describe("readiness", () => {
 
   it("says go harder when everything is better than usual", () => {
     const today = { hrvLastNight: 66, restingHr: 47, sleepSeconds: 30_000, sleepScore: 92, bodyBatteryWake: 92 };
-    const r = computeReadiness(month(today, { avgStress: 20 }), usualTraining().slice(1), DATE); // the last session was 4 days ago
+    const r = computeReadiness(month(today, { avgStress: 20 }), usualTraining().slice(1), DATE);
     expect(r.band).toBe("go-harder");
     expect(r.score!).toBeGreaterThan(50);
     expect(r.signals.find((s) => s.name === "hrv")).toEqual(expect.objectContaining({ score: 1, reason: expect.stringContaining("above") }));
@@ -47,7 +44,7 @@ describe("readiness", () => {
   });
 
   it("does not say go harder when one core signal is below normal", () => {
-    const today = { hrvLastNight: 66, restingHr: 52, sleepSeconds: 30_000, sleepScore: 92, bodyBatteryWake: 95 }; // 2 bpm up is still fine, so lift it further
+    const today = { hrvLastNight: 66, restingHr: 52, sleepSeconds: 30_000, sleepScore: 92, bodyBatteryWake: 95 };
     const r = computeReadiness(month({ ...today, restingHr: 54 }, { avgStress: 20 }), [], DATE);
     expect(r.signals.find((s) => s.name === "restingHr")!.score).toBe(-1);
     expect(r.band).not.toBe("go-harder");
@@ -102,7 +99,6 @@ describe("readiness", () => {
   it("reads the night that ended on the day, and yesterday's stress", () => {
     const stressedYesterday = computeReadiness(month({}, { avgStress: 65 }), [], DATE).signals.find((s) => s.name === "stress")!;
     expect(stressedYesterday.score).toBe(-2);
-    // a stressful day today and a bad night tomorrow change nothing about today
     const withLater = [...month(), normal(day(-1), { avgStress: 90, sleepSeconds: 10_000, hrvLastNight: 20 })];
     expect(computeReadiness(withLater, [], DATE)).toEqual(computeReadiness(month(), [], DATE));
   });
@@ -123,7 +119,7 @@ describe("the load of the last days", () => {
     const l = loadSummary(heavy, DATE)!;
     expect(l.sessions).toBe(2);
     expect(l.ratio!).toBeGreaterThan(1.3);
-    expect(l.hoursSinceHard).toBe(6); // 18:00 the day before, from the start of the day
+    expect(l.hoursSinceHard).toBe(6);
     expect(l.score).toBeLessThanOrEqual(-1);
   });
 
@@ -134,10 +130,10 @@ describe("the load of the last days", () => {
   });
 
   it("falls back to heart rate when no effort was rated, and to a plain figure without it", () => {
-    const byHr = loadSummary([session(1, 8, { rpe: null, avgHr: 171, maxHr: 180 })], DATE)!; // 95% of the highest seen
+    const byHr = loadSummary([session(1, 8, { rpe: null, avgHr: 171, maxHr: 180 })], DATE)!;
     expect(byHr.hoursSinceHard).toBe(16);
     const plain = loadSummary([session(1, 8, { rpe: null, avgHr: null, maxHr: null })], DATE)!;
-    expect(plain.acute).toBe(240); // 60 minutes x 4
+    expect(plain.acute).toBe(240);
   });
 
   it("ignores sessions on or after the day, and has nothing without sessions", () => {
@@ -148,10 +144,9 @@ describe("the load of the last days", () => {
 });
 
 describe("the intensity minutes in the load", () => {
-  /** A month of days with `usual` moderate minutes a day, the 3 days before the date with `recent`. */
   const minutesMonth = (usual: number | null, recent: (number | null)[]) =>
     Array.from({ length: 32 }, (_, i) => {
-      const back = 31 - i; // 31 days before the date ... the date
+      const back = 31 - i;
       const m = back >= 1 && back <= 3 ? recent[back - 1] : back === 0 ? null : usual;
       return normal(day(back), { moderateMinutes: m, vigorousMinutes: m === null ? null : 0 });
     });
@@ -159,15 +154,14 @@ describe("the intensity minutes in the load", () => {
   it("counts the moderate minutes and twice the vigorous ones, as Garmin does, and nothing for a day with none stored", () => {
     expect(dayIntensityMinutes({ moderateMinutes: 20, vigorousMinutes: 10 })).toBe(40);
     expect(dayIntensityMinutes({ moderateMinutes: null, vigorousMinutes: 5 })).toBe(10);
-    expect(dayIntensityMinutes({ moderateMinutes: 0, vigorousMinutes: null })).toBe(0); // a stored zero is a zero
+    expect(dayIntensityMinutes({ moderateMinutes: 0, vigorousMinutes: null })).toBe(0);
     expect(dayIntensityMinutes({ moderateMinutes: null, vigorousMinutes: null })).toBeNull();
   });
 
   it("show the effort no session holds: a ride to work that nobody recorded", () => {
-    // no session in the 3 days, but 60 intensity minutes a day against a usual 20
     const l = loadSummary(usualTraining().filter((r) => !/^[2-4]-/.test(r.id)), DATE, minutesMonth(20, [60, 60, 60]))!;
-    expect(l.ratio!).toBeLessThanOrEqual(0.7); // the sessions alone call it a rest period ...
-    expect(l.intensity).toEqual({ acute: 180, usual: 60, ratio: 3 }); // ... the minutes do not
+    expect(l.ratio!).toBeLessThanOrEqual(0.7);
+    expect(l.intensity).toEqual({ acute: 180, usual: 60, ratio: 3 });
     expect(l.score).toBe(-2);
   });
 
@@ -180,10 +174,10 @@ describe("the intensity minutes in the load", () => {
   });
 
   it("scale a 3 days with a day missing, and need 2 of them, and 14 usual days", () => {
-    expect(loadSummary([], DATE, minutesMonth(20, [60, null, 60]))!.intensity).toEqual({ acute: 180, usual: 60, ratio: 3 }); // two days, scaled to three
-    expect(loadSummary([], DATE, minutesMonth(20, [60, null, null]))).toBeNull(); // one day says too little, and there is no session
-    expect(loadSummary([], DATE, minutesMonth(null, [60, 60, 60]))!.intensity).toEqual({ acute: 180, usual: null, ratio: null }); // no usual to compare with
-    expect(loadSummary([], DATE, minutesMonth(0, [60, 60, 60]))!.intensity!.ratio).toBeNull(); // nothing to divide by
+    expect(loadSummary([], DATE, minutesMonth(20, [60, null, 60]))!.intensity).toEqual({ acute: 180, usual: 60, ratio: 3 });
+    expect(loadSummary([], DATE, minutesMonth(20, [60, null, null]))).toBeNull();
+    expect(loadSummary([], DATE, minutesMonth(null, [60, 60, 60]))!.intensity).toEqual({ acute: 180, usual: null, ratio: null });
+    expect(loadSummary([], DATE, minutesMonth(0, [60, 60, 60]))!.intensity!.ratio).toBeNull();
   });
 
   it("make a readiness with no session at all, and say what they were", () => {

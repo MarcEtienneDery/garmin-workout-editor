@@ -12,7 +12,7 @@ describe("an invite code in the page", () => {
     expect(WM.formatCode("abcd")).toBe("ABCD");
     expect(WM.formatCode("abcde")).toBe("ABCD-E");
     expect(WM.formatCode(" abcd efgh-2345 ")).toBe("ABCD-EFGH-2345");
-    expect(WM.formatCode("ABCDEFGH2345EXTRA")).toBe("ABCD-EFGH-2345"); // no more than a code has
+    expect(WM.formatCode("ABCDEFGH2345EXTRA")).toBe("ABCD-EFGH-2345");
     expect(WM.formatCode(null)).toBe("");
     expect(WM.normalizeCode("abcd-efgh-2345")).toBe("ABCDEFGH2345");
   });

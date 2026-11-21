@@ -23,7 +23,6 @@ import {
 
 const EXERCISES = exerciseCategoryMap as Record<string, string>;
 
-// ─── Schemas ────────────────────────────────────────────────────────────────
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD");
 
@@ -60,12 +59,6 @@ export const plannedWorkoutSchema = z.looseObject({
 
 const WORKOUT_TYPES = ["running", "strength_training", "cycling", "cardio", "swimming", "other"] as const;
 
-/**
- * The workout create_workout takes: one that is in no plan, so it has no workoutId (it is always a new workout), no
- * scheduledDate (schedule_workout does that) and none of the plan-only fields. It is strict, so a plan field is refused
- * instead of being quietly ignored (a scheduledDate that did nothing would read as a workout that was scheduled). The type is
- * required because Garmin files a workout with none under running, which would be wrong for a strength workout.
- */
 export const newWorkoutSchema = z.strictObject({
   workoutName: z.string().min(1),
   workoutType: z.enum(WORKOUT_TYPES),
@@ -85,18 +78,14 @@ export const WORKOUT_FORMAT = `Workout format:
 - workoutName (required); workoutType: "running" | "strength_training" | "cycling" | "cardio" | "swimming" | "other"; description; workoutId (assigned by Garmin on upload — keep it so a re-upload replaces the old workout); scheduledDate ("YYYY-MM-DD" or an array of them); sendToDevice (bool); distanceMeters (running workouts with no steps).
 ${STEP_FORMAT}`;
 
-/** WORKOUT_FORMAT for a workout that is in no plan (see newWorkoutSchema). */
 export const NEW_WORKOUT_FORMAT = `Workout format:
 - workoutName and workoutType ("running" | "strength_training" | "cycling" | "cardio" | "swimming" | "other") are required; description is optional. No workoutId, scheduledDate or sendToDevice: it is always a new workout, and schedule_workout puts it on a day.
 ${STEP_FORMAT}
 - At least one step is needed (a distance-only run is one step with endCondition "distance").`;
 
-// ─── Plan data helpers ──────────────────────────────────────────────────────
 
 export interface WorkoutsFile {
-  /** The workouts array (live reference into `data`). */
   workouts: any[];
-  /** True for { ..., workouts: [] } plan files, false for bare arrays. */
   isPlan: boolean;
 }
 
@@ -147,7 +136,6 @@ export function isSimpleRunning(w: any): boolean {
   );
 }
 
-/** Pure validation (no Garmin calls) using the editor's upload validators. */
 export function validatePlanData(data: unknown): PlanValidation {
   const editor = getValidatorEditor();
   const { workouts, isPlan } = extractWorkouts(data);
@@ -211,17 +199,11 @@ export function validatePlanData(data: unknown): PlanValidation {
   };
 }
 
-/**
- * How a plan's workout differs from the copy fetched from Garmin (empty = up to date).
- * Pure: the plan side is converted to Garmin's format and back first, so the
- * comparison only sees what Garmin would actually store.
- */
 export function diffPlanWorkout(plan: any, garmin: DetailedWorkout): string[] {
   const canonical = getValidatorEditor().toGarminCanonical(plan);
   return compareWorkouts(canonical, garmin, { ignoreSteps: isSimpleRunning(plan) });
 }
 
-// ─── Tools ──────────────────────────────────────────────────────────────────
 
 interface FileEntry {
   path: string;
@@ -233,7 +215,6 @@ interface FileEntry {
 const MAX_SUMMARY_BYTES = 20 * 1024 * 1024;
 const NOTES_PREVIEW_CHARS = 300;
 
-/** Cheap description of a document's content so callers can pick one without reading each. */
 function summarizeJsonText(text: string, sizeBytes: number): Record<string, unknown> {
   if (sizeBytes > MAX_SUMMARY_BYTES) return { summaryError: "file too large to summarize" };
   try {
@@ -357,7 +338,6 @@ export function registerPlanTools(server: McpServer): void {
       runTool(async () => {
         const logical = checkedPath(logicalPath);
         const existed = getStore().head(logical) !== undefined;
-        // only a new plan needs an owner, so overwriting one never fails for want of a profile
         const owner = !existed && logical.startsWith("workout-plans/") ? dataProfile(profile) : null;
         writeJsonDoc(logical, content, "mcp", owner);
         return {
@@ -386,7 +366,7 @@ export function registerPlanTools(server: McpServer): void {
     ({ path: logicalPath, workout, matchName }) =>
       runTool(async () => {
         const logical = checkedPath(logicalPath);
-        extractWorkouts(readJsonDoc(logical)); // is it a plan at all? (a clear error before anything is validated)
+        extractWorkouts(readJsonDoc(logical));
 
         if (!isSimpleRunning(workout)) {
           try {

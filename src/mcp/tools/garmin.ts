@@ -46,8 +46,6 @@ function storedText(logical: string): string {
   return doc.text;
 }
 
-// ── Garmin write/read actions, shared by the MCP tools and the web editor ───
-// Callers wrap these in runTool / runCaptured to serialize and capture logs.
 
 export async function listDevices(profile?: string) {
   const session = getSession(profile);
@@ -63,15 +61,10 @@ export async function listDevices(profile?: string) {
   };
 }
 
-/** An archived plan is put away and off Garmin: whatever puts its workouts there again must wait until it is unarchived. */
 export function assertActive(logical: string): void {
   if (getStore().head(logical)?.archivedAt != null) throw new Error(`${logical} is archived: unarchive it before sending its workouts to Garmin.`);
 }
 
-/**
- * The workouts of a plan an action is limited to, by their place in its list (the web editor's "only what needs it"). Without `only` an
- * action takes every workout. A place the plan has no workout at is refused, so a stale page cannot upload something else.
- */
 function placesIn(list: readonly unknown[], only: readonly number[] | undefined): number[] | null {
   if (only === undefined) return null;
   const places = [...new Set(only)].sort((a, b) => a - b);
@@ -81,7 +74,6 @@ function placesIn(list: readonly unknown[], only: readonly number[] | undefined)
   return places;
 }
 
-/** A plan's text as the workouts at `places` alone, and the way to put the text uploading them returns back into the whole plan. */
 function restrictText(text: string, only: readonly number[] | undefined): { text: string; merge: (updated: string) => string } {
   const data: any = JSON.parse(text);
   const list: any[] = Array.isArray(data) ? data : data.workouts;
@@ -116,7 +108,6 @@ export async function uploadPlan(profile: string | undefined, logicalPath: strin
   };
 }
 
-/** The plan with only the workouts at `only` in it (the same workout objects, so what an action sets on them shows in the whole plan). */
 function restrictPlan<T extends { workouts: any[] }>(plan: T, only: readonly number[] | undefined): T {
   const places = placesIn(plan.workouts, only);
   return places ? { ...plan, workouts: places.map((i) => plan.workouts[i]) } : plan;
@@ -158,10 +149,8 @@ export async function uploadAndSchedulePlan(profile: string | undefined, logical
   try {
     await session.editor.uploadAndScheduleWorkoutPlan(plan);
   } finally {
-    // Persist new ids even if a later step threw, so the next run replaces
-    // the right workouts instead of creating duplicates.
     changed = plan.workouts.some((w, i) => String(w.workoutId) !== String(before[i]));
-    if (changed) writeJsonDoc(logical, whole); // the chosen workouts are the whole plan's own objects, so their new ids are in it
+    if (changed) writeJsonDoc(logical, whole);
   }
 
   return {
@@ -203,7 +192,6 @@ export async function sendPlanToDevice(profile: string | undefined, logicalPath:
   };
 }
 
-// ── Archive a plan: its workouts leave Garmin, the plan stays here ─────────
 
 export interface ArchivedWorkout {
   workoutName: string;
@@ -213,11 +201,8 @@ export interface ArchivedWorkout {
 export interface ArchiveResult {
   path: string;
   archived: true;
-  /** Deleted from the Garmin library. */
   removedFromGarmin: ArchivedWorkout[];
-  /** The plan named them, but Garmin no longer had them. */
   alreadyGone: ArchivedWorkout[];
-  /** Left on Garmin because a plan that is not archived still uses the same workout. */
   keptOnGarmin: (ArchivedWorkout & { usedBy: string[] })[];
   note: string;
 }
@@ -225,22 +210,12 @@ export interface ArchiveResult {
 const archiveWorkouts = (data: unknown): any[] =>
   extractWorkouts(data).workouts.filter((w) => w && typeof w === "object" && w.workoutId !== undefined && w.workoutId !== null && w.workoutId !== "");
 
-/** The workouts a plan has on Garmin (those with a workoutId), once per id, with what they are called. */
 export function plannedOnGarmin(data: unknown): ArchivedWorkout[] {
   const seen = new Map<string, ArchivedWorkout>();
   for (const w of archiveWorkouts(data)) if (!seen.has(String(w.workoutId))) seen.set(String(w.workoutId), { workoutName: String(w.workoutName ?? ""), workoutId: w.workoutId });
   return [...seen.values()];
 }
 
-/**
- * Archive a plan: delete its workouts from the Garmin library (their calendar entries go with them, as saveWorkout assumes), take their
- * workoutIds out of the plan, and mark the plan archived. The plan itself stays in the database, as "not uploaded", and
- * unarchivePlan brings it back; upload_workouts then makes new workouts. A workout that another plan which is not archived also
- * carries by id stays on Garmin, since deleting it would break that plan. A plan with nothing on Garmin needs no Garmin login.
- *
- * Deleted ids are taken out of the plan as they go, so a delete that fails half way leaves the plan telling the truth (not
- * archived yet, the ones that were deleted unlinked) and archiving again finishes the rest.
- */
 export async function archivePlan(profile: string | undefined, logicalPath: string): Promise<ArchiveResult> {
   const logical = checkedPath(logicalPath);
   const store = getStore();
@@ -255,7 +230,6 @@ export async function archivePlan(profile: string | undefined, logicalPath: stri
     assertLive(session, "archive_plan");
     await requireAuth(session);
 
-    // who else holds each id: the plans of this profile that are not archived
     const usedBy = new Map<string, string[]>();
     for (const meta of activePlanDocs(store, session.profile.name)) {
       if (meta.path === logical) continue;
@@ -263,7 +237,7 @@ export async function archivePlan(profile: string | undefined, logicalPath: stri
       try {
         others = plannedOnGarmin(JSON.parse(store.get(meta.path)?.text ?? ""));
       } catch {
-        continue; // not a plan, or broken JSON: it names no workout
+        continue;
       }
       for (const w of others) usedBy.set(String(w.workoutId), [...(usedBy.get(String(w.workoutId)) ?? []), meta.path]);
     }
@@ -279,7 +253,7 @@ export async function archivePlan(profile: string | undefined, logicalPath: stri
         const others = usedBy.get(id);
         if (others) {
           kept.push({ ...w, usedBy: others });
-          unlinked.add(id); // not deleted, but this plan lets go of it
+          unlinked.add(id);
           continue;
         }
         if (removed.length + gone.length > 0) await new Promise((resolve) => setTimeout(resolve, detailGapMs() ?? 500));
@@ -288,7 +262,7 @@ export async function archivePlan(profile: string | undefined, logicalPath: stri
           removed.push(w);
         } catch (error) {
           if (httpStatus(error) !== 404) throw error;
-          gone.push(w); // Garmin does not have it any more: the plan lets go of it all the same
+          gone.push(w);
         }
         unlinked.add(id);
       }
@@ -313,7 +287,6 @@ export async function archivePlan(profile: string | undefined, logicalPath: stri
   };
 }
 
-/** Bring an archived plan back: it is listed and used again. Its workouts are not on Garmin until it is uploaded. */
 export function unarchivePlan(logicalPath: string): { path: string; archived: false; note: string } {
   const logical = checkedPath(logicalPath);
   if (!getStore().head(logical)) throw new Error(`File not found: ${logical}`);
@@ -321,8 +294,6 @@ export function unarchivePlan(logicalPath: string): { path: string; archived: fa
   return { path: logical, archived: false, note: "Back among the plans. Its workouts are not on Garmin: upload_workouts (or upload_and_schedule_plan) puts them there." };
 }
 
-// ── Workout library: view, check against plans, save, delete ───────────────
-// Used by the web editor's Workouts view and the plan view's "up to date on Garmin" badges.
 
 export interface LibraryWorkout {
   workoutId: number | string;
@@ -332,26 +303,17 @@ export interface LibraryWorkout {
   updatedDate?: string;
 }
 
-/** Garmin returns at most this many workouts per listing (see WorkoutEditor.fetchWorkoutsWithRaw). */
 export const LIBRARY_LIMIT = 100;
 const LIBRARY_TTL_MS = 60_000;
 
-// The library is listed once per minute at most and a workout's steps are re-fetched only when
-// its updatedDate changes, so re-checking a plan after every edit costs no extra Garmin calls.
 const libraryCache = new Map<string, { at: number; list: LibraryWorkout[] }>();
 const detailCache = new Map<string, { updatedDate: string; workout: DetailedWorkout }>();
 
-/** Forget everything fetched for a profile. */
 export function invalidateLibrary(profile: string): void {
   libraryCache.delete(profile);
   for (const key of detailCache.keys()) if (key.startsWith(`${profile}:`)) detailCache.delete(key);
 }
 
-/**
- * After a change to the library: list it again next time, and forget the steps of the workouts that were replaced or removed.
- * The steps of the others stay: each is stored with the updatedDate it was fetched at, so one that changed misses by itself,
- * and fetching them all again costs a Garmin request per workout of every plan.
- */
 function forgetListing(profile: string, ...gone: (number | string | undefined)[]): void {
   libraryCache.delete(profile);
   for (const id of gone) if (id !== undefined) detailCache.delete(`${profile}:${id}`);
@@ -366,7 +328,6 @@ export async function listLibraryWorkouts(profile: string | undefined, refresh =
   return list;
 }
 
-/** One workout from Garmin in the plan format, always fresh; null when Garmin has no such workout. */
 export async function getLibraryWorkout(profile: string | undefined, workoutId: number | string): Promise<DetailedWorkout | null> {
   const session = getSession(profile);
   await requireAuth(session);
@@ -374,10 +335,6 @@ export async function getLibraryWorkout(profile: string | undefined, workoutId: 
   return detail ? session.editor.fromGarminDetail(detail) : null;
 }
 
-/**
- * For each workout of a plan: is the copy on Garmin up to date? Workouts without a
- * workoutId are "not-uploaded"; ids Garmin does not know are "missing".
- */
 export async function checkWorkoutSync(profile: string | undefined, workouts: unknown[], refresh = false): Promise<SyncStatus[]> {
   const session = getSession(profile);
   const library = await listLibraryWorkouts(profile, refresh);
@@ -428,11 +385,6 @@ export async function checkWorkoutSync(profile: string | undefined, workouts: un
 
 const today = (): string => new Date().toISOString().slice(0, 10);
 
-/**
- * Create or replace ONE workout on Garmin (a workout that has a workoutId is deleted and recreated,
- * so the id changes). `schedule` re-adds its upcoming scheduledDate entries to the calendar, since the
- * old ones belonged to the old workout. Returns the new id.
- */
 export async function saveWorkout(
   profile: string | undefined,
   workout: Record<string, any>,
@@ -470,11 +422,9 @@ export async function deleteLibraryWorkout(profile: string | undefined, workoutI
   try {
     await session.editor.deleteWorkout(workoutId);
   } catch (error) {
-    forgetListing(name, workoutId); // it may be gone already (a 404): look again
+    forgetListing(name, workoutId);
     throw error;
   }
-  // Garmin confirmed it: take it out of the listing we hold instead of listing the whole library again. A full
-  // listing is the exception, since an older workout may now make it into the newest LIBRARY_LIMIT.
   const cached = libraryCache.get(name);
   if (cached && cached.list.length < LIBRARY_LIMIT) {
     libraryCache.set(name, { at: cached.at, list: cached.list.filter((w) => !sameId(w.workoutId, workoutId)) });
@@ -484,19 +434,12 @@ export async function deleteLibraryWorkout(profile: string | undefined, workoutI
   }
 }
 
-// ── One workout and no plan: make it, then put it on a day ──────────────────
 
-/**
- * Create ONE new workout in the Garmin library from the workout itself: no plan file is read or written. It always makes a new
- * workout and never replaces one (saveWorkout replaces, for the web editor), and it schedules nothing (scheduleWorkout does).
- * `dryRun` only checks the workout, so it needs no Garmin login and works in mock mode.
- */
 export async function createWorkout(
   profile: string | undefined,
   workout: NewWorkout,
   dryRun = false
 ): Promise<{ workoutName: string; workoutType: string; stepCount: number; note: string; workoutId?: number; dryRun?: true; valid?: true }> {
-  // Only these four fields go on, so a workoutId can never get through to make the upload delete a workout.
   const fresh = { workoutName: workout.workoutName, workoutType: workout.workoutType, description: workout.description, steps: workout.steps };
   try {
     getValidatorEditor().validateWorkout(fresh as any);
@@ -515,14 +458,12 @@ export async function createWorkout(
   return { ...summary, workoutId, note: "Created in the Garmin library and not scheduled: schedule_workout puts it on a day." };
 }
 
-/** A day as YYYY-MM-DD that exists: new Date("2026-02-30") quietly becomes March 2, so the date it makes must read back the same. */
 function calendarDay(value: string): string {
   const ms = /^\d{4}-\d{2}-\d{2}$/.test(value) ? Date.parse(`${value}T00:00:00Z`) : NaN;
   if (Number.isNaN(ms) || new Date(ms).toISOString().slice(0, 10) !== value) throw new Error(`"${value}" is not a day (use YYYY-MM-DD).`);
   return value;
 }
 
-/** The id of a workout in the Garmin library as whole digits: the Garmin client turns it into a number for the URL, so anything else would ask Garmin for workout NaN. */
 function libraryWorkoutId(value: number | string): string {
   const text = String(value).trim();
   const id = Number(text);
@@ -532,11 +473,6 @@ function libraryWorkoutId(value: number | string): string {
   return String(id);
 }
 
-/**
- * Put a workout of the Garmin library on one day of the calendar, no plan file involved. Any workout will do: one create_workout
- * made, one a plan uploaded, one made in the Garmin app. A workout Garmin does not have is an error, where schedulePlan skips it
- * and goes on. It does not look at what is on the calendar already.
- */
 export async function scheduleWorkout(profile: string | undefined, workoutId: number | string, date: string) {
   const id = libraryWorkoutId(workoutId);
   const day = calendarDay(date);
@@ -547,12 +483,6 @@ export async function scheduleWorkout(profile: string | undefined, workoutId: nu
   return { workoutId: Number(id), workoutName, date: day };
 }
 
-/**
- * Move a workout of the Garmin calendar from one day to another, as a plan's workout is moved in the web editor: it is scheduled
- * on `to` (unless it is there already), then its entry on `from` is removed, in that order so that a failure in between leaves it
- * on both days rather than on neither. Garmin is left alone when its calendar does not have the workout on `from` (moved: false):
- * the plan may never have been scheduled there.
- */
 export async function moveScheduledWorkout(profile: string | undefined, workoutId: number | string, from: string, to: string): Promise<{ moved: boolean }> {
   const id = libraryWorkoutId(workoutId);
   const [day, target] = [calendarDay(from), calendarDay(to)];
@@ -568,7 +498,6 @@ export async function moveScheduledWorkout(profile: string | undefined, workoutI
 }
 
 export function registerGarminTools(server: McpServer): void {
-  // ── Reads ─────────────────────────────────────────────────────────────────
 
   server.registerTool(
     "list_profiles",
@@ -580,7 +509,6 @@ export function registerGarminTools(server: McpServer): void {
     },
     () =>
       runTool(async () => {
-        // a connection made with one profile's token is that profile's alone: it sees no other, and no default to fall back on
         const only = scopedProfile();
         const profiles = only ? getAvailableProfiles().filter((p) => p === only) : getAvailableProfiles();
         return {
@@ -711,7 +639,6 @@ export function registerGarminTools(server: McpServer): void {
       )
   );
 
-  // ── Writes (change the Garmin account) ────────────────────────────────────
 
   server.registerTool(
     "upload_workouts",
@@ -834,7 +761,6 @@ export function registerGarminTools(server: McpServer): void {
       )
   );
 
-  // ── Archive: a plan's workouts leave Garmin, the plan stays ───────────────
 
   server.registerTool(
     "archive_plan",
@@ -864,7 +790,6 @@ export function registerGarminTools(server: McpServer): void {
     ({ path: logicalPath }) => runTool(async () => unarchivePlan(logicalPath))
   );
 
-  // ── Writes with no plan file: one workout made, one workout put on a day ──
 
   server.registerTool(
     "create_workout",

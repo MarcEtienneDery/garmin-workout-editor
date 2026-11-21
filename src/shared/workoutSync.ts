@@ -1,32 +1,20 @@
-/**
- * workoutSync.ts — compare a workout from a plan file with the copy on Garmin.
- *
- * Both sides must already be in the plan format and passed through the same
- * Garmin <-> plan transform (WorkoutEditor.toGarminCanonical for the plan side,
- * WorkoutEditor.fromGarminDetail for the Garmin side), so only real differences
- * remain. Plan-only metadata (workoutId, scheduledDate, sendToDevice) is ignored.
- */
 import type { DetailedWorkout, WorkoutStep } from "./types";
 
-/** synced: identical | modified: differs | not-uploaded: no workoutId | missing: id not on Garmin | error: could not check */
 export type SyncState = "synced" | "modified" | "not-uploaded" | "missing" | "error";
 
 export interface SyncStatus {
   index: number;
   state: SyncState;
-  /** Human-readable differences (state "modified") or the reason (state "error"). */
   differences: string[];
 }
 
 const MAX_DIFFERENCES = 10;
 
-// cardio and swimming are uploaded with the running sport id, so Garmin hands them back as running.
 const SPORT_ALIAS: Record<string, string> = { cardio: "running", swimming: "running" };
 const sportOf = (type: string | undefined): string => SPORT_ALIAS[type ?? ""] ?? type ?? "";
 
 type Plain = Record<string, unknown>;
 
-/** A step without the noise Garmin adds or drops (null/0 values, "no.target", step numbering). */
 function cleanStep(step: WorkoutStep): Plain {
   const out: Plain = {};
   for (const [key, value] of Object.entries(step)) {
@@ -38,10 +26,6 @@ function cleanStep(step: WorkoutStep): Plain {
   return out;
 }
 
-/**
- * Clean every step and renumber the repeat groups by order of appearance: a group that repeats
- * once is just its steps, and Garmin and the plan may number the groups differently.
- */
 function cleanSteps(steps: WorkoutStep[]): Plain[] {
   const groups = new Map<unknown, number>();
   return steps.map((step) => {
@@ -66,11 +50,9 @@ function stepLabel(step: Plain | undefined, index: number): string {
 }
 
 export interface CompareOptions {
-  /** Skip the steps (e.g. distance-only running workouts, which Garmin builds its own steps for). */
   ignoreSteps?: boolean;
 }
 
-/** What differs between the plan's workout and Garmin's; empty when they match. */
 export function compareWorkouts(plan: DetailedWorkout, garmin: DetailedWorkout, options: CompareOptions = {}): string[] {
   const found: string[] = [];
 

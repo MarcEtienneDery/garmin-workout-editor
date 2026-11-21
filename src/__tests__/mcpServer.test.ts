@@ -77,7 +77,6 @@ const stored = (logical: string) => getStore().get(logical)?.text;
 const saved: Record<string, string | undefined> = {};
 
 beforeAll(() => {
-  // The editor/exporter log heavily; keep the test output readable.
   jest.spyOn(process.stderr, "write").mockImplementation(() => true);
   installConsoleRedirect();
 
@@ -132,7 +131,6 @@ async function callTool(client: Client, name: string, args: Record<string, unkno
     try {
       value = JSON.parse(texts[0]);
     } catch {
-      /* plain text result */
     }
   }
   const logEntry = texts.find((t, i) => i > 0 && t.startsWith("Log:\n"));
@@ -160,7 +158,6 @@ describe("MCP server (mock mode, in-memory transport)", () => {
     for (const name of ["list_workouts", "get_activities", "validate_plan", "read_plan", "get_nutrition"]) {
       expect(byName[name].annotations?.readOnlyHint).toBe(true);
     }
-    // the food log is the database only: nothing there reaches Garmin, and only a delete is destructive
     for (const name of ["log_meal", "update_meal_entry", "delete_meal_entry", "get_nutrition", "set_nutrition_goals"]) expect(byName[name].annotations?.openWorldHint).toBe(false);
     expect(byName.delete_meal_entry.annotations?.destructiveHint).toBe(true);
     expect(byName.log_meal.annotations?.destructiveHint).toBe(false);
@@ -189,10 +186,8 @@ describe("MCP server (mock mode, in-memory transport)", () => {
     expect(activities.isError).toBe(false);
     expect(activities.value.mock).toBe(true);
     expect(activities.value.totalActivities).toBeGreaterThan(0);
-    // Mock activities are generated, so they are never stored: no table rows and no document.
     expect(getStore().activities.counts("mock").total).toBe(0);
     expect(getStore().head("data/mock/activities.json")).toBeUndefined();
-    // Console output of the exporter is returned with the result.
     expect(activities.log).toContain("Fetching last 8 activities");
   });
 
@@ -219,7 +214,7 @@ describe("MCP server (mock mode, in-memory transport)", () => {
     const listed = (await callTool(client, "list_plans")).value["workout-plans"].find((f: any) => f.path === "workout-plans/shelved.json");
     expect(listed).toMatchObject({ archived: true, archivedAt: expect.any(String) });
     const dry = await callTool(client, "upload_workouts", { path: "workout-plans/shelved.json", dryRun: true });
-    expect(dry.isError).toBe(false); // checking an archived plan sends nothing, so it is allowed
+    expect(dry.isError).toBe(false);
 
     expect((await callTool(client, "unarchive_plan", { path: "workout-plans/shelved.json" })).value).toMatchObject({ archived: false });
     const after = (await callTool(client, "list_plans")).value["workout-plans"].find((f: any) => f.path === "workout-plans/shelved.json");
@@ -507,7 +502,7 @@ describe("MCP server (mock mode, in-memory transport)", () => {
       });
       expect(out.isError).toBe(false);
       expect(out.value.added[0].nutrients).toEqual({ fiberG: 15.6, sodiumMg: 480, ironMg: 6.6 });
-      expect(out.value.added[2].nutrients).toEqual({}); // unknown, not zero
+      expect(out.value.added[2].nutrients).toEqual({});
       expect(out.value.dayTotals).toMatchObject({ entries: 3, nutrients: { fiberG: { amount: 17.6, foods: 2 }, sodiumMg: { amount: 480, foods: 1 }, ironMg: { amount: 6.6, foods: 1 } } });
       const read = (await callTool(client, "get_nutrition", { from: "2026-10-17", to: "2026-10-17" })).value;
       expect(read.total.nutrients.fiberG).toEqual({ amount: 17.6, foods: 2 });
@@ -536,7 +531,7 @@ describe("MCP server (mock mode, in-memory transport)", () => {
       expect(bad.text).toMatch(/fibreG|unrecognized/i);
       const rice = (await callTool(client, "log_meal", { date: "2026-10-17", meal: "lunch", items: [{ name: "Rice", kcal: 200 }] })).value.added[0];
       expect((await callTool(client, "update_meal_entry", { id: rice.id, nutrients: { fibreG: 3 } })).isError).toBe(true);
-      expect((await callTool(client, "get_nutrition", { from: "2026-10-17", to: "2026-10-17" })).value.total.entries).toBe(1); // only the rice was logged
+      expect((await callTool(client, "get_nutrition", { from: "2026-10-17", to: "2026-10-17" })).value.total.entries).toBe(1);
     });
 
     it("explains what was refused, and keeps none of a bad call", async () => {
@@ -559,7 +554,7 @@ describe("MCP server (mock mode, in-memory transport)", () => {
         expect(bad.text).toMatch(/Unknown profile "NOPE".*list_profiles/);
         expect((await callTool(client, "get_nutrition", { profile: "NOPE", days: 1 })).isError).toBe(true);
         expect(getStore().nutrition.range("NOPE", "2000-01-01", "2100-01-01")).toEqual([]);
-        const ok = await callTool(client, "log_meal", { profile: "tester", date: "2026-10-17", meal: "lunch", items: [item] }); // any case
+        const ok = await callTool(client, "log_meal", { profile: "tester", date: "2026-10-17", meal: "lunch", items: [item] });
         expect(ok.value.profile).toBe("TESTER");
         getStore().nutrition.remove("TESTER", getStore().nutrition.range("TESTER", "2000-01-01", "2100-01-01").map((e) => e.id));
       } finally {
@@ -579,7 +574,7 @@ describe("MCP server (mock mode, in-memory transport)", () => {
           { key: "proteinG", label: "Protein", unit: "g", kind: "min", goal: 140 },
           { key: "sodiumMg", label: "Sodium", unit: "mg", kind: "max", goal: 2300 },
         ]);
-        expect(first.value.goalProgress.every((p: any) => p.state === "unknown")).toBe(true); // nothing logged today yet: not zero
+        expect(first.value.goalProgress.every((p: any) => p.state === "unknown")).toBe(true);
         const second = await callTool(client, "set_nutrition_goals", { goals: { proteinG: null, fiberG: 30 } });
         expect(second.value.goals.map((g: any) => g.key)).toEqual(["kcal", "fiberG", "sodiumMg"]);
         expect(getStore().goals.get("mock")).toEqual({ kcal: 2200, fiberG: 30, sodiumMg: 2300 });
@@ -605,7 +600,7 @@ describe("MCP server (mock mode, in-memory transport)", () => {
         expect(getStore().goals.get("mock")).toEqual({ kcal: 2200, kcalBurnPct: 50 });
         const read = (await callTool(client, "get_nutrition", { days: 1 })).value;
         expect(read.kcalBurnPct).toBe(50);
-        expect(read.goals.map((g: any) => g.key)).toEqual(["kcal"]); // the share is not a goal
+        expect(read.goals.map((g: any) => g.key)).toEqual(["kcal"]);
         expect(read.goalProgress[0]).toMatchObject({ key: "kcal", adjust: { base: 2200, pct: 50 } });
         expect((await callTool(client, "set_nutrition_goals", { goals: { kcalBurnPct: null } })).value.kcalBurnPct).toBeNull();
         for (const goals of [{ kcalBurnPct: 0 }, { kcalBurnPct: 101 }, { kcalBurnPct: 12.5 }]) expect((await callTool(client, "set_nutrition_goals", { goals })).isError).toBe(true);
@@ -634,7 +629,7 @@ describe("MCP server (mock mode, in-memory transport)", () => {
         try {
           expect((await callTool(client, "set_nutrition_goals", { profile: "NOPE", goals: { kcal: 2000 } })).isError).toBe(true);
           expect(getStore().goals.get("NOPE")).toEqual({});
-          expect((await callTool(client, "set_nutrition_goals", { profile: "tester", goals: { kcal: 1800 } })).value.profile).toBe("TESTER"); // any case
+          expect((await callTool(client, "set_nutrition_goals", { profile: "tester", goals: { kcal: 1800 } })).value.profile).toBe("TESTER");
         } finally {
           getStore().goals.set("TESTER", {});
           configureMcp({ mock: true, defaultProfile: undefined });
@@ -650,7 +645,6 @@ describe("MCP server (mock mode, in-memory transport)", () => {
   });
 
   describe("create_workout and schedule_workout (one workout, no plan file)", () => {
-    /** The message when the arguments are refused: an error result or a rejected call, depending on the SDK. */
     async function refusal(name: string, args: Record<string, unknown>): Promise<string | undefined> {
       const result: any = await client.callTool({ name, arguments: args }).catch((e) => ({ isError: true, content: [{ text: String(e.message) }] }));
       return result.isError ? result.content[0].text : undefined;
@@ -807,7 +801,6 @@ describe("Garmin and Renpho are optional (a profile without a Garmin login)", ()
       expect(out.isError).toBe(true);
       expect(out.text).toMatch(/Multiple profiles are available/);
       expect(getStore().head("workout-plans/own-ambiguous.json")).toBeUndefined();
-      // a plan under data/<profile>/ needs no profile argument: its path says whose it is
       expect((await callTool(client, "write_plan", { path: "data/PLAIN/note.json", content: { a: 1 } })).isError).toBe(false);
     } finally {
       configureMcp({ mock: false, defaultProfile: "PLAIN" });
@@ -880,7 +873,7 @@ describe("HTTP transport", () => {
     expect(res.status).toBe(200);
     const body: any = await res.json();
     expect(body.result.serverInfo.name).toBe("garmin-workout-editor");
-    const [png, svg] = body.result.serverInfo.icons; // the website's icon, inline: the endpoint is behind the token
+    const [png, svg] = body.result.serverInfo.icons;
     expect(png).toMatchObject({ mimeType: "image/png", sizes: ["180x180"] });
     expect(svg).toMatchObject({ mimeType: "image/svg+xml", sizes: ["any"] });
     const decode = (src: string) => Buffer.from(src.slice(src.indexOf(",") + 1), "base64");
@@ -930,13 +923,13 @@ describe("supporting refactors", () => {
 
   describe("getLastNWeeksStart", () => {
     it("returns this week's Monday for n=1 and steps back whole weeks", () => {
-      jest.useFakeTimers({ now: new Date("2026-10-14T12:00:00Z") }); // Wednesday
+      jest.useFakeTimers({ now: new Date("2026-10-14T12:00:00Z") });
       expect(getLastNWeeksStart(1)).toBe("2026-10-12");
       expect(getLastNWeeksStart(4)).toBe("2026-09-21");
     });
 
     it("treats Sunday as the end of the week", () => {
-      jest.useFakeTimers({ now: new Date("2026-10-11T09:00:00Z") }); // Sunday
+      jest.useFakeTimers({ now: new Date("2026-10-11T09:00:00Z") });
       expect(getLastNWeeksStart(1)).toBe("2026-10-05");
       expect(getLastNWeeksStart(4)).toBe("2026-09-14");
     });

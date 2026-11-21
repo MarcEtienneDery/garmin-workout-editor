@@ -10,10 +10,6 @@ export const MIN_TOKEN_LENGTH = 32;
 export interface HttpServerOptions {
   host: string;
   port: number;
-  /**
-   * Shared secret (the admin's: every profile); accepted as /mcp/<token> or as "Authorization: Bearer <token>" on /mcp. A profile's own
-   * token (Settings → Claude (MCP), kept in the database) is accepted the same two ways and limits the connection to that profile.
-   */
   token: string;
 }
 
@@ -31,10 +27,6 @@ function notFound(res: http.ServerResponse): void {
   res.end("Not found");
 }
 
-/**
- * Streamable HTTP endpoint for remote MCP clients (claude.ai / Claude Desktop connectors).
- * Stateless: each POST gets its own server+transport; Garmin sessions live in context.ts.
- */
 export function startHttpServer(options: HttpServerOptions): Promise<http.Server> {
   if (options.token.length < MIN_TOKEN_LENGTH) {
     throw new Error(
@@ -44,7 +36,6 @@ export function startHttpServer(options: HttpServerOptions): Promise<http.Server
   const expected = sha256(options.token);
   const matches = (candidate: string): boolean => timingSafeEqual(sha256(candidate), expected);
 
-  /** The token a request brings: in the path (/mcp/<token>) or as a Bearer header on /mcp; null when it brings none. */
   const suppliedToken = (pathname: string, authorization: string | undefined): string | null => {
     if (pathname === "/mcp") {
       const bearer = /^Bearer\s+(.+)$/i.exec(authorization ?? "");
@@ -60,7 +51,6 @@ export function startHttpServer(options: HttpServerOptions): Promise<http.Server
     return null;
   };
 
-  /** Who a request is: `{}` for the server's own token (every profile), `{ profile }` for a profile's token, null for anyone else. */
   const authorize = (pathname: string, authorization: string | undefined): { profile?: string } | null => {
     const supplied = suppliedToken(pathname, authorization);
     if (supplied === null) return null;
@@ -87,7 +77,6 @@ export function startHttpServer(options: HttpServerOptions): Promise<http.Server
       return void res.end("ok");
     }
 
-    // The icon is the one thing besides /healthz that needs no token: a client or a browser looks for it at the root of the host.
     const icon = pathname === "/favicon.ico" ? "apple-touch-icon.png" : pathname === "/icon.svg" ? "icon.svg" : undefined;
     if (icon && (req.method === "GET" || req.method === "HEAD")) {
       const bytes = readIcon(icon);
@@ -97,7 +86,6 @@ export function startHttpServer(options: HttpServerOptions): Promise<http.Server
       }
     }
 
-    // Unauthorized and unknown paths look identical, and the token is never logged.
     const caller = authorize(pathname, req.headers.authorization);
     if (!caller) return notFound(res);
 
@@ -119,7 +107,6 @@ export function startHttpServer(options: HttpServerOptions): Promise<http.Server
         await server.connect(transport);
         await transport.handleRequest(req, res);
       };
-      // a profile's token: every tool this request calls runs as that profile and no other (context.ts)
       await (caller.profile ? runScoped(caller.profile, serve) : serve());
     } catch (error) {
       console.error("[mcp] request failed:", error instanceof Error ? error.message : error);

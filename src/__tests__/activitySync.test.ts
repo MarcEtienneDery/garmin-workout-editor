@@ -7,9 +7,8 @@ import { MAX_DETAIL_FAILURES, REFRESH_YOUNG_MS, SqliteStore } from "../shared/st
 const DAY = 86_400_000;
 const PROFILE = "MED";
 
-/** Garmin's list item for the n-th activity: an hour apart, a larger n being newer. */
 const listItem = (n: number, extra: Record<string, unknown> = {}) => {
-  const start = new Date(Date.UTC(2026, 0, 1) + n * 3_600_000); // later n = newer
+  const start = new Date(Date.UTC(2026, 0, 1) + n * 3_600_000);
   const gmt = start.toISOString().slice(0, 19).replace("T", " ");
   return {
     activityId: 1000 + n,
@@ -24,9 +23,8 @@ const listItem = (n: number, extra: Record<string, unknown> = {}) => {
   };
 };
 
-/** Garmin as a list of activities, newest first, that counts what it is asked. */
 function fakeGarmin(total: number, options: { failDetail?: (id: string) => Error | null; failChart?: (id: string) => Error | null; charts?: boolean } = {}) {
-  const items: any[] = Array.from({ length: total }, (_, i) => listItem(total - i)); // newest first
+  const items: any[] = Array.from({ length: total }, (_, i) => listItem(total - i));
   const calls = { list: [] as number[], detail: [] as string[], chart: [] as string[] };
   const source: ActivitySource = {
     async listPage(offset, limit) {
@@ -45,7 +43,6 @@ function fakeGarmin(total: number, options: { failDetail?: (id: string) => Error
       calls.chart.push(id);
       const error = options.failChart?.(id);
       if (error) throw error;
-      // a strength workout has a heart-rate series and no GPS; a run has both; an indoor activity answers with nothing
       if (type === "other") return { details: {}, splits: undefined, zones: undefined };
       return {
         details: {
@@ -58,7 +55,6 @@ function fakeGarmin(total: number, options: { failDetail?: (id: string) => Error
       };
     };
   }
-  /** A new activity appears on Garmin: the newest one. */
   const addNewest = (extra: Record<string, unknown> = {}) => {
     const n = items.length + 1;
     items.unshift(listItem(n, extra));
@@ -144,7 +140,6 @@ describe("activities table", () => {
   });
 
   describe("details still wanted", () => {
-    // activity n started on the n-th of January 2026 at 10:00 GMT
     const old = (n: number) => toNewActivity(listItem(n, { startTimeGMT: `2026-01-0${n} 10:00:00`, startTimeLocal: `2026-01-0${n} 05:00:00`, activityId: n }))!;
     const startOfOld = (n: number) => Date.parse(`2026-01-0${n}T10:00:00Z`);
 
@@ -157,8 +152,8 @@ describe("activities table", () => {
 
     it("wants details again only while they were fetched soon after the activity, when feel and RPE may still be missing", () => {
       store.activities.insertNew(PROFILE, [old(1), old(2), old(3)]);
-      store.activities.setDetail(PROFILE, "1", {}, startOfOld(1) + DAY); // fetched a day after: may change
-      store.activities.setDetail(PROFILE, "2", {}, startOfOld(2) + SETTLE_MS + 1); // fetched after the settling time: final
+      store.activities.setDetail(PROFILE, "1", {}, startOfOld(1) + DAY);
+      store.activities.setDetail(PROFILE, "2", {}, startOfOld(2) + SETTLE_MS + 1);
       expect(store.activities.needingDetail(PROFILE, { settleMs: SETTLE_MS }).map((a) => a.id)).toEqual(["3", "1"]);
       store.activities.setDetail(PROFILE, "1", {}, startOfOld(1) + SETTLE_MS + DAY);
       expect(store.activities.needingDetail(PROFILE, { settleMs: SETTLE_MS }).map((a) => a.id)).toEqual(["3"]);
@@ -189,9 +184,9 @@ describe("the lease", () => {
     const other = SqliteStore.open(path.join(dir, "garmin.db"));
     try {
       expect(store.activities.claim(PROFILE, "mcp:1", LEASE_MS, 1000)).toBe(true);
-      expect(other.activities.claim(PROFILE, "web:2", LEASE_MS, 2000)).toBe(false); // held by the other process
-      expect(store.activities.claim(PROFILE, "mcp:1", LEASE_MS, 2000)).toBe(true); // the holder may claim again
-      expect(other.activities.claim("SAM", "web:2", LEASE_MS, 2000)).toBe(true); // another profile is free
+      expect(other.activities.claim(PROFILE, "web:2", LEASE_MS, 2000)).toBe(false);
+      expect(store.activities.claim(PROFILE, "mcp:1", LEASE_MS, 2000)).toBe(true);
+      expect(other.activities.claim("SAM", "web:2", LEASE_MS, 2000)).toBe(true);
       expect(other.activities.state(PROFILE)).toEqual(expect.objectContaining({ holder: "mcp:1", leaseUntil: 2000 + LEASE_MS }));
       store.activities.release(PROFILE, "mcp:1", 3000);
       expect(other.activities.claim(PROFILE, "web:2", LEASE_MS, 3000)).toBe(true);
@@ -231,7 +226,7 @@ describe("listing the history", () => {
   it("pages back to the end of the history and marks it complete", async () => {
     const garmin = fakeGarmin(250);
     const result = await syncList(store, PROFILE, garmin.source);
-    expect(result).toEqual({ added: 250, pages: 4, complete: true }); // 100 + 100 + 50, then an empty page
+    expect(result).toEqual({ added: 250, pages: 4, complete: true });
     expect(garmin.calls.list).toEqual([0, 100, 200, 250]);
     expect(store.activities.counts(PROFILE).total).toBe(250);
     expect(store.activities.state(PROFILE)).toEqual(expect.objectContaining({ complete: true, nextOffset: 250 }));
@@ -276,13 +271,12 @@ describe("listing the history", () => {
     expect(store.activities.counts(PROFILE).total).toBe(200);
     expect(store.activities.state(PROFILE)).toEqual(expect.objectContaining({ complete: false, nextOffset: 200 }));
 
-    // The history is not complete, so the next run must neither stop at the newest page it has nor miss what is new.
-    garmin.addNewest(); // shifts everything older by one
+    garmin.addNewest();
     dies = false;
     garmin.calls.list.length = 0;
     const result = await syncList(store, PROFILE, garmin.source);
     expect(result.complete).toBe(true);
-    expect(garmin.calls.list.slice(0, 2)).toEqual([0, 181]); // the newest end first (one new activity), then back up a little from where it stopped, moved along by that one
+    expect(garmin.calls.list.slice(0, 2)).toEqual([0, 181]);
     expect(store.activities.counts(PROFILE).total).toBe(351);
     const ids = new Set(store.activities.between(PROFILE).map((a) => a.id));
     for (let n = 1; n <= 351; n++) expect(ids.has(String(1000 + n))).toBe(true);
@@ -322,7 +316,7 @@ describe("the old activity documents", () => {
     expect(store.deleted().map((d) => d.path).sort()).toEqual(["data/MED/activities-50.tmp.json", "data/MED/activities-raw.json", "data/MED/activities.json"]);
     store.put("data/MED/activities.json", "{}", { create: true, source: "restore" });
     await syncList(store, PROFILE, garmin.source);
-    expect(store.head("data/MED/activities.json")).toBeDefined(); // deleted once, not on every sync
+    expect(store.head("data/MED/activities.json")).toBeDefined();
   });
 });
 
@@ -338,11 +332,11 @@ describe("fetching details", () => {
     const result = await syncDetails(store, PROFILE, garmin.source, { sleep: noSleep });
     expect(result).toEqual({ fetched: 5, failed: 0, stopped: null });
     expect(garmin.calls.detail).toEqual(["1005", "1004", "1003", "1002", "1001"]);
-    expect(store.activities.get(PROFILE, "1002")!.detail).toEqual(expect.objectContaining({ fullExerciseSets: [{ setType: "ACTIVE" }] })); // a strength workout
-    expect(store.activities.get(PROFILE, "1003")!.detail.fullExerciseSets).toBeUndefined(); // a run
+    expect(store.activities.get(PROFILE, "1002")!.detail).toEqual(expect.objectContaining({ fullExerciseSets: [{ setType: "ACTIVE" }] }));
+    expect(store.activities.get(PROFILE, "1003")!.detail.fullExerciseSets).toBeUndefined();
 
     garmin.calls.detail.length = 0;
-    await syncDetails(store, PROFILE, garmin.source, { sleep: noSleep }); // fetched long after they started: final, not asked again
+    await syncDetails(store, PROFILE, garmin.source, { sleep: noSleep });
     expect(garmin.calls.detail).toEqual([]);
   });
 
@@ -350,14 +344,13 @@ describe("fetching details", () => {
     const garmin = fakeGarmin(2);
     await filled(garmin);
     await syncDetails(store, PROFILE, garmin.source, { sleep: noSleep });
-    // pretend both were fetched a minute after they started, then a few days passed
     for (const id of ["1001", "1002"]) store.activities.setDetail(PROFILE, id, { early: true }, Date.parse(store.activities.get(PROFILE, id)!.startGmt.replace(" ", "T") + "Z") + 60_000);
     garmin.calls.detail.length = 0;
     await syncDetails(store, PROFILE, garmin.source, { sleep: noSleep });
     expect(garmin.calls.detail.sort()).toEqual(["1001", "1002"]);
     garmin.calls.detail.length = 0;
     await syncDetails(store, PROFILE, garmin.source, { sleep: noSleep });
-    expect(garmin.calls.detail).toEqual([]); // fetched after the settling time: final
+    expect(garmin.calls.detail).toEqual([]);
   });
 
   it("leaves a failing activity for later and goes on, giving up after a few tries", async () => {
@@ -379,9 +372,9 @@ describe("fetching details", () => {
       await syncList(store, profile, garmin.source);
       const result = await syncDetails(store, profile, garmin.source, { sleep: noSleep });
       expect(result).toEqual({ fetched: 1, failed: 0, stopped: text });
-      expect(garmin.calls.detail).toEqual(["1004", "1003"]); // nothing after the refusal
+      expect(garmin.calls.detail).toEqual(["1004", "1003"]);
       expect(store.activities.state(profile).error).toBe(text);
-      expect(store.activities.get(profile, "1003")!.detail).toBeNull(); // and it was not counted as a failure of that activity
+      expect(store.activities.get(profile, "1003")!.detail).toBeNull();
       expect(store.activities.needingDetail(profile, { settleMs: SETTLE_MS }).map((a) => a.id)).toEqual(["1003", "1002", "1001"]);
     }
   });
@@ -406,22 +399,22 @@ describe("chart data", () => {
     store.activities.insertNew(PROFILE, [1, 2, 3].map((n) => toNewActivity(listItem(n, { activityType: { typeKey: n === 3 ? "other" : n % 2 ? "running" : "strength_training" } }))!));
     expect(store.activities.needingChart(PROFILE).map((a) => a.id)).toEqual(["1003", "1002", "1001"]);
     expect(store.activities.needingChart(PROFILE, { limit: 2 }).map((a) => a.id)).toEqual(["1003", "1002"]);
-    expect(store.activities.needingChart(PROFILE, { ids: ["1001"], limit: 1 }).map((a) => a.id)).toEqual(["1001"]); // not the newest, but the one asked for
+    expect(store.activities.needingChart(PROFILE, { ids: ["1001"], limit: 1 }).map((a) => a.id)).toEqual(["1001"]);
 
     const result = await syncCharts(store, PROFILE, garmin.source, { sleep: noSleep });
     expect(result).toEqual({ fetched: 3, failed: 0, stopped: null });
-    expect(garmin.calls.chart).toEqual(["1003", "1002", "1001"]); // newest first
+    expect(garmin.calls.chart).toEqual(["1003", "1002", "1001"]);
     const run = store.activities.getChart(PROFILE, "1001");
     expect(run.v).toBe(1);
-    expect(run.details.geoPolylineDTO.polyline).toEqual([{ lat: 1, lon: 2, extra: "x" }, { lat: 1.1, lon: 2.1 }]); // every plain field is kept
-    expect(store.activities.getChart(PROFILE, "1002").details.geoPolylineDTO).toBeUndefined(); // strength: a series and no GPS
+    expect(run.details.geoPolylineDTO.polyline).toEqual([{ lat: 1, lon: 2, extra: "x" }, { lat: 1.1, lon: 2.1 }]);
+    expect(store.activities.getChart(PROFILE, "1002").details.geoPolylineDTO).toBeUndefined();
     expect(store.activities.getChart(PROFILE, "1003")).toEqual({ v: 1, details: { metricDescriptors: [], activityDetailMetrics: [] }, splits: null, zones: null });
     expect(store.activities.needingChart(PROFILE)).toEqual([]);
     expect(store.activities.counts(PROFILE).withChart).toBe(3);
 
     garmin.calls.chart.length = 0;
     await syncCharts(store, PROFILE, garmin.source, { sleep: noSleep });
-    expect(garmin.calls.chart).toEqual([]); // a stored chart is never fetched again
+    expect(garmin.calls.chart).toEqual([]);
   });
 
   it("fetches only some when asked, spaces the calls, and does nothing for a source with no charts", async () => {
@@ -489,16 +482,16 @@ describe("the background sync", () => {
 
   it("still starts for the charts of a database whose history and details were stored before charts existed", async () => {
     const before = fakeGarmin(4, { charts: false });
-    await startBackfill(store, PROFILE, before.source, { holder: "mcp:1", sleep: noSleep }).done; // the old state: complete, with details, no charts
+    await startBackfill(store, PROFILE, before.source, { holder: "mcp:1", sleep: noSleep }).done;
     expect(syncStatus(store, PROFILE)).toEqual(expect.objectContaining({ withDetails: 4, withCharts: 0, pendingCharts: 4 }));
-    expect(startBackfill(store, PROFILE, before.source, { holder: "mcp:1" })).toEqual(expect.objectContaining({ started: false, reason: "Everything is stored." })); // a source with no charts has nothing to do
+    expect(startBackfill(store, PROFILE, before.source, { holder: "mcp:1" })).toEqual(expect.objectContaining({ started: false, reason: "Everything is stored." }));
 
     const now = fakeGarmin(4);
     const job = startBackfill(store, PROFILE, now.source, { holder: "mcp:1", sleep: noSleep });
     expect(job.started).toBe(true);
     await job.done;
     expect(now.calls.chart).toHaveLength(4);
-    expect(now.calls.detail).toEqual([]); // the details were already there
+    expect(now.calls.detail).toEqual([]);
     expect(syncStatus(store, PROFILE).pendingCharts).toBe(0);
   });
 
@@ -519,7 +512,6 @@ describe("the background sync", () => {
     expect(retryAfter).toBeGreaterThan(Date.now() + COOL_OFF_MS - 5000);
     expect(startBackfill(store, PROFILE, garmin.source, { holder: "mcp:2", now: retryAfter - 1000 })).toEqual(expect.objectContaining({ started: false, reason: expect.stringMatching(/^Waiting after/) }));
 
-    // Garmin allows calls again: one look at the newest page (nothing new), and the details resume.
     const again = fakeGarmin(6);
     const second = startBackfill(store, PROFILE, again.source, { holder: "mcp:3", sleep: noSleep, now: retryAfter + 1 });
     expect(second.started).toBe(true);
@@ -544,11 +536,11 @@ describe("the background sync", () => {
       expect(scheduled[0].ms).toBeGreaterThan(COOL_OFF_MS);
 
       limited = false;
-      store.activities.saveProgress(PROFILE, { retryAfter: Date.now() - 1 }); // the cool-off has passed
+      store.activities.saveProgress(PROFILE, { retryAfter: Date.now() - 1 });
       scheduled[0].fn();
       await waitUntilIdle();
       expect(syncStatus(store, PROFILE)).toEqual(expect.objectContaining({ withDetails: 4, error: null }));
-      expect(scheduled).toHaveLength(1); // it finished, so nothing more is scheduled
+      expect(scheduled).toHaveLength(1);
     });
 
     it("does not start again by itself after a login failure, which could lock the account", async () => {

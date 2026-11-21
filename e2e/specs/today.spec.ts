@@ -1,42 +1,27 @@
-/**
- * The Today view: the page that opens first. Alice has stored health data, activities and a plan around today (read-only); a fresh
- * profile has nothing, so what it shows is what the page says when there is nothing. Food and plans are added through the API for
- * the fresh profile only. Garmin is not connected for either, so the Sync button and the profile picker are absent for them.
- */
 import type { Page } from "@playwright/test";
 import { test, expect, openView, loginAs, today, daysAgo, daysAhead, ADMIN_TOKEN, chooseTheme, toggleTheme } from "../support/fixtures";
 
-// The machine is shared by every spec run at once: a page can take many seconds to answer, so each test has more than the default 30 s.
 test.describe.configure({ timeout: 60_000 });
 
-// ── helpers ──────────────────────────────────────────────────────────────
 
 const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-/** A day as the Today view labels it: "Fri 30 Oct". */
 const dayLabel = (day: string) => {
   const d = new Date(`${day}T00:00:00Z`);
   return `${DOW[d.getUTCDay()]} ${d.getUTCDate()} ${MON[d.getUTCMonth()]}`;
 };
 const grouped = (n: number) => n.toLocaleString("en-CA");
 
-/**
- * Open the Today view and wait until its own "Loading…" has gone. The machine runs many specs at once, so the first answer can take
- * several seconds: the wait is longer than the default expect timeout, and it is the page's own signal that the data has arrived.
- */
 async function openToday(page: Page): Promise<void> {
   for (let attempt = 0; attempt < 3; attempt++) {
     await openView(page, "today");
     await expect(page.locator("#tbody")).not.toContainText("Loading", { timeout: 20_000 });
-    // a load the server dropped leaves the page's error in place of the day: the page is opened again
     if (!(await page.locator("#tbody .msg.err").count())) return;
   }
 }
 
-/** The words that mean a value was never filled in: they must not reach a page. */
 const RAW_WORDS = /\b(NaN|undefined|null|Infinity)\b/;
 
-/** Every subsequence check: `expected` appears in `actual` in this order (other items may sit between them). */
 function expectInOrder(actual: string[], expected: string[]) {
   let at = 0;
   for (const want of expected) {
@@ -46,7 +31,6 @@ function expectInOrder(actual: string[], expected: string[]) {
   }
 }
 
-/** Today's numbers as the server has them, read with the signed-in browser's session. */
 async function todayData(page: Page) {
   const res = await page.context().request.get("/api/today?profile=alice");
   expect(res.ok()).toBeTruthy();
@@ -56,7 +40,6 @@ async function todayData(page: Page) {
 const card = (page: Page) => page.locator("#tbody section.tcard").first();
 const tile = (page: Page, label: string) => page.locator("#tbody .tfig", { has: page.locator("small", { hasText: new RegExp(`^${label}$`) }) });
 
-// ── alice: the day as it is ─────────────────────────────────────────────
 
 test.describe("alice's day", () => {
   test("the title is today's day", async ({ alice }) => {
@@ -136,7 +119,6 @@ test.describe("alice's day", () => {
 
   test("the intensity minutes tile shows the week against Garmin's goal", async ({ alice }) => {
     await openToday(alice);
-    // the week runs from Monday to today, so its total depends on the weekday: the server's answer says what it is
     const data = await todayData(alice);
     const pct = Math.round((data.week.minutes / data.progress.intensityGoal) * 100);
     const minutes = tile(alice, "Intensity minutes");
@@ -273,7 +255,7 @@ test.describe("alice's day", () => {
     await expect(food.locator(".fmacs")).toContainText("– / 250 g");
     await expect(food.locator(".fmacs")).toContainText("– / 70 g");
     await expect(food.locator(".fburn")).toContainText("Burned 2,600 kcal so far by Garmin");
-    await expect(food.locator(".fnuts")).toBeHidden(); // the nutrients are the Food view's
+    await expect(food.locator(".fnuts")).toBeHidden();
   });
 
   test("the food section shows goals, so it has no hint to set them", async ({ alice }) => {
@@ -330,7 +312,6 @@ test.describe("alice's day", () => {
   });
 });
 
-// ── no raw values in any view of alice ──────────────────────────────────
 
 const VIEWS: [string, string, string][] = [
   ["today", "#tbody .tcard", "#tbody"],
@@ -351,7 +332,6 @@ for (const [view, ready, where] of VIEWS) {
   });
 }
 
-// ── a fresh profile: nothing to show, and what it says instead ───────────
 
 test.describe("a profile with nothing", () => {
   test("says there is nothing planned today, and shows no tiles, readiness or sync", async ({ me }) => {
@@ -394,7 +374,6 @@ test.describe("a profile with nothing", () => {
     await expect(food.locator(".fmacs")).toContainText("190 g to go");
     await expect(food.locator(".fmacs")).toContainText("15 / 70 g");
     await expect(food.locator(".fmacs")).toContainText("55 g to go");
-    // no Garmin, so no burn to add to the goal
     await expect(food.locator(".fburn")).toHaveCount(0);
     await expect(food.locator(".fgoalhint")).toHaveCount(0);
   });
@@ -456,7 +435,6 @@ test.describe("a profile with nothing", () => {
   });
 });
 
-// ── an admin picks the profile the Today view shows ─────────────────────
 
 test("an admin picks the profile the Today view shows, and the picker switches the day", async ({ page, profile }) => {
   await loginAs(page, "admin", ADMIN_TOKEN);

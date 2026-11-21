@@ -1,22 +1,9 @@
-/**
- * The Garmin-backed views in mock mode (MOCK_MODE=true, port 8793): Today, Activities, Recovery and Weight, and which views a
- * profile is offered.
- *
- * What the app really does here: the mock server stores nothing from Garmin, so each view is its empty state, with the note
- * "Mock mode: Garmin writes are disabled." where the view has a note. The Sync buttons are hidden: the page shows Garmin's controls
- * only when Garmin is enabled, and mock mode never enables it (the README: the buttons stay disabled in mock mode). The Garmin
- * endpoints that would fill the views refuse with the same reason. The generated mock data is what the MCP tools answer with.
- */
 import { test as base, expect, loginAs, openView, mondayOf, daysAhead, today, ADMIN_TOKEN, type Profile } from "../../support/fixtures";
 import { type APIRequestContext, type Page } from "@playwright/test";
 
 const REFUSAL = "Mock mode: Garmin writes are disabled.";
 const GARMIN_PASSWORD = "garmin-password";
 
-/**
- * The server closes an idle keep-alive connection a moment before the client reuses it, and that request meets ECONNRESET before
- * the server reads it: the request is sent again (it was never processed, so nothing is written twice).
- */
 async function sent<T>(call: () => Promise<T>): Promise<T> {
   for (let attempt = 1; ; attempt++) {
     try {
@@ -27,7 +14,6 @@ async function sent<T>(call: () => Promise<T>): Promise<T> {
   }
 }
 
-/** An API client whose requests are sent again when the connection was reset (see `sent`). */
 function reliable<A extends APIRequestContext>(api: A): A {
   return new Proxy(api, {
     get(target, prop) {
@@ -40,11 +26,6 @@ function reliable<A extends APIRequestContext>(api: A): A {
   });
 }
 
-/**
- * Fresh profiles, with or without a Garmin login saved, signed in on a page of their own. `gme` has the Garmin login; `me` (from the
- * shared fixtures) has none. Traces are off in this file: with them on, the API contexts of the shared fixtures lose their
- * recordings at teardown.
- */
 const test = base.extend<{ garmin: Profile; gme: Page }>({
   admin: async ({ admin }, use) => use(reliable(admin)),
   profile: async ({ profile }, use) => use({ ...profile, api: reliable(profile.api) }),
@@ -60,7 +41,6 @@ const test = base.extend<{ garmin: Profile; gme: Page }>({
 });
 test.use({ trace: "off" });
 
-/** Errors the page raises: uncaught exceptions, and console errors other than the 409s the refusals answer with. */
 function watchErrors(page: Page): string[] {
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
@@ -70,7 +50,6 @@ function watchErrors(page: Page): string[] {
   return errors;
 }
 
-/** The API paths the page asks for, from now on. */
 function trackApi(page: Page): string[] {
   const calls: string[] = [];
   page.on("request", (r) => {
@@ -79,10 +58,8 @@ function trackApi(page: Page): string[] {
   return calls;
 }
 
-/** The endpoints that reach Garmin or act on it: GET /api/garmin (what the page knows of the logins) is not one of them. */
 const GARMIN_CALLS = /\/api\/(garmin\/|workouts|activities\/sync|wellness\/sync)/;
 
-/** A plan of the profile with one workout scheduled today, so the Today view has a planned workout to draw. */
 async function putTodayPlan(api: APIRequestContext, name: string, workoutName: string): Promise<void> {
   const body = {
     weekStart: mondayOf(today()),
@@ -161,7 +138,7 @@ test.describe("Activities in mock mode", () => {
     await expect(gme.locator("#aNote")).toHaveText(REFUSAL);
     await expect(gme.locator("#alist .aemptycard")).toContainText("No activities are stored yet");
     await expect(gme.locator("#alist .aemptycard")).toContainText("Mock mode: Garmin writes are disabled.");
-    await expect(gme.locator("#alist .aemptycard button")).toHaveCount(0); // nothing to fetch from
+    await expect(gme.locator("#alist .aemptycard button")).toHaveCount(0);
     expect(errors).toEqual([]);
   });
 

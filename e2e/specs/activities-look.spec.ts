@@ -1,10 +1,3 @@
-/**
- * The Activities view in its new look: the Log (the 12-week ribbon, a row for each activity with a big figure and its sport's colour), the Progress
- * (the overall figures, the consistency heatmap, running and strength with their trends, the muscle map of the last weeks), the muscle map itself
- * (compact until asked for the rest, linked between the drawing and the list, hatched where a muscle only helped), the empty states, both themes and the
- * sizes of the controls. alice (27 activities, the details and the stored sets of a few, no Garmin login) is read only: the states she does not have
- * are made by changing her answer on its way to the page.
- */
 import { test, expect, openView, today, daysAgo, type APIRequestContext, type Page, chooseTheme, toggleTheme } from "../support/fixtures";
 
 interface Row { id: number; type: string; date: string; speedKph: number | null; km: number | null; name: string }
@@ -14,7 +7,6 @@ async function rowsOf(admin: APIRequestContext): Promise<Row[]> {
   return ((await res.json()) as { activities: Row[] }).activities;
 }
 
-/** alice's answers as the page gets them, after `edit` has changed them: call before the page is opened. */
 async function stub(page: Page, pattern: RegExp, edit: (json: any) => void): Promise<void> {
   await page.route(pattern, async (route) => {
     const response = await route.fetch(), json = await response.json();
@@ -30,7 +22,6 @@ const openProgress = async (page: Page) => {
   await expect(page.locator("#astats .aoverall")).toBeVisible();
 };
 
-/** The texts of the given selectors that sit under 4.5 to 1 against what they are on (the backgrounds from the page down, each over the one under it). */
 const lowContrast = (page: Page, selectors: string[]) => page.evaluate((sels) => {
   const px = (css: string): number[] => { const c = document.createElement("canvas"); c.width = c.height = 1; const g = c.getContext("2d")!; g.fillStyle = css; g.fillRect(0, 0, 1, 1); const d = g.getImageData(0, 0, 1, 1).data; return [d[0], d[1], d[2], d[3] / 255]; };
   const lum = ([r, g, b]: number[]) => { const [x, y, z] = [r, g, b].map((v) => { const c = v / 255; return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; }); return 0.2126 * x + 0.7152 * y + 0.0722 * z; };
@@ -64,7 +55,7 @@ test.describe("the Log", () => {
     await expect(alice.locator("#aModes button", { hasText: "Progress" })).toHaveAttribute("aria-pressed", "true");
     await expect(alice.locator("#astats")).toBeVisible();
     await expect(alice.locator("#alist")).toBeHidden();
-    await expect(alice.locator("#afilters")).toBeHidden(); // the filters are the list's
+    await expect(alice.locator("#afilters")).toBeHidden();
     await expect(alice.locator("#aribbon")).toBeHidden();
     await alice.locator("#aModes button", { hasText: "Log" }).click();
     await expect(alice.locator("#alist .arow").first()).toBeVisible();
@@ -77,7 +68,6 @@ test.describe("the Log", () => {
     await expect(alice.locator("#aribbon .aeyebrow")).toHaveText("Last 12 weeks · time");
     await expect(alice.locator("#aribbon .aaxis")).toContainText("this week");
     for (const label of await weeks.evaluateAll((els) => els.map((e) => e.getAttribute("aria-label")))) expect(label).toMatch(/^Week of [A-Z][a-z]+ \d+: \d+ sessions?(, .+)?$/);
-    // this week has alice's shakeout, as a run: a segment of the run colour
     await expect(weeks.last().locator("i")).not.toHaveCount(0);
   });
 
@@ -145,7 +135,7 @@ test.describe("the muscle map", () => {
     await card().locator(".ammt").click();
     await expect(card()).toHaveClass(/open/);
     await expect(card().locator(".ammt")).toHaveText("Show less ‹");
-    await expect(card().locator(".ammt")).toBeFocused(); // the focus stays where it was pressed
+    await expect(card().locator(".ammt")).toBeFocused();
     expect(await card().locator(".ammrow").count()).toBeGreaterThan(compact);
     await expect(card().locator(".ammbal .aeyebrow")).toHaveText("Share of the muscle work");
     const stack = card().locator(".ammstack");
@@ -187,9 +177,9 @@ test.describe("the muscle map", () => {
     await openProgress(alice);
     await alice.locator("#astats .ammc .ammt").click();
     const fills = await alice.locator("#astats .ammc .mm-muscle").evaluateAll((els) => els.map((e) => e.getAttribute("fill") || ""));
-    expect(fills.some((f) => f.startsWith("color-mix(in srgb, var(--accent)"))).toBe(true); // darker with more sets, from the theme's own colour
-    expect(fills).toContain("url(#mmhat)"); // hatched: only helped
-    expect(fills).toContain("var(--mm-idle)"); // not worked at all
+    expect(fills.some((f) => f.startsWith("color-mix(in srgb, var(--accent)"))).toBe(true);
+    expect(fills).toContain("url(#mmhat)");
+    expect(fills).toContain("var(--mm-idle)");
   });
 
   test("the period buttons change the card and its note: 7 days, 4 weeks and 12 weeks", async ({ alice }) => {
@@ -217,7 +207,7 @@ test.describe("the muscle map", () => {
     const card = alice.locator("#astats .ammc");
     await expect(card.locator(".anote")).toHaveText("No strength session with details in this period.");
     await expect(card.locator("svg")).toHaveCount(0);
-    await expect(card.locator(".amperiods button")).toHaveCount(3); // the period can still be changed
+    await expect(card.locator(".amperiods button")).toHaveCount(3);
   });
 
   test("the sets worked in each muscle match the stored sets of the sessions of the period, by 2 for a direct set and 1 for a helping one", async ({ alice }) => {
@@ -236,7 +226,7 @@ test.describe("the muscle map", () => {
 test.describe("Progress", () => {
   test("the cards: overall, time by week, by year, the consistency map, running, records and strength", async ({ alice }) => {
     await openProgress(alice);
-    const eyebrows = await alice.locator("#astats .aeyebrow").allTextContents(); // the page draws them in capitals
+    const eyebrows = await alice.locator("#astats .aeyebrow").allTextContents();
     for (const title of ["Overall", "Time by week · last 26 weeks", "By year", "Consistency · last 12 months", "Running", "Best efforts and records", "Strength", "Muscles · last 4 weeks"]) {
       expect(eyebrows.map((t) => t.trim()), title).toContain(title);
     }
@@ -306,7 +296,7 @@ test.describe("the look, in both themes", () => {
       await expect(alice.locator("#alist .arow").first()).toBeVisible();
       if (theme === "light") await chooseTheme(alice, "light");
       await expect(alice.locator("body")).toHaveAttribute("data-theme", theme);
-      await alice.evaluate(() => Promise.all(document.getAnimations().map((a) => a.finished.catch(() => null)))); // the colours have settled
+      await alice.evaluate(() => Promise.all(document.getAnimations().map((a) => a.finished.catch(() => null))));
       expect(await lowContrast(alice, ["#abar h1", "#aNote", "#aview .arow .nm", "#aview .arow .ameta", "#aview .arow .ak b", "#aview .arow .ak small", "#aribbon .aeyebrow", "#aribbon .aaxis span", "#aTypes .tchip"]), `${theme}: the Log`).toEqual([]);
       await alice.locator('#alist .arow[data-id="9018"]').click();
       await expect(alice.locator("#abody .ahero")).toBeVisible();
@@ -318,7 +308,7 @@ test.describe("the look, in both themes", () => {
       await expect(alice.locator("#astats .aoverall")).toBeVisible();
       expect(await lowContrast(alice, ["#astats .aeyebrow", "#astats .aoverall *", "#astats .aheatstats span", "#astats .ammrow", "#astats .ammread", "#astats .ammunder .acchip", "#astats .ammnote", "#astats .ammt", "#astats .amperiods button"]), `${theme}: Progress`).toEqual([]);
     }
-    await toggleTheme(alice); // leave her as she was found
+    await toggleTheme(alice);
   });
 
   test("the muscle map is drawn in the theme's colours: the idle body and the fills change with the theme", async ({ alice }) => {

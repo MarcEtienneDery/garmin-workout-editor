@@ -12,7 +12,6 @@ beforeEach(() => {
 });
 afterEach(() => store.close());
 
-/** Garmin: answers every call with its kind and day, and records the calls. */
 function fakeSource(answer: (kind: WellnessKind, day: string) => unknown = (kind, day) => ({ kind, day })) {
   const calls: string[] = [];
   const source: WellnessSource = {
@@ -35,7 +34,7 @@ describe("what is wanted", () => {
   });
 
   it("leaves out what is stored, and an old answer is final even when it is empty", () => {
-    store.wellness.put("MED", "2026-10-10", "sleep", null, at(TODAY, 9)); // fetched 8 days after its day
+    store.wellness.put("MED", "2026-10-10", "sleep", null, at(TODAY, 9));
     store.wellness.put("MED", "2026-10-10", "hrv", { hrvSummary: {} }, at(TODAY, 9));
     const list = wanted(store, "MED", TODAY, 10, ["sleep", "hrv"], at(TODAY, 20));
     expect(list.find((w) => w.day === "2026-10-10")).toBeUndefined();
@@ -44,18 +43,17 @@ describe("what is wanted", () => {
 
   it("asks again for a response fetched while its day could still change: today's after a minute for a Sync button and five for the rest, the days before after half an hour", () => {
     const base = at(TODAY, 9), YESTERDAY = "2026-10-17", BEFORE = "2026-10-16";
-    for (const day of [TODAY, YESTERDAY]) store.wellness.put("MED", day, "sleep", { early: true }, base); // neither is final yet (fetched under 2 days after its day began)
+    for (const day of [TODAY, YESTERDAY]) store.wellness.put("MED", day, "sleep", { early: true }, base);
     const days = (ms: number, ask?: "manual" | "auto") => wanted(store, "MED", TODAY, 2, ["sleep"], base + ms, ask).map((w) => w.day);
     expect([TODAY_MANUAL_MS, TODAY_AUTO_MS, EARLIER_MS]).toEqual([60_000, 300_000, 1_800_000]);
-    expect(days(TODAY_MANUAL_MS, "manual")).toEqual([]); // a moment ago
-    expect(days(TODAY_MANUAL_MS + 1, "manual")).toEqual([TODAY]); // a Sync button: today's after a minute
-    expect(days(TODAY_MANUAL_MS + 1, "auto")).toEqual([]); // a view opening: not yet
+    expect(days(TODAY_MANUAL_MS, "manual")).toEqual([]);
+    expect(days(TODAY_MANUAL_MS + 1, "manual")).toEqual([TODAY]);
+    expect(days(TODAY_MANUAL_MS + 1, "auto")).toEqual([]);
     expect(days(TODAY_AUTO_MS + 1, "auto")).toEqual([TODAY]);
-    expect(days(EARLIER_MS, "manual")).toEqual([TODAY]); // the days before wait half an hour, even for a Sync button
+    expect(days(EARLIER_MS, "manual")).toEqual([TODAY]);
     expect(days(EARLIER_MS + 1, "manual")).toEqual([TODAY, YESTERDAY]);
     expect(days(EARLIER_MS + 1, "auto")).toEqual([TODAY, YESTERDAY]);
 
-    // the day before yesterday is only open until two days after it began: fetched in its last minutes, it follows the same half hour
     const late = at(TODAY) - 10 * 60_000;
     store.wellness.put("MED", BEFORE, "hrv", {}, late);
     const before = (ms: number) => wanted(store, "MED", TODAY, 3, ["hrv"], late + ms, "manual").map((w) => w.day).includes(BEFORE);
@@ -65,14 +63,14 @@ describe("what is wanted", () => {
   it("treats a response fetched a couple of days after its day as final, however long ago the sync last ran", () => {
     store.wellness.put("MED", "2026-10-14", "sleep", { whole: true }, at("2026-10-14") + FINAL_AFTER_MS + 1);
     expect(wanted(store, "MED", TODAY, 7, ["sleep"], at(TODAY, 12)).some((w) => w.day === "2026-10-14")).toBe(false);
-    store.wellness.put("MED", "2026-10-13", "sleep", { partial: true }, at("2026-10-13", 23)); // fetched before the day was over and settled
+    store.wellness.put("MED", "2026-10-13", "sleep", { partial: true }, at("2026-10-13", 23));
     expect(wanted(store, "MED", TODAY, 7, ["sleep"], at(TODAY, 12)).some((w) => w.day === "2026-10-13")).toBe(true);
   });
 
   it("applies the rule to every kind alike", () => {
     const kinds = ["summary", "sleep", "hrv", "heart_rate"] as const;
     for (const kind of kinds) store.wellness.put("MED", TODAY, kind, {}, at(TODAY, 9));
-    expect(wanted(store, "MED", TODAY, 1, kinds, at(TODAY, 9) + 30_000, "manual")).toEqual([]); // fetched a moment ago
+    expect(wanted(store, "MED", TODAY, 1, kinds, at(TODAY, 9) + 30_000, "manual")).toEqual([]);
     expect(wanted(store, "MED", TODAY, 1, kinds, at(TODAY, 9) + 61_000, "manual").map((w) => w.kind)).toEqual([...kinds]);
   });
 
@@ -162,9 +160,9 @@ describe("syncing", () => {
     await syncWellness(store, "MED", source, { today: TODAY, days: 5, kinds: ["sleep"], sleep: noSleep, now: first });
     calls.length = 0;
     await syncWellness(store, "MED", source, { today: TODAY, days: 5, kinds: ["sleep"], sleep: noSleep, now: first + 30_000, manual: true });
-    expect(calls).toHaveLength(0); // too soon: under a minute, even for a Sync button
+    expect(calls).toHaveLength(0);
     await syncWellness(store, "MED", source, { today: TODAY, days: 5, kinds: ["sleep"], sleep: noSleep, now: first + HOUR });
-    expect(calls.sort()).toEqual([`sleep|${TODAY}`, "sleep|2026-10-17"].sort()); // an hour later: not the days past FINAL_AFTER_MS (the 16th was fetched 56 h after it began)
+    expect(calls.sort()).toEqual([`sleep|${TODAY}`, "sleep|2026-10-17"].sort());
   });
 });
 
@@ -177,7 +175,7 @@ describe("the day it is", () => {
 
   it("follows the zone when one is set", () => {
     process.env.GARMIN_TZ = "America/Toronto";
-    expect(localToday(store, "MED", Date.parse("2026-10-18T02:00:00Z"))).toBe("2026-10-17"); // 22:00 the evening before
+    expect(localToday(store, "MED", Date.parse("2026-10-18T02:00:00Z"))).toBe("2026-10-17");
     expect(localToday(store, "MED", Date.parse("2026-10-18T12:00:00Z"))).toBe("2026-10-18");
   });
 
@@ -201,19 +199,19 @@ describe("the background sync", () => {
     expect(startWellnessBackfill(store, "MED", source, options({ holder: "h2" })).reason).toBe("A sync is already running.");
     await run.done;
     expect(calls).toHaveLength(2 * WELLNESS_KINDS.length);
-    expect(store.wellness.state("MED").holder).toBeNull(); // the lease is given back
+    expect(store.wellness.state("MED").holder).toBeNull();
     expect(wellnessStatus(store, "MED", TODAY, at(TODAY, 9) + 60_000)).toEqual(expect.objectContaining({ days: 2, rows: 2 * WELLNESS_KINDS.length, pending: 60 * WELLNESS_KINDS.length - 2 * WELLNESS_KINDS.length, syncing: false }));
-    expect(startWellnessBackfill(store, "MED", source, options({ now: at(TODAY, 9) + 60_000 })).reason).toBe("Everything is stored."); // of the 2 days it was asked for
+    expect(startWellnessBackfill(store, "MED", source, options({ now: at(TODAY, 9) + 60_000 })).reason).toBe("Everything is stored.");
   });
 
   it("says how long a Sync button waits: a minute after the last response fetched for today, then nothing", async () => {
-    expect(wellnessStatus(store, "MED", TODAY, at(TODAY, 9)).cooldownMs).toBe(0); // Garmin was never asked
+    expect(wellnessStatus(store, "MED", TODAY, at(TODAY, 9)).cooldownMs).toBe(0);
     const { source } = fakeSource();
     await syncWellness(store, "MED", source, { today: TODAY, days: 2, kinds: ["sleep"], sleep: noSleep, now: at(TODAY, 9) });
     expect(wellnessStatus(store, "MED", TODAY, at(TODAY, 9) + 20_000).cooldownMs).toBe(TODAY_MANUAL_MS - 20_000);
     expect(wellnessStatus(store, "MED", TODAY, at(TODAY, 9) + TODAY_MANUAL_MS).cooldownMs).toBe(0);
-    expect(wellnessStatus(store, "MED", TODAY, at(TODAY, 9) - 5_000).cooldownMs).toBe(TODAY_MANUAL_MS); // a clock a little behind never waits longer than the minute
-    expect(wellnessStatus(store, "MED", "2026-10-19", at("2026-10-19", 1)).cooldownMs).toBe(0); // a new day with nothing fetched yet: yesterday's fetch does not hold the button
+    expect(wellnessStatus(store, "MED", TODAY, at(TODAY, 9) - 5_000).cooldownMs).toBe(TODAY_MANUAL_MS);
+    expect(wellnessStatus(store, "MED", "2026-10-19", at("2026-10-19", 1)).cooldownMs).toBe(0);
   });
 
   it("does not start while another process holds the lease, or while Garmin said to wait", () => {
@@ -221,7 +219,7 @@ describe("the background sync", () => {
     store.wellness.claim("MED", "other", 60_000, at(TODAY, 9));
     expect(startWellnessBackfill(store, "MED", source, options()).reason).toBe("Another process is syncing.");
     store.wellness.release("MED", "other");
-    store.activities.saveProgress("MED", { error: "too many requests (429)", retryAfter: at(TODAY, 9) + 60_000 }); // the limit is the account's
+    store.activities.saveProgress("MED", { error: "too many requests (429)", retryAfter: at(TODAY, 9) + 60_000 });
     expect(startWellnessBackfill(store, "MED", source, options()).reason).toMatch(/Waiting after/);
   });
 

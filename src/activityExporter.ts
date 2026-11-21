@@ -5,11 +5,6 @@ import {
   normalizeActivityType as normalizeMockActivityType,
 } from "./mocks.setup";
 
-/**
- * ISO date (YYYY-MM-DD) of the Monday that starts a window covering the current
- * week plus the previous (n - 1) weeks, in UTC. getLastNWeeksStart(4) is the
- * start of the "last 4 weeks" window used by --last-4-weeks.
- */
 export function getLastNWeeksStart(n: number): string {
   const now = new Date();
   const utcDay = now.getUTCDay();
@@ -28,9 +23,6 @@ export interface BuildActivitiesOptions {
   customWeekEnd?: string;
 }
 
-/**
- * Activity extraction and management for Garmin activities
- */
 export class ActivityExporter {
   private garminClient: GarminClient;
 
@@ -38,27 +30,16 @@ export class ActivityExporter {
     this.garminClient = garminClient;
   }
 
-  /**
-   * Convert speed (m/s) to pace (min/km)
-   */
   private speedToPace(speedMps: number | undefined): number | undefined {
     if (!speedMps || speedMps <= 0) return undefined;
-    return 1000 / speedMps / 60; // min/km
+    return 1000 / speedMps / 60;
   }
 
-  /**
-   * Normalize distance to kilometers
-   * Garmin often provides meters for laps/intervals
-   */
   private normalizeDistanceKm(distance: number | undefined): number | undefined {
     if (distance === undefined || distance === null) return undefined;
-    // Heuristic: values over 20 are likely meters
     return distance > 20 ? distance / 1000 : distance;
   }
 
-  /**
-   * Calculate pace (min/km) from duration and distance
-   */
   private calculatePaceFromDurationAndDistance(
     durationSeconds: number | undefined,
     distanceKm: number | undefined
@@ -67,9 +48,6 @@ export class ActivityExporter {
     return durationSeconds / 60 / distanceKm;
   }
 
-  /**
-   * Build interval sets for running activities
-   */
   private buildIntervalSets(activity: any): ExerciseSet[] {
     const intervalSources = [
       activity.intervals,
@@ -158,17 +136,11 @@ export class ActivityExporter {
     });
   }
 
-  /**
-   * Check if exercise is a main powerlifting lift
-   */
   private isMainLift(exerciseName: string): boolean {
     const mainLifts = ["BENCH_PRESS", "SQUAT", "DEADLIFT", "OVERHEAD_PRESS"];
     return mainLifts.some((lift) => exerciseName.includes(lift));
   }
 
-  /**
-   * Format exercise name from Garmin subcategory (e.g., "BARBELL_BENCH_PRESS" -> "Barbell Bench Press")
-   */
   private formatExerciseName(subcategoryKey: string | undefined): string {
     if (!subcategoryKey) return "Unknown Exercise";
     return subcategoryKey
@@ -177,21 +149,11 @@ export class ActivityExporter {
       .join(" ");
   }
 
-  /**
-   * Convert Garmin weight to lbs
-   * Garmin stores weight in tenths of grams, so: weight_lbs = maxWeight / 4536 (453.6 grams per lb)
-   * Or more simply: weight_lbs = maxWeight / 453.6
-   */
   private convertGarminWeight(maxWeight: number): number {
     if (maxWeight === 0) return 0;
-    // Convert from tenths of grams to lbs (1 lb = 453.6g)
     return Math.round(maxWeight / 453.6);
   }
 
-  /**
-   * Split warmup, top set, and backoff sets for main lifts
-   * Top set is the heaviest set (max weight), warmup sets are lighter, and backoff sets follow
-   */
   private splitWarmupTopBackoffSets(set: any): ExerciseSet[] {
     const weight = this.convertGarminWeight(set.maxWeight || 0);
     const totalSets = set.sets || 0;
@@ -276,11 +238,6 @@ export class ActivityExporter {
     return entries;
   }
 
-  /**
-   * Full consolidation pipeline for per-set data from the exerciseSets endpoint.
-   * Phase 1+2: merge consecutive same-exercise/same-weight sets (identical reps → sets++, varying reps → repsList).
-   * Phase 3: detect repeating exercise-name cycles (supersets) and collapse each exercise within to one entry.
-   */
   private consolidateSets(sets: ExerciseSet[]): ExerciseSet[] {
     return this.detectAndMergeSupersets(this.mergeConsecutive(sets));
   }
@@ -290,7 +247,6 @@ export class ActivityExporter {
     for (const s of sets) {
       const prev = result[result.length - 1];
       if (prev && prev.exerciseName === s.exerciseName) {
-        // reps
         if (prev.repsList !== undefined) {
           prev.repsList.push(s.reps ?? 0);
         } else if (prev.reps !== s.reps) {
@@ -298,7 +254,6 @@ export class ActivityExporter {
           prev.repsList.push(s.reps ?? 0);
           prev.reps = undefined;
         }
-        // weight
         const prevW = prev.weight ?? 0;
         const sW = s.weight ?? 0;
         if (prev.weightList !== undefined) {
@@ -340,7 +295,6 @@ export class ActivityExporter {
           j += L;
         }
         if (count >= 2) {
-          // include any partial cycle at the end
           let extra = 0;
           while (
             extra < L &&
@@ -418,9 +372,6 @@ export class ActivityExporter {
     });
   }
 
-  /**
-   * Fetch recent activities from Garmin
-   */
   async fetchActivities(
     limit: number = 20,
     includeDetails: boolean = false
@@ -434,12 +385,10 @@ export class ActivityExporter {
 
       const client = this.garminClient.getClientAny();
 
-      // Use the garmin-connect library's getActivities method
       const activities = await client.getActivities(0, limit);
 
       console.log(`✅ Retrieved ${activities.length} activities`);
 
-      // Optionally fetch detailed info for each activity (includes self evaluation)
       if (includeDetails) {
         console.log(
           `📋 Fetching detailed info (including self evaluation) for ${activities.length} activities...`
@@ -460,11 +409,9 @@ export class ActivityExporter {
                 await new Promise((resolve) => setTimeout(resolve, 200));
                 fullExerciseSets = await this.garminClient.getActivityExerciseSets(activity.activityId);
               } catch {
-                // fall back to summarizedExerciseSets
               }
             }
 
-            // Merge basic activity data with detailed data
             detailedActivities.push({
               ...activity,
               ...details,
@@ -473,7 +420,6 @@ export class ActivityExporter {
 
             console.log(`  ✓ ${i + 1}/${activities.length}: ${activity.activityName}`);
 
-            // Add delay to avoid rate limiting (500ms between requests)
             if (i < activities.length - 1) {
               await new Promise((resolve) => setTimeout(resolve, 500));
             }
@@ -481,7 +427,7 @@ export class ActivityExporter {
             console.warn(
               `  ⚠️  Could not fetch details for activity ${activities[i].activityId}: ${error.message}`
             );
-            detailedActivities.push(activities[i]); // Use basic data if detailed fetch fails
+            detailedActivities.push(activities[i]);
           }
         }
 
@@ -495,20 +441,12 @@ export class ActivityExporter {
     }
   }
 
-  /**
-   * Garmin activities (list item merged with details, as the activities table keeps them) in the slim planning
-   * format: no filtering, no logging and no Garmin client needed, so `new ActivityExporter(null)` will do.
-   */
   slim(rawActivities: any[]): any[] {
     return this.transformActivities(rawActivities);
   }
 
-  /**
-   * Transform raw Garmin activities to slim format for weekly planning
-   */
   private transformActivities(rawActivities: any[]): any[] {
     return rawActivities.map((activity: any) => {
-      // If already in transformed shape (seeded from activities.json), return as-is
       if (
         !activity.activityId &&
         activity.id &&
@@ -544,7 +482,6 @@ export class ActivityExporter {
         activity.activityType?.typeKey || activity.activityType
       );
 
-      // Base fields for all activity types
       const base = {
         id: activity.activityId,
         workoutId: activity.workoutId || undefined,
@@ -553,30 +490,24 @@ export class ActivityExporter {
         startTime: activity.startTimeGMT || activity.startTimeLocal,
         duration: activity.duration || activity.elapsedDuration || 0,
 
-        // Heart Rate
         avgHR: activity.averageHR,
         maxHR: activity.maxHR,
 
-        // Training Load (key for scaling)
         aerobicTrainingEffect: activity.aerobicTrainingEffect,
         anaerobicTrainingEffect: activity.anaerobicTrainingEffect,
         trainingEffectLabel: activity.trainingEffectLabel,
 
-        // Subjective Feedback
         directWorkoutFeel:
           activity.directWorkoutFeel ?? activity.summaryDTO?.directWorkoutFeel,
         directWorkoutRpe:
           activity.directWorkoutRpe ?? activity.summaryDTO?.directWorkoutRpe,
 
-        // Recovery Cost
         differenceBodyBattery: activity.differenceBodyBattery,
 
-        // Intensity Distribution
         moderateIntensityMinutes: activity.moderateIntensityMinutes,
         vigorousIntensityMinutes: activity.vigorousIntensityMinutes,
       };
 
-      // Add running-specific fields
       if (activityType === "running" || activityType === "cycling") {
         const intervalSets =
           activityType === "running" ? this.buildIntervalSets(activity) : [];
@@ -591,12 +522,10 @@ export class ActivityExporter {
         };
       }
 
-      // Add strength-specific fields
       if (activityType === "strength_training") {
         const exerciseSets: ExerciseSet[] = [];
 
         if (activity.fullExerciseSets?.length > 0) {
-          // Per-set data from the exerciseSets endpoint: each entry is one set
           const expanded: ExerciseSet[] = (activity.fullExerciseSets as GarminRawSet[])
             .filter((set) => set.setType === "ACTIVE")
             .map((set) => ({
@@ -630,21 +559,15 @@ export class ActivityExporter {
     });
   }
 
-  /**
-   * Get the start and end of last week (Monday-Sunday) in UTC
-   */
   private getLastWeekDates(): { weekStart: Date; weekEnd: Date } {
-    // Work in UTC to match activity timestamps
     const now = new Date();
     const utcDay = now.getUTCDay();
     const daysSinceMonday = utcDay === 0 ? 6 : utcDay - 1;
 
-    // Last Monday in UTC (start of last week)
     const lastWeekStart = new Date(now);
     lastWeekStart.setUTCDate(now.getUTCDate() - daysSinceMonday - 7);
     lastWeekStart.setUTCHours(0, 0, 0, 0);
 
-    // Last Sunday in UTC (end of last week)
     const lastWeekEnd = new Date(lastWeekStart);
     lastWeekEnd.setUTCDate(lastWeekStart.getUTCDate() + 6);
     lastWeekEnd.setUTCHours(23, 59, 59, 999);
@@ -652,21 +575,15 @@ export class ActivityExporter {
     return { weekStart: lastWeekStart, weekEnd: lastWeekEnd };
   }
 
-  /**
-   * Get the start and end of this week (Monday-Sunday) in UTC
-   */
   private getThisWeekDates(): { weekStart: Date; weekEnd: Date } {
-    // Work in UTC to match activity timestamps
     const now = new Date();
     const utcDay = now.getUTCDay();
     const daysSinceMonday = utcDay === 0 ? 6 : utcDay - 1;
 
-    // This Monday in UTC (start of this week)
     const thisWeekStart = new Date(now);
     thisWeekStart.setUTCDate(now.getUTCDate() - daysSinceMonday);
     thisWeekStart.setUTCHours(0, 0, 0, 0);
 
-    // This Sunday in UTC (end of this week)
     const thisWeekEnd = new Date(thisWeekStart);
     thisWeekEnd.setUTCDate(thisWeekStart.getUTCDate() + 6);
     thisWeekEnd.setUTCHours(23, 59, 59, 999);
@@ -674,9 +591,6 @@ export class ActivityExporter {
     return { weekStart: thisWeekStart, weekEnd: thisWeekEnd };
   }
 
-  /**
-   * Filter activities to a specific week
-   */
   private filterActivitiesByWeek(
     activities: any[],
     weekDates: { weekStart: Date; weekEnd: Date }
@@ -692,25 +606,16 @@ export class ActivityExporter {
     });
   }
 
-  /**
-   * Filter activities to only include those from last week
-   */
   private filterLastWeekActivities(activities: any[]): any[] {
     const weekDates = this.getLastWeekDates();
     return this.filterActivitiesByWeek(activities, weekDates);
   }
 
-  /**
-   * Filter activities to only include those from this week
-   */
   private filterThisWeekActivities(activities: any[]): any[] {
     const weekDates = this.getThisWeekDates();
     return this.filterActivitiesByWeek(activities, weekDates);
   }
 
-  /**
-   * Filter activities by a custom date range on raw activities
-   */
   private filterActivitiesByDateRange(
     activities: any[],
     fromDate: Date,
@@ -726,9 +631,6 @@ export class ActivityExporter {
     });
   }
 
-  /**
-   * Filter transformed activities by normalized activity type
-   */
   private filterActivitiesByType(
     activities: ReturnType<ActivityExporter["transformActivities"]>,
     typeFilter: string
@@ -737,10 +639,6 @@ export class ActivityExporter {
     return activities.filter((a) => a.activityType === normalizedFilter);
   }
 
-  /**
-   * Filter and transform raw activities into the ExtractedActivities shape
-   * (no file I/O).
-   */
   buildExtractedActivities(
     activities: any[],
     options: BuildActivitiesOptions = {}
@@ -762,7 +660,7 @@ export class ActivityExporter {
       weekStart.setUTCHours(0, 0, 0, 0);
       weekEnd = customWeekEnd
         ? new Date(customWeekEnd)
-        : new Date(); // default to now
+        : new Date();
       if (customWeekEnd) weekEnd.setUTCHours(23, 59, 59, 999);
       filteredActivities = this.filterActivitiesByDateRange(
         activities,
@@ -812,7 +710,6 @@ export class ActivityExporter {
 
 let stored: ActivityExporter | undefined;
 
-/** The slim form of a stored activity: its list item (`raw`) merged with its details. The transform needs no Garmin client. */
 export function slimStored(raw: any, detail: any): any | null {
   stored ??= new ActivityExporter(null as never);
   return stored.slim([{ ...(raw ?? {}), ...(detail ?? {}) }])[0] ?? null;

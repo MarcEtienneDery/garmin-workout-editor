@@ -1,109 +1,90 @@
-// Slim activity structure focused on weekly planning metrics
 export interface GarminActivity {
-  // Identity
   id: string;
-  workoutId?: number | string;  // Garmin workout template ID (when activity was based on a workout)
+  workoutId?: number | string;
   activityName: string;
   activityType: 'running' | 'strength_training' | 'cycling' | 'swimming' | 'other';
   startTime: string;
   
-  // Duration & Distance
-  duration: number;           // seconds
-  distance?: number;          // km (running/cycling)
+  duration: number;
+  distance?: number;
   
-  // Intensity Metrics
   avgHR?: number;
   maxHR?: number;
-  avgPace?: number;           // min/km (running)
+  avgPace?: number;
   
-  // Training Load (key for scaling)
-  aerobicTrainingEffect?: number;    // 0-5 scale
-  anaerobicTrainingEffect?: number;  // 0-5 scale
+  aerobicTrainingEffect?: number;
+  anaerobicTrainingEffect?: number;
   trainingEffectLabel?: string;
   
-  // Subjective Feedback
-  directWorkoutFeel?: number;        // How fresh: 1-100 (100=perfect, 50=avg, 1=very tired)
-  directWorkoutRpe?: number;         // How hard: 1-100 (100=super hard, 50=avg/good target, 1=too easy)
+  directWorkoutFeel?: number;
+  directWorkoutRpe?: number;
   
-  // Recovery Cost
   differenceBodyBattery?: number;
   
-  // Intensity Distribution
   moderateIntensityMinutes?: number;
   vigorousIntensityMinutes?: number;
   
-  // Running-specific
   avgCadence?: number;
   elevationGain?: number;
   
-  // Strength-specific
   totalSets?: number;
   totalReps?: number;
   exerciseSets?: ExerciseSet[];
 }
 
-// Strength training exercise details
 export interface ExerciseSet {
-  exerciseName: string;       // e.g., "Barbell Squat", "Bench Press", "Deadlift"
-  category: string;           // e.g., "LEGS", "CHEST", "BACK"
+  exerciseName: string;
+  category: string;
   sets: number;
-  reps?: number;              // reps per set (absent when repsList is used)
-  repsList?: number[];        // per-set reps when they vary; mutually exclusive with reps
-  weight?: number;            // weight used (lbs); absent when weightList is used
-  weightList?: number[];      // per-set weight when it varies; mutually exclusive with weight
-  volume?: number;            // total load (sum of reps × weight per set)
-  supersetGroup?: number;     // shared integer ID for exercises performed as a superset
-  // Interval stats (running)
-  duration?: number;          // seconds
-  distance?: number;          // km
-  pace?: number;              // min/km
+  reps?: number;
+  repsList?: number[];
+  weight?: number;
+  weightList?: number[];
+  volume?: number;
+  supersetGroup?: number;
+  duration?: number;
+  distance?: number;
+  pace?: number;
   avgHR?: number;
   maxHR?: number;
   splitType?: string;
-  /** The step of the structured workout a running lap belongs to (1-based): the laps of one rep share it. */
   step?: number;
 }
 
 export interface ExtractedActivities {
   extractedAt: string;
-  weekStart: string;          // ISO date of week start
-  weekEnd: string;            // ISO date of week end
+  weekStart: string;
+  weekEnd: string;
   totalActivities: number;
   activities: GarminActivity[];
 }
 
-// Workout step/exercise details
 export interface WorkoutStep {
-  stepType: string;           // e.g., "exercise", "rest", "warmup", "interval", "repeat"
-  exerciseName?: string;      // e.g., "BARBELL_BENCH_PRESS", "RUN"
+  stepType: string;
+  exerciseName?: string;
   
-  // API-specific fields from IWorkoutStep (preserved from Garmin API)
-  targetType?: string;        // e.g., "no.target", "heart.rate.zone", "pace.zone"
-  targetValueOne?: number;    // Context-dependent: HR zone min (BPM), pace zone slower limit (m/s), etc.
-  targetValueTwo?: number;    // Context-dependent: HR zone max (BPM), pace zone faster limit (m/s), etc.
-  endCondition?: string;      // e.g., "reps", "time", "distance", "lap.button", "iterations"
-  endConditionValue?: number; // End condition threshold
-  weight?: number;            // Equipment weight (lbs, converted from Garmin's tenths of grams)
-  weightPercentage?: number;  // Weight as percentage (e.g., 75 for 75% of 1RM)
-  benchmarkKey?: string;      // Exercise the percentage is based on (e.g., "BARBELL_BENCH_PRESS")
-  stepOrder?: number;         // Step order in sequence (renumbered sequentially after flattening)
+  targetType?: string;
+  targetValueOne?: number;
+  targetValueTwo?: number;
+  endCondition?: string;
+  endConditionValue?: number;
+  weight?: number;
+  weightPercentage?: number;
+  benchmarkKey?: string;
+  stepOrder?: number;
   
-  // Extracted parallel fields based on endCondition
-  reps?: number;              // When endCondition="reps", extracted from endConditionValue
-  durationSeconds?: number;   // When endCondition="time", extracted from endConditionValue
-  distanceMeters?: number;    // When endCondition="distance", extracted from endConditionValue
+  reps?: number;
+  durationSeconds?: number;
+  distanceMeters?: number;
   
-  // Rest merging
-  restTimeSeconds?: number;   // Merged from first subsequent rest step
+  restTimeSeconds?: number;
   
-  // Repeat group tracking
-  numberOfRepeats?: number;   // From RepeatGroupDTO.numberOfIterations
-  repeatGroupIndex?: number;  // Unique index assigned per RepeatGroupDTO during flattening (for round-trip reconstruction)
-  repeatSteps?: WorkoutStep[];  // Nested steps within a repeat group
+  numberOfRepeats?: number;
+  repeatGroupIndex?: number;
+  repeatSteps?: WorkoutStep[];
 }
 
 
-// Shared base for all workout-shaped objects
 interface WorkoutCore {
   workoutId?: number | string;
   workoutName: string;
@@ -111,30 +92,28 @@ interface WorkoutCore {
   description?: string;
 }
 
-// Minimal workout summary (for backward compatibility)
 export interface GarminWorkoutSummary extends WorkoutCore {
-  workoutId: number | string; // required for fetched workouts
+  workoutId: number | string;
 }
 
-// Detailed workout with full exercise information
 export interface DetailedWorkout extends GarminWorkoutSummary {
-  steps?: WorkoutStep[];      // Full exercise breakdown
+  steps?: WorkoutStep[];
   totalSets?: number;
   totalReps?: number;
   estimatedDurationSeconds?: number;
-  scheduledDate?: string | string[]; // ISO date (YYYY-MM-DD) or list of ISO dates
+  scheduledDate?: string | string[];
 }
 
 export interface PlannedWorkout extends WorkoutCore {
   distanceMeters?: number;
-  scheduledDate?: string | string[]; // ISO date (YYYY-MM-DD) or list of ISO dates
-  steps?: WorkoutStep[];  // Full exercise breakdown for import
+  scheduledDate?: string | string[];
+  steps?: WorkoutStep[];
 }
 
 export interface WeeklyWorkoutPlan {
   generatedAt: string;
-  weekStart: string;          // ISO date of week start
-  weekEnd: string;            // ISO date of week end
+  weekStart: string;
+  weekEnd: string;
   workouts: PlannedWorkout[];
   source?: string;
 }

@@ -1,6 +1,3 @@
-/**
- * Synthetic Garmin wellness responses with the key shapes the real ones have (nothing here is anyone's data).
- */
 import type { DayMetrics } from "../../shared/store";
 
 export const sleepResponse = (over: { seconds?: number; score?: number; needMinutes?: number; awake?: number; hrv?: number; rhr?: number } = {}) => ({
@@ -61,15 +58,12 @@ export const summaryResponse = (over: { rhr?: number; rhr7?: number; stress?: nu
   lastSyncTimestampGMT: "2026-01-01T08:00:00.000",
 });
 
-/** A weigh-in the way Garmin's day view gives it: weights in grams. */
 export const weightResponse = (over: { grams?: number; fat?: number | null; muscle?: number | null; bmi?: number } = {}) => {
   const entry = { samplePk: 1, calendarDate: "2026-01-01", weight: over.grams ?? 82_000, bmi: over.bmi ?? 24.5, bodyFat: over.fat === undefined ? 18.5 : over.fat, bodyWater: 55, boneMass: 3_800, muscleMass: over.muscle === undefined ? 36_000 : over.muscle, sourceType: "INDEX_SCALE", weightDelta: 0 };
   return { startDate: "2026-01-01", endDate: "2026-01-01", dateWeightList: [entry], totalAverage: { from: 0, until: 0, weight: entry.weight, bmi: entry.bmi, bodyFat: entry.bodyFat, muscleMass: entry.muscleMass } };
 };
-/** What Garmin gives for a day nobody weighed. */
 export const noWeighIn = { startDate: "2026-01-01", endDate: "2026-01-01", dateWeightList: [], totalAverage: null };
 
-/** A day's metrics with every field empty, then what the test sets. */
 export const metricsFor = (day: string, over: Partial<DayMetrics> = {}): DayMetrics => ({
   day,
   sleepSeconds: null, sleepScore: null, deepSeconds: null, lightSeconds: null, remSeconds: null, awakeSeconds: null, awakeCount: null, sleepStress: null, sleepNeedMinutes: null, overnightHrv: null,

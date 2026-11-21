@@ -121,8 +121,8 @@ describe("copying foods to today", () => {
     const copies = copyFoods(store, "MED", [chili.id, oats.id, cheese.id], TODAY, "web");
     expect(copies.map((c) => [c.day, c.meal, c.name, c.kcal, c.proteinG, c.source])).toEqual([[TODAY, "dinner", "Chili", 390, 27, "web"], [TODAY, "breakfast", "Oats", 150, 0, "web"], [TODAY, "dinner", "Cheese", 85, 6, "web"]]);
     expect(store.nutrition.get("MED", copies[0].id)!.nutrients).toEqual({ fiberG: 9, sodiumMg: 850 });
-    expect(store.nutrition.get("MED", copies[2].id)!.nutrients).toEqual({}); // stated none: still unknown, not zero
-    expect(store.nutrition.range("MED", OLD, OLD)).toHaveLength(3); // the old day keeps its foods
+    expect(store.nutrition.get("MED", copies[2].id)!.nutrients).toEqual({});
+    expect(store.nutrition.range("MED", OLD, OLD)).toHaveLength(3);
     expect(copies.every((c) => ![chili.id, cheese.id, oats.id].includes(c.id))).toBe(true);
   });
 
@@ -147,7 +147,6 @@ describe("copying foods to today", () => {
 });
 
 describe("a food scaled from a product", () => {
-  // 150 g of a yogurt that holds 52 kcal, 9.6 g of protein... in 100 g, as the page sends it
   const OIKOS = { code: "0056800202458", name: "OIKOS", brand: "Oikos", unit: "g", per100: { kcal: 52, proteinG: 9.6, carbsG: 3.5, fatG: 0 }, nutrients: { sugarsG: 3.5, calciumMg: 117.33 }, servingG: 115, servingText: "115 g", amount: 150, per: "g" };
   const scanned = () => log({ meal: "breakfast", items: [{ name: "OIKOS · 150 g", kcal: 78, proteinG: 14.4, carbsG: 5.3, fatG: 0, nutrients: { sugarsG: 5.3, calciumMg: 176 }, product: OIKOS }] })[0];
 
@@ -167,8 +166,7 @@ describe("a food scaled from a product", () => {
   it("keeps its product while only its meal or day moves, and loses it when its numbers are changed without one", () => {
     const food = scanned();
     expect(changeFood(store, "MED", food.id, { meal: "snack", day: "2026-10-17" }).product).toEqual(OIKOS);
-    expect(changeFood(store, "MED", food.id, { name: "OIKOS · 150 g", kcal: 78 }).product).toEqual(OIKOS); // the same numbers again
-    // corrected by hand or by an assistant, it no longer is 150 g of the product: a later change of quantity would undo the correction
+    expect(changeFood(store, "MED", food.id, { name: "OIKOS · 150 g", kcal: 78 }).product).toEqual(OIKOS);
     expect(changeFood(store, "MED", food.id, { kcal: 90 }).product).toBeNull();
     const other = scanned();
     expect(changeFood(store, "MED", other.id, { nutrients: { ironMg: 0.1 } }).product).toBeNull();
@@ -185,7 +183,6 @@ describe("a food scaled from a product", () => {
   it("is checked: a product the page could not have made is refused", () => {
     expect(parseProduct(undefined)).toBeNull();
     expect(parseProduct({ ...OIKOS, name: "  OIKOS ", brand: "", code: null, servingG: null, servingText: undefined, per100: { kcal: "52", proteinG: 9.6, carbsG: 3.5, fatG: 0 } })).toEqual({ ...OIKOS, brand: null, code: null, servingG: null, servingText: null });
-    // per 100 g, a nutrient can be more than a food may hold of it (salt holds 38 758 mg of sodium in 100 g), and keeps two decimals
     expect(parseProduct({ ...OIKOS, nutrients: { sodiumMg: 38758.4, ironMg: 0.05, satFatG: null } })!.nutrients).toEqual({ sodiumMg: 38758.4, ironMg: 0.05 });
     for (const [bad, message] of [
       ["yogurt", /not an object/],
@@ -265,5 +262,12 @@ describe("the foods used lately", () => {
     log({ day: "2026-10-12", meal: "lunch", items: [{ name: "rice", kcal: 260 }] });
     log({ day: "2026-10-12", meal: "lunch", items: [{ name: "Theirs", kcal: 1 }] }, "SAM");
     expect(recentFoods(store, "MED").map((f) => [f.name, f.kcal, f.meal])).toEqual([["rice", 260, "lunch"], ["Chicken", 300, "dinner"]]);
+  });
+
+  it("lists a food once when it was logged at different quantities, as it was last logged", () => {
+    log({ day: "2026-10-10", meal: "breakfast", items: [{ name: "Oats · 40 g", kcal: 150 }] });
+    log({ day: "2026-10-11", meal: "dinner", items: [{ name: "Chicken", kcal: 300 }] });
+    log({ day: "2026-10-12", meal: "breakfast", items: [{ name: "oats · 60 g", kcal: 225 }] });
+    expect(recentFoods(store, "MED").map((f) => [f.name, f.kcal])).toEqual([["oats · 60 g", 225], ["Chicken", 300]]);
   });
 });

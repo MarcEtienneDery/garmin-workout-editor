@@ -1,19 +1,12 @@
 import { GarminConnect } from "@flow-js/garmin-connect";
 import { normalizeActivityType } from "./shared/activityType";
 
-/**
- * Get the most recent mock client instance
- * Useful for configuring mock behavior in individual tests
- */
 export const getMockClient = (): any => {
   const mock = GarminConnect as unknown as jest.Mock;
   const instance = mock.mock.results[mock.mock.results.length - 1]?.value;
   return instance;
 };
 
-/**
- * Reset all mock calls and implementations
- */
 export const resetMockClient = () => {
   const mock = GarminConnect as unknown as jest.Mock;
   mock.mockClear();
@@ -36,15 +29,12 @@ const STRENGTH_EXERCISES: { category: string; subCategory?: string; typicalWeigh
   { category: "CARDIO", subCategory: "CARDIO", typicalWeight: 0 },
 ];
 
-/**
- * Generate mock interval data for running activities
- */
 const buildMockIntervals = (): any[] => {
   const intervalCount = 6;
   return Array.from({ length: intervalCount }, (_, index) => {
-    const duration = Math.floor(Math.random() * 45) + 60; // 60-105s
-    const distanceMeters = Math.floor(Math.random() * 200) + 300; // 300-500m
-    const averageSpeed = distanceMeters / duration; // m/s
+    const duration = Math.floor(Math.random() * 45) + 60;
+    const distanceMeters = Math.floor(Math.random() * 200) + 300;
+    const averageSpeed = distanceMeters / duration;
     const avgHR = Math.floor(Math.random() * 25) + 150;
     const maxHR = avgHR + Math.floor(Math.random() * 15) + 5;
 
@@ -59,9 +49,6 @@ const buildMockIntervals = (): any[] => {
   });
 };
 
-/**
- * Generate mock activities for testing
- */
 export const generateMockActivities = (limit: number): any[] => {
   const activityTypes = ["strength_training", "running", "other"];
   const activities: any[] = [];
@@ -85,10 +72,10 @@ export const generateMockActivities = (limit: number): any[] => {
       startTimeLocal: date.toISOString(),
       duration:
         activityType === "strength_training"
-          ? Math.floor(Math.random() * 1800) + 2400 // 40-70 min
+          ? Math.floor(Math.random() * 1800) + 2400
           : activityType === "running"
-          ? Math.floor(Math.random() * 1800) + 1500 // 25-55 min
-          : Math.floor(Math.random() * 900) + 1200, // 20-35 min
+          ? Math.floor(Math.random() * 1800) + 1500
+          : Math.floor(Math.random() * 900) + 1200,
       averageHR:
         activityType === "other"
           ? Math.floor(Math.random() * 20) + 70
@@ -100,10 +87,10 @@ export const generateMockActivities = (limit: number): any[] => {
       aerobicTrainingEffect:
         activityType === "other"
           ? 0.0
-          : Math.round((Math.random() * 3 + 2) * 10) / 10, // 2.0 - 5.0
+          : Math.round((Math.random() * 3 + 2) * 10) / 10,
       anaerobicTrainingEffect:
         activityType === "strength_training"
-          ? Math.round((Math.random() * 2 + 1) * 10) / 10 // 1.0 - 3.0
+          ? Math.round((Math.random() * 2 + 1) * 10) / 10
           : 0.0,
       trainingEffectLabel:
         activityType === "strength_training"
@@ -127,9 +114,8 @@ export const generateMockActivities = (limit: number): any[] => {
           : 0,
     };
 
-    // Add type-specific fields
     if (activityType === "strength_training") {
-      const numExercises = Math.floor(Math.random() * 3) + 4; // 4-6 exercises
+      const numExercises = Math.floor(Math.random() * 3) + 4;
       const usedIndices = new Set<number>();
       const exerciseSets = [];
 
@@ -139,13 +125,13 @@ export const generateMockActivities = (limit: number): any[] => {
         usedIndices.add(idx);
 
         const exercise = STRENGTH_EXERCISES[idx];
-        const sets = Math.floor(Math.random() * 2) + 2; // 2-3 sets
-        const repsPerSet = Math.floor(Math.random() * 8) + 5; // 5-12 reps
+        const sets = Math.floor(Math.random() * 2) + 2;
+        const repsPerSet = Math.floor(Math.random() * 8) + 5;
         const totalReps = sets * repsPerSet;
         const weightLbs = exercise.typicalWeight > 0
           ? Math.round(exercise.typicalWeight * (0.8 + Math.random() * 0.4))
           : 0;
-        const maxWeight = weightLbs > 0 ? Math.round(weightLbs * 453.6) : 0; // tenths of grams
+        const maxWeight = weightLbs > 0 ? Math.round(weightLbs * 453.6) : 0;
         const volume = maxWeight > 0 ? sets * repsPerSet * maxWeight : 0;
 
         exerciseSets.push({
@@ -162,8 +148,8 @@ export const generateMockActivities = (limit: number): any[] => {
       baseActivity.totalReps = exerciseSets.reduce((sum, ex) => sum + ex.reps, 0);
       baseActivity.summarizedExerciseSets = exerciseSets;
     } else if (activityType === "running") {
-      baseActivity.distance = Math.floor(Math.random() * 6000) + 5000; // 5-11 km in meters
-      baseActivity.averageSpeed = Math.random() * 1.5 + 2.6; // 2.6-4.1 m/s
+      baseActivity.distance = Math.floor(Math.random() * 6000) + 5000;
+      baseActivity.averageSpeed = Math.random() * 1.5 + 2.6;
       baseActivity.averageRunningCadenceInStepsPerMinute = Math.floor(Math.random() * 15) + 170;
       baseActivity.elevationGain = Math.floor(Math.random() * 60) + 10;
       baseActivity.intervals = buildMockIntervals();
@@ -175,11 +161,7 @@ export const generateMockActivities = (limit: number): any[] => {
   return activities;
 };
 
-/**
- * Generate mock workouts for testing
- */
 export const generateMockWorkouts = (limit: number = 4): any[] => {
-  // A basic mock workout structure
   const mockWorkouts: any[] = [];
   
   for (let i = 0; i < limit; i++) {

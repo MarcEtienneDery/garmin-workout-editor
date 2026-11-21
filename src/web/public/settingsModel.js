@@ -1,12 +1,3 @@
-/*
- * settingsModel.js — the logic of the Settings view: how long ago or from now a time is, what state the Renpho sync is
- * in, how a weigh-in and a log line read.
- *
- * Pure functions on what GET /api/settings returns ({ garmin, web, renpho: { account, settings, state, counts, recent, log }, encryption }),
- * the checks of the web sign-in password typed twice (the server makes the same ones, in the same words), and the daily food goals form
- * (what it sends, and a note on how the macros' calories compare with the calorie goal).
- * Loaded by the page as a plain script; the tests require() it.
- */
 (function (root, factory) {
   const api = factory();
   if (typeof module === "object" && module.exports) module.exports = api;
@@ -17,12 +8,9 @@
   const MIN = 60_000, HOUR = 3_600_000, DAY = 86_400_000;
   const unit = (ms) => (ms < HOUR ? `${Math.max(1, Math.round(ms / MIN))} min` : ms < DAY ? `${Math.round(ms / HOUR)} h` : `${Math.round(ms / DAY)} d`);
 
-  /** "3 min ago", "2 h ago", "just now"; "never" when there is no time. */
   const ago = (at, now) => (at === null || at === undefined ? "never" : now - at < 45_000 ? "just now" : `${unit(now - at)} ago`);
-  /** "in 2 h", "due now"; an en dash when there is no time. */
   const until = (at, now) => (at === null || at === undefined ? "–" : at <= now ? "due now" : `in ${unit(at - now)}`);
 
-  /** The label and colour of the Renpho sync's state: a chip. */
   function renphoStatus(view, now) {
     const { account, settings, state } = view;
     if (!account) return { label: "No login", cls: "" };
@@ -33,10 +21,8 @@
     return state.lastOkAt ? { label: `On, every ${settings.intervalHours} h`, cls: "ok" } : { label: "On, waiting for the first run", cls: "warn" };
   }
 
-  /** Where a weigh-in stands with Garmin. */
   const uploadState = (m) => (m.pushedAt ? { label: "on Garmin", cls: "ok" } : m.pushError ? { label: "failed", cls: "err" } : { label: "not uploaded", cls: "" });
 
-  /** The numbers of a weigh-in the table lists, in the order and with the names Renpho uses, as Renpho sent them. */
   const FIELDS = [
     { key: "weight", label: "weight" }, { key: "bodyfat", label: "bodyfat" }, { key: "water", label: "water" }, { key: "muscle", label: "muscle" },
     { key: "bone", label: "bone" }, { key: "bmi", label: "bmi" }, { key: "visfat", label: "visfat" }, { key: "bodyage", label: "bodyage" }, { key: "bmr", label: "bmr" }, { key: "weightUnit", label: "unit" },
@@ -44,16 +30,13 @@
   const value = (v) => (v === null || v === undefined || v === "" ? "–" : typeof v === "number" ? String(Math.round(v * 100) / 100) : String(v));
   const cell = (m, field) => value(m.fields[field.key]);
 
-  /** "2026-10-18 14:05" from a time in milliseconds, in the browser's zone. */
   const stamp = (ms) => {
     const d = new Date(ms), p = (n) => String(n).padStart(2, "0");
     return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
   };
 
-  /** The fewest characters of a web sign-in password. */
   const MIN_PASSWORD = 8;
 
-  /** What is wrong with a password typed in two fields, in words for the person; "" when it is fine. */
   function passwordProblem(password, confirm) {
     if (!password) return "Enter a password.";
     if (password.length < MIN_PASSWORD) return `The password is at least ${MIN_PASSWORD} characters.`;
@@ -61,17 +44,11 @@
     return "";
   }
 
-  /** What is wrong with the form that adds a profile (a name, and the password twice); "" when it is fine. */
   function profileProblem(name, password, confirm) {
     if (!/^[A-Za-z0-9_-]{1,64}$/.test(String(name).trim())) return "A profile name is letters, numbers, hyphens and underscores, at most 64.";
     return passwordProblem(password, confirm);
   }
 
-  /**
-   * The number typed in a goal field, NaN when it is not one. A comma is a thousands separator when three digits follow it and the figure
-   * does not start with 0 ("2,000" is 2000, "1,234,567" too), else a decimal comma ("150,5"); with a comma and a point, the last of the two is
-   * the decimal one ("1.234,5", "1,234.5"); spaces and apostrophes between digits group them ("2 000", "2'000").
-   */
   function goalNumber(text) {
     let t = String(text == null ? "" : text).trim().replace(/[\s\u00a0\u202f']/g, "");
     if (t.includes(",") && t.includes(".")) {
@@ -82,11 +59,6 @@
     return t === "" ? NaN : Number(t);
   }
 
-  /**
-   * The patch to send for the goals form: `texts` holds what is typed in each field (by key), `fields` is what GET /api/settings lists, `current`
-   * the goals now set. A field with a number sets that goal, an empty one removes the goal if there is one (null), else it is left out. Or
-   * what is wrong ({ error }). The server checks the same and the upper limits.
-   */
   function goalsPatch(texts, fields, current) {
     const goals = {};
     for (const f of fields) {
@@ -104,7 +76,6 @@
     return { goals };
   }
 
-  /** What the typed protein, carbs and fat goals add up to in calories (4, 4 and 9 a gram), against the calorie goal; "" until all three are typed. */
   function macroGoalsNote(texts) {
     const n = (key) => { const v = goalNumber(texts[key]); return Number.isFinite(v) && v > 0 ? v : null; };
     const [p, c, f, k] = [n("proteinG"), n("carbsG"), n("fatG"), n("kcal")];
@@ -116,14 +87,9 @@
   }
 
 
-  // ── The overview, the sections' state and the preview of the goals ─────────
 
   const when = (ms, now) => ago(ms, now);
 
-  /**
-   * How the Garmin login stands, for its tile and chip: { label, tone (ok / warn / err / ""), text }. `check` is what the last test of the login said
-   * (null: never tested, or the login changed since); `mock` is mock mode, where nothing reaches Garmin.
-   */
   function garminState(g, mock, now) {
     if (g.error) return { label: "Key unreadable", tone: "err", text: "The saved password is encrypted with a key this server does not have: set CREDENTIALS_KEY as it was, or connect Garmin again." };
     if (!g.connected) return { label: "Not connected", tone: "", text: "Optional: plans, the calendar, food and a Renpho scale work without it." };
@@ -133,14 +99,12 @@
     return c.ok ? { label: "Connected", tone: "ok", text: `${g.email || "The login"}: accepted ${when(c.at, now)}.` } : { label: "Login refused", tone: "err", text: `${c.message || "Garmin refused the login."} (${when(c.at, now)}).` };
   }
 
-  /** The sentence on the Renpho tile and its tone. */
   function renphoTile(view, now) {
     const s = renphoStatus(view, now);
     const last = view.state && view.state.lastOkAt ? `last weigh-in sync ${when(view.state.lastOkAt, now)}` : view.account ? "no run yet" : "";
     return { label: s.label, tone: s.cls, text: view.account ? `${view.account.email || "A login"}${last ? ` · ${last}` : ""}` : "Optional: weigh-ins from a Renpho scale." };
   }
 
-  /** The Food AI tile: which AI answers, and how many estimates are left today. */
   function aiTile(ai) {
     if (!ai) return { label: "Unknown", tone: "", text: "" };
     if (!ai.enabled) return { label: "Off", tone: "", text: "No AI is set up for the Food view; the search, the barcode and typing by hand still work." };
@@ -148,7 +112,6 @@
     return { label: name, tone: "ok", text: `${ai.remaining} of ${ai.limit} estimates left today` };
   }
 
-  /** The sign-in and storage tile: the password of the profile, and how the saved passwords are kept. */
   function signinTile(d) {
     const enc = d.encryption || { enabled: false, plain: 0 };
     if (!d.web.hasPassword) return { label: "No password", tone: "warn", text: "This profile cannot sign in on its own yet." };
@@ -156,7 +119,6 @@
     return { label: "Password set", tone: "ok", text: enc.enabled ? "Saved passwords are encrypted." : "Saved passwords are kept as plain text (no CREDENTIALS_KEY)." };
   }
 
-  /** What needs attention: { items: [{ key, tone, title, text, fix: { label, section } }], headline }. */
   function overview(d, ctx, now) {
     const items = [], g = garminState(d.garmin, ctx.mock, now), r = d.renpho, enc = d.encryption || { enabled: false, plain: 0 };
     if (g.tone === "err") items.push({ key: "garmin", tone: "err", title: g.label === "Login refused" ? "Garmin refused the login" : "The saved Garmin password cannot be read", text: g.label === "Login refused" ? "Sync, health data and sending workouts are stopped until it is fixed." : g.text, fix: { label: "Fix it", section: "connections" } });
@@ -170,7 +132,6 @@
     return { items, headline: n ? `${n} thing${n === 1 ? "" : "s"} need${n === 1 ? "s" : ""} attention` : "Everything is set up", ok: !n, worst: items.some((i) => i.tone === "err") ? "err" : n ? "warn" : "ok" };
   }
 
-  /** The goals set, as chips: [{ key, value, unit, label }] for the Overview. The weight goal is not a food goal and is shown by the caller in its unit. */
   function goalChips(goals) {
     const v = goals.values || {}, out = [];
     for (const f of goals.fields || []) {
@@ -180,15 +141,10 @@
     return out;
   }
 
-  /** The count of food goals set (the share of the burn and the weight are not food goals). */
   const goalCount = (goals) => Object.keys(goals.values || {}).filter((k) => k !== "kcalBurnPct" && k !== "weightKg").length;
 
-  const TOLERANCE = 0.1; // the same 10 % that counts as on target in the Food view (nutritionModel.js TARGET_TOLERANCE)
+  const TOLERANCE = 0.1;
 
-  /**
-   * A sample day against the calorie and macro goals, for the preview: what is eaten is `fraction` of the calorie goal (the macros in proportion
-   * to their goals). Rows { label, amount, goal, pct (0 to 1), state: short / ok / over }.
-   */
   function previewDay(values, fraction) {
     const rows = [];
     const add = (label, goal, unit) => { if (typeof goal === "number" && goal > 0) { const amount = Math.round(goal * fraction), pct = Math.min(1, fraction); rows.push({ label, amount, goal, unit, pct, state: fraction > 1 + TOLERANCE ? "over" : fraction >= 1 - TOLERANCE ? "ok" : "short" }); } };
@@ -196,7 +152,6 @@
     return { rows, left: typeof values.kcal === "number" ? Math.round(values.kcal * (1 - fraction)) : null };
   }
 
-  /** The worked example for a calorie goal that follows the burn: { base, pct, active, total, text }, or null without both. */
   function burnExample(values, active = 800) {
     const base = values.kcal, pct = values.kcalBurnPct;
     if (typeof base !== "number" || typeof pct !== "number") return null;
@@ -205,7 +160,6 @@
     return { base, pct, active, total, text: `${n(base)} + ${pct} % × ${n(active)} = ${n(total)} kcal` };
   }
 
-  /** The checklist beside the new password: [{ ok, text }]. */
   function passwordChecklist(password, confirm) {
     return [
       { ok: password.length >= MIN_PASSWORD, text: `At least ${MIN_PASSWORD} characters` },
@@ -214,17 +168,10 @@
   }
 
 
-  /** What the setup lines carry in place of the server's address and the token, until there is one to put there. */
   const HOST_PLACEHOLDER = "https://<your-mcp-host>", TOKEN_PLACEHOLDER = "<your-token>";
 
-  /** The name a client lists the server under: garmin-<profile>, in lower case with only letters, digits and hyphens. */
   const mcpServerName = (profile) => "garmin-" + (String(profile == null ? "" : profile).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "editor");
 
-  /**
-   * The lines that set an assistant up to use the MCP server as one profile: the address to add as a connector, the Claude Code command and a
-   * .mcp.json entry. `url` is where the server is reached from outside (null: a placeholder host stands in), `token` the profile's token (null:
-   * a placeholder, as the token is only shown when it is made).
-   */
   function mcpSnippets({ url, token, profile }) {
     const base = url || HOST_PLACEHOLDER, secret = token || TOKEN_PLACEHOLDER, name = mcpServerName(profile);
     return [
@@ -234,7 +181,6 @@
     ];
   }
 
-  /** What the Settings view says of a profile's token: "Made 2 d ago, last used 3 h ago". */
   const mcpTokenLine = (info, now) => `Made ${ago(info.createdAt, now)}; ${info.lastUsedAt === null ? "not used yet" : `last used ${ago(info.lastUsedAt, now)}`}.`;
 
 

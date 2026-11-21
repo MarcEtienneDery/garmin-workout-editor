@@ -1,8 +1,3 @@
-/**
- * The workout form on a phone: a workout tapped in the outline opens in the form on the Editor tab, the JSON is one tap away, a set
- * line is two columns of fields a thumb can use (16 px, so the phone does not zoom in), a ⋯ menu is a sheet at the foot of the screen
- * and the exercise picker fills the screen. Nothing sticks out past the screen's width.
- */
 import { test, expect as baseExpect, openView, type Page, type Profile } from "../support/fixtures";
 
 declare const editor: any;
@@ -26,7 +21,6 @@ const RUN = {
   ],
 };
 
-/** Four exercises, so a set line can be scrolled up to the top of the pane, and notes of two lines (their box grows to them once drawn). */
 const PULL = {
   workoutName: "Pull", workoutType: "strength_training", description: "Heavy and short.\nStop each set with two reps in the tank.",
   steps: ["BARBELL_DEADLIFT", "BENT_OVER_ROW_WITH_BARBELL", "PULL_UP", "BARBELL_SHOULDER_PRESS"].map((exerciseName, i) => (
@@ -45,7 +39,6 @@ async function openPlan(page: Page, profile: Profile): Promise<void> {
   await expect(page.locator("#current")).toContainText(path.split("/").pop()!);
 }
 
-/** Tap a workout in the Outline tab: it opens in the form, on the Editor tab. */
 async function openWorkout(page: Page, name: string): Promise<void> {
   await page.locator(`#tabbar button[data-tab="outline"]`).tap();
   await page.locator("#outline .row.wk .name", { hasText: name }).tap();
@@ -124,7 +117,7 @@ test("nothing in the form sticks out past the screen's width", async ({ me, prof
 test("the form stays where it was scrolled to when a change draws it again", async ({ me, profile }) => {
   await openPlan(me, profile);
   await openWorkout(me, "Legs");
-  await me.locator("#pform .wf-pic > summary").tap(); // the muscles it works: the form is then taller than the screen
+  await me.locator("#pform .wf-pic > summary").tap();
   await expect(me.locator("#pform .wf-pic .wvbox")).toBeVisible();
   const pane = me.locator("#pform");
   await pane.evaluate((el) => { el.scrollTop = el.scrollHeight; });
@@ -141,7 +134,6 @@ test("a button tapped near the top of the pane stays under the finger when the f
   await openWorkout(me, "Pull");
   const pane = me.locator("#pform");
   const plus = me.locator("#pform .wf-line").nth(1).getByRole("button", { name: "Sets: one more" });
-  // the button just under the top of the pane: the browser's scroll anchoring once moved it up by the notes box's second line
   await plus.evaluate((el) => { const box = el.closest("#pform")!; box.scrollTop += el.getBoundingClientRect().top - box.getBoundingClientRect().top - 12; });
   const top = await pane.evaluate((el) => el.getBoundingClientRect().top);
   const at = (await plus.boundingBox())!.y;

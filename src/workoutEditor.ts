@@ -20,7 +20,6 @@ import {
   WorkoutBuilder,
 } from "@flow-js/garmin-connect";
 
-// Valid stepType values (from Garmin API)
 export const VALID_STEP_TYPES = [
   "warmup",
   "cooldown",
@@ -32,7 +31,6 @@ export const VALID_STEP_TYPES = [
   "other",
 ] as const;
 
-// Valid endCondition values (from Garmin API)
 export const VALID_END_CONDITIONS = [
   "reps",
   "time",
@@ -43,7 +41,6 @@ export const VALID_END_CONDITIONS = [
   "heart.rate",
 ] as const;
 
-// Valid targetType values (from Garmin API)
 export const VALID_TARGET_TYPES = [
   "no.target",
   "heart.rate.zone",
@@ -56,9 +53,6 @@ export const VALID_TARGET_TYPES = [
 
 const EXERCISE_CATEGORY_MAP = exerciseCategoryMap as Record<string, string>;
 
-/**
- * Workout management, import, export, and scheduling
- */
 export class WorkoutEditor {
   private garminClient: GarminClient;
 
@@ -66,33 +60,19 @@ export class WorkoutEditor {
     this.garminClient = garminClient;
   }
 
-  /**
-   * Type guard for valid stepType
-   */
   private isValidStepType(value: any): boolean {
     return typeof value === "string" && ((VALID_STEP_TYPES) as readonly string[]).includes(value);
   }
 
-  /**
-   * Type guard for valid endCondition
-   */
   private isValidEndCondition(value: any): boolean {
     return typeof value === "string" && ((VALID_END_CONDITIONS) as readonly string[]).includes(value);
   }
 
-  /**
-   * Type guard for valid targetType
-   */
   private isValidTargetType(value: any): boolean {
     return typeof value === "string" && ((VALID_TARGET_TYPES) as readonly string[]).includes(value);
   }
 
-  /**
-   * Strict validation for a single workout step
-   * Throws immediately on validation errors
-   */
   private validateWorkoutStep(step: WorkoutStep, stepIndex: number): void {
-    // Required: stepType
     if (!step.stepType) {
       throw new Error(
         `Step ${stepIndex}: Missing required field 'stepType'`
@@ -104,7 +84,6 @@ export class WorkoutEditor {
       );
     }
 
-    // Required: endCondition (for most step types)
     if (!step.endCondition && step.stepType !== "rest") {
       throw new Error(
         `Step ${stepIndex}: Missing required field 'endCondition' for ${step.stepType}`
@@ -116,28 +95,24 @@ export class WorkoutEditor {
       );
     }
 
-    // Required: endConditionValue (if endCondition is set, except lap.button)
     if (step.endCondition && step.endCondition !== "lap.button" && step.endConditionValue === undefined) {
       throw new Error(
         `Step ${stepIndex}: Missing required field 'endConditionValue' when endCondition is '${step.endCondition}'`
       );
     }
 
-    // Type validation: endConditionValue must be a number
     if (step.endConditionValue !== undefined && typeof step.endConditionValue !== "number") {
       throw new Error(
         `Step ${stepIndex}: Field 'endConditionValue' must be a number, got ${typeof step.endConditionValue}`
       );
     }
 
-    // Range validation: endConditionValue must be positive (except lap.button which uses 0)
     if (step.endConditionValue !== undefined && step.endCondition !== "lap.button" && step.endConditionValue <= 0) {
       throw new Error(
         `Step ${stepIndex}: Field 'endConditionValue' must be positive, got ${step.endConditionValue}`
       );
     }
 
-    // Required: targetType
     if (!step.targetType) {
       throw new Error(
         `Step ${stepIndex}: Missing required field 'targetType'`
@@ -149,7 +124,6 @@ export class WorkoutEditor {
       );
     }
 
-    // Type validation: targetValueOne and targetValueTwo must be numbers if present
     if (step.targetValueOne !== undefined && typeof step.targetValueOne !== "number") {
       throw new Error(
         `Step ${stepIndex}: Field 'targetValueOne' must be a number, got ${typeof step.targetValueOne}`
@@ -161,7 +135,6 @@ export class WorkoutEditor {
       );
     }
 
-    // Weight validation
     if (step.weight !== undefined) {
       if (typeof step.weight !== "number") {
         throw new Error(
@@ -173,7 +146,6 @@ export class WorkoutEditor {
           `Step ${stepIndex}: Field 'weight' cannot be negative, got ${step.weight}`
         );
       }
-      // Reasonable range check (0-1000 lbs)
       if (step.weight > 1000) {
         throw new Error(
           `Step ${stepIndex}: Field 'weight' seems unreasonably high (${step.weight} lbs). Check if value is correct.`
@@ -181,7 +153,6 @@ export class WorkoutEditor {
       }
     }
 
-    // Weight percentage validation
     if (step.weightPercentage !== undefined) {
       if (typeof step.weightPercentage !== "number") {
         throw new Error(
@@ -193,7 +164,6 @@ export class WorkoutEditor {
           `Step ${stepIndex}: Field 'weightPercentage' must be between 0 and 200, got ${step.weightPercentage}`
         );
       }
-      // Must have benchmarkKey if using percentage
       if (!step.benchmarkKey) {
         throw new Error(
           `Step ${stepIndex}: Field 'benchmarkKey' is required when 'weightPercentage' is set`
@@ -201,7 +171,6 @@ export class WorkoutEditor {
       }
     }
 
-    // For interval/exercise steps with weight or reps, exerciseName should be provided (warning only)
     if ((step.stepType === "interval" || step.stepType === "exercise") && 
         (step.weight !== undefined || step.reps !== undefined) && 
         !step.exerciseName) {
@@ -210,7 +179,6 @@ export class WorkoutEditor {
       );
     }
 
-    // If exerciseName is present, it must map to a Garmin exercise category.
     if (step.exerciseName) {
       const { mapKey, category } = this.resolveExerciseCategory(step.exerciseName);
       if (!category) {
@@ -220,7 +188,6 @@ export class WorkoutEditor {
       }
     }
 
-    // Reps validation
     if (step.reps !== undefined) {
       if (typeof step.reps !== "number") {
         throw new Error(
@@ -234,7 +201,6 @@ export class WorkoutEditor {
       }
     }
 
-    // Duration validation
     if (step.durationSeconds !== undefined) {
       if (typeof step.durationSeconds !== "number") {
         throw new Error(
@@ -248,7 +214,6 @@ export class WorkoutEditor {
       }
     }
 
-    // Distance validation
     if (step.distanceMeters !== undefined) {
       if (typeof step.distanceMeters !== "number") {
         throw new Error(
@@ -262,7 +227,6 @@ export class WorkoutEditor {
       }
     }
 
-    // Rest time validation
     if (step.restTimeSeconds !== undefined) {
       if (typeof step.restTimeSeconds !== "number") {
         throw new Error(
@@ -276,7 +240,6 @@ export class WorkoutEditor {
       }
     }
 
-    // Number of repeats validation
     if (step.numberOfRepeats !== undefined) {
       if (typeof step.numberOfRepeats !== "number") {
         throw new Error(
@@ -290,21 +253,18 @@ export class WorkoutEditor {
       }
     }
 
-    // Field interdependency: if endCondition is 'reps', reps field should match
     if (step.endCondition === "reps" && step.reps !== undefined && step.reps !== step.endConditionValue) {
       throw new Error(
         `Step ${stepIndex}: Mismatch between 'reps' (${step.reps}) and 'endConditionValue' (${step.endConditionValue})`
       );
     }
 
-    // Field interdependency: if endCondition is 'time', durationSeconds should match
     if (step.endCondition === "time" && step.durationSeconds !== undefined && step.durationSeconds !== step.endConditionValue) {
       throw new Error(
         `Step ${stepIndex}: Mismatch between 'durationSeconds' (${step.durationSeconds}) and 'endConditionValue' (${step.endConditionValue})`
       );
     }
 
-    // Field interdependency: if endCondition is 'distance', distanceMeters should match
     if (step.endCondition === "distance" && step.distanceMeters !== undefined && step.distanceMeters !== step.endConditionValue) {
       throw new Error(
         `Step ${stepIndex}: Mismatch between 'distanceMeters' (${step.distanceMeters}) and 'endConditionValue' (${step.endConditionValue})`
@@ -312,26 +272,19 @@ export class WorkoutEditor {
     }
   }
 
-  /**
-   * Strict validation for a single workout
-   * Throws immediately on validation errors
-   */
   validateWorkout(workout: DetailedWorkout): void {
-    // Required: workoutName
     if (!workout.workoutName || typeof workout.workoutName !== "string") {
       throw new Error(
         `Invalid workout: Missing or invalid 'workoutName'`
       );
     }
 
-    // Required: steps array (can be empty, but must exist)
     if (!workout.steps || !Array.isArray(workout.steps)) {
       throw new Error(
         `Invalid workout '${workout.workoutName}': Missing or invalid 'steps' array`
       );
     }
 
-    // Validate each step
     workout.steps.forEach((step, index) => {
       try {
         this.validateWorkoutStep(step, index + 1);
@@ -343,10 +296,6 @@ export class WorkoutEditor {
     });
   }
 
-  /**
-   * Validate multiple workouts for upload and collect all errors
-   * Returns array of error messages (empty if all valid)
-   */
   validateWorkoutsForUpload(workouts: DetailedWorkout[]): string[] {
     const errors: string[] = [];
 
@@ -382,9 +331,6 @@ export class WorkoutEditor {
     });
   }
 
-  /**
-   * Format exercise name from Garmin subcategory (e.g., "BARBELL_BENCH_PRESS" -> "Barbell Bench Press")
-   */
   private formatExerciseName(subcategoryKey: string | undefined): string {
     if (!subcategoryKey) return "Unknown Exercise";
     return subcategoryKey
@@ -393,42 +339,26 @@ export class WorkoutEditor {
       .join(" ");
   }
 
-  /**
-   * Convert Garmin weight to lbs, to the hundredth as a plan keeps a weight typed in kg: Garmin keeps a workout's weight to the
-   * gram, so 100 kg (220.46 lb) reads back as 220.46 lb, not 220 (99.8 kg), and a whole number of pounds as itself
-   * If weightUnit is already in pounds, return as-is (rounded)
-   * Otherwise, assume weight is in grams and convert: weight_lbs = weight / 453.59237
-   */
   private convertGarminWeight(weightValue: number, weightUnit?: { unitKey?: string; factor?: number }): number {
     if (weightValue === 0) return 0;
     const hundredth = (lb: number) => Math.round(lb * 100) / 100;
 
-    // If already in pounds, just round
     if (weightUnit?.unitKey === "pound") {
       return hundredth(weightValue);
     }
 
-    // Otherwise assume grams and convert to lbs
     return hundredth(weightValue / 453.59237);
   }
 
-  /**
-   * Transform raw Garmin workout steps to structured format
-   * Recursively flattens RepeatGroupDTO steps, merges rest into exercises,
-   * converts weights to lbs, and extracts parallel fields
-   */
   private transformWorkoutSteps(steps: IWorkoutStep[]): WorkoutStep[] {
     if (!steps || !Array.isArray(steps)) {
       return [];
     }
 
-    // First pass: recursively flatten all steps (including nested RepeatGroupDTO)
     const flattenedSteps = this.flattenSteps(steps);
 
-    // Second pass: merge first rest step into preceding exercise
     const mergedSteps = this.mergeRestIntoExercises(flattenedSteps);
 
-    // Third pass: renumber stepOrder sequentially
     mergedSteps.forEach((step, index) => {
       step.stepOrder = index + 1;
     });
@@ -436,25 +366,17 @@ export class WorkoutEditor {
     return mergedSteps;
   }
 
-  /**
-   * Recursively flatten workout steps, expanding RepeatGroupDTO nested structures
-   */
   private flattenSteps(steps: any[], groupCounter: { value: number } = { value: 0 }): WorkoutStep[] {
     const flattened: WorkoutStep[] = [];
 
     for (const step of steps) {
-      // Check if this is a RepeatGroupDTO
       if (step.type === "RepeatGroupDTO" && step.workoutSteps && Array.isArray(step.workoutSteps)) {
-        // Assign a unique index for this group so it can be reconstructed separately
         const groupIndex = groupCounter.value++;
 
-        // Extract numberOfIterations
         const numberOfRepeats = step.numberOfIterations;
 
-        // Recursively flatten nested steps
         const nestedSteps = this.flattenSteps(step.workoutSteps, groupCounter);
 
-        // Add numberOfRepeats and repeatGroupIndex to each nested step
         nestedSteps.forEach((nestedStep) => {
           nestedStep.numberOfRepeats = numberOfRepeats;
           nestedStep.repeatGroupIndex = groupIndex;
@@ -462,7 +384,6 @@ export class WorkoutEditor {
 
         flattened.push(...nestedSteps);
       } else {
-        // Regular ExecutableStepDTO - transform to WorkoutStep
         const workoutStep = this.transformSingleStep(step);
         flattened.push(workoutStep);
       }
@@ -471,43 +392,33 @@ export class WorkoutEditor {
     return flattened;
   }
 
-  /**
-   * Transform a single workout step (ExecutableStepDTO)
-   */
   private transformSingleStep(step: any): WorkoutStep {
     const workoutStep: WorkoutStep = {
       stepType: step.stepType?.stepTypeKey || "exercise",
     };
 
-    // Exercise fields
     if (step.exerciseName) {
       workoutStep.exerciseName = step.exerciseName;
     }
 
-    // Target information
     if (step.targetType?.workoutTargetTypeKey) {
       workoutStep.targetType = step.targetType.workoutTargetTypeKey;
     }
 
-    // Target values (for pace, HR, power, etc.)
-    // Only include if non-zero or if there's a meaningful targetType
     const hasMeaningfulTarget = workoutStep.targetType && workoutStep.targetType !== "no.target";
     
     if (step.targetValueOne !== null && step.targetValueOne !== undefined) {
-      // Include if non-zero OR if there's a meaningful target type
       if (step.targetValueOne !== 0 || hasMeaningfulTarget) {
         workoutStep.targetValueOne = step.targetValueOne;
       }
     }
 
     if (step.targetValueTwo !== null && step.targetValueTwo !== undefined) {
-      // Include if non-zero OR if there's a meaningful target type
       if (step.targetValueTwo !== 0 || hasMeaningfulTarget) {
         workoutStep.targetValueTwo = step.targetValueTwo;
       }
     }
 
-    // End condition (how the step ends)
     if (step.endCondition?.conditionTypeKey) {
       workoutStep.endCondition = step.endCondition.conditionTypeKey;
     }
@@ -515,7 +426,6 @@ export class WorkoutEditor {
     if (step.endConditionValue !== null && step.endConditionValue !== undefined) {
       workoutStep.endConditionValue = step.endConditionValue;
 
-      // Extract parallel fields based on endCondition type
       if (workoutStep.endCondition === "reps") {
         workoutStep.reps = step.endConditionValue;
       } else if (workoutStep.endCondition === "time") {
@@ -525,13 +435,10 @@ export class WorkoutEditor {
       }
     }
 
-    // Weight/Equipment - convert to lbs
     if (step.weightValue !== null && step.weightValue !== undefined) {
       workoutStep.weight = this.convertGarminWeight(step.weightValue, step.weightUnit);
     }
 
-    // Weight percentage (for percentage-based programming like "75% of 1RM")
-    // Check both weightDisplayUnit (old format) and benchmarkPercentage (Garmin's 1RM tracking)
     if (step.weightDisplayUnit?.unitKey === "percent" && step.weightValue !== null && step.weightValue !== undefined) {
       workoutStep.weightPercentage = step.weightValue;
     } else if (step.benchmarkPercentage !== null && step.benchmarkPercentage !== undefined) {
@@ -541,15 +448,11 @@ export class WorkoutEditor {
       }
     }
 
-    // Step ordering (will be renumbered later)
     workoutStep.stepOrder = step.stepOrder;
 
     return workoutStep;
   }
 
-  /**
-   * Merge first rest step into preceding exercise as restTimeSeconds
-   */
   private mergeRestIntoExercises(steps: WorkoutStep[]): WorkoutStep[] {
     const merged: WorkoutStep[] = [];
     let i = 0;
@@ -557,24 +460,19 @@ export class WorkoutEditor {
     while (i < steps.length) {
       const currentStep = steps[i];
 
-      // Check if next step is a rest step
       if (i + 1 < steps.length && steps[i + 1].stepType === "rest") {
         const restStep = steps[i + 1];
 
-        // Merge rest time into current step
         if (restStep.durationSeconds !== undefined) {
           currentStep.restTimeSeconds = restStep.durationSeconds;
         } else if (restStep.endConditionValue !== undefined) {
           currentStep.restTimeSeconds = restStep.endConditionValue;
         }
 
-        // Add current step with merged rest
         merged.push(currentStep);
 
-        // Skip the rest step (it's been merged)
         i += 2;
       } else {
-        // No rest to merge, add step as-is
         merged.push(currentStep);
         i++;
       }
@@ -583,9 +481,6 @@ export class WorkoutEditor {
     return merged;
   }
 
-  /**
-   * Fetch detailed workout information from Garmin
-   */
   async fetchWorkoutDetails(workoutId: number | string): Promise<IWorkoutDetail | null> {
     try {
       const client = this.garminClient.getClientAny();
@@ -610,10 +505,6 @@ export class WorkoutEditor {
     }
   }
 
-  /**
-   * Fetch a single workout by ID and transform it into DetailedWorkout format.
-   * Returns null if the workout can't be found.
-   */
   async fetchWorkout(workoutId: number | string): Promise<DetailedWorkout | null> {
     if (this.garminClient.isMockMode()) {
       const workouts = await this.fetchWorkouts(true);
@@ -633,20 +524,14 @@ export class WorkoutEditor {
     return this.transformSingleWorkout(details);
   }
 
-  /** Plan-format view of a workout detail fetched from Garmin (no request). */
   fromGarminDetail(detail: IWorkoutDetail): DetailedWorkout {
     return this.transformSingleWorkout(detail);
   }
 
-  /**
-   * What Garmin holds for `workout` once it is uploaded, in plan format: the workout is
-   * built in Garmin's format and transformed back, so it can be compared with a fetched one.
-   */
   toGarminCanonical(workout: DetailedWorkout): DetailedWorkout {
     return this.transformSingleWorkout(this.buildGarminWorkoutDetail(workout));
   }
 
-  /** The library listing (one request, no steps), with the dates needed to tell whether a workout changed. */
   async listWorkoutSummaries(): Promise<
     {
       workoutId: number | string;
@@ -666,10 +551,6 @@ export class WorkoutEditor {
     }));
   }
 
-  /**
-   * Fetch and transform workouts in a single session
-   * Returns both raw and transformed data
-   */
   async fetchWorkoutsWithRaw(includeDetails: boolean = true): Promise<{
     transformed: DetailedWorkout[];
     raw: any[];
@@ -677,7 +558,6 @@ export class WorkoutEditor {
     try {
       console.log("📥 Fetching workouts from Garmin...");
 
-      // Use mock data if in mock mode
       if (this.garminClient.isMockMode()) {
         const { generateMockWorkouts } = await import("./mocks.setup");
         const mockWorkouts = generateMockWorkouts(10);
@@ -740,26 +620,22 @@ export class WorkoutEditor {
             const workout = workouts[i];
             const details = await this.fetchWorkoutDetails(workout.workoutId);
 
-            // Store raw details
             rawWorkouts.push({
               ...workout,
               ...(details || {}),
             });
 
-            // Transform and store
             let steps: WorkoutStep[] = [];
             let totalSets = 0;
             let totalReps = 0;
             let estimatedDurationSeconds = 0;
 
             if (details && details.workoutSegments) {
-              // Process all steps from all segments
               details.workoutSegments.forEach((segment: IWorkoutSegment) => {
                 if (segment.workoutSteps && Array.isArray(segment.workoutSteps)) {
                   const segmentSteps = this.transformWorkoutSteps(segment.workoutSteps);
                   steps.push(...segmentSteps);
 
-                  // Calculate totals from steps
                   segmentSteps.forEach((step) => {
                     if (step.targetValueOne) {
                       if (step.endCondition === 'rep') totalReps += step.targetValueOne;
@@ -785,7 +661,6 @@ export class WorkoutEditor {
               `  ✓ ${i + 1}/${workouts.length}: ${workout.workoutName}`
             );
 
-            // Add delay to avoid rate limiting
             if (i < workouts.length - 1) {
               await new Promise((resolve) => setTimeout(resolve, 500));
             }
@@ -793,7 +668,6 @@ export class WorkoutEditor {
             console.warn(
               `  ⚠️  Could not fetch full details for workout ${workouts[i].workoutId}: ${error.message}`
             );
-            // Add basic info even if details failed
             rawWorkouts.push(workouts[i]);
             detailedWorkouts.push({
               workoutId: workouts[i].workoutId,
@@ -804,7 +678,6 @@ export class WorkoutEditor {
           }
         }
       } else {
-        // No detailed fetch, just return basic info
         detailedWorkouts.push(
           ...workouts.map((workout: any) => ({
             workoutId: workout.workoutId,
@@ -826,26 +699,16 @@ export class WorkoutEditor {
     }
   }
 
-  /**
-   * Fetch raw workouts from Garmin (before transformation)
-   */
   async fetchRawWorkouts(includeDetails: boolean = true): Promise<any[]> {
     const result = await this.fetchWorkoutsWithRaw(includeDetails);
     return result.raw;
   }
 
-  /**
-   * Fetch workouts from Garmin with full exercise details
-   */
   async fetchWorkouts(includeDetails: boolean = true): Promise<DetailedWorkout[]> {
     const result = await this.fetchWorkoutsWithRaw(includeDetails);
     return result.transformed;
   }
 
-  /**
-   * Transform a single raw workout into DetailedWorkout format
-   * @param workout - Raw workout from Garmin API
-   */
   private transformSingleWorkout(workout: any): DetailedWorkout {
     let steps: WorkoutStep[] = [];
     let totalSets = 0;
@@ -853,13 +716,11 @@ export class WorkoutEditor {
     let estimatedDurationSeconds = 0;
 
     if (workout.workoutSegments && Array.isArray(workout.workoutSegments)) {
-      // Process all steps from all segments
       workout.workoutSegments.forEach((segment: IWorkoutSegment) => {
         if (segment.workoutSteps && Array.isArray(segment.workoutSteps)) {
           const segmentSteps = this.transformWorkoutSteps(segment.workoutSteps);
           steps.push(...segmentSteps);
 
-          // Calculate totals from steps
           segmentSteps.forEach((step) => {
             if (step.targetValueOne) {
               if (step.endCondition === 'rep') totalReps += step.targetValueOne;
@@ -882,26 +743,16 @@ export class WorkoutEditor {
     };
   }
 
-  /**
-   * Transform raw workouts array to DetailedWorkout format
-   * @param rawWorkouts - Array of raw workouts from Garmin API
-   */
   private transformWorkouts(rawWorkouts: any[]): DetailedWorkout[] {
     return rawWorkouts.map((workout) => this.transformSingleWorkout(workout));
   }
 
-  /**
-   * Parse and check a workout plan given as JSON text.
-   */
   parseWorkoutPlan(raw: string): WeeklyWorkoutPlan {
     const plan = JSON.parse(raw) as WeeklyWorkoutPlan;
     this.validateWorkoutPlan(plan);
     return plan;
   }
 
-  /**
-   * Schedule workouts from a plan on Garmin calendar
-   */
   async scheduleWorkoutPlan(plan: WeeklyWorkoutPlan): Promise<void> {
     const authenticated = await this.garminClient.ensureAuthenticated();
     if (!authenticated) {
@@ -974,7 +825,6 @@ export class WorkoutEditor {
           const errorMsg = (error.message || "").toLowerCase();
           const errorBody = JSON.stringify(error).toLowerCase();
           
-          // Check for 404 (workout not found/already deleted) - skip silently
           if (errorMsg.includes("404") || errorBody.includes("not found")) {
             console.log(
               `ℹ️  Skipped workout not found in Garmin (already deleted): ${workout.workoutName}`
@@ -982,7 +832,6 @@ export class WorkoutEditor {
             continue;
           }
           
-          // Check for 409 Conflict or "already scheduled" patterns
           if (errorMsg.includes("409") || errorMsg.includes("conflict") || 
               errorMsg.includes("already") || errorBody.includes("already")) {
             console.log(
@@ -1003,10 +852,6 @@ export class WorkoutEditor {
     }
   }
 
-  /**
-   * Upload workouts from a plan and then schedule them
-   * Handles both new workout creation and scheduling to calendar
-   */
   async uploadAndScheduleWorkoutPlan(plan: WeeklyWorkoutPlan): Promise<void> {
     const authenticated = await this.garminClient.ensureAuthenticated();
     if (!authenticated) {
@@ -1017,7 +862,6 @@ export class WorkoutEditor {
 
     const client = this.garminClient.getClientAny();
     
-    // Step 1: Upload workouts - create new ones and update existing ones
     console.log("📤 Uploading workouts to Garmin...\n");
     
     for (const workout of plan.workouts) {
@@ -1032,19 +876,15 @@ export class WorkoutEditor {
         }
       }
 
-      // For running workouts WITHOUT structured steps, use simple addRunningWorkout
-      // For workouts WITH structured steps (including heart rate zones), use full createWorkout
       if (workout.workoutType === "running" && workout.distanceMeters && 
           (!workout.steps || workout.steps.length === 0)) {
         try {
-          // Try to delete existing if has ID (but don't fail if delete doesn't work)
           if (workout.workoutId && client.deleteWorkout) {
             try {
               console.log(`  🗑️  Deleting existing running workout: ${workout.workoutName} (ID: ${workout.workoutId})`);
               await client.deleteWorkout({ workoutId: String(workout.workoutId) });
               console.log(`     ✓ Deleted`);
             } catch (deleteError: any) {
-              // Delete failed - continue with creation anyway
               console.log(`     ℹ️  Could not delete (${deleteError.message ? deleteError.message.split('\n')[0] : 'unknown error'}) - attempting to create anyway`);
             }
           }
@@ -1064,20 +904,17 @@ export class WorkoutEditor {
         continue;
       }
 
-      // For all other workouts AND running workouts with steps/targets, use full structured upload
       console.log(`\n📋 Processing ${workout.workoutName}:`);
       console.log(`   Type: ${workout.workoutType}, Steps: ${workout.steps?.length || 0}`);
       
       if (workout.steps && workout.steps.length > 0) {
         try {
-          // Try to delete existing if has ID (but don't fail if delete doesn't work)
           if (workout.workoutId && client.deleteWorkout) {
             try {
               console.log(`  🗑️  Deleting existing workout: ${workout.workoutName} (ID: ${workout.workoutId})`);
               await client.deleteWorkout({ workoutId: String(workout.workoutId) });
               console.log(`     ✓ Deleted`);
             } catch (deleteError: any) {
-              // Delete failed (might already be deleted or part of a plan) - continue with creation anyway
               console.log(`     ℹ️  Could not delete (${deleteError.message ? deleteError.message.split('\n')[0] : 'unknown error'}) - attempting to create anyway`);
             }
           }
@@ -1100,13 +937,11 @@ export class WorkoutEditor {
         continue;
       }
 
-      // Warn if we can't create it
       console.warn(
         `⚠️  Cannot create workout without steps or distance: ${workout.workoutName}`
       );
     }
 
-    // Step 2: Schedule workouts to calendar (reuse existing auth)
     console.log("\n📅 Scheduling workouts to calendar...\n");
     
     if (!client.scheduleWorkout) {
@@ -1152,7 +987,6 @@ export class WorkoutEditor {
           const errorMsg = (error.message || "").toLowerCase();
           const errorBody = JSON.stringify(error).toLowerCase();
           
-          // Check for 404 (workout not found/already deleted)
           if (errorMsg.includes("404") || errorBody.includes("not found")) {
             console.log(
               `ℹ️  Skipped workout not found in Garmin (already deleted): ${workout.workoutName}`
@@ -1160,7 +994,6 @@ export class WorkoutEditor {
             continue;
           }
           
-          // Check for "already scheduled" patterns (409 Conflict, or message containing keywords)
           if (errorMsg.includes("409") || errorMsg.includes("conflict") || 
               errorMsg.includes("already") || errorBody.includes("already")) {
             console.log(
@@ -1181,16 +1014,10 @@ export class WorkoutEditor {
     }
   }
 
-  /**
-   * Convert weight from lbs back to grams (reverse of convertGarminWeight)
-   */
   private convertWeightToGrams(weightLbs: number): number {
     return Math.round(weightLbs * 453.59237);
   }
 
-  /**
-   * Build Garmin rest step DTO
-   */
   private buildGarminRestStep(restSeconds: number): any {
     return {
       type: "ExecutableStepDTO",
@@ -1224,9 +1051,6 @@ export class WorkoutEditor {
     };
   }
 
-  /**
-   * Assign sequential stepOrder to all executable steps in traversal order
-   */
   private assignSequentialStepOrder(steps: any[]): void {
     let order = 1;
 
@@ -1247,11 +1071,6 @@ export class WorkoutEditor {
     visit(steps);
   }
 
-  /**
-   * Unflatten workout steps: reverse the merge and flatten operations
-   * 1. Split merged restTimeSeconds back into separate rest steps
-   * 2. Rebuild RepeatGroupDTO structures using repeatGroupIndex (unique per original group)
-   */
   private unflattenSteps(steps: WorkoutStep[]): any[] {
     const orderedSteps = [...steps].sort(
       (a, b) => (a.stepOrder ?? Number.MAX_SAFE_INTEGER) - (b.stepOrder ?? Number.MAX_SAFE_INTEGER)
@@ -1270,7 +1089,6 @@ export class WorkoutEditor {
       for (const step of currentGroupSteps) {
         garminSteps.push(this.convertStepToGarminFormat(step));
 
-        // Re-expand merged rest step
         if (step.restTimeSeconds !== undefined && step.restTimeSeconds > 0) {
           garminSteps.push(this.buildGarminRestStep(step.restTimeSeconds));
         }
@@ -1299,7 +1117,6 @@ export class WorkoutEditor {
       const idx = step.repeatGroupIndex;
 
       if (idx === undefined) {
-        // Non-repeat step: flush any pending group, then emit immediately
         flushGroup();
         const garminStep = this.convertStepToGarminFormat(step);
         unflattened.push(garminStep);
@@ -1308,30 +1125,22 @@ export class WorkoutEditor {
           unflattened.push(this.buildGarminRestStep(step.restTimeSeconds));
         }
       } else if (idx !== currentGroupIndex) {
-        // New repeat group started: flush previous group
         flushGroup();
         currentGroupIndex = idx;
         currentGroupSteps.push(step);
       } else {
-        // Same repeat group: accumulate
         currentGroupSteps.push(step);
       }
     }
 
-    // Flush final group
     flushGroup();
 
-    // Ensure deterministic executable step ordering for Garmin ingestion
     this.assignSequentialStepOrder(unflattened);
 
     return unflattened;
   }
 
-  /**
-   * Convert a WorkoutStep back to Garmin ExecutableStepDTO format
-   */
   private convertStepToGarminFormat(step: WorkoutStep): any {
-    // A cooldown has no "open" target on Garmin: it is sent (and compared with Garmin's copy) as no.target.
     const targetTypeKey = step.stepType === "cooldown" && step.targetType === "open" ? "no.target" : step.targetType || "no.target";
     const garminStep: any = {
       type: "ExecutableStepDTO",
@@ -1364,7 +1173,6 @@ export class WorkoutEditor {
       secondaryZoneNumber: null,
     };
 
-    // Add preferredEndConditionUnit for distance
     if (step.endCondition === "distance") {
       garminStep.preferredEndConditionUnit = {
         unitId: 1,
@@ -1373,7 +1181,6 @@ export class WorkoutEditor {
       };
     }
 
-    // Add exercise name and derive category if present
     if (step.exerciseName) {
       garminStep.exerciseName = step.exerciseName;
       const category = this.getCategoryFromExerciseName(step.exerciseName);
@@ -1382,7 +1189,6 @@ export class WorkoutEditor {
       }
     }
 
-    // Add weight if present (Garmin expects pounds for strength steps)
     if (step.weight !== undefined && step.weight > 0) {
       garminStep.weightValue = step.weight;
       garminStep.weightUnit = {
@@ -1392,7 +1198,6 @@ export class WorkoutEditor {
       };
     }
 
-    // Add weight percentage if present (both benchmarkKey and benchmarkPercentage required together)
     if (step.weightPercentage !== undefined && step.benchmarkKey) {
       garminStep.benchmarkPercentage = step.weightPercentage;
       garminStep.benchmarkKey = step.benchmarkKey;
@@ -1401,10 +1206,6 @@ export class WorkoutEditor {
     return garminStep;
   }
 
-  /**
-   * Normalize arbitrary exercise names to Garmin map keys.
-   * Example: "Barbell Bench Press" -> "BARBELL_BENCH_PRESS"
-   */
   private normalizeExerciseMapKey(exerciseName: string): string {
     let key = exerciseName
       .trim()
@@ -1420,9 +1221,6 @@ export class WorkoutEditor {
     return key;
   }
 
-  /**
-   * Resolve Garmin category and normalized key for an exercise name.
-   */
   private resolveExerciseCategory(exerciseName: string): {
     mapKey: string;
     category: string | null;
@@ -1434,17 +1232,10 @@ export class WorkoutEditor {
     };
   }
 
-  /**
-   * Derive exercise category from exercise name using authoritative Garmin lookup table.
-   * Source: src/exercise-category-map.json (parsed from Garmin's exercise picker HTML).
-   */
   private getCategoryFromExerciseName(exerciseName: string): string | null {
     return this.resolveExerciseCategory(exerciseName).category;
   }
 
-  /**
-   * Get Garmin stepTypeId from stepType key
-   */
   private getStepTypeId(stepTypeKey: string): number {
     const mapping: { [key: string]: number } = {
       warmup: 1,
@@ -1456,12 +1247,9 @@ export class WorkoutEditor {
       repeat: 6,
       other: 7,
     };
-    return mapping[stepTypeKey] || 6; // default to exercise
+    return mapping[stepTypeKey] || 6;
   }
 
-  /**
-   * Get Garmin endConditionId from endCondition key
-   */
   private getEndConditionId(endConditionKey: string): number {
     const mapping: { [key: string]: number } = {
       "lap.button": 1,
@@ -1475,9 +1263,6 @@ export class WorkoutEditor {
     return mapping[endConditionKey] || 1;
   }
 
-  /**
-   * Get Garmin targetTypeId from targetType key
-   */
   private getTargetTypeId(targetTypeKey: string): number {
     const mapping: { [key: string]: number } = {
       "no.target": 1,
@@ -1488,16 +1273,12 @@ export class WorkoutEditor {
       "cadence.zone": 7,
       open: 8,
     };
-    return mapping[targetTypeKey] || 1; // default to no.target
+    return mapping[targetTypeKey] || 1;
   }
 
-  /**
-   * Build Garmin IWorkoutDetail from DetailedWorkout
-   */
   private buildGarminWorkoutDetail(workout: DetailedWorkout): IWorkoutDetail {
     const garminSteps = workout.steps ? this.unflattenSteps(workout.steps) : [];
 
-    // DEBUG: Log the generated steps
     if (process.env.DEBUG_WORKOUTS) {
       console.log(`\n[DEBUG] Building Garmin format for: ${workout.workoutName}`);
       console.log(`[DEBUG] Input steps: ${workout.steps?.length || 0}`);
@@ -1588,27 +1369,19 @@ export class WorkoutEditor {
     return workoutDetail;
   }
 
-  /**
-   * Get Garmin sportTypeId from workout type key
-   */
   private getSportTypeId(workoutTypeKey: string): number {
     const mapping: { [key: string]: number } = {
       running: 1,
       cycling: 2,
-      cardio: 1,  // fallback to running
+      cardio: 1,
       strength_training: 5,
-      swimming: 1,  // fallback to running
+      swimming: 1,
       other: 0,
     };
     return mapping[workoutTypeKey] || 0;
   }
 
-  /**
-   * Upload a single workout to Garmin (delete existing if present, then create new)
-   * Returns the new workoutId on success, null on failure.
-   */
   async uploadWorkout(workout: DetailedWorkout, dryRun: boolean = false): Promise<number | null> {
-    // Validate workout first
     try {
       this.validateWorkout(workout);
     } catch (error: any) {
@@ -1623,7 +1396,6 @@ export class WorkoutEditor {
       if (workout.steps && workout.steps.length > 0) {
         console.log(`     Steps: ${workout.steps.length} exercises`);
         
-        // DEBUG: Show Garmin format for first workout
         if (process.env.DEBUG_WORKOUTS && dryRun) {
           const garminWorkout = this.buildGarminWorkoutDetail(workout);
           const garminSteps = garminWorkout.workoutSegments?.[0]?.workoutSteps || [];
@@ -1646,10 +1418,9 @@ export class WorkoutEditor {
           console.log(`       ... and ${workout.steps.length - 3} more`);
         }
       }
-      return -1; // sentinel for dry-run success
+      return -1;
     }
 
-    // Authenticate
     const authenticated = await this.garminClient.ensureAuthenticated();
     if (!authenticated) {
       throw this.garminClient.authError();
@@ -1658,7 +1429,6 @@ export class WorkoutEditor {
     const client = this.garminClient.getClientAny();
 
     try {
-      // Delete existing workout if it has an ID
       if (workout.workoutId) {
         console.log(`  🗑️  Deleting existing workout: ${workout.workoutName} (ID: ${workout.workoutId})`);
         
@@ -1670,10 +1440,8 @@ export class WorkoutEditor {
         }
       }
 
-      // Transform to Garmin format
       const garminWorkout = this.buildGarminWorkoutDetail(workout);
 
-      // Create new workout
       console.log(`  📤 Creating workout: ${workout.workoutName}`);
       
       if (!client.createWorkout) {
@@ -1691,7 +1459,6 @@ export class WorkoutEditor {
     }
   }
 
-  /** Delete a workout from the Garmin library. */
   async deleteWorkout(workoutId: number | string): Promise<void> {
     const authenticated = await this.garminClient.ensureAuthenticated();
     if (!authenticated) {
@@ -1705,18 +1472,12 @@ export class WorkoutEditor {
     console.log(`🗑️  Deleted workout ${workoutId}`);
   }
 
-  /**
-   * Put one workout of the Garmin library on one day of the calendar. Unlike scheduleWorkoutPlan, which carries on past a
-   * workout Garmin does not have or refuses, this throws: the caller asked for this workout and no other. `day` is YYYY-MM-DD
-   * and is sent as midnight UTC, as the dates of a plan are, so what Garmin receives does not depend on the server's time zone.
-   */
   async scheduleWorkout(workoutId: number | string, day: string): Promise<{ workoutName: string }> {
     const authenticated = await this.garminClient.ensureAuthenticated();
     if (!authenticated) {
       throw this.garminClient.authError();
     }
 
-    // fetchWorkoutDetails answers null for any failure, so the log says which one it was
     const detail = await this.fetchWorkoutDetails(workoutId);
     if (!detail) {
       throw new Error(
@@ -1733,10 +1494,6 @@ export class WorkoutEditor {
     return { workoutName: detail.workoutName };
   }
 
-  /**
-   * The workouts Garmin's calendar has on these days (YYYY-MM-DD), each month read once: the id of each entry, which
-   * unscheduleWorkout takes, the library workout it puts on the day, and the day.
-   */
   async scheduledOn(days: string[]): Promise<{ scheduleId: number; workoutId: number | null; date: string }[]> {
     const authenticated = await this.garminClient.ensureAuthenticated();
     if (!authenticated) {
@@ -1749,7 +1506,7 @@ export class WorkoutEditor {
     const entries: { scheduleId: number; workoutId: number | null; date: string }[] = [];
     for (const month of new Set(days.map((day) => day.slice(0, 7)))) {
       const [year, m] = month.split("-").map(Number);
-      const calendar = await client.getMonthCalendarEvents(year, m - 1); // Garmin counts the months from 0
+      const calendar = await client.getMonthCalendarEvents(year, m - 1);
       for (const item of calendar?.calendarItems ?? []) {
         if (item?.itemType === "workout" && days.includes(item.date)) entries.push({ scheduleId: item.id, workoutId: item.workoutId ?? null, date: item.date });
       }
@@ -1757,7 +1514,6 @@ export class WorkoutEditor {
     return entries;
   }
 
-  /** Take one entry off Garmin's calendar (an id scheduledOn gives); the workout stays in the library. */
   async unscheduleWorkout(scheduleId: number | string): Promise<void> {
     const authenticated = await this.garminClient.ensureAuthenticated();
     if (!authenticated) {
@@ -1767,15 +1523,10 @@ export class WorkoutEditor {
     if (!client.client?.delete || !client.url?.SCHEDULE_WORKOUT) {
       throw new Error("Removing a calendar entry is not available on this Garmin client");
     }
-    // the client has no call for it: the URL that schedules a workout by its id removes an entry by the entry's id
     await client.client.delete(client.url.SCHEDULE_WORKOUT(scheduleId));
     console.log(`🗑️  Removed calendar entry ${scheduleId}`);
   }
 
-  /**
-   * Upload the workouts of a plan given as JSON text: `raw` is the JSON text, `save` receives the JSON text with the
-   * new workoutIds written in, and `source` names where the workouts came from in the log.
-   */
   async uploadWorkoutsFromText(
     raw: string,
     dryRun: boolean,
@@ -1784,12 +1535,10 @@ export class WorkoutEditor {
   ): Promise<{ successful: number; failed: number; failedWorkouts: string[] }> {
     console.log(`📂 Loading workouts from ${source}...`);
 
-    // Load workouts
     const data = JSON.parse(raw);
     
     let workouts: DetailedWorkout[] = [];
     
-    // Handle both direct array and WeeklyWorkoutPlan wrapper
     if (Array.isArray(data)) {
       workouts = data;
     } else if (data.workouts && Array.isArray(data.workouts)) {
@@ -1803,7 +1552,6 @@ export class WorkoutEditor {
     if (dryRun) {
       console.log("🔍 DRY-RUN MODE: Validating workouts without uploading\n");
       
-      // Validate all workouts and collect errors
       const errors = this.validateWorkoutsForUpload(workouts);
       
       if (errors.length > 0) {
@@ -1814,7 +1562,6 @@ export class WorkoutEditor {
       
       console.log("📋 All workouts are valid. Preview:\n");
       
-      // Show preview of each workout
       for (let i = 0; i < workouts.length; i++) {
         await this.uploadWorkout(workouts[i], true);
       }
@@ -1829,7 +1576,6 @@ export class WorkoutEditor {
       };
     }
 
-    // Actual upload
     console.log("📤 Uploading workouts to Garmin...\n");
     
     let successful = 0;
@@ -1852,13 +1598,11 @@ export class WorkoutEditor {
         failedWorkouts.push(workout.workoutName);
       }
 
-      // Rate limiting: wait 1 second between uploads (except for last one)
       if (i < workouts.length - 1) {
         await new Promise((resolve) => setTimeout(resolve, 1000));
       }
     }
 
-    // Write updated IDs back to where the workouts came from
     if (idsUpdated > 0) {
       save(JSON.stringify(Array.isArray(data) ? workouts : { ...data, workouts }, null, 2));
       console.log(`\n📝 Updated ${idsUpdated} workout ID(s) in ${source}`);
@@ -1879,10 +1623,6 @@ export class WorkoutEditor {
     return { successful, failed, failedWorkouts };
   }
 
-  /**
-   * Send workouts to a connected Garmin device.
-   * Requires a deviceId (from getDevices) and an array of workouts with workoutId/workoutName.
-   */
   async sendWorkoutsToDevice(
     workouts: { workoutId: number; workoutName: string }[],
     deviceId?: number
@@ -1895,14 +1635,12 @@ export class WorkoutEditor {
     let targetDeviceId = deviceId;
 
     if (!targetDeviceId) {
-      // Auto-detect: pick the first active device
       console.log("🔍 Looking up registered devices...");
       const devices = await this.garminClient.getDevices();
       if (!devices || devices.length === 0) {
         throw new Error("No registered devices found on your Garmin account");
       }
 
-      // Prefer a device that looks like a watch (has deviceTypePk, not a bike computer etc.)
       const device = devices[0];
       targetDeviceId = device.deviceId;
       console.log(`📱 Using device: ${device.displayName || device.deviceId}`);

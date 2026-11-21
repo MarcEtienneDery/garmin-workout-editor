@@ -1,11 +1,3 @@
-/**
- * The workout form of the Plans view: a plan opens on it (its week, its notes, its workouts) with the JSON one tap away, a workout
- * opens in it from the plan's list, the outline or the picker above it, and every change it makes is in the JSON at once (Undo,
- * Save). Strength workouts are exercises with lines of sets (the exercise picker, supersets, sets of their own, reps or a time,
- * a weight in lb or kg, or a percentage of the 1RM); runs and rides are steps and repeats with one target each.
- *
- * Every test makes its own plan for its own profile: workout-plans/ is one namespace, so the file carries the profile's name.
- */
 import { test, expect as baseExpect, openView } from "../support/fixtures";
 import type { APIRequestContext, Page } from "@playwright/test";
 
@@ -43,7 +35,6 @@ async function makePlan(api: APIRequestContext, name: string, workouts?: unknown
   return path;
 }
 
-/** Open the Plans view with the plan open, once the editor can act. */
 async function openPlan(page: Page, path: string): Promise<void> {
   await openView(page, "plans");
   await expect.poll(() => page.evaluate(() => typeof editor !== "undefined" && !!editor && document.getElementById("new")!.onclick !== null)).toBe(true);
@@ -57,19 +48,16 @@ const stepsOf = async (page: Page, i: number): Promise<Step[]> => (await workout
 const form = (page: Page) => page.locator("#pform");
 const card = (page: Page, text: string) => form(page).locator(".wf-list > .wf-card").filter({ hasText: text });
 
-/** Open workout `name` of the open plan in the form, from the outline. */
 async function openWorkout(page: Page, name: string): Promise<void> {
   await page.locator("#outline .row.wk .name").filter({ hasText: name }).click();
   await expect(form(page).locator(".wf-name")).toHaveValue(name);
 }
 
-/** Type into a field of the form and leave it (a field writes when it is left, like a change typed into the JSON). */
 async function typeIn(field: ReturnType<Page["locator"]>, value: string): Promise<void> {
   await field.fill(value);
   await field.press("Tab");
 }
 
-/** Pick an item of a ⋯ menu. */
 async function menuPick(page: Page, menuLabel: string, item: string, scope = form(page)): Promise<void> {
   await scope.getByRole("button", { name: menuLabel, exact: true }).first().click();
   await page.locator(".wf-menu").getByRole("menuitem", { name: item, exact: true }).click();
@@ -85,7 +73,7 @@ test.describe("The workout form: opening", () => {
     await expect(form(me).getByLabel("to", { exact: true })).toHaveValue("2026-11-08");
     await expect(form(me).getByLabel("Notes", { exact: true })).toHaveValue("Base block");
     await expect(me.locator("#outline .row.wk .name")).toHaveText(["Legs", "Intervals"]);
-    await expect(form(me).locator(".sg")).toBeVisible(); // the plan day by day
+    await expect(form(me).locator(".sg")).toBeVisible();
 
     await me.locator("#emode button[data-mode=json]").click();
     await expect(me.locator("#editor")).toBeVisible();
@@ -166,7 +154,7 @@ test.describe("The workout form: name, type, days", () => {
     await expect(me.locator("#save")).toBeDisabled();
     const saved = JSON.parse((await (await profile.api.get(enc(path))).json()).text);
     expect(saved.workouts[0].workoutName).toBe("Leg day");
-    expect(saved.workouts[0].steps).toEqual(LEGS.steps); // the steps were not touched
+    expect(saved.workouts[0].steps).toEqual(LEGS.steps);
   });
 
   test("Undo takes a change of the form back, and Redo makes it again", async ({ me, profile }) => {
@@ -436,7 +424,7 @@ test.describe("The workout form: runs and rides", () => {
     const path = await makePlan(profile.api, profile.name);
     await openPlan(me, path);
     await openWorkout(me, "Intervals");
-    const cards = form(me).locator(".wf-list > .wf-card"); // (a step's kind list names every kind, so its text does not tell the cards apart)
+    const cards = form(me).locator(".wf-list > .wf-card");
     await menuPick(me, "More for this step", "Move up", cards.last());
     let steps = await stepsOf(me, 1);
     expect(steps.map((s) => s.stepType)).toEqual(["warmup", "cooldown", "interval", "recovery"]);
@@ -470,7 +458,6 @@ test.describe("The workout form: runs and rides", () => {
 
 test.describe("The workout form: what the estimate says", () => {
   test("the overview says how long the workout takes, and how it was timed behind its ⓘ", async ({ me, profile }) => {
-    // the runs come once the form is drawn (as on a slow line): it is drawn again with them
     await me.route("**/api/runs*", async (route) => { await new Promise((done) => setTimeout(done, 800)); await route.continue(); });
     const path = await makePlan(profile.api, profile.name);
     await openPlan(me, path);
@@ -479,7 +466,7 @@ test.describe("The workout form: what the estimate says", () => {
     await expect(summary).toContainText("km");
     await summary.getByRole("button", { name: "About the estimate" }).click();
     await expect(form(me).locator(".wf-pic + .help")).toContainText("Steps with no pace target");
-    await expect(form(me).locator(".wf-pic")).toHaveAttribute("open", ""); // the ⓘ opens the note, not the box
+    await expect(form(me).locator(".wf-pic")).toHaveAttribute("open", "");
   });
 
   test("a workout with no steps says so, and its first step is a tap away", async ({ me, profile }) => {
@@ -499,12 +486,10 @@ test.describe("The workout form: moving a card, and a step's JSON", () => {
     await openPlan(me, path);
     await openWorkout(me, "Intervals");
     const cards = form(me).locator(".wf-list > .wf-card");
-    // the cards away from the pane's edges, where a drag scrolls the pane: the picture shut, the pane at its top
     await form(me).locator(".wf-pic > summary").click();
     await expect(form(me).locator(".wf-pic")).not.toHaveAttribute("open", "");
     await form(me).evaluate((el) => { el.scrollTop = 0; });
     const drag = async (from: number, to: number, cancel = false) => {
-      // both cards on screen first: the pane is taller than the window
       await cards.nth(to).scrollIntoViewIfNeeded();
       await cards.nth(from).locator(".wf-grip").scrollIntoViewIfNeeded();
       const a = (await cards.nth(from).locator(".wf-grip").boundingBox())!, b = (await cards.nth(to).boundingBox())!;

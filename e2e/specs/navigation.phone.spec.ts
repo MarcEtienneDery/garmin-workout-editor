@@ -1,20 +1,10 @@
-/**
- * The phone layout's frame: the strip of views in the header, the account menu, and the rule that no view makes the page scroll
- * sideways at 412 px. Runs on the Pixel 7 project (`--project=phone`), against alice's data (read only).
- */
 import { test, expect, openView, type Page } from "../support/fixtures";
 
-// The suite shares this machine with other runs, so a step can take longer than the default 30 s on a loaded box.
 test.setTimeout(60_000);
 
-/**
- * On a phone the page never scrolls sideways: each view is laid out to the width, and whatever is wider lives in a box that scrolls
- * by itself (the strip of views, a table). Returns the elements that stick out past the width outside such a box.
- */
 async function stickingOut(page: Page): Promise<string[]> {
   return page.evaluate(() => {
     const width = document.documentElement.clientWidth;
-    // what an element can show of itself: its own box, cut at the edge of every box above it that clips (hidden, scroll, auto)
     const shownRight = (el: Element) => {
       let right = el.getBoundingClientRect().right;
       for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) {
@@ -35,10 +25,8 @@ async function stickingOut(page: Page): Promise<string[]> {
   });
 }
 
-/** The page's own width against the screen's: a sideways scroll of the whole page would show as scrollWidth above clientWidth. */
 const pageWidth = (page: Page) => page.evaluate(() => ({ scroll: document.documentElement.scrollWidth, client: document.documentElement.clientWidth }));
 
-/** Whether a button of the strip is wholly inside the strip's visible part (the strip scrolls; the button must be reachable). */
 async function expectInStrip(page: Page, buttonId: string) {
   await expect
     .poll(() =>
@@ -51,7 +39,6 @@ async function expectInStrip(page: Page, buttonId: string) {
     .toBe(true);
 }
 
-/** Each view waits for what it draws once its data is in, so the width is measured on the finished layout. */
 const settled: Record<string, (page: Page) => Promise<void>> = {
   today: (page) => expect(page.locator("#tbody")).not.toContainText("Loading…"),
   plans: (page) => expect(page.locator("#filelist .file").first()).toBeVisible(),

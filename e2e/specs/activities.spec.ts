@@ -1,8 +1,3 @@
-/**
- * The Activities view as alice sees it (the seeded profile with 27 stored activities and no Garmin login): the list by week,
- * the calendar with the planned workouts, and the lifetime stats. The server's own answers are the oracle for the numbers.
- * Rows that open a page are covered by activity-detail.spec.ts.
- */
 import type { Page } from "@playwright/test";
 import { test, expect, openView, loginAs, ADMIN_TOKEN, PASSWORD, daysAgo, daysAhead, today, mondayOf } from "../support/fixtures";
 
@@ -28,21 +23,18 @@ interface Stored {
   detailed: boolean;
 }
 
-/** What the server holds for alice: the rows the list is drawn from, and its sync counts. */
 async function storedFor(page: Page) {
   const res = await page.context().request.get("/api/activities?profile=alice");
   expect(res.ok()).toBeTruthy();
   return (await res.json()) as { activities: Stored[]; sync: { activities: number; withDetails: number; withCharts: number } };
 }
 
-/** The server's lifetime numbers for alice. */
 async function statsFor(page: Page) {
   const res = await page.context().request.get("/api/activities/stats?profile=alice");
   expect(res.ok()).toBeTruthy();
   return (await res.json()).stats;
 }
 
-/** Let the page's list request through, then change the rows it was given (an extra activity, one taken away). */
 async function editList(page: Page, edit: (rows: Stored[]) => Stored[]) {
   await page.route(/\/api\/activities\?/, async (route) => {
     const response = await route.fetch();
@@ -51,7 +43,6 @@ async function editList(page: Page, edit: (rows: Stored[]) => Stored[]) {
   });
 }
 
-/** Let the page's calendar request through, then change the plans it was given. */
 async function editPlans(page: Page, edit: (plans: any[]) => any[]) {
   await page.route(/\/api\/calendar/, async (route) => {
     const response = await route.fetch();
@@ -71,9 +62,7 @@ const durationText = (s: number) => {
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 const exact = (s: string) => new RegExp(`^${s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`);
 const label = (type: string) => type.split("_").map((w) => w[0].toUpperCase() + w.slice(1)).join(" ");
-/** The first day of the month after (or before) the month of an ISO day. */
 
-/** The weeks of some rows, newest first, the way the list groups them: each with its totals. */
 function weekTotals(rows: Stored[]) {
   const by = new Map<string, Stored[]>();
   for (const r of [...rows].sort(newestFirst)) {
@@ -90,7 +79,6 @@ function weekTotals(rows: Stored[]) {
 }
 
 const row = (page: Page, name: string) => page.locator("#alist .arow").filter({ has: page.locator(".nm", { hasText: exact(name) }) });
-/** A record of the Stats view, by its label (exactly: "1 km" is not "10 km"). */
 const record = (page: Page, label: string) => page.locator(".srec").filter({ has: page.locator(".srl", { hasText: exact(label) }) });
 const tile = (page: Page, block: string, name: string) =>
   page.locator("#astats .acard", { has: page.locator(".aeyebrow", { hasText: exact(block) }) }).locator(".stile", { has: page.locator("small", { hasText: exact(name) }) }).locator("b");
@@ -131,7 +119,6 @@ test.describe("Activities list", () => {
     await expect(alice.locator("#alist .arow")).toHaveCount(activities.length);
     const names = await alice.locator("#alist .arow .nm").allInnerTexts();
     expect(names).toEqual([...activities].sort(newestFirst).map((a) => a.name));
-    // the gym session at 18:00 is listed above the morning run of the same day
     await expect(alice.locator("#alist .arow .nm").filter({ hasText: /^(Gym session 9019|Morning run 9001)$/ })).toHaveText(["Gym session 9019", "Morning run 9001"]);
   });
 
@@ -169,7 +156,7 @@ test.describe("Activities list", () => {
   test("the 4-week range keeps only the activities of the last 28 days", async ({ alice }) => {
     const { activities } = await storedFor(alice);
     const recent = activities.filter((a) => a.date >= daysAgo(28));
-    expect(recent.length).toBeLessThan(activities.length); // the seed reaches back further than four weeks
+    expect(recent.length).toBeLessThan(activities.length);
     await openView(alice, "activities");
     await alice.locator("#aRange").selectOption("4w");
     await expect(alice.locator("#alist .arow")).toHaveCount(recent.length);
@@ -394,7 +381,7 @@ test.describe("Activities stats", () => {
 
   test("the strength block counts sessions, and the volume and exercises come from the sessions with their sets stored", async ({ alice }) => {
     const { strength } = await statsFor(alice);
-    expect(strength.detailed).toBeGreaterThan(0); // the seed stores the sets of two gym sessions
+    expect(strength.detailed).toBeGreaterThan(0);
     await openView(alice, "activities");
     await alice.locator("#aModes button[data-mode=stats]").click();
     await expect(tile(alice, "Strength", "sessions")).toHaveText(String(strength.sessions));
@@ -459,7 +446,6 @@ test.describe("Activities stats", () => {
   });
 
   test("the best efforts give the fastest 1 km and 5 km of the runs, with their pace, day and run", async ({ alice }) => {
-    // alice's runs carry no split times, so the server's answer is given the shape it has when they do
     await alice.route(/\/api\/activities\/stats/, async (route) => {
       const response = await route.fetch();
       const body = await response.json();
@@ -478,13 +464,11 @@ test.describe("Activities stats", () => {
     await expect(record(alice, "5 km").locator(".srv")).toHaveText("21:40");
     await expect(record(alice, "5 km").locator(".srd")).toHaveText("4:20 /km · 2026-10-03 · Morning run 9013");
     await expect(alice.locator("#astats")).not.toHaveText(/NaN|undefined|null|Infinity/);
-    // an effort opens the run it was timed in
     await fast.click();
     await expect(alice.locator("#aDetailTitle")).toHaveText("Morning run 9014");
   });
 
   test("the exercises give each lift's estimated one-rep max, its sets and its volume, with the set it came from", async ({ alice }) => {
-    // the strength details of the seed are the gym sessions' summaries alone; the exercise figures are given the shape the server has when they are stored
     await alice.route(/\/api\/activities\/stats/, async (route) => {
       const response = await route.fetch();
       const body = await response.json();
@@ -505,7 +489,7 @@ test.describe("Activities stats", () => {
     await expect(lift.locator("small").first()).toHaveText("3 sessions · 12 sets · 60 reps · 6,000 lb · heaviest 100 lb × 5");
     await expect(lift.locator("small").last()).toHaveText("from 5 @ 100 lb on 2026-10-01 · last 2026-10-20");
     const oneRm = alice.locator("#astats .help", { hasText: "est. 1RM" });
-    await expect(oneRm).toBeHidden(); // behind the ⓘ of the Exercises heading until asked for
+    await expect(oneRm).toBeHidden();
     await alice.locator("#astats .alifts").getByRole("button", { name: "About est. 1RM" }).click();
     await expect(oneRm).toBeVisible();
     await expect(oneRm).toContainText("Epley formula");

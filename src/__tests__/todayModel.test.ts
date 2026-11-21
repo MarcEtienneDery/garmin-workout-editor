@@ -4,7 +4,7 @@ const TM = require("../web/public/todayModel.js");
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const NM = require("../web/public/nutritionModel.js");
 
-const TODAY = "2026-10-18"; // a Sunday
+const TODAY = "2026-10-18";
 const NOW = Date.parse("2026-10-18T15:00:00Z");
 const n = (v: number) => v.toLocaleString();
 
@@ -29,7 +29,7 @@ describe("how old the numbers are", () => {
     expect(TM.ago(NOW - 3 * 3_600_000 - 59_000, NOW)).toBe("3 h ago");
     expect(TM.ago(NOW - 25 * 3_600_000, NOW)).toBe("1 day ago");
     expect(TM.ago(NOW - 49 * 3_600_000, NOW)).toBe("2 days ago");
-    expect(TM.ago(NOW + 5000, NOW)).toBe("just now"); // a clock a little ahead of the server's
+    expect(TM.ago(NOW + 5000, NOW)).toBe("just now");
     expect(TM.ago(null, NOW)).toBe("");
   });
 
@@ -44,9 +44,9 @@ describe("how old the numbers are", () => {
 
   it("tells you to sync the watch from the Garmin Connect app once it has been three hours without", () => {
     const at = (hours: number) => view({ progress: { ...view().progress, watchSyncedAt: NOW - hours * 3_600_000 } });
-    expect(TM.watchHint(at(3), NOW)).toBe(""); // exactly three hours is not yet
+    expect(TM.watchHint(at(3), NOW)).toBe("");
     expect(TM.watchHint(at(3.01), NOW)).toMatch(/Open Garmin Connect on your phone.*press Sync here/);
-    expect(TM.watchHint(view(), NOW)).toBe(""); // synced 3 h ago in the default view, which is the boundary
+    expect(TM.watchHint(view(), NOW)).toBe("");
     expect(TM.watchHint(at(0.2), NOW)).toBe("");
   });
 
@@ -128,7 +128,7 @@ describe("the food view", () => {
   it("is drawn by the Food view's own words: the calories against the goal, the burn, the macros", () => {
     const v = TM.foodView(view({ goals: { kcal: 2000, proteinG: 120 }, foodProgress: [...progress, { key: "proteinG", label: "Protein", unit: "g", kind: "min", goal: 120, amount: 90, partial: false, pct: 75, state: "short", left: 30 }] }));
     expect(NM.ring(v)).toMatchObject({ big: "500", small: "kcal left", line: `${n(1500)} kcal eaten · goal ${n(2000)} kcal`, state: "short" });
-    expect(NM.calorieBar(v.day, NM.calorieGoal(v)).tick).toBeNull(); // 1,500 of 2,000: the goal is the end of the track
+    expect(NM.calorieBar(v.day, NM.calorieGoal(v)).tick).toBeNull();
     expect(NM.burnLine(v)).toBe(`Burned ${n(1209)} kcal so far by Garmin · eaten − burned +${n(291)} kcal`);
     expect(NM.macroRows(v).map((r: any) => [r.key, r.state])).toEqual([["proteinG", "short"], ["carbsG", "none"], ["fatG", "none"]]);
   });
@@ -172,7 +172,7 @@ describe("the workouts", () => {
   it("totals a workout from its steps when it is asked to, and marks a time that rests on an assumed pace", () => {
     const run = w({ name: "Rehearsal", type: "running", seconds: null, workout: { steps: [] } });
     const days = TM.workoutDays(view({ workouts: [run, w({ index: 1, name: "Plain", seconds: 3300, workout: {} })] }), (workout: any) => (workout.steps ? { seconds: 3720, meters: 11000, assumed: true } : { seconds: 0, meters: 0, assumed: false }));
-    expect(days[0].items.map((i: any) => i.meta)).toEqual(["Running · 11 km · ~1 h 02 min", "Strength training · 55 min"]); // no steps: the plan's own estimate
+    expect(days[0].items.map((i: any) => i.meta)).toEqual(["Running · 11 km · ~1 h 02 min", "Strength training · 55 min"]);
     const exact = TM.workoutDays(view({ workouts: [run] }), () => ({ seconds: 1800, meters: 5000, assumed: false }))[0].items[0].meta;
     expect(exact).toBe("Running · 5 km · 30 min");
   });
@@ -220,7 +220,7 @@ describe("the trend lines of the tiles", () => {
 
   it("reads each tile from its own number: a day's intensity minutes, Body Battery on waking, sleep in hours", () => {
     const v = view({ trend: days([{ minutes: 20, bodyBatteryWake: 78, sleepSeconds: 25_560 }, { minutes: 45, bodyBatteryWake: 66, sleepSeconds: 23_760 }, {}, {}, {}, {}, { minutes: 0, bodyBatteryWake: 72, sleepSeconds: 27_000 }]) });
-    expect(tile(v, "intensity").trend.values).toEqual([20, 45, null, null, null, null, 0]); // a stored zero is a zero
+    expect(tile(v, "intensity").trend.values).toEqual([20, 45, null, null, null, null, 0]);
     expect(tile(v, "battery").trend.values).toEqual([78, 66, null, null, null, null, 72]);
     expect(tile(v, "sleep").trend.values).toEqual([7.1, 6.6, null, null, null, null, 7.5]);
     expect(tile(v, "sleep").trend.text).toContain("7 h 06, 6 h 36");

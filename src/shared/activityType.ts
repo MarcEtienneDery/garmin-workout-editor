@@ -1,4 +1,3 @@
-/** Normalize a Garmin activity type key to our categories. */
 export const normalizeActivityType = (rawType: string | undefined): "running" | "strength_training" | "cycling" | "swimming" | "other" => {
   const type = (rawType || "").toLowerCase();
   if (type.includes("run") || type.includes("trail")) return "running";
