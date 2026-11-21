@@ -2063,7 +2063,7 @@
   #pview #fileBtn { width:44px; height:44px; min-height:44px; padding:0; border-radius:50%; font-size:20px; line-height:1; background:var(--panel); border:1px solid var(--line); }
   #pview #fileBtn::after { content:none; }
   #pview #profile { min-height:44px; border-radius:999px; padding:0 14px; max-width:180px; }
-  #pview .dd > .menu { top:calc(100% + 6px); left:auto; right:0; min-width:230px; padding:6px; background:var(--panel); border:1px solid var(--t-line2); border-radius:16px; box-shadow:0 24px 50px -16px #000; }
+  #pview .dd > .menu { top:calc(100% + 6px); left:auto; right:0; min-width:230px; max-width:calc(100vw - 16px); padding:6px; background:var(--panel); border:1px solid var(--t-line2); border-radius:16px; box-shadow:0 24px 50px -16px #000; }
   #pview .menu button, #pmenu button { display:flex; align-items:center; justify-content:space-between; gap:12px; width:100%; min-height:44px; padding:0 12px; border:0; border-radius:10px; background:none; color:var(--fg); font-weight:500; text-align:left; }
   #pview .menu button:hover:not(:disabled), #pmenu button:hover:not(:disabled) { background:var(--t-surface2); }
   #pview .menu button.danger, #pmenu button.danger { color:var(--p-err); }
@@ -2245,7 +2245,7 @@
     #pview #toolbar > :not(#ptitle):not(#actions), #pview #actions > :not(#emode) { order:2; }
     #pview #emode { flex:1 1 100%; order:5; } #pview #emode button { flex:1; }
     #pview #save { flex:1 1 auto; } #pview .ppill { padding:0 12px; font-size:13px; }
-    #pview > main { display:block; position:relative; overflow:hidden; padding:0 12px 8px; }
+    #pview > main { display:block; position:relative; overflow:hidden; padding:0 16px 8px; }
     #files, #center, #side { width:100%; height:100%; }
     #pview aside { border:1px solid var(--line); }
     #pview .wf { padding-bottom:16px; }
@@ -2303,7 +2303,7 @@
   .wrow button.more { width:44px; height:44px; min-height:44px; padding:0; border:0; border-radius:50%; background:none; color:var(--dim); font-size:20px; line-height:1; }
   .wrow button.more:hover:not(:disabled) { background:var(--panel); color:var(--fg); }
   #wdetail { display:flex; flex-direction:column; background:var(--panel) !important; border:1px solid var(--line) !important; border-radius:18px; box-shadow:var(--card-shadow); overflow:hidden; }
-  #wdetail > .wbar { flex:none; display:flex; align-items:center; gap:8px; padding:12px 16px; background:none; border:0; }
+  #wdetail > .wbar { flex:none; display:flex; align-items:center; gap:8px; padding:12px 22px; background:none; border:0; }
   #wdetail > .wbar b { flex:1; min-width:0; font-size:22px; line-height:1.2; letter-spacing:-.01em; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   #wdetail > .wbar button { min-height:44px; padding:0 18px; border-radius:999px; font-weight:600; } #wdetail > .wbar button.danger { color:var(--p-err); }
   #wbody { flex:1; min-height:0; overflow:auto; overscroll-behavior:contain; padding:0 22px 20px; display:flex; flex-direction:column; gap:16px; }
@@ -2326,12 +2326,12 @@
   @media (prefers-reduced-motion:reduce) { #wview *, #wview *::before { transition:none !important; animation:none !important; } }
   @media (max-width:1180px) { #wmain { grid-template-columns:minmax(0,1fr); } #wstrip { grid-template-columns:repeat(3, minmax(0,1fr)); } }
   @media (max-width:900px) {
-    #wview { padding:0 12px 8px; }
+    #wview { padding:0 16px 8px; }
     #wbar { padding:12px 0 8px; gap:8px; }
     #wstrip { grid-template-columns:repeat(2, minmax(0,1fr)); }
     body:not([data-wpane="detail"]) #wdetail, body[data-wpane="detail"] #wlist, body[data-wpane="detail"] #wstrip, body[data-wpane="detail"] #wbar { display:none; }
     #wmain { display:block; } #wview :is(#wlist, #wdetail) { height:100%; width:100%; }
-    #wdetail > .wbar { padding:12px; } #wdetail > .wbar b { font-size:19px; } #wBackList { width:44px; padding:0; border-radius:50%; font-size:20px; }
+    #wdetail > .wbar { padding:12px 14px; } #wdetail > .wbar b { font-size:19px; } #wBackList { width:44px; padding:0; border-radius:50%; font-size:20px; }
     #wbody { padding:0 14px 16px; }
     #wTypes { flex-wrap:nowrap; overflow-x:auto; } #wview .tchip { flex:none; }
     #wview :is(#wsearch input, #wFilters select) { font-size:16px; }
@@ -10022,9 +10022,18 @@ function bindGarminDrawer() {
 
 function bindMenus() {
   const close = () => document.querySelectorAll(".dd.open").forEach((d) => { d.classList.remove("open"); d.querySelector(".menubtn").setAttribute("aria-expanded", "false"); });
+  // a Plans menu that would run off the window (a phone puts its ⋯ button near the left, and the menu hangs from the button's right edge) is moved back in
+  const fitMenu = (dd) => {
+    const menu = dd.closest("#pview") && dd.querySelector(".menu"); if (!menu) return;
+    menu.style.right = "";
+    const r = menu.getBoundingClientRect(), room = document.documentElement.clientWidth;
+    if (r.left < 8) menu.style.right = `${r.left - 8}px`;
+    else if (r.right > room - 8) menu.style.right = `${r.right - (room - 8)}px`;
+  };
   document.querySelectorAll(".dd > .menubtn").forEach((b) => (b.onclick = () => {
     const open = !b.parentElement.classList.contains("open");
     close(); b.parentElement.classList.toggle("open", open); b.setAttribute("aria-expanded", String(open));
+    if (open) fitMenu(b.parentElement);
   }));
   document.addEventListener("pointerdown", (e) => { if (!e.target.closest(".dd")) close(); }, true);
   document.addEventListener("click", (e) => { if (e.target.closest(".menu button")) close(); });

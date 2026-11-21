@@ -55,4 +55,15 @@ for (const width of WIDTHS) {
       expect(box.x).toBeGreaterThanOrEqual(8);
     });
   }
+
+  test(`plans at ${width} px: the file's ⋯ menu opens inside the window`, async ({ alice }) => {
+    await alice.setViewportSize({ width, height: 860 });
+    await openView(alice, "plans");
+    await alice.locator("#filelist .file", { hasText: "alice-run-block.json" }).tap();
+    await expect(alice.locator("#current")).toContainText("alice-run-block.json");
+    await alice.locator("#fileBtn").tap();
+    const menu = (await alice.locator("#fileMenu").boundingBox())!;
+    expect(menu.x).toBeGreaterThanOrEqual(8);
+    expect(menu.x + menu.width).toBeLessThanOrEqual(width - 8);
+  });
 }

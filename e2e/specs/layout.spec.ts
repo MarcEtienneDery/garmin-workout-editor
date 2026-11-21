@@ -115,3 +115,28 @@ test.describe("the Workouts view", () => {
     });
   }
 });
+
+test.describe("the Workouts detail pane", () => {
+  for (const width of [1920, 1440, 1024]) {
+    test(`${width} px: the title bar and the body of an open workout start and end together`, async ({ me, profile }) => {
+      await me.setViewportSize({ width, height: 900 });
+      await withGarmin(me, profile.name);
+      await me.route(/\/api\/workouts\?/, (route) => route.fulfill({ json: { profile: profile.name, rows: library(profile.name), truncated: false } }));
+      await me.route(/\/api\/garmin\/workout\?/, (route) =>
+        route.fulfill({ json: { profile: profile.name, workout: { workoutId: 101, workoutName: "Intervals", workoutType: "running", steps: [{ stepType: "interval", endCondition: "distance", endConditionValue: 5000, targetType: "no.target" }] }, plans: [] } }),
+      );
+      await openView(me, "workouts");
+      await me.locator("#wrows .wrow").first().click();
+      await expect(me.locator("#wdetail > .wbar b")).toHaveText("Intervals");
+      const [bar, body] = await me.evaluate(() => ["#wdetail > .wbar", "#wbody > *"].map((selector) => {
+        const first = document.querySelector(selector)!;
+        const pad = (el: Element, side: "Left" | "Right") => parseFloat(getComputedStyle(el)[`padding${side}`]);
+        const host = selector.startsWith("#wbody") ? (first.parentElement as HTMLElement) : (first as HTMLElement);
+        const r = host.getBoundingClientRect();
+        return { left: r.left + pad(host, "Left"), right: r.right - pad(host, "Right") };
+      }));
+      expect(Math.abs(bar.left - body.left)).toBeLessThanOrEqual(1);
+      expect(Math.abs(bar.right - body.right)).toBeLessThanOrEqual(1);
+    });
+  }
+});
