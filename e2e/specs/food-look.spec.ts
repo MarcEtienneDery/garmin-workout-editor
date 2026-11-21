@@ -177,6 +177,21 @@ test.describe("the disposition of the Food view", () => {
     expect(new Set(lefts).size).toBe(2);
   });
 
+  test("the Insights draw the calories eaten against the calories burned, by day and by week", async ({ alice }) => {
+    await alice.setViewportSize({ width: 1360, height: 860 });
+    await openFood(alice);
+    await openInsights(alice);
+    const card = alice.locator("#fbody .fbc");
+    await expect(card).toBeVisible();
+    await expect(card.locator(".fbcgrp").first()).toBeVisible();
+    await expect(card.locator(".fbcbar.eaten").first()).toBeVisible();
+    await expect(card.locator(".fbcbar.burned").first()).toBeVisible();
+    const daily = await card.locator(".fbcgrp").count();
+    await card.getByRole("button", { name: "Weekly", exact: true }).click();
+    await expect(alice.locator("#fbody .fbc").getByRole("button", { name: "Weekly", exact: true })).toHaveAttribute("aria-pressed", "true");
+    expect(await alice.locator("#fbody .fbc .fbcgrp").count()).toBeLessThanOrEqual(daily);
+  });
+
   test("below 1100 px the Log is one column again, in the order of the page: the day at a glance, the card to add, the meals", async ({ alice }) => {
     await alice.setViewportSize({ width: 1000, height: 800 });
     await openFood(alice);

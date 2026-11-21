@@ -903,3 +903,23 @@ describe("the pattern of the weekdays", () => {
     expect(NM.weekdayPattern({ today: TODAY, days: even }).sentence).toBe("");
   });
 });
+
+describe("eaten against burned, by day and by week", () => {
+  const row = (day: string, kcal: number, burnedKcal: number | null, extra = {}) => ({ day, entries: 1, kcal, burnedKcal, burnedSoFar: false, ...extra });
+  const view = (days: unknown[]) => ({ today: "2026-11-21", days });
+
+  it("has nothing without a burn, or without a finished day that has both", () => {
+    expect(NM.burnCompare({ ...view([row("2026-11-18", 2000, 2500)]), burn: false })).toBeNull();
+    expect(NM.burnCompare(view([row("2026-11-18", 2000, null), row("2026-11-21", 500, 1200)]))).toBeNull();
+  });
+
+  it("pairs each finished day, leaving out today and days without a burn", () => {
+    const cmp = NM.burnCompare(view([row("2026-11-18", 2000, 2500), row("2026-11-19", 2600, 2500), row("2026-11-20", 1800, null), row("2026-11-21", 500, 1200)]));
+    expect(cmp.daily.map((r: { day: string; eaten: number; burned: number; net: number }) => [r.day, r.eaten, r.burned, r.net])).toEqual([["2026-11-18", 2000, 2500, -500], ["2026-11-19", 2600, 2500, 100]]);
+  });
+
+  it("averages a Monday-to-Sunday week over the days that have both", () => {
+    const cmp = NM.burnCompare(view([row("2026-11-15", 3000, 2500), row("2026-11-16", 2000, 2400), row("2026-11-18", 2200, 2600)]));
+    expect(cmp.weekly.map((w: { day: string; days: number; eaten: number; burned: number }) => [w.day, w.days, w.eaten, w.burned])).toEqual([["2026-11-09", 1, 3000, 2500], ["2026-11-16", 2, 2100, 2500]]);
+  });
+});
