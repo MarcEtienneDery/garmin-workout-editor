@@ -1078,7 +1078,7 @@
     body[data-wpane="detail"] #aview[data-amode="stats"] #adetail { display:flex; } /* a record opened from Progress: the pane comes over it, and Back returns to Progress */
     #aview .apill { flex:1 1 100%; justify-content:center; order:5; }
     #aModes { flex:1 1 auto; } #aModes button { flex:1; padding:0 10px; }
-    #aview #aHead { order:1; flex:1 1 60%; } #aSync { order:2; } #aTheme { order:3; } #aModes { order:4; flex:1 1 100%; }
+    #aview #aHead { order:1; flex:1 1 60%; } #aSync { order:2; } #aModes { order:4; flex:1 1 100%; }
     #aview { display:flex; flex-direction:column; overflow:hidden; padding:0; } #aview #amain, #aview #adetail { flex:1; min-height:0; width:100%; }
     /* a phone: the type chips take a line of their own and scroll sideways; the search and the range share the line under them, so nothing overlaps */
     #afilters { flex-wrap:wrap; overflow:visible; } #aTypes { display:flex; flex:1 0 100%; min-width:0; flex-wrap:nowrap; overflow-x:auto; scrollbar-width:none; } #aTypes::-webkit-scrollbar { display:none; } #aview .tchip { flex:none; } .asearch { flex:1 1 0; min-width:0; } #aview #aRange { flex:none; }
@@ -1433,7 +1433,7 @@
   #fbar .fdaypick:hover { background:none; } #fbar .fdaypick:hover #fDayLabel { color:var(--t-ink); }
   #fbar .fdaypick:focus-within { outline:2px solid var(--accent); outline-offset:2px; }
   #fbar #fDayLabel span { color:var(--fg); } #fbar .fdaypick::after { font-size:14px; }
-  #fbar #fToday { order:2; } #fTabs { order:3; } #fbar #fTheme { order:4; }
+  #fbar #fToday { order:2; } #fTabs { order:3; }
   #fTabs { display:flex; padding:2px; gap:2px; background:var(--panel); border:1px solid var(--line); border-radius:999px; }
   #fTabs button, #fTabs button:first-child, #fTabs button:last-child { min-height:44px; margin:0; padding:0 22px; border:0; border-radius:999px; background:transparent; color:var(--dim); font-weight:600; }
   #fTabs button:hover:not(:disabled):not([aria-pressed="true"]) { background:var(--t-surface2); color:var(--fg); }
@@ -1554,7 +1554,6 @@
   #rTabs button, #rTabs button:first-child, #rTabs button:last-child { min-height:44px; margin:0; padding:0 20px; border:0; border-radius:999px; background:transparent; color:var(--dim); font-weight:600; }
   #rTabs button:hover:not(:disabled):not([aria-pressed="true"]) { background:var(--t-surface2); color:var(--fg); }
   #rTabs button[aria-pressed="true"] { background:var(--accent); color:var(--t-on-accent); }
-  #rbar #rTheme { order:4; }
   /* the week: a day each, its score as a ring in the colour of its zone and the words of its band; ◀ ▶ step a day */
   #rweek { display:flex; align-items:center; gap:8px; max-width:1280px; padding:8px clamp(16px,2.6vw,34px) 2px; }
   #rweek[hidden] { display:none; }
@@ -1683,7 +1682,6 @@
   #bTabs button[hidden] { display:none; }
   #bTabs button:hover:not(:disabled):not([aria-pressed="true"]) { background:var(--t-surface2); color:var(--fg); }
   #bTabs button[aria-pressed="true"] { background:var(--accent); color:var(--t-on-accent); }
-  #bbar #bTheme { order:4; }
   /* the week: a day each, its weigh-in and how far it sat from the line; ◀ ▶ step a day */
   #bweek { display:flex; align-items:center; gap:8px; max-width:1280px; padding:8px clamp(16px,2.6vw,34px) 2px; }
   #bweek[hidden] { display:none; }
@@ -2242,8 +2240,8 @@
   @media (max-width:1180px) and (min-width:901px) { #pview > main { grid-template-columns:240px minmax(0,1fr); } #pview #side { grid-column:1 / -1; max-height:34vh; } }
   @media (max-width:900px) {
     #pview #toolbar { padding:12px 12px 8px; gap:8px; flex-wrap:wrap; }
-    #ptitle { flex:1 1 calc(100% - 60px); order:0; } #pview #current .dir { display:none; } #pview #pTheme { order:1; }
-    #pview #toolbar > :not(#ptitle):not(#actions), #pview #actions > :not(#pTheme):not(#emode) { order:2; }
+    #ptitle { flex:1 1 calc(100% - 60px); order:0; } #pview #current .dir { display:none; }
+    #pview #toolbar > :not(#ptitle):not(#actions), #pview #actions > :not(#emode) { order:2; }
     #pview #emode { flex:1 1 100%; order:5; } #pview #emode button { flex:1; }
     #pview #save { flex:1 1 auto; } #pview .ppill { padding:0 12px; font-size:13px; }
     #pview > main { display:block; position:relative; overflow:hidden; padding:0 12px 8px; }
@@ -2344,7 +2342,7 @@
     :is(#tview, #fview, #cview, #rview, #bview, #aview) .wbar { padding-top:8px; padding-bottom:2px; gap:6px; }
     :is(#tTitle, #aHead, #bTitle) { position:absolute; width:1px; height:1px; margin:-1px; padding:0; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
     #tview #tAsOf { flex:1 1 auto; }
-    #aview #aModes { order:1; flex:1 1 0; min-width:0; } #aview #aSync { order:2; } #aview #aTheme { order:3; }
+    #aview #aModes { order:1; flex:1 1 0; min-width:0; } #aview #aSync { order:2; }
     #aview #aNote:not(.busy):not(.err):not(.none) { display:none; } /* "27 stored, 3 with details" is a detail; the states that need a look stay */
     :is(#fweek, #rweek, #bweek) { padding-top:6px; padding-bottom:0; }
     :is(#fview .fwd, #rview .rwd, #bview .bwd) { min-height:64px; padding:6px 2px 5px; gap:0 4px; }
@@ -2378,6 +2376,13 @@
     #aview #ascroll { padding-top:12px; } #aview .awk, #rview table.rmetrics thead th { top:12px; }
     #tbody, #fbody, #rbody, #sbody { padding-top:12px; } /* the first thing in a view starts just under the band, so none of it is hidden at rest */
     #fview .fside, #sview .snav { top:12px; }
+  }
+
+  /* Food and Weight on a wide screen: the bar, the week, the notes and the page are one column of up to 1280 px, centred. They were left-aligned
+     (and Food's page alone was centred, so on a very wide screen it did not line up with its own bar). */
+  @media (min-width:901px) {
+    :is(#fbar, #fweek, #fNote, #bbar, #bweek, #bNote, #brangebar) { width:100%; max-width:1280px; margin-inline:auto; }
+    #bbody { margin:0 auto; }
   }
   /* The account menu takes the header's colours in dark and light, not the grey of the old menus */
   header { --nav-panel:#1b1612; }
