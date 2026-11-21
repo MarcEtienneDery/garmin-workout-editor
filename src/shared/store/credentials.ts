@@ -18,6 +18,14 @@ CREATE TABLE IF NOT EXISTS credentials (
   updated_at INTEGER NOT NULL,
   PRIMARY KEY (profile, service)
 ) WITHOUT ROWID;
+CREATE TABLE IF NOT EXISTS login_checks (
+  profile    TEXT NOT NULL,
+  service    TEXT NOT NULL,
+  ok         INTEGER NOT NULL,
+  message    TEXT NOT NULL,
+  checked_at INTEGER NOT NULL,
+  PRIMARY KEY (profile, service)
+) WITHOUT ROWID;
 `;
 
 export const CREDENTIAL_SERVICES = ["garmin", "renpho"] as const;
@@ -42,7 +50,21 @@ export class CredentialTable {
     return { email: r.email, password, updatedAt: r.updated_at };
   }
 
+  /** Keep what the last check of the login said (the Settings view tells when it was accepted or refused). */
+  recordCheck(profile: string, service: CredentialService, ok: boolean, message: string, now = Date.now()): void {
+    this.db
+      .prepare("INSERT INTO login_checks (profile, service, ok, message, checked_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT (profile, service) DO UPDATE SET ok = excluded.ok, message = excluded.message, checked_at = excluded.checked_at")
+      .run(profile, service, ok ? 1 : 0, message.slice(0, 500), now);
+  }
+
+  /** The last check of the login, or null when it was never checked (or the login changed since). */
+  lastCheck(profile: string, service: CredentialService): { ok: boolean; message: string; at: number } | null {
+    const r = this.db.prepare("SELECT ok, message, checked_at FROM login_checks WHERE profile = ? AND service = ?").get(profile, service);
+    return r ? { ok: r.ok === 1, message: r.message as string, at: r.checked_at as number } : null;
+  }
+
   put(profile: string, service: CredentialService, email: string, password: string, now = Date.now()): void {
+    this.db.prepare("DELETE FROM login_checks WHERE profile = ? AND service = ?").run(profile, service); // a login that changed has not been checked
     this.db
       .prepare("INSERT INTO credentials (profile, service, email, password, updated_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT (profile, service) DO UPDATE SET email = excluded.email, password = excluded.password, updated_at = excluded.updated_at")
       .run(profile, service, email, seal(password, `${profile}|${service}`), now);
@@ -61,6 +83,7 @@ export class CredentialTable {
 
   delete(profile: string, service: CredentialService): void {
     this.db.prepare("DELETE FROM credentials WHERE profile = ? AND service = ?").run(profile, service);
+    this.db.prepare("DELETE FROM login_checks WHERE profile = ? AND service = ?").run(profile, service);
   }
 
   /** The profiles that have a login for the service, by name. */

@@ -33,6 +33,31 @@ export async function openFood(page: Page): Promise<void> {
   await expect(page.locator("#fbody .fsum")).toBeVisible();
 }
 
+// ── The week, the two parts and the card to add a food ───────────────────
+
+/** The meal pills of the card to add a food, and the pill of one meal. */
+export const pills = (page: Page): Locator => page.locator("#fbody .fpills");
+/** Chooses the meal a food goes to (the pill of the card): the bar, the foods used lately and the sheet follow it. */
+export async function pickMeal(page: Page, m: Meal): Promise<void> {
+  await pills(page).getByRole("button", { name: MEAL_LABEL[m], exact: true }).click();
+  await expect(pills(page).getByRole("button", { name: MEAL_LABEL[m], exact: true })).toHaveAttribute("aria-pressed", "true");
+}
+/** The Log and Insights buttons of the bar. */
+export const part = (page: Page, name: "Log" | "Insights"): Locator => page.locator("#fTabs").getByRole("button", { name, exact: true });
+/** Opens the Insights (the trend charts, the table of every day under them, shut) and waits for them. */
+export async function openInsights(page: Page): Promise<void> {
+  await part(page, "Insights").click();
+  await expect(part(page, "Insights")).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("#fbody .rcharts")).toBeVisible();
+}
+/** Opens the table of every day (in the Insights), and gives it. */
+export async function everyDay(page: Page): Promise<Locator> {
+  const box = page.locator("#fbody details.fevery");
+  if (!(await box.evaluate((el: HTMLDetailsElement) => el.open))) await box.locator("summary").click();
+  await expect(box).toHaveAttribute("open", "");
+  return box.locator("table.rmetrics");
+}
+
 // ── The summary card ─────────────────────────────────────────────────────
 
 /** The summary card of the day shown. */

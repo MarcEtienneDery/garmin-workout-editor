@@ -99,7 +99,7 @@ import { fetchChartNow, fetchDetailsNow, refreshActivities, startBackgroundSync 
 import { diffPlanWorkout, extractWorkouts, validatePlanData } from "../mcp/tools/plans";
 import { MAX_SCAN_BYTES, activePlanDocs, isExportSnapshot } from "../shared/planDocs";
 import { refreshWellness, rereadWeighIns, startBackgroundWellness, wellnessSyncStatus } from "../mcp/tools/wellness";
-import { bodyRange, intensityWeek, readinessAt, wellnessRange } from "../shared/wellnessReport";
+import { bodyRange, dayTrend, intakeVsBurn, intensityWeek, readinessAt, readinessDays, wellnessRange } from "../shared/wellnessReport";
 import { SettingsError, createInvite, createMcpToken, createProfile, inviteList, removeGarminLogin, removeRenpho, saveGarminLogin, savePrefs, saveRenpho, saveWebPassword, settingsView, signUp } from "../shared/accounts";
 import exerciseCategoryMap from "../exercise-category-map.json";
 import { recentFit, testRenphoLogin } from "../shared/renphoSync";
@@ -109,7 +109,7 @@ import { addDays, localToday } from "../shared/wellnessSync";
 import { FoodInputError, FoodSourceError, lookupBarcode, searchFoods } from "../shared/foodSearch";
 import { FoodAiError, type FoodAiErrorKind, estimateFoods, foodAiStatus } from "../shared/foodAi";
 import { MAX_ITEMS, MEALS, NutritionError, addFoods, averageOf, changeFood, copyFoods, deleteFoods, nutritionDays, parseDay, recentFoods } from "../shared/nutrition";
-import { getGoals, goalProgress, kcalGoalOf, setGoals } from "../shared/nutritionGoals";
+import { WEIGHT_KEY, getGoals, goalProgress, kcalGoalOf, setGoals } from "../shared/nutritionGoals";
 import {
   LIBRARY_LIMIT,
   type LibraryWorkout,
@@ -480,17 +480,25 @@ async function garminAction(body: any, who: Principal): Promise<{ status: number
     }
   }
   const deviceId = Number.isInteger(body.deviceId) ? (body.deviceId as number) : undefined;
+  // `indexes`: the workouts of the plan the action is limited to (the page's "only what needs it"), by place in its list; without it, all of them
+  let only: number[] | undefined;
+  if (body.indexes !== undefined) {
+    const count = readPlan(logical)?.list.length ?? 0;
+    const ok = Array.isArray(body.indexes) && body.indexes.length > 0 && body.indexes.every((i: unknown) => Number.isInteger(i) && (i as number) >= 0 && (i as number) < count);
+    if (!ok) throw new HttpError(400, `indexes must name the places of workouts in the plan (0 to ${Math.max(0, count - 1)}).`);
+    only = [...new Set<number>(body.indexes)];
+  }
 
   const outcome = await runCaptured<unknown>(() => {
     switch (action) {
       case "upload":
-        return uploadPlan(profile, logical);
+        return only ? uploadPlan(profile, logical, false, only) : uploadPlan(profile, logical);
       case "schedule":
-        return schedulePlan(profile, logical);
+        return only ? schedulePlan(profile, logical, only) : schedulePlan(profile, logical);
       case "upload_schedule":
-        return uploadAndSchedulePlan(profile, logical);
+        return only ? uploadAndSchedulePlan(profile, logical, only) : uploadAndSchedulePlan(profile, logical);
       case "send":
-        return sendPlanToDevice(profile, logical, deviceId);
+        return only ? sendPlanToDevice(profile, logical, deviceId, only) : sendPlanToDevice(profile, logical, deviceId);
     }
   });
   const version = store().head(logical)?.version;
@@ -586,7 +594,8 @@ interface CalendarPlan {
    */
   start: string | null;
   end: string | null;
-  workouts: { index: number; workoutName: string; workoutType?: string; workoutId?: number | string; dates: string[] }[];
+  /** `workout` is the whole workout, for the page to draw its profile and total its steps (the week view of the Calendar). */
+  workouts: { index: number; workoutName: string; workoutType?: string; workoutId?: number | string; dates: string[]; workout: Record<string, unknown> }[];
 }
 
 /** Every plan this login can reach with its dates: workout-plans/ and data/<profile>/ (export snapshots are copies of Garmin's list, not plans; archived plans are put away). */
@@ -600,7 +609,7 @@ function calendarPlans(who: Principal): CalendarPlan[] {
     if (!plan) continue;
     const workouts = plan.list.flatMap((w, index) =>
       isWorkout(w)
-        ? [{ index, workoutName: w.workoutName, workoutType: w.workoutType, workoutId: hasId(w.workoutId) ? w.workoutId : undefined, dates: scheduledDates(w) }]
+        ? [{ index, workoutName: w.workoutName, workoutType: w.workoutType, workoutId: hasId(w.workoutId) ? w.workoutId : undefined, dates: scheduledDates(w), workout: w as Record<string, unknown> }]
         : []
     );
     const weekStart = isoDate(plan.data.weekStart) ? plan.data.weekStart : undefined;
@@ -610,6 +619,20 @@ function calendarPlans(who: Principal): CalendarPlan[] {
   }
   // dated plans in calendar order, the undated ones last
   return plans.sort((a, b) => Number(a.start === null) - Number(b.start === null) || (a.start ?? "").localeCompare(b.start ?? "") || a.path.localeCompare(b.path));
+}
+
+/**
+ * "<workoutId>|<date>" for each stored activity of the profile that was started from a Garmin workout (the same workout id): the plans'
+ * workouts that were done, and on what day. A login that resolves to no profile has none. Reads the database only.
+ */
+function doneWorkouts(who: Principal, requested: unknown): string[] {
+  let profile: string;
+  try {
+    profile = profileFor(who, "", requested);
+  } catch {
+    return [];
+  }
+  return store().activities.summaries(profile, 600).map(activityRow).flatMap((a) => (hasId(a.workoutId) ? [`${a.workoutId}|${a.date}`] : []));
 }
 
 // ── Pace from your runs: what the workout picture times steps with when the workout names no pace ──
@@ -643,6 +666,11 @@ function recentRuns(profile: string): RunSample[] {
 // ── Activities view: what the activities table holds, never a call to Garmin on a read ──
 
 /** The profile a read is about, or null when none is configured (nothing is stored then). */
+/** What GET /api/settings and the writes to it answer: the profile's settings, with the Food AI status the Food view gets (which AI, the daily limit, the estimates left today). */
+function settingsAnswer(profile: string) {
+  return { ...settingsView(store(), profile), ai: foodAiStatus(profile, localToday(store(), profile)) };
+}
+
 function profileOrNull(who: Principal, requested: unknown): string | null {
   try {
     return profileFor(who, "", requested);
@@ -662,6 +690,7 @@ function activityRow(a: Omit<ActivitySummary, "detailed"> & { detailed?: boolean
     km: a.distance ? +(a.distance / 1000).toFixed(2) : null,
     seconds: a.duration ? Math.round(a.duration) : null,
     paceSec: a.type === "running" && a.speed && a.speed > 0 ? Math.round(1000 / a.speed) : null,
+    speedKph: a.type === "cycling" && a.speed && a.speed > 0 ? Math.round(a.speed * 36) / 10 : null,
     avgHr: a.avgHr ? Math.round(a.avgHr) : null,
     maxHr: a.maxHr ? Math.round(a.maxHr) : null,
     effect: a.trainingEffectLabel,
@@ -1042,6 +1071,7 @@ const MIME: Record<string, string> = {
   ".css": "text/css; charset=utf-8",
   ".json": "application/json",
   ".ttf": "font/ttf",
+  ".woff2": "font/woff2",
   ".svg": "image/svg+xml",
   ".png": "image/png",
 };
@@ -1119,6 +1149,20 @@ async function foodAiCall<T>(ask: () => Promise<T>): Promise<T> {
 }
 
 /** What the Food view shows: one day with its meals, the days of a range for the trend, the foods the form offers again, and whether the AI box works. */
+/** How ready each day of the week (Monday to Sunday) that has `date` was; a day to come cannot be judged, so it has no band. */
+function readinessWeek(profile: string, date: string, today: string) {
+  const monday = addDays(date, -((new Date(`${date}T00:00:00Z`).getUTCDay() + 6) % 7)), sunday = addDays(monday, 6);
+  const known = readinessDays(store(), profile, monday, sunday < today ? sunday : today);
+  const byDay = new Map(known.map((d) => [d.day, d]));
+  return Array.from({ length: 7 }, (_, i) => { const day = addDays(monday, i); return byDay.get(day) ?? { day, band: "unknown" as const, score: null }; });
+}
+
+/** The calories of each day of the week (Monday to Sunday) that has `date`, with the day's goal: the totals only, the foods are in the day shown. */
+function weekOf(profile: string, date: string, today: string, goals: ReturnType<typeof getGoals>) {
+  const monday = addDays(date, -((new Date(`${date}T00:00:00Z`).getUTCDay() + 6) % 7));
+  return nutritionDays(store(), profile, monday, addDays(monday, 6), today).map(({ day, kcal, entries, activeKcal }) => ({ day, kcal, entries, kcalGoal: kcalGoalOf(goals, activeKcal) }));
+}
+
 function nutritionView(profile: string, asked: unknown, daysAsked: unknown) {
   const today = localToday(store(), profile);
   let date = today;
@@ -1139,6 +1183,8 @@ function nutritionView(profile: string, asked: unknown, daysAsked: unknown) {
     day,
     // the trend carries totals only (and each day's calorie goal, which follows the burn when the person set it so); the entries are in `day`
     days: days.map(({ meals, ...totals }) => ({ ...totals, kcalGoal: kcalGoalOf(goals, totals.activeKcal) })),
+    // the Monday-to-Sunday week the day shown is in, one entry for each day (the days after today have nothing): the strip of the week at the top of the Food view
+    week: weekOf(profile, date, today, goals),
     // the daily goals by key, and where the day shown stands against each (the meals' own totals are in `day`)
     goals,
     progress: goalProgress(goals, day, day.activeKcal),
@@ -1193,6 +1239,7 @@ function todayView(profile: string) {
     day: store().wellness.metrics(profile, today, today)[0] ?? null,
     progress: store().wellness.progress(profile, today),
     week: intensityWeek(store(), profile, today),
+    trend: dayTrend(store(), profile, today),
     readiness: { band: readiness.band, score: readiness.score, confidence: readiness.confidence, suggestion: readiness.suggestion },
     workouts: plannedAhead(profile, today, doneIds),
     activities,
@@ -1334,6 +1381,8 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
         profile, today, date,
         ...readinessAt(store(), profile, date),
         ...wellnessRange(store(), profile, addDays(date, -(days - 1)), date),
+        week: readinessWeek(profile, date, today),
+        readinessDays: readinessDays(store(), profile, addDays(date, -(days - 1)), date),
         stored: store().wellness.rowsOfDay(profile, date),
         sync: wellnessSyncStatus(profile, Math.max(0, Math.round((Date.parse(today) - Date.parse(date)) / 86_400_000)) + days), // all the days the page shows
       });
@@ -1353,7 +1402,8 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
       const range = bodyRange(store(), profile, addDays(today, -(days - 1)), today);
       // the day whose stored responses are listed: the one asked for, else the last weigh-in, else today
       const date = asked && /^\d{4}-\d{2}-\d{2}$/.test(asked) ? asked : range.body.latest?.day ?? today;
-      return send(res, 200, { profile, today, date, ...range, stored: store().wellness.rowsOfDay(profile, date), sync: wellnessSyncStatus(profile, days) });
+      // the goal weight (kg, null with none) and what the Food log says was eaten against what Garmin says was burned over these days, for the Weight view
+      return send(res, 200, { profile, today, date, ...range, goalKg: getGoals(store(), profile)[WEIGHT_KEY] ?? null, intake: intakeVsBurn(store(), profile, addDays(today, -(days - 1)), today, today), stored: store().wellness.rowsOfDay(profile, date), sync: wellnessSyncStatus(profile, days) });
     }
 
     case "GET /api/foods/search": {
@@ -1411,7 +1461,7 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
     case "GET /api/settings": {
       const profile = profileOrNull(who, url.searchParams.get("profile"));
       if (!profile) return send(res, 200, { profile: null });
-      return send(res, 200, settingsView(store(), profile));
+      return send(res, 200, settingsAnswer(profile));
     }
 
     case "POST /api/settings/garmin": {
@@ -1425,12 +1475,13 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
         else if (body.action === "test") {
           if (getSettings().mock) throw new HttpError(409, "Mock mode: Garmin writes are disabled.");
           result = await testGarminLogin(profile);
+          store().credentials.recordCheck(profile, "garmin", result.ok === true, String(result.message ?? ""));
         } else throw new HttpError(400, `Unknown action "${body.action}".`);
       } catch (error) {
         if (error instanceof SettingsError) throw new HttpError(400, error.message);
         throw error;
       }
-      return send(res, 200, { ...result, ...settingsView(store(), profile) });
+      return send(res, 200, { ...result, ...settingsAnswer(profile) });
     }
 
     case "POST /api/settings/goals": {
@@ -1445,7 +1496,7 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
         if (error instanceof NutritionError) throw new HttpError(400, error.message);
         throw error;
       }
-      return send(res, 200, settingsView(store(), profile));
+      return send(res, 200, settingsAnswer(profile));
     }
 
     case "POST /api/settings/prefs": {
@@ -1458,7 +1509,7 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
         if (error instanceof SettingsError) throw new HttpError(400, error.message);
         throw error;
       }
-      return send(res, 200, settingsView(store(), profile));
+      return send(res, 200, settingsAnswer(profile));
     }
 
     case "POST /api/settings/web": {
@@ -1472,7 +1523,7 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
         if (error instanceof SettingsError) throw new HttpError(400, error.message);
         throw error;
       }
-      return send(res, 200, settingsView(store(), profile));
+      return send(res, 200, settingsAnswer(profile));
     }
 
     case "GET /api/invites": {
@@ -1555,7 +1606,7 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
         if (error instanceof SettingsError) throw new HttpError(400, error.message);
         throw error;
       }
-      return send(res, 200, { ...result, ...settingsView(store(), profile) });
+      return send(res, 200, { ...result, ...settingsAnswer(profile) });
     }
 
     case "GET /api/settings/renpho/fit": {
@@ -1654,7 +1705,7 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
 
     case "GET /api/calendar":
       // Read from the stored plans alone, so it works without a Garmin profile and in mock mode.
-      return send(res, 200, { plans: calendarPlans(who) });
+      return send(res, 200, { plans: calendarPlans(who), done: doneWorkouts(who, url.searchParams.get("profile")) });
 
     case "GET /api/garmin/workout": {
       requireGarmin(who);

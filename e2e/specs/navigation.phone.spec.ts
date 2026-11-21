@@ -55,12 +55,12 @@ async function expectInStrip(page: Page, buttonId: string) {
 const settled: Record<string, (page: Page) => Promise<void>> = {
   today: (page) => expect(page.locator("#tbody")).not.toContainText("Loading…"),
   plans: (page) => expect(page.locator("#filelist .file").first()).toBeVisible(),
-  calendar: (page) => expect(page.locator("#cgrid .cday").first()).toBeVisible(),
+  calendar: (page) => expect(page.locator("#cwBoard .wday").first()).toBeVisible(),
   activities: (page) => expect(page.locator("#alist .arow").first()).toBeVisible(),
   recovery: (page) => expect(page.locator("#rbody")).not.toContainText("Loading…"),
   weight: (page) => expect(page.locator("#bbody")).not.toContainText("Loading…"),
   food: (page) => expect(page.locator("#fbody .fmeal").first()).toBeVisible(),
-  settings: (page) => expect(page.locator("#sbody h2").first()).toBeVisible(),
+  settings: (page) => expect(page.locator("#sbody .snav")).toBeVisible(),
 };
 
 test.describe("the strip of views", () => {
@@ -93,6 +93,16 @@ test.describe("the strip of views", () => {
     const heights = await alice.locator("#views button:visible").evaluateAll((els) => els.map((el) => Math.round(el.getBoundingClientRect().height)));
     expect(heights.length).toBeGreaterThanOrEqual(6);
     for (const h of heights) expect(h).toBeLessThanOrEqual(44);
+  });
+
+  test("shows each view as a pill, its icon beside its name, with the open one marked", async ({ alice }) => {
+    await openView(alice, "plans");
+    const pills = await alice.locator("#views button:visible").evaluateAll((els) =>
+      els.map((el) => { const svg = el.querySelector("svg")!.getBoundingClientRect(), name = el.querySelector("span")!.getBoundingClientRect(); return { icon: svg.width, beside: svg.right <= name.left + 1, pressed: el.getAttribute("aria-pressed") }; }),
+    );
+    expect(pills.length).toBeGreaterThanOrEqual(6);
+    for (const p of pills) { expect(p.icon).toBeGreaterThanOrEqual(18); expect(p.beside).toBe(true); }
+    expect(pills.filter((p) => p.pressed === "true")).toHaveLength(1);
   });
 
   test("the browser's Back button returns to the view before on a phone", async ({ alice }) => {
@@ -173,6 +183,6 @@ test.describe("the header and the account menu", () => {
     await alice.locator("#openSettings").tap();
     await expect(alice.locator("body")).toHaveAttribute("data-view", "settings");
     await expect(alice.locator("#accountMenu")).toBeHidden();
-    await expect(alice.locator("#sbody h2").first()).toBeVisible();
+    await expect(alice.locator("#sbody .snav")).toBeVisible();
   });
 });

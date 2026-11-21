@@ -242,6 +242,26 @@ describe("web plan editor", () => {
       ]);
     });
 
+    it("gives each workout whole, so the week view can draw its profile and total its steps", async () => {
+      const steps = [{ stepType: "warmup", endCondition: "time", endConditionValue: 600 }, { stepType: "interval", endCondition: "distance", endConditionValue: 2000 }];
+      seed("workout-plans/b.json", { workouts: [run("Tempo", "2026-08-01", { steps })] });
+      const [tempo] = byPath(await calendar(), "workout-plans/b.json").workouts;
+      expect(tempo.workout).toEqual(expect.objectContaining({ workoutName: "Tempo", workoutType: "running", steps }));
+    });
+
+    it("says which workouts were done: the ids of the activities the profile started from a workout, with their days", async () => {
+      addProfile("MED");
+      const act = (id: number, day: string, extra: Record<string, unknown> = {}) => toNewActivity({ activityId: id, activityName: `Activity ${id}`, activityType: { typeKey: "running" }, startTimeGMT: `${day} 12:00:00`, startTimeLocal: `${day} 08:30:00`, distance: 5000, duration: 1500, ...extra } as any)!;
+      store().activities.insertNew("MED", [act(9001, "2026-08-01", { workoutId: 777 }), act(9002, "2026-08-02")]);
+      const done = (await call("GET", "/api/calendar")).json.done;
+      expect(done).toContain("777|2026-08-01");
+      expect(done).toHaveLength(1); // a run started from nothing is not a done workout
+    });
+
+    it("says none are done for a login with no profile to look at", async () => {
+      expect((await call("GET", "/api/calendar")).json.done).toEqual([]);
+    });
+
     it("widens a plan's span beyond weekStart and weekEnd with its scheduled dates", async () => {
       seed("workout-plans/hm.json", { weekStart: "2026-07-27", weekEnd: "2026-08-02", workouts: [run("Early", "2026-07-20"), run("Late", ["2026-08-16", "2026-09-20"]), run("Undated")] });
       expect(byPath(await calendar(), "workout-plans/hm.json")).toEqual(expect.objectContaining({ weekStart: "2026-07-27", weekEnd: "2026-08-02", start: "2026-07-20", end: "2026-09-20" }));
@@ -401,6 +421,22 @@ describe("web plan editor", () => {
     });
   });
 
+  describe("the Today view's fonts", () => {
+    it("serves every font the page asks for from /fonts/, as woff2, without a login, and nothing outside the public folder", async () => {
+      const page = await (await fetch(`${base}/`)).text();
+      const urls = [...page.matchAll(/url\((\/fonts\/[^)]+\.woff2)\)/g)].map((m) => m[1]);
+      expect(urls.length).toBeGreaterThanOrEqual(7); // Fira Sans in four weights, Fira Code in three
+      for (const url of urls) {
+        const res = await fetch(`${base}${url}`);
+        expect(res.status).toBe(200);
+        expect(res.headers.get("content-type")).toBe("font/woff2");
+        expect((await res.arrayBuffer()).byteLength).toBeGreaterThan(1000);
+      }
+      expect((await fetch(`${base}/fonts/..%2F..%2F..%2Fpackage.json`)).status).toBe(404); // out of the public folder
+      expect((await fetch(`${base}/fonts/missing.woff2`)).status).toBe(404);
+    });
+  });
+
   describe("map library", () => {
     it("serves Leaflet from node_modules, with its stylesheet and images, without a login", async () => {
       for (const [file, type] of [["leaflet.js", /javascript/], ["leaflet.css", /css/], ["images/marker-icon.png", /image\/png/]] as const) {
@@ -452,11 +488,20 @@ describe("web plan editor", () => {
       keep("MED", item(1, "2026-08-01", "running"), item(2, "2026-08-03", "strength_training"));
       const [strength, run] = (await call("GET", "/api/activities")).json.activities;
       expect(run).toEqual({
-        id: "1", date: "2026-08-01", time: "08:30", type: "running", name: "Activity 1", km: 10, seconds: 3000, paceSec: 313,
+        id: "1", date: "2026-08-01", time: "08:30", type: "running", name: "Activity 1", km: 10, seconds: 3000, paceSec: 313, speedKph: null,
         avgHr: 149, maxHr: 171, effect: "TEMPO", aerobic: 3.4, elevation: null, calories: 640, sets: null, reps: null, workoutId: "777", detailed: false,
       });
       expect(strength).toEqual(expect.objectContaining({ type: "strength_training", km: null, paceSec: null, sets: 18, reps: 96 }));
       expect(JSON.stringify((await call("GET", "/api/activities")).json)).not.toMatch(/activityTypeDTO|startTimeGMT/);
+    });
+
+    it("gives a ride its average speed in km/h, and no other activity", async () => {
+      addProfile("MED");
+      keep("MED", item(1, "2026-08-01", "running"), item(2, "2026-08-02", "cycling", { averageSpeed: 7.5 }), item(3, "2026-08-03", "strength_training"));
+      const by = Object.fromEntries((await call("GET", "/api/activities")).json.activities.map((r: any) => [r.id, r]));
+      expect(by["2"].speedKph).toBe(27);
+      expect(by["1"].speedKph).toBeNull();
+      expect(by["3"].speedKph).toBeNull();
     });
 
     it("says how far the sync is", async () => {
@@ -509,6 +554,10 @@ describe("web plan editor", () => {
       expect(await max(4)).toEqual({ "Dumbbell Curl": { oneRm: 40, weight: 30, reps: 10, date: "2026-08-01" } });
       const bench = (await call("GET", "/api/activities/stats")).json.stats.strength.exercises.find((e: any) => e.name === "Barbell Bench Press");
       expect(bench.best).toEqual((await max(3))["Barbell Bench Press"]); // Stats agrees
+      expect(bench.history).toEqual([{ date: "2026-01-01", oneRm: 300 }, { date: "2026-07-01", oneRm: 247.5 }, { date: "2026-08-01", oneRm: 240 }, { date: "2026-09-01", oneRm: 400 }]); // the sparkline's points
+      const strength = (await call("GET", "/api/activities/stats")).json.stats.strength;
+      expect(strength.recent.map((s: any) => s.date)).toEqual(["2026-07-01", "2026-08-01", "2026-08-01", "2026-09-01"]); // the January session is over 120 days before the newest
+      expect(strength.recent.filter((s: any) => s.date === "2026-08-01").flatMap((s: any) => s.exercises).sort((x: any, y: any) => x.name.localeCompare(y.name))).toEqual([{ name: "Barbell Bench Press", sets: 1 }, { name: "Dumbbell Curl", sets: 1 }]);
 
       // a training plan with benchmarks is not read: it changes nothing
       seed("data/MED/training-plan.json", { strengthBenchmarks: { BARBELL_BENCH_PRESS: { oneRepMax: 266 } } });
@@ -584,6 +633,32 @@ describe("web plan editor", () => {
         expect((await call("GET", "/api/wellness?days=3")).json.days).toHaveLength(7); // at least a week
         expect((await call("GET", "/api/wellness?days=500")).json.days).toHaveLength(40); // at most 90, and only what is stored
         expect((await call("GET", "/api/wellness?date=yesterday")).json.date).toBe(today());
+      });
+
+      it("sends the readiness of each day of the week the day is in, Monday to Sunday, and of each day of the range", async () => {
+        addProfile("MED");
+        fill("MED", 60);
+        const monday = (day: string) => new Date(Date.parse(`${day}T00:00:00Z`) - ((new Date(`${day}T00:00:00Z`).getUTCDay() + 6) % 7) * 86_400_000).toISOString().slice(0, 10);
+        const out = (await call("GET", `/api/wellness?date=${dayOf(10)}&days=14`)).json;
+        expect(out.week).toHaveLength(7);
+        expect(out.week[0].day).toBe(monday(dayOf(10)));
+        expect(new Date(`${out.week[0].day}T00:00:00Z`).getUTCDay()).toBe(1);
+        expect(out.week.map((d: any) => d.day)).toContain(dayOf(10));
+        for (const d of out.week) expect(d).toEqual({ day: d.day, band: expect.stringMatching(/go-harder|as-planned|back-off/), score: expect.any(Number) });
+        expect(out.readinessDays).toHaveLength(14); // one for each day of the range
+        expect(out.readinessDays[13]).toEqual({ day: dayOf(10), band: out.readiness.band, score: out.readiness.score });
+        expect(out.readinessDays[0].day).toBe(dayOf(23));
+      });
+
+      it("has no verdict for a day of the week still to come, and the week of a profile with nothing stored is all unknown", async () => {
+        addProfile("MED");
+        const empty = (await call("GET", "/api/wellness")).json;
+        expect(empty.week).toHaveLength(7);
+        expect(empty.week.every((d: any) => d.band === "unknown" && d.score === null)).toBe(true);
+        fill("MED", 60);
+        const week = (await call("GET", "/api/wellness")).json.week;
+        for (const d of week) if (d.day > today()) expect(d).toEqual({ day: d.day, band: "unknown", score: null });
+        expect(week.find((d: any) => d.day === today())).toEqual(expect.objectContaining({ band: expect.stringMatching(/go-harder|as-planned|back-off/) }));
       });
 
       it("keeps one profile's data from another's", async () => {
@@ -681,6 +756,16 @@ describe("web plan editor", () => {
         for (let back = 0; back <= sinceMonday() + 1; back++) store().wellness.put("MED", dayOf(back), "summary", summaryResponse()); // moderate 20 + vigorous 10 a day, and the Sunday before
         const week = (await call("GET", "/api/today")).json.week;
         expect(week).toEqual({ start: dayOf(sinceMonday()), minutes: 40 * (sinceMonday() + 1), daysStored: sinceMonday() + 1, days: sinceMonday() + 1 });
+      });
+
+      it("sends the last seven days for the small trend lines, today last, with null for a day that is not stored", async () => {
+        addProfile("MED");
+        store().wellness.put("MED", today(), "summary", summaryResponse());
+        const trend = (await call("GET", "/api/today")).json.trend;
+        expect(trend).toHaveLength(7);
+        expect(trend[6].day).toBe(today());
+        expect(trend[6].minutes).toBe(40); // moderate 20 + vigorous 10, twice
+        expect(trend[5]).toEqual({ day: dayOf(1), steps: null, minutes: null, bodyBatteryWake: null, sleepSeconds: null });
       });
 
       it("lists the workouts the profile's plans put on today and the next 7 days, once each, and marks today's done by the activity that started from it", async () => {
@@ -1001,6 +1086,21 @@ describe("web plan editor", () => {
         expect((await call("GET", "/api/nutrition?days=2")).json.days).toHaveLength(7);
       });
 
+      it("sends the week the day shown is in, Monday to Sunday, with each day's calories and goal, even for a day beyond the range of the charts", async () => {
+        addProfile("MED");
+        await call("POST", "/api/settings/goals", { profile: "MED", action: "save", goals: { kcal: 2000 } });
+        await call("POST", "/api/nutrition", { action: "add", day: dayOf(1), meal: "lunch", items: [rice] });
+        const view = (await call("GET", `/api/nutrition?date=${dayOf(1)}&days=7`)).json;
+        expect(view.week).toHaveLength(7);
+        expect(new Date(`${view.week[0].day}T00:00:00Z`).getUTCDay()).toBe(1); // a Monday
+        expect(view.week.map((d: any) => d.day)).toContain(dayOf(1));
+        expect(view.week.find((d: any) => d.day === dayOf(1))).toEqual({ day: dayOf(1), kcal: 200, entries: 1, kcalGoal: 2000 });
+        expect(view.week.filter((d: any) => d.entries === 0).every((d: any) => d.kcal === 0)).toBe(true); // a day with nothing is entries 0: the page says unknown
+        const old = (await call("GET", `/api/nutrition?date=${dayOf(200)}&days=7`)).json; // the charts' range does not reach it: the week is still there
+        expect(old.week).toHaveLength(7);
+        expect(old.week.map((d: any) => d.day)).toContain(dayOf(200));
+      });
+
       it("keeps each profile's food apart: a profile login acts as itself and cannot touch another's entries", async () => {
         addProfile("MED", "med-pw");
         addProfile("SAM", "sam-pw");
@@ -1199,6 +1299,25 @@ describe("web plan editor", () => {
         expect(w.refreshWellness).not.toHaveBeenCalled(); // a read never calls Garmin
       });
 
+      it("sends the goal weight and the food eaten against the calories burned, for the Weight view", async () => {
+        addProfile("MED");
+        fill("MED", 20);
+        const none = (await call("GET", "/api/weight")).json;
+        expect(none.goalKg).toBeNull();
+        expect(none.intake).toEqual({ loggedDays: 0, days: 0, eatenKcal: null, burnedKcal: null });
+
+        expect((await call("POST", "/api/settings/goals", { action: "save", goals: { weightKg: 76.5 } })).status).toBe(200);
+        for (const back of [1, 2, 3]) store().nutrition.add("MED", [{ day: dayOf(back), meal: "lunch", name: "Lunch", kcal: 2000, proteinG: 0, carbsG: 0, fatG: 0 }], "test");
+        store().nutrition.add("MED", [{ day: dayOf(0), meal: "lunch", name: "Today", kcal: 300, proteinG: 0, carbsG: 0, fatG: 0 }], "test"); // today is unfinished
+        const out = (await call("GET", "/api/weight")).json;
+        expect(out.goalKg).toBe(76.5);
+        expect(out.intake).toEqual({ loggedDays: 3, days: 3, eatenKcal: 2000, burnedKcal: 2600 });
+        expect((await call("GET", "/api/weight?days=14")).json.goalKg).toBe(76.5);
+        expect((await call("POST", "/api/settings/goals", { action: "save", goals: { weightKg: 5 } })).status).toBe(400);
+        expect((await call("POST", "/api/settings/goals", { action: "save", goals: { weightKg: null } })).status).toBe(200);
+        expect((await call("GET", "/api/weight")).json.goalKg).toBeNull();
+      });
+
       it("shows the weigh-ins of a Renpho scale without Garmin, and leaves a day Garmin has its own weight for to Garmin", async () => {
         addProfile("SAM", undefined, false);
         const weigh = (id: string, back: number, kg: number, fat?: number) => {
@@ -1240,9 +1359,10 @@ describe("web plan editor", () => {
         expect((await call("GET", "/api/settings")).json).toEqual({ profile: null });
         addProfile("MED");
         const out = (await call("GET", "/api/settings")).json;
-        expect(out).toEqual(expect.objectContaining({ profile: "MED", garmin: { connected: true, email: "a@b.c", hasPassword: true }, web: { hasPassword: false } }));
+        expect(out).toEqual(expect.objectContaining({ profile: "MED", garmin: { connected: true, email: "a@b.c", hasPassword: true, check: null }, web: { hasPassword: false } }));
         expect(out.renpho).toEqual(expect.objectContaining({ account: null, settings: expect.objectContaining({ fetchEnabled: false, pushEnabled: false }), log: [], recent: [] }));
         expect(out.encryption).toEqual({ enabled: false, plain: 1 }); // the Garmin login is the one password kept
+        expect(out.ai).toEqual({ enabled: expect.any(Boolean), remaining: expect.any(Number), limit: expect.any(Number), backend: expect.anything() }); // the Food AI, as the Food view gets it
         expect(JSON.stringify(out)).not.toMatch(/"x"|password":"/);
       });
 
@@ -1260,15 +1380,19 @@ describe("web plan editor", () => {
 
       it("saves the Garmin login in the database, checks it and removes it, the profile staying", async () => {
         addProfile("MED", undefined, false);
-        expect((await call("GET", "/api/settings")).json.garmin).toEqual({ connected: false, email: null, hasPassword: false });
+        expect((await call("GET", "/api/settings")).json.garmin).toEqual({ connected: false, email: null, hasPassword: false, check: null });
         expect((await call("POST", "/api/settings/garmin", { action: "save", email: "new@x.y", password: "" })).json.error).toBe("Enter the password.");
         const saved = await call("POST", "/api/settings/garmin", { action: "save", email: "new@x.y", password: "newpw" });
         expect(saved.status).toBe(200);
-        expect(saved.json.garmin).toEqual({ connected: true, email: "new@x.y", hasPassword: true });
+        expect(saved.json.garmin).toEqual({ connected: true, email: "new@x.y", hasPassword: true, check: null });
         expect(JSON.stringify(saved.json)).not.toContain("newpw");
         expect(store().credentials.get("MED", "garmin")).toEqual(expect.objectContaining({ email: "new@x.y", password: "newpw" }));
-        expect((await call("POST", "/api/settings/garmin", { action: "test" })).json).toEqual(expect.objectContaining({ ok: true, message: "Garmin accepted the login." }));
+        const tested = (await call("POST", "/api/settings/garmin", { action: "test" })).json;
+        expect(tested).toEqual(expect.objectContaining({ ok: true, message: "Garmin accepted the login." }));
         expect(st.testGarminLogin).toHaveBeenCalledWith("MED");
+        expect(tested.garmin.check).toEqual({ ok: true, message: "Garmin accepted the login.", at: expect.any(Number) }); // what the test said is kept, for the Overview to tell when it was
+        expect((await call("GET", "/api/settings")).json.garmin.check.ok).toBe(true);
+        expect((await call("POST", "/api/settings/garmin", { action: "save", email: "other@x.y", password: "otherpw" })).json.garmin.check).toBeNull(); // a login that changed has not been checked
         expect((await call("POST", "/api/settings/garmin", { action: "remove" })).json.garmin.connected).toBe(false);
         expect(store().profiles.has("MED")).toBe(true);
         expect((await call("POST", "/api/settings/garmin", { action: "import-env" })).status).toBe(400);
@@ -1597,6 +1721,22 @@ describe("web plan editor", () => {
       expect(ambiguous.status).toBe(400);
       expect(ambiguous.json.error).toMatch(/Multiple profiles/);
       expect((await act({ action: "upload", profile: "NOPE" })).status).toBe(400);
+      expect(g.uploadPlan).not.toHaveBeenCalled();
+    });
+
+    it("limits an action to the workouts named in indexes, and refuses places the plan has no workout at", async () => {
+      addProfile("TEST");
+      const count = JSON.parse(await (async () => (await call("GET", "/api/file?path=" + encodeURIComponent("workout-plans/a.json"))).json.text)()).workouts.length;
+      expect((await act({ action: "upload", indexes: [0] })).status).toBe(200);
+      expect(g.uploadPlan).toHaveBeenLastCalledWith("TEST", "workout-plans/a.json", false, [0]);
+      await act({ action: "schedule", indexes: [0, 0] });
+      expect(g.schedulePlan).toHaveBeenLastCalledWith("TEST", "workout-plans/a.json", [0]);
+      await act({ action: "upload_schedule", indexes: [0] });
+      expect(g.uploadAndSchedulePlan).toHaveBeenLastCalledWith("TEST", "workout-plans/a.json", [0]);
+      await act({ action: "send", indexes: [0], deviceId: 7 });
+      expect(g.sendPlanToDevice).toHaveBeenLastCalledWith("TEST", "workout-plans/a.json", 7, [0]);
+      g.uploadPlan.mockClear();
+      for (const indexes of [[], [count], [-1], [1.5], "0", [null]]) expect([indexes, (await act({ action: "upload", indexes })).status]).toEqual([indexes, 400]);
       expect(g.uploadPlan).not.toHaveBeenCalled();
     });
 

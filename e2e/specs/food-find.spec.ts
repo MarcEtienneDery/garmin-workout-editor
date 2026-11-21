@@ -5,7 +5,7 @@
  * lookup is answered by stubFoods.
  */
 import { test, expect, openView, today, daysAgo, type Page, type APIRequestContext } from "../support/fixtures";
-import { type Meal, labelOf, meal as section, openRow, openSheet, sheet, sheetMeal, sheetTab } from "../support/food";
+import { type Meal, labelOf, meal as section, openRow, openSheet, pickMeal, sheet, sheetMeal, sheetTab } from "../support/food";
 
 type Answer = { status?: number; json: any };
 type Lookup = (url: URL) => Answer | Promise<Answer>;
@@ -874,7 +874,7 @@ test.describe("quick add", () => {
   test("the strip lists the foods logged lately as cards, and one tap logs one in the meal chosen, with Undo", async ({ me, profile }) => {
     await seed(profile.api, daysAgo(1), "breakfast", [OATMEAL, BANANA]);
     await openView(me, "food");
-    await strip(me).getByRole("combobox", { name: "The meal a tap adds to" }).selectOption("breakfast");
+    await pickMeal(me, "breakfast");
     const oatmeal = strip(me).getByRole("button", { name: "Add Oatmeal to Breakfast" });
     await expect(oatmeal.locator("b")).toHaveText("Oatmeal");
     await expect(oatmeal.locator("small")).toHaveText("300 kcal");
@@ -892,7 +892,7 @@ test.describe("quick add", () => {
     await seed(profile.api, daysAgo(1), "breakfast", [OATMEAL]);
     await seed(profile.api, daysAgo(1), "lunch", Array.from({ length: 11 }, (_, i) => ({ name: `Lunch ${String.fromCharCode(65 + i)}`, kcal: 300 + i, proteinG: 10, carbsG: 30, fatG: 10 })));
     await openView(me, "food");
-    await strip(me).getByRole("combobox", { name: "The meal a tap adds to" }).selectOption("breakfast");
+    await pickMeal(me, "breakfast");
     await expect(chips(me)).toHaveCount(10);
     await expect(chips(me).first()).toContainText("Oatmeal");
     await strip(me).getByRole("button", { name: "All foods ›" }).click();
@@ -905,7 +905,7 @@ test.describe("quick add", () => {
   test("the meal chosen in the strip is the one the bar at the bottom and the sheet add to", async ({ me, profile }) => {
     await seed(profile.api, daysAgo(1), "breakfast", [OATMEAL]);
     await openView(me, "food");
-    await strip(me).getByRole("combobox", { name: "The meal a tap adds to" }).selectOption("snack");
+    await pickMeal(me, "snack");
     await expect(strip(me).getByRole("button", { name: "Add Oatmeal to Snacks" })).toBeVisible();
     await expect(me.locator("#fdLabel")).toHaveText("Add food to Snacks");
     await me.locator("#fdSearch").click();
@@ -917,7 +917,7 @@ test.describe("quick add", () => {
     await openView(me, "food");
     await me.locator("#fPrev").click();
     await expect(me.locator("#fDate")).toHaveValue(daysAgo(1));
-    await strip(me).getByRole("combobox", { name: "The meal a tap adds to" }).selectOption("lunch");
+    await pickMeal(me, "lunch");
     await strip(me).getByRole("button", { name: "Add Chicken wrap to Lunch" }).click();
     await expect(section(me, "lunch").locator(".fe .fn")).toHaveText(["Chicken wrap"]);
     expect(await logged(profile.api, daysAgo(1))).toMatchObject([{ name: "Chicken wrap", meal: "lunch" }]);

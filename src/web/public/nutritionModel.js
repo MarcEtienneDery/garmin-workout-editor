@@ -133,23 +133,132 @@
    * What the view draws: the calories eaten against the burn (when there is one) and the calorie goal (when one is set), the macros piled
    * up, and the protein against its goal (when one is set).
    */
+  /** How near a target goal (the calories, carbs, fat) a day may end and still be on target: the server's TARGET_TOLERANCE, and a test keeps the two equal. */
+  const TARGET_TOLERANCE = 0.1;
+
+  /**
+   * Where an amount stands against a goal of a kind: "min" is a floor (reached or short), "max" a ceiling (ok or over), "target" an aim within
+   * the tolerance (short, ok or over). The rule of the server (nutritionGoals.ts goalProgress), mirrored here so the charts say the same as
+   * the cards; a test holds the two together.
+   */
+  function standing(kind, amount, goal) {
+    const ratio = amount / goal;
+    if (kind === "min") return ratio >= 1 ? "ok" : "short";
+    if (kind === "max") return ratio > 1 ? "over" : "ok";
+    return ratio < 1 - TARGET_TOLERANCE ? "short" : ratio > 1 + TARGET_TOLERANCE ? "over" : "ok";
+  }
+
+  /** "8 of 20 finished days on target · 2 over · 10 under": the days counted by `standOf` (null for a day that does not count), skipping today, which is not over. */
+  function standingLine(days, today, standOf, { good, words }) {
+    const done = days.filter((d) => d.day !== today).map(standOf).filter(Boolean);
+    if (!done.length) return "";
+    const count = (s) => done.filter((x) => x === s).length;
+    const parts = [`${count("ok")} of ${done.length} finished days ${good}`];
+    if (words.over && count("over")) parts.push(`${count("over")} ${words.over}`);
+    if (words.short && count("short")) parts.push(`${count("short")} ${words.short}`);
+    return parts.join(" · ");
+  }
+
+  // ── The week strip and the insights ─────────────────────────────────────
+
+  const WEEKDAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  const weekdayOf = (day) => new Date(`${day}T00:00:00Z`).getUTCDay();
+  const MONTH_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+  /**
+   * The seven days of the week the day shown is in, for the strip at the top: how many calories each had against its goal (`pct`, up to 1,
+   * null with no goal or nothing logged), its state (`ok`, `over` more than the 10 % that counts as on target, `none` nothing logged,
+   * `future`), and the words a screen reader says. A day under the goal is on target; only over is told apart.
+   */
+  function weekStrip(view) {
+    if (!view || !Array.isArray(view.week)) return [];
+    const goals = view.goals || {}, follows = valid(goals.kcal) && valid(goals.kcalBurnPct);
+    return view.week.map((w) => {
+      const wd = weekdayOf(w.day), future = w.day > view.today, logged = !future && w.entries > 0;
+      const goal = valid(goals.kcal) ? (follows ? w.kcalGoal : goals.kcal) : null, known = logged && valid(goal) && goal > 0;
+      const over = known && w.kcal > goal * (1 + TARGET_TOLERANCE);
+      const state = future ? "future" : !logged ? "none" : over ? "over" : "ok";
+      const when = `${WEEKDAY_NAMES[wd]} ${Number(w.day.slice(8))} ${MONTH_SHORT[Number(w.day.slice(5, 7)) - 1]}`;
+      return {
+        day: w.day, weekday: WEEKDAY_NAMES[wd].slice(0, 3), number: Number(w.day.slice(8)), kcal: logged ? w.kcal : null, text: logged ? num(w.kcal) : "–", state,
+        pct: known ? Math.min(1, w.kcal / goal) : null, today: w.day === view.today, selected: w.day === view.date,
+        label: `${when}, ${future ? "not yet" : logged ? `${num(w.kcal)} kcal${over ? ", over the goal" : ""}` : "nothing logged"}`,
+      };
+    });
+  }
+
+  /** The days of a range that are finished and have food in them (today is still going, a day with nothing is unknown, not zero). */
+  const finishedDays = (view) => ((view && view.days) || []).filter((d) => d.day !== view.today && d.entries > 0 && valid(d.kcal));
+  const meanOf = (list) => (list.length ? list.reduce((a, b) => a + b, 0) / list.length : null);
+
+  /**
+   * What the finished days of the range add up to, as tiles { label, value, note } for the Insights tab: the average of the calories, how many
+   * days were on target (under the goal counts) and over it, the protein against its goal, and what was eaten against what Garmin counted as
+   * burned. Empty with no finished day.
+   */
+  function insightTiles(view) {
+    const days = finishedDays(view), goals = (view && view.goals) || {};
+    if (!days.length) return [];
+    const n = days.length, follows = valid(goals.kcal) && valid(goals.kcalBurnPct);
+    const tiles = [{ label: `Average · ${n} day${n === 1 ? "" : "s"}`, value: num(Math.round(meanOf(days.map((d) => d.kcal)))), note: valid(goals.kcal) ? `kcal a day · goal ${num(goals.kcal)}` : "kcal a day" }];
+    if (valid(goals.kcal)) {
+      const over = days.filter((d) => { const goal = follows ? d.kcalGoal : goals.kcal; return valid(goal) && goal > 0 && d.kcal > goal * (1 + TARGET_TOLERANCE); }).length;
+      tiles.push({ label: "On target", value: `${n - over} of ${n}`, note: over ? `days · ${over} over the goal` : "days · none over the goal" });
+    }
+    const protein = days.filter((d) => valid(d.proteinG));
+    if (protein.length) {
+      const reached = valid(goals.proteinG) ? protein.filter((d) => d.proteinG >= goals.proteinG).length : null;
+      tiles.push({ label: "Protein", value: `${num(Math.round(meanOf(protein.map((d) => d.proteinG))))} g`, note: reached === null ? "a day" : `a day · goal ${num(goals.proteinG)} · reached ${reached} of ${protein.length}` });
+    }
+    const burned = days.filter((d) => valid(d.burnedKcal) && !d.burnedSoFar);
+    if (burned.length >= 3) tiles.push({ label: "Eaten vs burned", value: signed(Math.round(meanOf(burned.map((d) => d.kcal - d.burnedKcal)))), note: "kcal a day, on average" });
+    return tiles;
+  }
+
+  /**
+   * The finished days by weekday, Monday first: the average calories of each (null with fewer than two days of it), and a sentence on which
+   * weekday runs highest and which is lowest in protein. Null when fewer than three weekdays have two days.
+   */
+  function weekdayPattern(view) {
+    const days = finishedDays(view), rows = [1, 2, 3, 4, 5, 6, 0].map((wd) => {
+      const mine = days.filter((d) => weekdayOf(d.day) === wd), protein = mine.filter((d) => valid(d.proteinG));
+      return { wd, short: WEEKDAY_NAMES[wd][0], name: WEEKDAY_NAMES[wd], plural: `${WEEKDAY_NAMES[wd]}s`, n: mine.length, kcal: mine.length >= 2 ? Math.round(meanOf(mine.map((d) => d.kcal))) : null, proteinG: protein.length >= 2 ? Math.round(meanOf(protein.map((d) => d.proteinG))) : null };
+    });
+    const known = rows.filter((r) => r.kcal !== null);
+    if (known.length < 3) return null;
+    const hi = known.reduce((a, b) => (b.kcal > a.kcal ? b : a)), lo = known.reduce((a, b) => (b.kcal < a.kcal ? b : a));
+    const parts = [];
+    if (hi.kcal - lo.kcal >= lo.kcal * 0.1) parts.push(`${hi.plural} average ${num(hi.kcal)} kcal, ${num(hi.kcal - lo.kcal)} more than ${lo.plural}.`);
+    const withProtein = rows.filter((r) => r.proteinG !== null);
+    if (withProtein.length >= 3) {
+      const all = meanOf(withProtein.map((r) => r.proteinG)), low = withProtein.reduce((a, b) => (b.proteinG < a.proteinG ? b : a));
+      if (low.proteinG < all * 0.85) parts.push(`Protein is lowest on ${low.plural} (${low.proteinG} g).`);
+    }
+    return { rows, sentence: parts.join(" "), peak: Math.max(...known.map((r) => r.kcal)) };
+  }
+
   function charts(view) {
-    const burn = hasBurn(view), goals = (view && view.goals) || {};
+    const burn = hasBurn(view), goals = (view && view.goals) || {}, today = view && view.today;
     const against = (key, unit) => (valid(goals[key]) ? { goal: { label: `Goal ${num(goals[key])} ${unit}`, value: goals[key] } } : {});
     // a calorie goal that follows the burn is a level of its own each day (the server works it out per day)
     const follows = valid(goals.kcal) && valid(goals.kcalBurnPct);
+    // where a day ended against the calorie goal (the day's own when it follows the burn), null with no goal or nothing logged. On a chart a day
+    // under the goal counts as on target (only over is told apart), where the card says "short" for a day more than 10 % under.
+    const kcalLimit = (d) => (follows ? d.kcalGoal : goals.kcal);
+    const kcalStands = (d) => (valid(goals.kcal) && valid(d.kcal) && valid(kcalLimit(d)) && kcalLimit(d) > 0 ? (standing("target", d.kcal, kcalLimit(d)) === "over" ? "over" : "ok") : null);
     const kcalGoal = follows ? { goal: { label: `Goal ${num(goals.kcal)} kcal + ${num(goals.kcalBurnPct)} % of active`, values: (d) => d.kcalGoal } } : against("kcal", "kcal");
     return [
       {
-        id: "eaten", title: "Calories eaten", unit: "kcal", kind: "bars", min: 0, value: (d) => d.kcal, ...(burn ? { ref: { label: "Burned by Garmin", value: (d) => d.burnedKcal } } : {}), ...kcalGoal,
-        read: (d) => (valid(d.kcal) ? `${num(d.kcal)} kcal${burn && valid(d.burnedKcal) ? ` · burned ${num(d.burnedKcal)}` : ""}${follows && valid(d.kcalGoal) ? ` · goal ${num(d.kcalGoal)}` : ""}` : "not logged"),
+        id: "eaten", title: "Calories eaten", unit: "kcal", kind: "bars", min: 0, ticks: 6, value: (d) => d.kcal,
+        ...(valid(goals.kcal) ? { color: (d) => (kcalStands(d) === "over" ? "over" : ""), colorKeys: { over: "Over the goal" }, summary: (days) => standingLine(days, today, kcalStands, { good: "on target", words: { over: "over" } }) } : {}), ...(burn ? { ref: { label: "Burned by Garmin", value: (d) => d.burnedKcal } } : {}), ...kcalGoal,
+        read: (d) => (valid(d.kcal) ? `${num(d.kcal)} kcal${burn && valid(d.burnedKcal) ? ` · burned ${num(d.burnedKcal)}` : ""}${follows && valid(d.kcalGoal) ? ` · goal ${num(d.kcalGoal)}` : ""}${kcalStands(d) === "over" ? " · over the goal" : ""}` : "not logged"),
       },
       {
-        id: "macros", title: "Macros", unit: "g", kind: "stack", min: 0, scaleBy: 1,
+        id: "macros", title: "Macros", unit: "g", kind: "stack", min: 0, ticks: 4, scaleBy: 1,
         parts: [{ key: "proteinG", label: "Protein", cls: "protein" }, { key: "carbsG", label: "Carbs", cls: "carbs" }, { key: "fatG", label: "Fat", cls: "fat" }],
         read: (d) => (valid(d.kcal) ? macros(d) : "not logged"),
       },
-      ...(valid(goals.proteinG) ? [{ id: "protein", title: "Protein", unit: "g", kind: "bars", min: 0, value: (d) => d.proteinG, color: () => "protein", ...against("proteinG", "g"), read: (d) => (valid(d.proteinG) ? `${grams(d.proteinG)} · ${num((d.proteinG / goals.proteinG) * 100)} % of the goal` : "not logged") }] : []),
+      ...(valid(goals.proteinG) ? [{ id: "protein", title: "Protein", unit: "g", kind: "bars", min: 0, ticks: 4, value: (d) => d.proteinG, color: () => "protein", summary: (days) => standingLine(days, today, (d) => (valid(d.proteinG) ? standing("min", d.proteinG, goals.proteinG) : null), { good: `reached ${num(goals.proteinG)} g`, words: {} }), ...against("proteinG", "g"), read: (d) => (valid(d.proteinG) ? `${grams(d.proteinG)} · ${num((d.proteinG / goals.proteinG) * 100)} % of the goal` : "not logged") }] : []),
     ];
   }
 
@@ -586,5 +695,5 @@
     return { items };
   }
 
-  return { AI_LIMITS, mealForHour, canEstimate, aiFood, aiRows, aiRowValue, aiGroups, aiTotals, approx, aiConfidence, aiItems, gtinOk, expandUpcE, normalizeBarcode, MAX_AMOUNT, parseAmount, amountGrams, scale, brandOf, entryName, portion, productOf, pickOf, allNutrients, per100Line, foodTitle, MEAL_LABELS, mealLabel, kcal, grams, signed, macros, shares, hasBurn, figures, averageNote, bare, qty, goalValue, goalNote, goalMeter, calorieBar, ring, calorieGoal, goalLine, burnLine, macroRows, sharesLine, mealBars, nutrientRows, kindLabel, GROUPS, groupsFor, cell, chartDays, charts, kcalOf, followMacros, parseDraft, draftOf, EMPTY_DRAFT, hasNumbers, hasNutrients, recentMatch, recentFor, again, foods, NUTRIENTS, nutrientLine, nutrientTiles, scaleNutrients };
+  return { TARGET_TOLERANCE, standing, weekStrip, insightTiles, weekdayPattern, AI_LIMITS, mealForHour, canEstimate, aiFood, aiRows, aiRowValue, aiGroups, aiTotals, approx, aiConfidence, aiItems, gtinOk, expandUpcE, normalizeBarcode, MAX_AMOUNT, parseAmount, amountGrams, scale, brandOf, entryName, portion, productOf, pickOf, allNutrients, per100Line, foodTitle, MEAL_LABELS, mealLabel, kcal, grams, signed, macros, shares, hasBurn, figures, averageNote, bare, qty, goalValue, goalNote, goalMeter, calorieBar, ring, calorieGoal, goalLine, burnLine, macroRows, sharesLine, mealBars, nutrientRows, kindLabel, GROUPS, groupsFor, cell, chartDays, charts, kcalOf, followMacros, parseDraft, draftOf, EMPTY_DRAFT, hasNumbers, hasNutrients, recentMatch, recentFor, again, foods, NUTRIENTS, nutrientLine, nutrientTiles, scaleNutrients };
 });

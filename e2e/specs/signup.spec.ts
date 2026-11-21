@@ -213,6 +213,7 @@ test.describe("the admin's invites", () => {
       await ready(adminPage);
       await adminPage.locator("#accountBtn").click();
       await adminPage.locator("#openSettings").click();
+      await adminPage.locator('#sbody .snav [data-section="profiles"]').click(); // the invites are kept with the profiles (admin only)
       const card = adminPage.locator(".scard", { has: adminPage.getByRole("heading", { name: /^Invites/ }) });
       await expect(card).toBeVisible({ timeout: 20_000 });
 

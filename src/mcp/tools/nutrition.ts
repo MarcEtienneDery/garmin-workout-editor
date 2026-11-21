@@ -7,7 +7,7 @@ import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { MAX_ITEMS, MAX_RANGE_DAYS, MEALS, addFoods, averageOf, changeFood, deleteFoods, nutritionDays, totalsOf } from "../../shared/nutrition";
 import { NUTRIENTS, type Nutrients, maxOf } from "../../shared/nutrients";
-import { BURN_KEY, SETTING_FIELDS, getGoals, goalList, goalProgress, setGoals } from "../../shared/nutritionGoals";
+import { BURN_KEY, MAX_WEIGHT_GOAL_KG, MIN_WEIGHT_GOAL_KG, SETTING_FIELDS, WEIGHT_KEY, getGoals, goalList, goalProgress, setGoals } from "../../shared/nutritionGoals";
 import { getStore } from "../../shared/store";
 import { addDays, localToday } from "../../shared/wellnessSync";
 import { dataProfile, runTool } from "../context";
@@ -97,6 +97,7 @@ export function getNutrition(args: GetNutritionArgs) {
     // the daily goals the person set (`kind`: min is a floor, max a ceiling, target an aim) and where the last day of the range stands against them
     goals: goalList(goals),
     kcalBurnPct: goals[BURN_KEY] ?? null,
+    weightGoalKg: goals[WEIGHT_KEY] ?? null,
     goalProgress: goalProgress(goals, all[all.length - 1], all[all.length - 1].activeKcal),
     loggedDays: logged.length,
     unloggedDays: all.length - logged.length,
@@ -117,7 +118,7 @@ export function setNutritionGoals(args: SetGoalsArgs) {
   const store = getStore(), profile = dataProfile(args.profile), today = localToday(store, profile);
   const goals = setGoals(store, profile, args.goals);
   const [shown] = nutritionDays(store, profile, today, today, today);
-  return { profile, goals: goalList(goals), kcalBurnPct: goals[BURN_KEY] ?? null, today, goalProgress: goalProgress(goals, shown, shown.activeKcal) };
+  return { profile, goals: goalList(goals), kcalBurnPct: goals[BURN_KEY] ?? null, weightGoalKg: goals[WEIGHT_KEY] ?? null, today, goalProgress: goalProgress(goals, shown, shown.activeKcal) };
 }
 
 /** One optional number per goal; a null removes the goal. */
@@ -126,7 +127,9 @@ const goalsArg = z
     Object.fromEntries(
       SETTING_FIELDS.map((g) => [
         g.key,
-        g.kind === "burn"
+        g.kind === "weight"
+          ? z.number().min(MIN_WEIGHT_GOAL_KG).max(MAX_WEIGHT_GOAL_KG).nullable().optional().describe(`The weight the person aims for, in kilograms (${MIN_WEIGHT_GOAL_KG} to ${MAX_WEIGHT_GOAL_KG}): the Weight view of the web editor draws it as a line on the trend and says how long the trend would take to reach it. Not a food goal.`)
+          : g.kind === "burn"
           ? z.number().int().min(1).max(g.max).nullable().optional().describe("The share of the day's active calories (Garmin's burn above resting) added to the `kcal` goal, in whole percent: 100 adds all of them back, 50 half. The calorie goal then grows through the day as the watch counts. Needs a `kcal` goal; null makes the calorie goal fixed again.")
           : z.number().gt(0).max(g.max).nullable().optional().describe(`${g.label} a day, in ${g.unit === "kcal" ? "kcal" : g.unit === "g" ? "grams" : "milligrams"} (${g.kind === "min" ? "at least" : g.kind === "max" ? "at most" : "the aim"}).`),
       ])
@@ -175,7 +178,7 @@ export function registerNutritionTools(server: McpServer): void {
     {
       title: "Set the daily food goals",
       description:
-        "Set the person's daily food goals, which the Food view of the web editor shows as progress through the day and get_nutrition and log_meal report against. One optional number a day each: `kcal` (the aim), `proteinG` (at least), `carbsG` and `fatG` (the aim), and the nutrients `fiberG`, `potassiumMg`, `calciumMg`, `ironMg` (at least) and `sugarsG`, `satFatG`, `transFatG`, `cholesterolMg`, `sodiumMg` (at most). `kcalBurnPct` (1-100) makes the calorie goal follow the burn: that share of the day's active calories (from Garmin) is added to `kcal`, so a training day allows more; leave it out for a fixed calorie goal. A key left out keeps its goal; null removes it. Only the goals the person asked for: do not invent the others, and do not set a goal from a guess about their body (ask, or suggest a number and wait for a yes). Returns all the goals now set (`kcalBurnPct` is null when the calorie goal is fixed) and where today stands against them. Writes to the database only, never to Garmin.",
+        "Set the person's daily food goals, which the Food view of the web editor shows as progress through the day and get_nutrition and log_meal report against. One optional number a day each: `kcal` (the aim), `proteinG` (at least), `carbsG` and `fatG` (the aim), and the nutrients `fiberG`, `potassiumMg`, `calciumMg`, `ironMg` (at least) and `sugarsG`, `satFatG`, `transFatG`, `cholesterolMg`, `sodiumMg` (at most). `kcalBurnPct` (1-100) makes the calorie goal follow the burn: that share of the day's active calories (from Garmin) is added to `kcal`, so a training day allows more; leave it out for a fixed calorie goal. A key left out keeps its goal; null removes it. Only the goals the person asked for: do not invent the others, and do not set a goal from a guess about their body (ask, or suggest a number and wait for a yes). Also `weightKg`, which is not a food goal: the weight the person aims for, in kilograms, which the Weight view draws as a line on the trend (ask before setting it). Returns all the goals now set (`kcalBurnPct` is null when the calorie goal is fixed, `weightGoalKg` null with no weight goal) and where today stands against them. Writes to the database only, never to Garmin.",
       inputSchema: {
         profile: profileArg,
         goals: goalsArg,

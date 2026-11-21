@@ -62,6 +62,53 @@
     return "The watch has not synced for a while, so these numbers may be behind. Open Garmin Connect on your phone (pull down to sync), then press Sync here.";
   }
 
+  // ── Trend lines ─────────────────────────────────────────────────────────
+
+  /**
+   * The small line a tile draws: its last days as numbers, oldest first, `null` where a day has nothing stored (the line leaves a
+   * gap there, it never drops to zero), with `text` saying the same in words for a screen reader. Not drawn (null) when fewer than
+   * two days have a number, because one point is not a trend.
+   */
+  function tileTrend(view, id) {
+    const days = Array.isArray(view.trend) ? view.trend : [];
+    const pick = {
+      steps: (d) => ({ n: d.steps, say: (n) => num(n) }),
+      intensity: (d) => ({ n: d.minutes, say: (n) => `${num(n)} min` }),
+      battery: (d) => ({ n: d.bodyBatteryWake, say: (n) => num(n) }),
+      sleep: (d) => ({ n: present(d.sleepSeconds) ? d.sleepSeconds / 3600 : null, say: (n) => RM.hm(Math.round(n * 3600)) }),
+    }[id];
+    if (!pick || days.length < 2) return null;
+    const rows = days.map(pick);
+    if (rows.filter((r) => present(r.n)).length < 2) return null;
+    const what = { steps: "Steps", intensity: "Intensity minutes a day", battery: "Body Battery on waking", sleep: "Sleep" }[id];
+    return { values: rows.map((r) => (present(r.n) ? r.n : null)), text: `${what}, last ${days.length} days: ${rows.map((r) => (present(r.n) ? r.say(r.n) : "none")).join(", ")}` };
+  }
+
+  /**
+   * Where a trend's points go in a box of `width` by `height` (with `pad` kept clear all round): the runs of consecutive days that
+   * have a number (a missing day splits the line) and the last point, which the page marks. Pure arithmetic, so the page only draws it.
+   * A line whose numbers are all the same sits in the middle.
+   */
+  function sparkline(values, width, height, pad) {
+    const known = values.filter(present);
+    if (known.length < 2) return null;
+    const lo = Math.min(...known), hi = Math.max(...known), span = hi - lo;
+    const x = (i) => +(pad + (i * (width - 2 * pad)) / (values.length - 1)).toFixed(1);
+    const y = (n) => +(span === 0 ? height / 2 : height - pad - ((n - lo) / span) * (height - 2 * pad)).toFixed(1);
+    const runs = [];
+    let run = null, last = null;
+    values.forEach((n, i) => {
+      if (!present(n)) { run = null; return; }
+      if (!run) { run = []; runs.push(run); }
+      last = [x(i), y(n)];
+      run.push(last);
+    });
+    return { runs, last, lastIsToday: present(values[values.length - 1]) };
+  }
+
+  /** The readiness ring: how much of it is drawn for a score (0 to 100), with no score drawing none. */
+  const gaugeFill = (score) => (valid(score) ? Math.max(0, Math.min(100, score)) / 100 : 0);
+
   // ── Progress tiles ──────────────────────────────────────────────────────
 
   /** Whole percent of a goal, or null without a value or a goal. It can pass 100. */
@@ -71,8 +118,8 @@
   const join = (parts) => parts.filter(Boolean).join(" · ");
 
   /**
-   * The tiles with a bar. Each is { id, label, value, note, pct, done, go }: pct is null for no bar, done when the goal is met,
-   * go the view a click opens.
+   * The tiles with a bar. Each is { id, label, value, note, pct, done, go, trend }: pct is null for no bar, done when the goal is met,
+   * go the view a click opens, trend the small line of its last days (see tileTrend) or null.
    */
   function progressTiles(view) {
     const day = view.day || {}, p = view.progress, week = view.week;
@@ -90,21 +137,25 @@
     return [
       {
         id: "steps", label: "Steps", go: "recovery", pct: stepPct, done: stepPct !== null && stepPct >= 100,
+        trend: tileTrend(view, "steps"),
         value: present(steps) ? num(steps) : "–",
         note: !present(steps) ? "not synced yet" : join([stepPct !== null ? `of ${num(stepGoal)} · ${stepPct}%` : "steps", km]),
       },
       {
         id: "intensity", label: "Intensity minutes", go: "recovery", pct: weekPct, done: weekPct !== null && weekPct >= 100,
+        trend: tileTrend(view, "intensity"),
         value: stored ? num(week.minutes) : "–",
         note: !stored ? "not synced yet" : join([present(goal) ? `of ${num(goal)} this week · ${weekPct}%` : "this week", short]),
       },
       {
         id: "battery", label: "Body Battery", go: "recovery", pct: present(now) ? Math.max(0, Math.min(100, now)) : null, done: false,
+        trend: tileTrend(view, "battery"),
         value: present(now) ? num(now) : "–",
         note: join([present(day.bodyBatteryWake) && `woke at ${num(day.bodyBatteryWake)}`, present(day.bodyBatteryLow) && `low ${num(day.bodyBatteryLow)}`, present(day.avgStress) && `stress ${num(day.avgStress)}`]) || "no reading yet",
       },
       {
         id: "sleep", label: "Sleep", go: "recovery", pct: sleepPct, done: sleepPct !== null && sleepPct >= 100,
+        trend: tileTrend(view, "sleep"),
         value: RM.hm(day.sleepSeconds),
         note: present(day.sleepSeconds) ? join([present(day.sleepScore) && `score ${num(day.sleepScore)}`, need !== null && `need ${RM.hm(need)}`, present(day.restingHr) && `resting HR ${num(day.restingHr)}`]) : "none stored for last night",
       },
@@ -151,5 +202,5 @@
     return { label: info.label, cls: info.cls, score: readiness.score, text: readiness.suggestion };
   }
 
-  return { STALE_MS, WATCH_STALE_MS, ago, freshness, watchHint, percent, progressTiles, foodView, typeLabel, dayName, workoutDays, activityLine, readinessLine };
+  return { STALE_MS, WATCH_STALE_MS, ago, freshness, watchHint, percent, tileTrend, sparkline, gaugeFill, progressTiles, foodView, typeLabel, dayName, workoutDays, activityLine, readinessLine };
 });

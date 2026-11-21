@@ -111,3 +111,12 @@ describe("filtering", () => {
     for (const set of [{ query: "x" }, { status: "ok" }, { plan: "none" }, { types: new Set(["running"]) }, { upcoming: true }]) expect(L.isFiltered(set)).toBe(true);
   });
 });
+
+describe("the status strip", () => {
+  it("counts the rows in each status the strip shows, and the rows Garmin has not answered about", () => {
+    const rows = ["a", "b", "c", "d", "e", "f"].map((n) => row(n));
+    Object.assign(states, { a: "synced", b: "modified", c: "missing", d: "not-uploaded", e: "garmin-only", f: "checking" });
+    expect(L.statusCounts(rows, stateOf)).toEqual({ all: 6, attention: 2, ok: 1, notuploaded: 1, garminonly: 1, checking: 1 });
+    expect(L.statusCounts([], stateOf)).toEqual({ all: 0, attention: 0, ok: 0, notuploaded: 0, garminonly: 0, checking: 0 });
+  });
+});

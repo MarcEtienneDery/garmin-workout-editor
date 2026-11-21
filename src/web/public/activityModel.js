@@ -289,5 +289,88 @@
     return chart.route.lat.length > 1 ? Math.round((j / (chart.route.lat.length - 1)) * (chart.time.length - 1)) : 0;
   }
 
-  return { setRuns, runText, intensity, intensityBand, routeIndexFor, chartIndexFor, niceRange, smooth, trimRange, nearestIndex, zoneShares, compare, axisClock, weekOf, totals, groupWeeks, byDate, rangeStart, filterRows, duration, pace, distance, clock, planned, planSport, newestFirst };
+  // ── The reworked view: the ribbon, the heatmap, the meters, the sparklines ──────────────────────────
+
+  /** A sport as the view groups it: "run", "str", "ride" or "other" (its colour and icon follow it). */
+  const sportKey = (type) => ({ running: "run", strength_training: "str", cycling: "ride" }[type] || "other");
+
+  /**
+   * The last `weeks` weeks, oldest first, the week of `today` last: each with its Monday, its sessions, and the time of each sport.
+   * `peak` is the busiest week's time, for the height of the bars.
+   */
+  function ribbon(rows, today, weeks = 12) {
+    const first = msOf(weekOf(today)) - (weeks - 1) * 7 * DAY_MS;
+    const out = Array.from({ length: weeks }, (_, i) => ({ week: isoOf(first + i * 7 * DAY_MS), count: 0, seconds: 0, bySport: { run: 0, str: 0, ride: 0, other: 0 } }));
+    const at = new Map(out.map((w, i) => [w.week, i]));
+    for (const r of rows) {
+      const i = at.get(weekOf(r.date));
+      if (i === undefined) continue;
+      const w = out[i], s = r.seconds || 0;
+      w.count++; w.seconds += s; w.bySport[sportKey(r.type)] += s;
+    }
+    return { weeks: out, peak: Math.max(0, ...out.map((w) => w.seconds)) };
+  }
+
+  /** How busy a day was, 0 to 4, from the minutes trained. */
+  const heatLevel = (seconds) => (seconds <= 0 ? 0 : seconds < 1800 ? 1 : seconds < 3600 ? 2 : seconds < 5400 ? 3 : 4);
+
+  /**
+   * The last `weeks` weeks as a grid for a consistency map: a column a week (Monday first, oldest first), a cell a day with its sessions,
+   * time and level; a day after `today` is `future`. Also how many days were active, the longest run of active days, and the run that
+   * ends today (or yesterday when today has nothing yet).
+   */
+  function heatmap(rows, today, weeks = 52) {
+    const days = new Map();
+    for (const r of rows) { const d = days.get(r.date) || { count: 0, seconds: 0 }; d.count++; d.seconds += r.seconds || 0; days.set(r.date, d); }
+    const first = msOf(weekOf(today)) - (weeks - 1) * 7 * DAY_MS;
+    const grid = [];
+    let active = 0, longest = 0, run = 0, current = 0;
+    for (let w = 0; w < weeks; w++) {
+      const col = [];
+      for (let d = 0; d < 7; d++) {
+        const date = isoOf(first + (w * 7 + d) * DAY_MS), future = date > today, got = days.get(date) || { count: 0, seconds: 0 };
+        col.push({ date, future, count: got.count, seconds: got.seconds, level: future ? 0 : heatLevel(got.seconds) });
+        if (!future) { if (got.count) { active++; run++; longest = Math.max(longest, run); } else run = 0; }
+      }
+      grid.push(col);
+    }
+    for (let ms = msOf(today), skipped = false; ; ms -= DAY_MS) {
+      const got = days.get(isoOf(ms));
+      if (got) { current++; continue; }
+      if (current === 0 && !skipped && ms === msOf(today)) { skipped = true; continue; } // today has nothing yet: count back from yesterday
+      break;
+    }
+    return { weeks: grid, activeDays: active, longestStreak: longest, currentStreak: current };
+  }
+
+  /** A date within `days` days up to `today`: the "new" tag of a record. */
+  const isRecent = (date, today, days = 30) => !!date && date <= today && (msOf(today) - msOf(date)) / DAY_MS <= days;
+
+  /** A training effect (0 to 5) as the steps of a five-step meter that are filled. */
+  const meterSteps = (value) => (value > 0 ? Math.max(0, Math.min(5, Math.round(value))) : 0);
+
+  /**
+   * Planned against done as bars: for time and distance the done value, the planned one and the difference, with where each falls on a
+   * bar that reaches a quarter past the larger of the two ({ fill, tick } in percent).
+   */
+  function plannedBars(planned, actual) {
+    return compare(planned, actual).map((c) => {
+      const p = c.label === "Time" ? planned.seconds : planned.km, a = c.label === "Time" ? actual.seconds : actual.km, scale = Math.max(p, a) * 1.25;
+      return { ...c, fill: Math.round((a / scale) * 1000) / 10, tick: Math.round((p / scale) * 1000) / 10 };
+    });
+  }
+
+  /**
+   * A series of { date, value } as points on a w x h box (y up is larger), for a sparkline or a small chart: null with fewer than two
+   * values. `min` and `max` are the values at the bottom and the top, with `pad` of the box left round them.
+   */
+  function seriesPoints(series, w, h, pad = 0.12) {
+    if (!Array.isArray(series) || series.length < 2) return null;
+    const vs = series.map((p) => p.value), lo = Math.min(...vs), hi = Math.max(...vs), span = hi - lo || 1;
+    const x0 = msOf(series[0].date), x1 = msOf(series[series.length - 1].date), xs = x1 - x0 || 1;
+    const points = series.map((p) => ({ ...p, x: Math.round(((msOf(p.date) - x0) / xs) * w * 10) / 10, y: Math.round((h * (1 - pad) - ((p.value - lo) / span) * h * (1 - 2 * pad)) * 10) / 10 }));
+    return { points, min: lo, max: hi, first: series[0], last: series[series.length - 1], change: Math.round((series[series.length - 1].value - series[0].value) * 10) / 10 };
+  }
+
+  return { setRuns, runText, intensity, intensityBand, routeIndexFor, chartIndexFor, niceRange, smooth, trimRange, nearestIndex, zoneShares, compare, axisClock, weekOf, totals, groupWeeks, byDate, rangeStart, filterRows, duration, pace, distance, clock, planned, planSport, newestFirst, sportKey, ribbon, heatLevel, heatmap, isRecent, meterSteps, plannedBars, seriesPoints };
 });

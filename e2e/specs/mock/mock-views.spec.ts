@@ -159,7 +159,9 @@ test.describe("Activities in mock mode", () => {
     const errors = watchErrors(gme);
     await openView(gme, "activities");
     await expect(gme.locator("#aNote")).toHaveText(REFUSAL);
-    await expect(gme.locator("#alist")).toBeEmpty();
+    await expect(gme.locator("#alist .aemptycard")).toContainText("No activities are stored yet");
+    await expect(gme.locator("#alist .aemptycard")).toContainText("Mock mode: Garmin writes are disabled.");
+    await expect(gme.locator("#alist .aemptycard button")).toHaveCount(0); // nothing to fetch from
     expect(errors).toEqual([]);
   });
 
@@ -170,54 +172,35 @@ test.describe("Activities in mock mode", () => {
     await expect(gme.locator("#aProfile")).toBeHidden();
   });
 
-  test("the Calendar mode draws the month with the refusal note", async ({ gme }) => {
-    await openView(gme, "activities");
-    await gme.locator("#aModes button", { hasText: "Calendar" }).click();
-    await expect(gme.locator("#acal")).toBeVisible();
-    await expect(gme.locator("#aCalBar")).toBeVisible();
-    await expect(gme.locator("#aTitle")).toHaveText(/\d{4}/);
-    await expect(gme.locator("#aNote")).toHaveText(REFUSAL);
-  });
-
-  test("the Stats mode says no activities are stored yet", async ({ gme }) => {
+  test("the Progress mode says no activities are stored yet", async ({ gme }) => {
     const errors = watchErrors(gme);
     await openView(gme, "activities");
-    await gme.locator("#aModes button", { hasText: "Stats" }).click();
+    await gme.locator("#aModes button", { hasText: "Progress" }).click();
     await expect(gme.locator("#astats")).toContainText("No activities are stored yet.");
     expect(errors).toEqual([]);
   });
 
-  test("the List mode comes back after Stats", async ({ gme }) => {
+  test("the Log mode comes back after Progress", async ({ gme }) => {
     await openView(gme, "activities");
-    await gme.locator("#aModes button", { hasText: "Stats" }).click();
+    await expect(gme.locator("#aModes button")).toHaveText(["Log", "Progress"]);
+    await gme.locator("#aModes button", { hasText: "Progress" }).click();
     await expect(gme.locator("#astats")).toBeVisible();
-    await gme.locator("#aModes button", { hasText: "List" }).click();
-    await expect(gme.locator("#aModes button", { hasText: "List" })).toHaveAttribute("aria-pressed", "true");
+    await gme.locator("#aModes button", { hasText: "Log" }).click();
+    await expect(gme.locator("#aModes button", { hasText: "Log" })).toHaveAttribute("aria-pressed", "true");
     await expect(gme.locator("#astats")).toBeHidden();
-    await expect(gme.locator("#aRange")).toBeVisible();
+    await expect(gme.locator("#alist .aemptycard")).toBeVisible();
     await expect(gme.locator("#aNote")).toHaveText(REFUSAL);
   });
 
-  test("the range menu offers 4 weeks, 12 weeks, 1 year and All, and each keeps the note", async ({ gme }) => {
-    await openView(gme, "activities");
-    await expect(gme.locator("#aRange option")).toHaveText(["4 weeks", "12 weeks", "1 year", "All"]);
-    for (const value of ["4w", "1y", "all", "12w"]) {
-      await gme.locator("#aRange").selectOption(value);
-      await expect(gme.locator("#aRange")).toHaveValue(value);
-      await expect(gme.locator("#aNote")).toHaveText(REFUSAL);
-    }
-  });
-
-  test("searching by name with nothing stored leaves the list empty and raises no error", async ({ gme }) => {
+  test("the filters (types, search, range) stay out of the way while nothing is stored, and no error is raised", async ({ gme }) => {
     const errors = watchErrors(gme);
     await openView(gme, "activities");
-    await gme.locator("#aSearch").fill("tempo");
-    await expect(gme.locator("#aSearch")).toHaveValue("tempo");
-    await expect(gme.locator("#alist")).toBeEmpty();
-    await expect(gme.locator("#aNote")).toHaveText(REFUSAL);
+    await expect(gme.locator("#alist .aemptycard")).toBeVisible();
+    await expect(gme.locator("#afilters")).toBeHidden();
+    await expect(gme.locator("#aRange option")).toHaveText(["4 weeks", "12 weeks", "1 year", "All"]);
+    await expect(gme.locator("#aribbon .acard")).toHaveCount(0);
     expect(errors).toEqual([]);
   });
-
 });
 
 test.describe("Recovery in mock mode", () => {
@@ -273,7 +256,7 @@ test.describe("Weight in mock mode", () => {
   test("Weight opens with its empty state, and no Sync button", async ({ gme }) => {
     const errors = watchErrors(gme);
     await openView(gme, "weight");
-    await expect(gme.locator("#bbody")).toContainText("No weigh-ins are stored yet.");
+    await expect(gme.locator("#bbody")).toContainText("No weigh-ins are stored yet");
     await expect(gme.locator("#bSync")).toBeHidden();
     await expect(gme.locator("#bbody button")).toHaveCount(0);
     expect(errors).toEqual([]);
@@ -295,20 +278,21 @@ test.describe("Weight in mock mode", () => {
     for (const value of ["14", "90", "30", "60"]) {
       await gme.locator("#bRange").selectOption(value);
       await expect(gme.locator("#bRange")).toHaveValue(value);
-      await expect(gme.locator("#bbody")).toContainText("No weigh-ins are stored yet.");
+      await expect(gme.locator("#bbody")).toContainText("No weigh-ins are stored yet");
     }
   });
 
   test("opening Weight asks Garmin for nothing", async ({ gme }) => {
     const calls = trackApi(gme);
     await openView(gme, "weight");
-    await expect(gme.locator("#bbody")).toContainText("No weigh-ins are stored yet.");
+    await expect(gme.locator("#bbody")).toContainText("No weigh-ins are stored yet");
     expect(calls.filter((c) => GARMIN_CALLS.test(c))).toEqual([]);
   });
 
   test("the empty state does not tell a Garmin profile to connect Garmin: mock mode is why nothing is fetched", async ({ gme }) => {
     await openView(gme, "weight");
-    await expect(gme.locator("#bbody")).toContainText("No weigh-ins are stored yet. Mock mode does not fetch them from Garmin.");
+    await expect(gme.locator("#bbody .bempty h2")).toHaveText("No weigh-ins are stored yet");
+    await expect(gme.locator("#bbody .bempty p")).toHaveText("Mock mode does not fetch them from Garmin.");
     await expect(gme.locator("#bbody")).not.toContainText("Connect a Renpho scale or Garmin");
   });
 });
@@ -363,7 +347,7 @@ test.describe("Walking the views in mock mode", () => {
       await expect(gme.locator("body")).toHaveAttribute("data-view", view);
     }
     await openView(gme, "weight");
-    await expect(gme.locator("#bbody")).toContainText("No weigh-ins are stored yet.");
+    await expect(gme.locator("#bbody")).toContainText("No weigh-ins are stored yet");
     await openView(gme, "workouts");
     await expect(gme.locator("#wNote")).toHaveText(REFUSAL);
   });

@@ -95,3 +95,31 @@ describe("the credentials table", () => {
     expect(store.credentials.profiles("garmin")).toEqual(["MED"]); // the names do not need the key
   });
 });
+
+describe("the last check of a login", () => {
+  it("keeps what the check said and when, for each profile and service", () => {
+    expect(store.credentials.lastCheck("MED", "garmin")).toBeNull();
+    store.credentials.recordCheck("MED", "garmin", true, "Garmin accepted the login.", 1_000);
+    store.credentials.recordCheck("OTHER", "garmin", false, "refused", 2_000);
+    expect(store.credentials.lastCheck("MED", "garmin")).toEqual({ ok: true, message: "Garmin accepted the login.", at: 1_000 });
+    expect(store.credentials.lastCheck("OTHER", "garmin")).toEqual({ ok: false, message: "refused", at: 2_000 });
+    expect(store.credentials.lastCheck("MED", "renpho")).toBeNull();
+    store.credentials.recordCheck("MED", "garmin", false, "refused now", 3_000); // the newest replaces it
+    expect(store.credentials.lastCheck("MED", "garmin")).toEqual({ ok: false, message: "refused now", at: 3_000 });
+  });
+
+  it("is forgotten when the login is saved again or removed, since it was not what was checked", () => {
+    store.credentials.put("MED", "garmin", "a@b.c", "pw");
+    store.credentials.recordCheck("MED", "garmin", true, "ok");
+    store.credentials.put("MED", "garmin", "a@b.c", "pw2");
+    expect(store.credentials.lastCheck("MED", "garmin")).toBeNull();
+    store.credentials.recordCheck("MED", "garmin", true, "ok");
+    store.credentials.delete("MED", "garmin");
+    expect(store.credentials.lastCheck("MED", "garmin")).toBeNull();
+  });
+
+  it("keeps a long message to a line's worth", () => {
+    store.credentials.recordCheck("MED", "garmin", false, "x".repeat(2000));
+    expect(store.credentials.lastCheck("MED", "garmin")!.message).toHaveLength(500);
+  });
+});

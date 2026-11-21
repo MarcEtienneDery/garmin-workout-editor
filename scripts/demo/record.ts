@@ -228,7 +228,7 @@ const SCENES: Scene[] = [
       await s.pause(700);
       await s.click(page.locator("#filelist .file").filter({ hasText: "half-marathon-build" }), { wait: 1400 });
       // the interval workout in the form: one rep more, and a faster pace on the reps
-      await s.click(form.locator(".wf-pw").filter({ hasText: "Intervals 6 x 800 m" }), { wait: 1600 });
+      await s.click(page.locator("#outline .row.wk .name").filter({ hasText: "Intervals 6 x 800 m" }), { wait: 1600 });
       await s.click(form.locator(".wf-rep").getByRole("button", { name: "Times: one more" }), { wait: 900 });
       const from = form.getByLabel("Pace from");
       await s.click(from, { wait: 200 });
@@ -261,7 +261,9 @@ const SCENES: Scene[] = [
   {
     name: "calendar",
     start: "/#calendar",
-    ready: (page) => page.locator(".cband").first().waitFor(),
+    // the month grid (the page opens on the week board, which keeps the choice in the browser)
+    before: (page) => page.addInitScript(() => { try { localStorage.setItem("calendarView", "month"); } catch { /* the week stays */ } }),
+    ready: (page) => page.locator("#cgrid .cday").first().waitFor(),
     run: async (s, page) => {
       await s.pause(1500);
       await s.click(page.locator("#cModes button[data-mode=plans]"), { wait: 1500 });
@@ -290,7 +292,7 @@ const SCENES: Scene[] = [
     run: async (s, page) => {
       await s.pause(800);
       await s.click(page.locator("#alist .arow").filter({ hasText: "Intervals 6 x 800 m" }).first(), { wait: 2200 });
-      const section = (title: RegExp) => page.locator("#abody h3").filter({ hasText: title }).first();
+      const section = (title: RegExp) => page.locator("#abody .achd h2").filter({ hasText: title }).first();
       await s.reveal(section(/graphs/i));
       const graph = page.locator("#abody svg.acsvg").first();
       await s.sweep(graph, 0.03, 0.97, 3500);
@@ -299,7 +301,7 @@ const SCENES: Scene[] = [
       await s.pause(1800);
       await s.reveal(section(/laps/i));
       await s.pause(2000);
-      await s.reveal(section(/planned workout/i));
+      await s.reveal(section(/planned/i));
       await s.pause(2400);
     },
   },
@@ -312,9 +314,6 @@ const SCENES: Scene[] = [
       await s.click(page.locator("#alist .arow").filter({ hasText: "Strength A" }).first(), { wait: 1800 });
       await s.scroll(page.locator("#abody"), 480, 1200);
       await s.pause(2200);
-      await s.click(page.locator("#aModes button[data-mode=calendar]"), { wait: 1200 });
-      if ((await page.locator("#aPlanned").getAttribute("aria-pressed")) !== "true") await s.click(page.locator("#aPlanned"), { wait: 1500 });
-      await s.pause(1200);
       await s.click(page.locator("#aModes button[data-mode=stats]"), { wait: 1800 });
       await s.scroll(page.locator("#astats"), 600, 1500);
       await s.pause(2200);
@@ -328,6 +327,8 @@ const SCENES: Scene[] = [
       await s.pause(1800);
       await s.scroll(page.locator("#rbody"), 520, 1200);
       await s.pause(600);
+      // the trend charts are on the Trends tab
+      await s.click(page.locator("#rTabs").getByRole("button", { name: "Trends", exact: true }), { wait: 1200 });
       const chart = page.locator("#rbody svg.rcsvg").first();
       await s.sweep(chart, 0.05, 0.95, 3000);
       await s.pause(400);
@@ -339,14 +340,16 @@ const SCENES: Scene[] = [
   {
     name: "weight",
     start: "/#weight",
-    ready: (page) => page.locator("#bbody .rfig").first().waitFor(),
+    ready: (page) => page.locator("#bbody .bchart").first().waitFor(),
     run: async (s, page) => {
       await s.pause(1500);
       await s.sweep(page.locator("#bbody svg.rcsvg").first(), 0.05, 0.95, 2500);
+      // the Body tab: the body fat, muscle and calories charts
+      await s.click(page.locator("#bTabs").getByRole("button", { name: "Body", exact: true }), { wait: 1500 });
       await s.click(page.locator("#bRange"), { wait: 300 });
       await page.locator("#bRange").selectOption("90");
       await s.pause(1500);
-      await s.click(page.getByRole("button", { name: "kg", exact: true }), { wait: 1500 });
+      await s.click(page.locator("#bUnits button[data-unit=kg]"), { wait: 1500 });
     },
   },
   {
@@ -359,9 +362,10 @@ const SCENES: Scene[] = [
       await s.scroll(page.locator("#tbody"), 700, 1200);
       await s.pause(1000);
       await s.click(page.locator("#views button, #views a").filter({ hasText: "Calendar" }), { wait: 1500 });
-      await s.click(page.locator("#cgrid .cday.today, #cgrid .cday.sel").first(), { wait: 1600 });
+      await s.click(page.locator("#cwBoard .wday.today, #cwBoard .wday.sel").first(), { wait: 1600 });
       // a plan opens on its outline; a workout tapped there opens in the form, and a set is one tap more
       await s.click(page.locator("#views button, #views a").filter({ hasText: "Plans" }), { wait: 1200 });
+      await s.click(page.locator('#tabbar [data-tab="files"]'), { wait: 900 });
       await s.click(page.locator("#filelist .file").filter({ hasText: "half-marathon-build" }), { wait: 1500 });
       await s.click(page.locator("#outline .row.wk .name").filter({ hasText: "Strength A" }), { wait: 1400 });
       await s.reveal(page.locator("#pform .wf-ex").first(), 1000);
@@ -507,13 +511,16 @@ async function main() {
   fs.mkdirSync(OUT, { recursive: true });
   const work = fs.mkdtempSync(path.join(os.tmpdir(), "demo-frames-"));
   const demo = await startDemo(PORT);
-  const browser = await chromium.launch();
+  // CHROMIUM_PATH: a browser Playwright did not install itself (a container, say); it then also needs --no-sandbox
+  const browser = await chromium.launch(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH, args: ["--no-sandbox"] } : {});
   try {
     for (const scene of scenes) console.log(await record(browser, demo.url, scene, work));
   } finally {
     await browser.close();
     demo.stop();
-    fs.rmSync(work, { recursive: true, force: true });
+    // KEEP_FRAMES=1 keeps the PNG of every frame (to look at one), in the folder printed here
+    if (process.env.KEEP_FRAMES) console.log(`frames kept in ${work}`);
+    else fs.rmSync(work, { recursive: true, force: true });
   }
 }
 

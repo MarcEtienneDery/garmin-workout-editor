@@ -4,8 +4,8 @@
  * all of it. alice's food is read only; anything that logs a food uses a profile of its own (`me`). Open Food Facts is never reached:
  * the search is answered by page.route.
  */
-import { test, expect, openView, daysAgo, today, type Locator, type Page, type Profile } from "../support/fixtures";
-import { dayButton, sheet, sheetTab } from "../support/food";
+import { test, expect, openView, daysAgo, today, type Locator, type Page, type Profile, chooseTheme, toggleTheme } from "../support/fixtures";
+import { dayButton, openInsights, pickMeal, sheet, sheetTab } from "../support/food";
 
 /** What sticks out past the phone's width, as shown: an element is cut at the edge of any box above it that clips its content. */
 async function stickingOut(page: Page): Promise<string[]> {
@@ -158,7 +158,7 @@ test.describe("the day at a glance", () => {
   test("the quick-add strip is a row of cards that scrolls sideways, each at least 44 px tall, and one tap logs a food", async ({ me, profile }) => {
     await logFoods(profile, "lunch", Array.from({ length: 6 }, (_, i) => ({ name: `Lunch ${i + 1}`, kcal: 300 + i })), daysAgo(1));
     await openFood(me);
-    await me.locator("#fbody .fquick").getByRole("combobox", { name: "The meal a tap adds to" }).selectOption("lunch");
+    await pickMeal(me, "lunch");
     const chips = me.locator("#fbody .fquick .fchip");
     await expect(chips).toHaveCount(6);
     for (const h of await heights(chips)) expect(h).toBeGreaterThanOrEqual(44);
@@ -178,9 +178,9 @@ test.describe("the bar at the bottom and the sheet", () => {
     expect(dock.y + dock.height).toBeGreaterThanOrEqual(alice.viewportSize()!.height - 1);
     for (const h of await heights(alice.locator("#fdock button"))) expect(h).toBeGreaterThanOrEqual(44);
     // the page scrolls above it: the last of the page is not hidden under the bar
-    await alice.locator("#fscroll").evaluate((el) => el.scrollTo(0, el.scrollHeight));
-    const scroller = (await alice.locator("#fscroll").boundingBox())!;
-    expect(scroller.y + scroller.height).toBeLessThanOrEqual(dock.y + 1);
+    await alice.locator("#fview").evaluate((el) => el.scrollTo(0, el.scrollHeight));
+    const page = (await alice.locator("#fbody").boundingBox())!;
+    expect(page.y + page.height).toBeLessThanOrEqual(dock.y + 1);
   });
 
   test("the search in the bar opens the sheet over the whole screen, on the foods used lately", async ({ alice }) => {
@@ -463,12 +463,57 @@ test.describe("nothing opens that was not tapped open", () => {
 });
 
 test.describe("the page on a phone", () => {
-  test("the food view fits the width: the summary, the meals, the breakdown and the trends", async ({ alice }) => {
+  test("the food view fits the width: the summary, the meals and the Insights", async ({ alice }) => {
     await openFood(alice);
     await expect(alice.locator("#fbody .fmeal").first()).toBeVisible();
-    await expect(alice.locator("#fbody h3", { hasText: "Breakdown" })).toBeVisible();
     await expect.poll(() => stickingOut(alice)).toEqual([]);
     const w = await alice.evaluate(() => ({ scroll: document.documentElement.scrollWidth, client: document.documentElement.clientWidth }));
     expect(w.scroll).toBeLessThanOrEqual(w.client);
+    await openInsights(alice);
+    await expect.poll(() => stickingOut(alice)).toEqual([]);
+  });
+});
+
+test.describe("the new look on a phone", () => {
+  test("the day's bar fits the width with its theme button, and every control is at least 44 px, in both themes", async ({ alice }) => {
+    await openFood(alice);
+    for (const theme of ["dark", "light"]) {
+      if (theme === "light") await chooseTheme(alice, "light");
+      await expect(alice.locator("body")).toHaveAttribute("data-theme", theme);
+      const small = await alice.evaluate(() =>
+        [...document.querySelectorAll<HTMLElement>("#fbar button, #fbar .fdaypick, #fweek button, #fdock button")].filter((el) => el.offsetParent !== null).map((el) => [el.id || el.className, Math.round(el.getBoundingClientRect().height)] as const).filter(([, h]) => h < 44),
+      );
+      expect(small, `${theme}: controls under 44 px`).toEqual([]);
+      await expect.poll(() => stickingOut(alice)).toEqual([]);
+    }
+  });
+
+  test("the sheet in the light theme fits the screen, and its way-in tabs are tappable", async ({ alice }) => {
+    await openFood(alice);
+    await toggleTheme(alice);
+    await alice.locator("#fdSearch").tap();
+    await expect(sheet(alice)).toBeVisible();
+    await expect.poll(() => stickingOut(alice)).toEqual([]);
+    for (const name of ["Search", "AI", "By hand"] as const) {
+      const box = await sheetTab(alice, name).boundingBox();
+      expect(box!.height).toBeGreaterThanOrEqual(44);
+    }
+  });
+});
+
+test.describe("the charts on a phone", () => {
+  test("their text is readable as shown, no scale label is cut off, and they are one over another", async ({ alice }) => {
+    await openFood(alice);
+    await openInsights(alice);
+    const charts = await alice.evaluate(() =>
+      [...document.querySelectorAll<SVGSVGElement>("#fbody .rcsvg")].map((svg) => {
+        const box = svg.getBoundingClientRect(), scale = box.width / svg.viewBox.baseVal.width;
+        const labels = [...svg.querySelectorAll<SVGTextElement>(".rc-tick, .rc-x")];
+        return { left: Math.round(box.left), minFontPx: Math.min(...labels.map((l) => parseFloat(getComputedStyle(l).fontSize) * scale)), cutOff: labels.filter((l) => { const r = l.getBoundingClientRect(); return r.left < box.left - 0.5 || r.right > box.right + 0.5; }).length };
+      }),
+    );
+    expect(charts.length).toBeGreaterThanOrEqual(2);
+    for (const c of charts) { expect(c.minFontPx).toBeGreaterThanOrEqual(9); expect(c.cutOff).toBe(0); }
+    expect(new Set(charts.map((c) => c.left)).size).toBe(1);
   });
 });

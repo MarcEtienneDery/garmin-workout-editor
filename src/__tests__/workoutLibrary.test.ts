@@ -331,6 +331,47 @@ describe("workouts on Garmin", () => {
       ]);
     });
 
+    describe("limited to some of the workouts", () => {
+      const two = () => { const a = squat(), b = { ...squat(), workoutName: "Second" }; return [a, b]; };
+
+      it("uploads only the workouts asked for and leaves the others, and their ids, as they were", async () => {
+        getStore().put("workout-plans/part.json", planDoc(two()));
+        const result = await uploadPlan("TEST", "workout-plans/part.json", false, [1]);
+        expect(result).toMatchObject({ status: "ok", successful: 1 });
+        const ids = idsIn("workout-plans/part.json");
+        expect(ids[0]).toBeUndefined();
+        expect(mockGarmin.library.has(Number(ids[1]))).toBe(true);
+        expect(mockGarmin.library.size).toBe(1);
+        const data = JSON.parse(getStore().get("workout-plans/part.json")!.text);
+        expect(data.workouts.map((w: any) => w.workoutName)).toEqual([squat().workoutName, "Second"]);
+        expect(data.weekStart).toBe("2026-10-12"); // the rest of the file is kept
+      });
+
+      it("schedules, and uploads and schedules, only those asked for", async () => {
+        getStore().put("workout-plans/part2.json", planDoc(two()));
+        const both = await uploadAndSchedulePlan("TEST", "workout-plans/part2.json", [0]);
+        expect(both).toMatchObject({ writtenBack: true });
+        expect(both.workouts).toHaveLength(1);
+        const ids = idsIn("workout-plans/part2.json");
+        expect(ids[1]).toBeUndefined();
+        expect(mockGarmin.scheduled.every((s) => s.workoutId === Number(ids[0]))).toBe(true);
+        mockGarmin.scheduled = [];
+        const done = await schedulePlan("TEST", "workout-plans/part2.json", [0, 1]);
+        expect(done.attempted.map((a: any) => a.workoutName)).toEqual([squat().workoutName, squat().workoutName, "Second", "Second"]);
+        const only = await schedulePlan("TEST", "workout-plans/part2.json", [1]);
+        expect(only.attempted.every((a: any) => a.workoutName === "Second")).toBe(true);
+      });
+
+      it("refuses a place the plan has no workout at, and an empty choice, before anything is sent", async () => {
+        getStore().put("workout-plans/part3.json", planDoc(two()));
+        for (const only of [[2], [-1], [0.5], []]) {
+          await expect(uploadPlan("TEST", "workout-plans/part3.json", false, only)).rejects.toThrow(/no workout number|No workouts chosen/);
+          await expect(uploadAndSchedulePlan("TEST", "workout-plans/part3.json", only)).rejects.toThrow(/no workout number|No workouts chosen/);
+        }
+        expect(mockGarmin.library.size).toBe(0);
+      });
+    });
+
     it("says so when the plan is not in the store", async () => {
       await expect(uploadPlan("TEST", "workout-plans/none.json")).rejects.toThrow(/File not found/);
       await expect(uploadAndSchedulePlan("TEST", "workout-plans/none.json")).rejects.toThrow(/File not found/);

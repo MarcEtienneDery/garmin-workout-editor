@@ -1,7 +1,7 @@
 import { SqliteStore } from "../shared/store";
 import { NUTRIENTS } from "../shared/nutrients";
 import { addFoods, nutritionDays } from "../shared/nutrition";
-import { GOALS, NUTRIENT_KINDS, SETTING_FIELDS, getGoals, goalList, goalProgress, kcalGoalOf, setGoals } from "../shared/nutritionGoals";
+import { GOALS, MAX_WEIGHT_GOAL_KG, MIN_WEIGHT_GOAL_KG, NUTRIENT_KINDS, SETTING_FIELDS, WEIGHT_KEY, getGoals, goalList, goalProgress, kcalGoalOf, setGoals } from "../shared/nutritionGoals";
 import { summaryResponse } from "./fixtures/wellness";
 
 let store: SqliteStore;
@@ -203,5 +203,42 @@ describe("a calorie goal that follows the burn", () => {
     store.wellness.put("MED", TODAY, "summary", { ...summaryResponse(), totalKilocalories: 2600, activeKilocalories: 650 });
     expect(dayOf()).toMatchObject({ burnedKcal: 2600, activeKcal: 650 });
     expect(dayOf("SAM").activeKcal).toBeNull();
+  });
+});
+
+describe("the weight goal", () => {
+  it("is the last of the settings, in kilograms, and is not a food goal", () => {
+    expect(SETTING_FIELDS[SETTING_FIELDS.length - 1]).toMatchObject({ key: WEIGHT_KEY, unit: "kg", kind: "weight", max: MAX_WEIGHT_GOAL_KG });
+    expect(GOALS.map((g) => g.key)).not.toContain(WEIGHT_KEY);
+  });
+
+  it("is kept with the other goals, to two decimals, and removed with null or an empty text", () => {
+    expect(setGoals(store, "MED", { kcal: 2200, weightKg: 79.456 })).toEqual({ kcal: 2200, weightKg: 79.46 });
+    expect(setGoals(store, "MED", { weightKg: "80,5" })).toEqual({ kcal: 2200, weightKg: 80.5 });
+    expect(getGoals(store, "MED")[WEIGHT_KEY]).toBe(80.5);
+    expect(setGoals(store, "MED", { kcal: 2000 })).toEqual({ kcal: 2000, weightKg: 80.5 }); // left out: it stays
+    expect(setGoals(store, "MED", { weightKg: null })).toEqual({ kcal: 2000 });
+    expect(setGoals(store, "MED", { weightKg: 75 })).toEqual({ kcal: 2000, weightKg: 75 });
+    expect(setGoals(store, "MED", { weightKg: " " })).toEqual({ kcal: 2000 });
+  });
+
+  it("can be set with no food goal, and the goal row is kept for it", () => {
+    expect(setGoals(store, "MED", { weightKg: 70 })).toEqual({ weightKg: 70 });
+    expect(getGoals(store, "SAM")).toEqual({});
+  });
+
+  it("is refused outside the range of kilograms the view can draw, with nothing kept", () => {
+    setGoals(store, "MED", { kcal: 2000 });
+    for (const bad of [0, -5, MIN_WEIGHT_GOAL_KG - 0.1, MAX_WEIGHT_GOAL_KG + 1, "heavy", NaN]) expect(() => setGoals(store, "MED", { kcal: 2500, weightKg: bad })).toThrow(/weight goal must be a number of kilograms/);
+    expect(getGoals(store, "MED")).toEqual({ kcal: 2000 });
+    expect(setGoals(store, "MED", { weightKg: MIN_WEIGHT_GOAL_KG })).toEqual({ kcal: 2000, weightKg: MIN_WEIGHT_GOAL_KG });
+    expect(setGoals(store, "MED", { weightKg: MAX_WEIGHT_GOAL_KG })).toEqual({ kcal: 2000, weightKg: MAX_WEIGHT_GOAL_KG });
+  });
+
+  it("is never measured against the food of a day, nor listed with the food goals", () => {
+    const goals = setGoals(store, "MED", { kcal: 2000, weightKg: 70 });
+    log([{ name: "Rice", kcal: 500 }]);
+    expect(goalProgress(goals, dayOf()).map((p) => p.key)).toEqual(["kcal"]);
+    expect(goalList(goals).map((g) => g.key)).toEqual(["kcal"]);
   });
 });

@@ -81,20 +81,30 @@ const goalField = (page: Page, key: string) => page.locator(`#s-goal_${key}`);
 const okLine = (c: Locator) => c.locator(".sline.ok:visible");
 const errLine = (c: Locator) => c.locator(".sline.err:visible");
 
-/** Open Settings (signed in already) and wait until its six cards are drawn; loaded again once if they are not (see openView). */
-async function openSettings(page: Page): Promise<void> {
+/** Open Settings (signed in already) and wait until its sections are drawn; loaded again once if they are not (see openView). */
+type SettingsSection = "overview" | "connections" | "goals" | "display" | "signin" | "profiles";
+/** Opens Settings and the section asked for (the list of sections is on the left; Overview first). */
+async function openSettings(page: Page, section: SettingsSection = "overview"): Promise<void> {
   for (let attempt = 1; ; attempt++) {
     if (attempt === 1) await page.goto("/#settings");
     else await page.reload();
     await ready(page);
     try {
-      await slow(page.locator("#sbody .scard")).toHaveCount(6, { timeout: 15_000 });
+      await slow(page.locator("#sbody .snav")).toBeVisible({ timeout: 15_000 });
+      await page.locator(`#sbody .snav [data-section="${section}"]`).click();
+      await slow(page.locator(`#sbody .spane[data-section="${section}"]`)).toBeVisible();
       await slow(page.locator("#sbody .empty")).toHaveCount(0);
       return;
     } catch (error) {
       if (attempt >= 2) throw error;
     }
   }
+}
+
+/** Another section of the Settings already open. */
+async function goSection(page: Page, section: SettingsSection): Promise<void> {
+  await page.locator(`#sbody .snav [data-section="${section}"]`).click();
+  await slow(page.locator(`#sbody .spane[data-section="${section}"]`)).toBeVisible();
 }
 
 /** Every goal field as the page shows it now (the ones with a value). */
@@ -135,7 +145,7 @@ function writesOf(page: Page): string[] {
 
 test.describe("nutrition goals", () => {
   test("a fresh profile has no goals: 'none set', every field empty, and 'Clear all goals' disabled", async ({ me, profile }) => {
-    await openSettings(me);
+    await openSettings(me, "goals");
     const c = goalsCard(me);
     await slow(c.locator(".chip")).toHaveText("none set");
     await slow(goalField(me, "kcal")).toHaveValue("");
@@ -147,7 +157,7 @@ test.describe("nutrition goals", () => {
   });
 
   test("each goal says whether it is a goal to reach (at least), a limit (at most) or an aim", async ({ me }) => {
-    await openSettings(me);
+    await openSettings(me, "goals");
     await slow(goalField(me, "kcal")).toHaveAttribute("placeholder", "the aim");
     await slow(goalField(me, "proteinG")).toHaveAttribute("placeholder", "at least");
     await slow(goalField(me, "fiberG")).toHaveAttribute("placeholder", "at least");
@@ -157,7 +167,7 @@ test.describe("nutrition goals", () => {
   });
 
   test("the goals saved stay after a reload, and the server holds the same numbers", async ({ me, profile }) => {
-    await openSettings(me);
+    await openSettings(me, "goals");
     await goalField(me, "kcal").fill("2200");
     await goalField(me, "proteinG").fill("130");
     await goalField(me, "carbsG").fill("250");
@@ -171,13 +181,14 @@ test.describe("nutrition goals", () => {
 
     await me.reload();
     await ready(me);
+    await goSection(me, "goals");
     await slow(goalField(me, "kcal")).toHaveValue("2200");
     slow(await shownGoals(me)).toEqual({ kcal: "2200", proteinG: "130", carbsG: "250", fatG: "70", sodiumMg: "2300" });
   });
 
   test("a field left empty removes that goal on save, and the others stay", async ({ me, profile }) => {
     await retried(() => profile.api.post("/api/settings/goals", { data: { profile: profile.name, action: "save", goals: { kcal: 2000, proteinG: 120 } } }));
-    await openSettings(me);
+    await openSettings(me, "goals");
     await slow(goalField(me, "kcal")).toHaveValue("2000");
     await goalField(me, "kcal").fill("");
     await goalsCard(me).getByRole("button", { name: "Save goals" }).click();
@@ -185,6 +196,7 @@ test.describe("nutrition goals", () => {
     slow((await settingsOf(profile.api)).goals.values).toEqual({ proteinG: 120 });
     await me.reload();
     await ready(me);
+    await goSection(me, "goals");
     await slow(goalField(me, "kcal")).toHaveValue("");
     await slow(goalField(me, "proteinG")).toHaveValue("120");
     await slow(goalsCard(me).locator(".chip")).toHaveText("1 set");
@@ -192,20 +204,22 @@ test.describe("nutrition goals", () => {
 
   test("'Clear all goals' removes every goal and says so", async ({ me, profile }) => {
     await retried(() => profile.api.post("/api/settings/goals", { data: { profile: profile.name, action: "save", goals: { kcal: 2000, fatG: 60, ironMg: 18 } } }));
-    await openSettings(me);
+    await openSettings(me, "goals");
     await slow(goalsCard(me).locator(".chip")).toHaveText("3 set");
     await goalsCard(me).getByRole("button", { name: "Clear all goals" }).click();
+    await me.getByRole("dialog").getByRole("button", { name: "Clear all" }).click(); // it asks first
     await slow(okLine(goalsCard(me))).toHaveText("Goals cleared.");
     await slow(goalsCard(me).locator(".chip")).toHaveText("none set");
     await slow(goalsCard(me).getByRole("button", { name: "Clear all goals" })).toBeDisabled();
     slow((await settingsOf(profile.api)).goals.values).toEqual({});
     await me.reload();
     await ready(me);
+    await goSection(me, "goals");
     slow(await shownGoals(me)).toEqual({});
   });
 
   test("a negative calorie goal is refused on the page, and nothing is saved", async ({ me, profile }) => {
-    await openSettings(me);
+    await openSettings(me, "goals");
     await goalField(me, "kcal").fill("-5");
     await goalsCard(me).getByRole("button", { name: "Save goals" }).click();
     await slow(errLine(goalsCard(me))).toHaveText("Calories must be a number above 0, or empty for no goal.");
@@ -213,7 +227,7 @@ test.describe("nutrition goals", () => {
   });
 
   test("zero and text that is not a number are refused the same way, for a macro too", async ({ me, profile }) => {
-    await openSettings(me);
+    await openSettings(me, "goals");
     await goalField(me, "kcal").fill("0");
     await goalsCard(me).getByRole("button", { name: "Save goals" }).click();
     await slow(errLine(goalsCard(me))).toHaveText("Calories must be a number above 0, or empty for no goal.");
@@ -225,7 +239,7 @@ test.describe("nutrition goals", () => {
   });
 
   test("an absurd calorie goal is refused by the server, with its upper limit", async ({ me, profile }) => {
-    await openSettings(me);
+    await openSettings(me, "goals");
     await goalField(me, "kcal").fill("99999");
     await goalsCard(me).getByRole("button", { name: "Save goals" }).click();
     await slow(errLine(goalsCard(me))).toHaveText("The calories goal must be a number above 0 and at most 10000 kcal (leave it empty for no goal).");
@@ -233,7 +247,7 @@ test.describe("nutrition goals", () => {
   });
 
   test("an absurd protein goal is refused by the server, with its upper limit", async ({ me, profile }) => {
-    await openSettings(me);
+    await openSettings(me, "goals");
     await goalField(me, "proteinG").fill("9999");
     await goalsCard(me).getByRole("button", { name: "Save goals" }).click();
     await slow(errLine(goalsCard(me))).toHaveText("The protein goal must be a number above 0 and at most 2000 g (leave it empty for no goal).");
@@ -241,7 +255,7 @@ test.describe("nutrition goals", () => {
   });
 
   test("a decimal comma is read as a decimal point: 150,5 g of protein is saved as 150.5", async ({ me, profile }) => {
-    await openSettings(me);
+    await openSettings(me, "goals");
     await goalField(me, "proteinG").fill("150,5");
     await goalsCard(me).getByRole("button", { name: "Save goals" }).click();
     await slow(okLine(goalsCard(me))).toHaveText("Goals saved.");
@@ -249,7 +263,7 @@ test.describe("nutrition goals", () => {
   });
 
   test("a calorie goal typed with a thousands comma or space is saved whole: 2,000 and 2 500 are 2000 and 2500 kcal", async ({ me, profile }) => {
-    await openSettings(me);
+    await openSettings(me, "goals");
     await goalField(me, "kcal").fill("2,000");
     await goalsCard(me).getByRole("button", { name: "Save goals" }).click();
     await slow(okLine(goalsCard(me))).toHaveText("Goals saved.");
@@ -261,7 +275,7 @@ test.describe("nutrition goals", () => {
   });
 
   test("the line under the goals reads a thousands comma in the calorie goal too", async ({ me }) => {
-    await openSettings(me);
+    await openSettings(me, "goals");
     await goalField(me, "proteinG").fill("130");
     await goalField(me, "carbsG").fill("250");
     await goalField(me, "fatG").fill("70");
@@ -270,7 +284,7 @@ test.describe("nutrition goals", () => {
   });
 
   test("the line under the goals adds protein, carbs and fat in calories and compares them with the calorie goal, as you type", async ({ me }) => {
-    await openSettings(me);
+    await openSettings(me, "goals");
     const note = () => goalsCard(me).locator(".sline.dim:visible");
     await goalField(me, "proteinG").fill("130");
     await goalField(me, "carbsG").fill("250");
@@ -286,7 +300,7 @@ test.describe("nutrition goals", () => {
   });
 
   test("the calorie goal can follow the burn: off by default, and its share field appears only when turned on", async ({ me }) => {
-    await openSettings(me);
+    await openSettings(me, "goals");
     const toggle = me.getByRole("checkbox", { name: "Add the calories I burn to the calorie goal" });
     await slow(toggle).not.toBeChecked();
     await slow(me.locator("#s-goal_kcalBurnPct")).toHaveCount(0);
@@ -297,7 +311,7 @@ test.describe("nutrition goals", () => {
   });
 
   test("following the burn needs a calorie goal: saving without one says so, and saves nothing", async ({ me, profile }) => {
-    await openSettings(me);
+    await openSettings(me, "goals");
     await me.getByRole("checkbox", { name: "Add the calories I burn to the calorie goal" }).check();
     await goalsCard(me).getByRole("button", { name: "Save goals" }).click();
     await slow(errLine(goalsCard(me))).toHaveText("Set a calorie goal to add the burned calories to.");
@@ -305,7 +319,7 @@ test.describe("nutrition goals", () => {
   });
 
   test("a share of the burn above 100 % is refused", async ({ me, profile }) => {
-    await openSettings(me);
+    await openSettings(me, "goals");
     await goalField(me, "kcal").fill("2000");
     await me.getByRole("checkbox", { name: "Add the calories I burn to the calorie goal" }).check();
     await goalField(me, "kcalBurnPct").fill("150");
@@ -315,7 +329,7 @@ test.describe("nutrition goals", () => {
   });
 
   test("a share of the burn saved with a calorie goal stays after a reload; turning it off removes it", async ({ me, profile }) => {
-    await openSettings(me);
+    await openSettings(me, "goals");
     await goalField(me, "kcal").fill("2000");
     await me.getByRole("checkbox", { name: "Add the calories I burn to the calorie goal" }).check();
     await goalField(me, "kcalBurnPct").fill("50");
@@ -325,6 +339,7 @@ test.describe("nutrition goals", () => {
 
     await me.reload();
     await ready(me);
+    await goSection(me, "goals");
     await slow(me.getByRole("checkbox", { name: "Add the calories I burn to the calorie goal" })).toBeChecked();
     await slow(goalField(me, "kcalBurnPct")).toHaveValue("50");
 
@@ -334,11 +349,12 @@ test.describe("nutrition goals", () => {
     slow((await settingsOf(profile.api)).goals.values).toEqual({ kcal: 2000 });
     await me.reload();
     await ready(me);
+    await goSection(me, "goals");
     await slow(me.getByRole("checkbox", { name: "Add the calories I burn to the calorie goal" })).not.toBeChecked();
   });
 
   test("a goal refused on the page keeps what was typed, so it can be corrected and saved", async ({ me, profile }) => {
-    await openSettings(me);
+    await openSettings(me, "goals");
     await goalField(me, "kcal").fill("-5");
     await goalsCard(me).getByRole("button", { name: "Save goals" }).click();
     await slow(errLine(goalsCard(me))).toHaveText("Calories must be a number above 0, or empty for no goal.");
@@ -354,7 +370,7 @@ test.describe("nutrition goals", () => {
     const stored = await (await alice.context().request.get("/api/settings")).json();
     const goals = Object.fromEntries(Object.entries(stored.goals.values as Record<string, number>).filter(([key]) => key !== "kcalBurnPct"));
     const count = Object.keys(goals).length;
-    await openSettings(alice);
+    await openSettings(alice, "goals");
     await slow(goalsCard(alice).locator(".chip")).toHaveText(count ? `${count} set` : "none set");
     slow(await shownGoals(alice)).toEqual(Object.fromEntries(Object.entries(goals).map(([key, value]) => [key, String(value)])));
   });
@@ -364,7 +380,7 @@ test.describe("nutrition goals", () => {
 
 test.describe("the Garmin account card, for a profile without a login", () => {
   test("the form is there: email, password, 'Connect Garmin', and 'Test login' disabled, as an optional connection", async ({ me }) => {
-    await openSettings(me);
+    await openSettings(me, "connections");
     const c = garminCard(me);
     await slow(c.locator(".chip")).toHaveText("not connected (optional)");
     await slow(c.getByLabel("Email", { exact: true })).toHaveValue("");
@@ -375,15 +391,15 @@ test.describe("the Garmin account card, for a profile without a login", () => {
   });
 
   test("connecting with an email and no password says 'Enter the password.', and stores nothing", async ({ me, profile }) => {
-    await openSettings(me);
+    await openSettings(me, "connections");
     await garminCard(me).getByLabel("Email", { exact: true }).fill("runner@example.com");
     await garminCard(me).getByRole("button", { name: "Connect Garmin" }).click();
     await slow(errLine(garminCard(me))).toHaveText("Enter the password.");
-    slow((await settingsOf(profile.api)).garmin).toEqual({ connected: false, email: null, hasPassword: false });
+    slow((await settingsOf(profile.api)).garmin).toEqual({ connected: false, email: null, hasPassword: false, check: null });
   });
 
   test("an email that is not one is refused: \"Enter the account's email address.\"", async ({ me, profile }) => {
-    await openSettings(me);
+    await openSettings(me, "connections");
     await garminCard(me).getByLabel("Email", { exact: true }).fill("not-an-email");
     await garminCard(me).getByLabel("Password", { exact: true }).fill("garmin-pass-1");
     await garminCard(me).getByRole("button", { name: "Connect Garmin" }).click();
@@ -398,7 +414,7 @@ test.describe("the Garmin account card, for a profile without a login", () => {
       sent.push(route.request().postDataJSON());
       await route.fulfill({ json: { ...snapshot, garmin: { connected: true, email: "runner@example.com", hasPassword: true } } });
     });
-    await openSettings(me);
+    await openSettings(me, "connections");
     await garminCard(me).getByLabel("Email", { exact: true }).fill("runner@example.com");
     await garminCard(me).getByLabel("Password", { exact: true }).fill("garmin-pass-1");
     await garminCard(me).getByRole("button", { name: "Connect Garmin" }).click();
@@ -411,7 +427,7 @@ test.describe("the Garmin account card, for a profile without a login", () => {
 
   test("a save the server refuses shows its message, in red, and the card stays as it was", async ({ me, profile }) => {
     await me.route("**/api/settings/garmin", (route) => route.fulfill({ status: 500, json: { error: "The Garmin login could not be saved." } }));
-    await openSettings(me);
+    await openSettings(me, "connections");
     await garminCard(me).getByLabel("Email", { exact: true }).fill("runner@example.com");
     await garminCard(me).getByLabel("Password", { exact: true }).fill("garmin-pass-1");
     await garminCard(me).getByRole("button", { name: "Connect Garmin" }).click();
@@ -430,7 +446,7 @@ test.describe("the Garmin account card, for a profile without a login", () => {
       if (body.action === "save") return route.fulfill({ json: { ...snapshot, garmin: { connected: true, email: "runner@example.com", hasPassword: true } } });
       return route.fulfill({ json: { ok: true, message: "Garmin accepted the login.", ...snapshot, garmin: { connected: true, email: "runner@example.com", hasPassword: true } } });
     });
-    await openSettings(me);
+    await openSettings(me, "connections");
     await garminCard(me).getByLabel("Email", { exact: true }).fill("runner@example.com");
     await garminCard(me).getByLabel("Password", { exact: true }).fill("garmin-pass-1");
     await garminCard(me).getByRole("button", { name: "Connect Garmin" }).click();
@@ -447,7 +463,7 @@ test.describe("the Garmin account card, for a profile without a login", () => {
       if (body.action === "test") return route.fulfill({ json: { ok: false, message: "Garmin refused the password.", ...snapshot, garmin: { connected: true, email: "runner@example.com", hasPassword: true } } });
       return route.fulfill({ json: { ...snapshot, garmin: { connected: true, email: "runner@example.com", hasPassword: true } } });
     });
-    await openSettings(me);
+    await openSettings(me, "connections");
     await garminCard(me).getByLabel("Email", { exact: true }).fill("runner@example.com");
     await garminCard(me).getByLabel("Password", { exact: true }).fill("garmin-pass-1");
     await garminCard(me).getByRole("button", { name: "Connect Garmin" }).click();
@@ -463,7 +479,7 @@ test.describe("the Garmin account card, for a profile without a login", () => {
       actions.push(route.request().postDataJSON().action);
       return route.fulfill({ json: { ...snapshot, garmin: { connected: true, email: "runner@example.com", hasPassword: true } } });
     });
-    await openSettings(me);
+    await openSettings(me, "connections");
     await garminCard(me).getByLabel("Email", { exact: true }).fill("runner@example.com");
     await garminCard(me).getByLabel("Password", { exact: true }).fill("garmin-pass-1");
     await garminCard(me).getByRole("button", { name: "Connect Garmin" }).click();
@@ -485,7 +501,7 @@ test.describe("the Garmin account card, for a profile without a login", () => {
       if (body.action === "remove") return route.fulfill({ json: { ...snapshot, garmin: { connected: false, email: null, hasPassword: false } } });
       return route.fulfill({ json: { ...snapshot, garmin: { connected: true, email: "runner@example.com", hasPassword: true } } });
     });
-    await openSettings(me);
+    await openSettings(me, "connections");
     await garminCard(me).getByLabel("Email", { exact: true }).fill("runner@example.com");
     await garminCard(me).getByLabel("Password", { exact: true }).fill("garmin-pass-1");
     await garminCard(me).getByRole("button", { name: "Connect Garmin" }).click();
@@ -501,7 +517,7 @@ test.describe("the Garmin account card, for a profile without a login", () => {
 
 test.describe("the Renpho scale card, for a profile without a login", () => {
   test("the form is there: email, password, the area code (US), 'Connect Renpho'; no sync controls until a login is saved", async ({ me }) => {
-    await openSettings(me);
+    await openSettings(me, "connections");
     const c = renphoCard(me);
     await slow(c.locator(".chip")).toHaveText("not connected (optional)");
     await slow(c.getByLabel("Renpho email", { exact: true })).toHaveValue("");
@@ -514,7 +530,7 @@ test.describe("the Renpho scale card, for a profile without a login", () => {
   });
 
   test("an area code that is not two or three letters is refused, and no login is saved", async ({ me, profile }) => {
-    await openSettings(me);
+    await openSettings(me, "connections");
     await renphoCard(me).getByLabel("Renpho email", { exact: true }).fill("scale@example.com");
     await renphoCard(me).getByLabel("Password", { exact: true }).fill("scale-pass-123");
     await renphoCard(me).getByLabel("Area code", { exact: true }).fill("1");
@@ -524,7 +540,7 @@ test.describe("the Renpho scale card, for a profile without a login", () => {
   });
 
   test("an email that is not one is refused: \"Enter the account's email address.\"", async ({ me, profile }) => {
-    await openSettings(me);
+    await openSettings(me, "connections");
     await renphoCard(me).getByLabel("Renpho email", { exact: true }).fill("not-an-email");
     await renphoCard(me).getByLabel("Password", { exact: true }).fill("scale-pass-123");
     await renphoCard(me).getByRole("button", { name: "Connect Renpho" }).click();
@@ -533,7 +549,7 @@ test.describe("the Renpho scale card, for a profile without a login", () => {
   });
 
   test("a login with no password is refused: 'Enter the password.'", async ({ me, profile }) => {
-    await openSettings(me);
+    await openSettings(me, "connections");
     await renphoCard(me).getByLabel("Renpho email", { exact: true }).fill("scale@example.com");
     await renphoCard(me).getByRole("button", { name: "Connect Renpho" }).click();
     await slow(errLine(renphoCard(me))).toHaveText("Enter the password.");
@@ -541,7 +557,7 @@ test.describe("the Renpho scale card, for a profile without a login", () => {
   });
 
   test("saving a login stores it (no request leaves for Renpho): 'Login saved.', the email, the area code in capitals, and the sync switches", async ({ me, profile }) => {
-    await openSettings(me);
+    await openSettings(me, "connections");
     await renphoCard(me).getByLabel("Renpho email", { exact: true }).fill("scale@example.com");
     await renphoCard(me).getByLabel("Password", { exact: true }).fill("scale-pass-123");
     await renphoCard(me).getByLabel("Area code", { exact: true }).fill("ca");
@@ -560,7 +576,7 @@ test.describe("the Renpho scale card, for a profile without a login", () => {
 
   test("switching the fetch on shows 'On, waiting for the first run', and the log says so", async ({ me, profile }) => {
     await seedRenpho(profile);
-    await openSettings(me);
+    await openSettings(me, "connections");
     await renphoCard(me).getByRole("checkbox", { name: /Fetch my weigh-ins/ }).check();
     await slow(renphoCard(me).locator(".chip")).toHaveText("On, waiting for the first run");
     await slow(renphoCard(me).locator(".slog")).toContainText("Fetching from Renpho switched on.");
@@ -569,7 +585,7 @@ test.describe("the Renpho scale card, for a profile without a login", () => {
 
   test("the upload to Garmin cannot be switched on without a Garmin login: the card says to connect Garmin first", async ({ me, profile }) => {
     await seedRenpho(profile);
-    await openSettings(me);
+    await openSettings(me, "connections");
     const upload = renphoCard(me).getByRole("checkbox", { name: /Upload new weigh-ins to Garmin/ });
     await slow(upload).toBeDisabled();
     await slow(renphoCard(me)).toContainText("Connect Garmin first: the weigh-ins are uploaded to a Garmin account.");
@@ -577,7 +593,7 @@ test.describe("the Renpho scale card, for a profile without a login", () => {
 
   test("Remove login asks first; confirmed, it says 'Login removed.' and the form comes back", async ({ me, profile }) => {
     await seedRenpho(profile);
-    await openSettings(me);
+    await openSettings(me, "connections");
     await renphoCard(me).getByRole("button", { name: "Remove login" }).click();
     await slow(me.locator("#dlgTitle")).toHaveText("Remove the Renpho login?");
     await me.locator("#dlgCancel").click();
@@ -600,7 +616,7 @@ test.describe("the Renpho scale card, for a profile without a login", () => {
       if (body.action !== "test") return route.continue();
       return route.fulfill({ json: { ok: true, message: "Renpho accepted the login (1 scale table on the account).", ...(await settingsOf(profile.api)) } });
     });
-    await openSettings(me);
+    await openSettings(me, "connections");
     await renphoCard(me).getByRole("button", { name: "Test login" }).click();
     await slow(okLine(renphoCard(me))).toHaveText("Renpho accepted the login (1 scale table on the account).");
     slow(actions).toEqual(["test"]);
@@ -613,7 +629,7 @@ test.describe("the Renpho scale card, for a profile without a login", () => {
       if (body.action !== "sync") return route.continue();
       return route.fulfill({ json: { run: { ran: true, error: null, seen: 3, added: 2, uploaded: 0 }, ...(await settingsOf(profile.api)) } });
     });
-    await openSettings(me);
+    await openSettings(me, "connections");
     await renphoCard(me).getByRole("button", { name: "Sync now" }).click();
     await slow(okLine(renphoCard(me))).toHaveText("Renpho holds 3 weigh-ins; 2 new.");
   });
@@ -625,7 +641,7 @@ test.describe("the Renpho scale card, for a profile without a login", () => {
       if (body.action !== "sync") return route.continue();
       return route.fulfill({ json: { run: { ran: true, error: "Renpho refused the login.", seen: 0, added: 0, uploaded: 0 }, ...(await settingsOf(profile.api)) } });
     });
-    await openSettings(me);
+    await openSettings(me, "connections");
     await renphoCard(me).getByRole("button", { name: "Sync now" }).click();
     await slow(errLine(renphoCard(me))).toHaveText("Renpho refused the login.");
   });
@@ -635,7 +651,7 @@ test.describe("the Renpho scale card, for a profile without a login", () => {
 
 test.describe("the web sign-in password card", () => {
   test("a profile's card says its password is set, and asks for a new one typed twice", async ({ me }) => {
-    await openSettings(me);
+    await openSettings(me, "signin");
     const c = webCard(me);
     await slow(c.locator(".chip")).toHaveText("password set");
     await slow(c.getByLabel("New password", { exact: true })).toHaveValue("");
@@ -645,7 +661,7 @@ test.describe("the web sign-in password card", () => {
 
   test("two passwords that differ are said so as they are typed, and Change password refuses them with no request", async ({ me, profile, baseURL }) => {
     const writes = writesOf(me);
-    await openSettings(me);
+    await openSettings(me, "signin");
     await webCard(me).getByLabel("New password", { exact: true }).fill("longenough1");
     await webCard(me).getByLabel("Repeat password", { exact: true }).fill("longenough2");
     await slow(webCard(me).locator(".sline.err:visible")).toHaveText("The two passwords are not the same.");
@@ -657,7 +673,7 @@ test.describe("the web sign-in password card", () => {
 
   test("a password under 8 characters is refused, and so is a 7-character one", async ({ me, profile, baseURL }) => {
     const writes = writesOf(me);
-    await openSettings(me);
+    await openSettings(me, "signin");
     await webCard(me).getByLabel("New password", { exact: true }).fill("short");
     await webCard(me).getByLabel("Repeat password", { exact: true }).fill("short");
     await webCard(me).getByRole("button", { name: "Change password" }).click();
@@ -671,13 +687,13 @@ test.describe("the web sign-in password card", () => {
   });
 
   test("an empty password is refused: 'Enter a password.'", async ({ me }) => {
-    await openSettings(me);
+    await openSettings(me, "signin");
     await webCard(me).getByRole("button", { name: "Change password" }).click();
     await slow(errLine(webCard(me))).toHaveText("Enter a password.");
   });
 
   test("changing the password says 'Password saved.' and clears the fields; the old password stops signing in, the new one signs in", async ({ me, profile, baseURL }) => {
-    await openSettings(me);
+    await openSettings(me, "signin");
     await webCard(me).getByLabel("New password", { exact: true }).fill(NEW_PASSWORD);
     await webCard(me).getByLabel("Repeat password", { exact: true }).fill(NEW_PASSWORD);
     await webCard(me).getByRole("button", { name: "Change password" }).click();
@@ -694,7 +710,7 @@ test.describe("the web sign-in password card", () => {
     try {
       await loginAs(other, profile.name, PASSWORD);
       slow((await other.request.get("/api/settings")).status()).toBe(200);
-      await openSettings(me);
+      await openSettings(me, "signin");
       await webCard(me).getByLabel("New password", { exact: true }).fill(NEW_PASSWORD);
       await webCard(me).getByLabel("Repeat password", { exact: true }).fill(NEW_PASSWORD);
       await webCard(me).getByRole("button", { name: "Change password" }).click();
@@ -703,8 +719,9 @@ test.describe("the web sign-in password card", () => {
       slow((await me.context().request.get("/api/settings")).status()).toBe(200);
       await me.reload();
       await ready(me);
+      await goSection(me, "signin");
       await slow(me.locator("#login")).toBeHidden();
-      await slow(me.locator("#sbody .scard")).toHaveCount(6);
+      await slow(me.locator("#sbody .spane .scard")).toHaveCount(3); // the password, the token for Claude (MCP) and how the saved passwords are kept
     } finally {
       await other.close();
     }
@@ -731,7 +748,7 @@ test.describe("the web sign-in password card", () => {
 
 test.describe("the admin's profile controls", () => {
   test("the admin sees '+ Add profile' and the profile selector", async ({ adminPage }) => {
-    await openSettings(adminPage);
+    await openSettings(adminPage, "profiles");
     await slow(adminPage.locator("#sAddProfile")).toBeVisible();
     await slow(adminPage.locator("#sAddProfile")).toHaveText("+ Add profile");
     await slow(adminPage.locator("#sProfile")).toBeVisible();
@@ -739,7 +756,7 @@ test.describe("the admin's profile controls", () => {
   });
 
   test("the add-profile dialog opens empty, says Garmin and Renpho come later, and asks for the password twice", async ({ adminPage }) => {
-    await openSettings(adminPage);
+    await openSettings(adminPage, "profiles");
     await adminPage.locator("#sAddProfile").click();
     const dlg = adminPage.locator("#pdlg");
     await slow(dlg).toBeVisible();
@@ -753,7 +770,7 @@ test.describe("the admin's profile controls", () => {
   });
 
   test("a name with a space or a symbol is refused, and the dialog stays open", async ({ adminPage }) => {
-    await openSettings(adminPage);
+    await openSettings(adminPage, "profiles");
     await adminPage.locator("#sAddProfile").click();
     await adminPage.locator("#pdlgName").fill("bad name!");
     await adminPage.locator("#pdlgPass").fill("longenough1");
@@ -767,7 +784,7 @@ test.describe("the admin's profile controls", () => {
   });
 
   test("a name longer than 64 characters is refused", async ({ adminPage }) => {
-    await openSettings(adminPage);
+    await openSettings(adminPage, "profiles");
     await adminPage.locator("#sAddProfile").click();
     await adminPage.locator("#pdlgName").fill("a".repeat(65));
     await adminPage.locator("#pdlgPass").fill("longenough1");
@@ -777,7 +794,7 @@ test.describe("the admin's profile controls", () => {
   });
 
   test("a missing password is refused: 'Enter a password.'", async ({ adminPage }) => {
-    await openSettings(adminPage);
+    await openSettings(adminPage, "profiles");
     await adminPage.locator("#sAddProfile").click();
     await adminPage.locator("#pdlgName").fill(freshName("pdmiss"));
     await adminPage.locator("#pdlgOk").click();
@@ -786,7 +803,7 @@ test.describe("the admin's profile controls", () => {
   });
 
   test("a password under 8 characters is refused", async ({ adminPage }) => {
-    await openSettings(adminPage);
+    await openSettings(adminPage, "profiles");
     await adminPage.locator("#sAddProfile").click();
     await adminPage.locator("#pdlgName").fill(freshName("pdshort"));
     await adminPage.locator("#pdlgPass").fill("short");
@@ -796,7 +813,7 @@ test.describe("the admin's profile controls", () => {
   });
 
   test("two passwords that differ are refused: 'The two passwords are not the same.'", async ({ adminPage }) => {
-    await openSettings(adminPage);
+    await openSettings(adminPage, "profiles");
     await adminPage.locator("#sAddProfile").click();
     await adminPage.locator("#pdlgName").fill(freshName("pdmismatch"));
     await adminPage.locator("#pdlgPass").fill("longenough1");
@@ -807,7 +824,7 @@ test.describe("the admin's profile controls", () => {
   });
 
   test("a name that is taken is refused by the server, whatever its case: 'Profile \"alice\" exists already.'", async ({ adminPage }) => {
-    await openSettings(adminPage);
+    await openSettings(adminPage, "profiles");
     await adminPage.locator("#sAddProfile").click();
     await adminPage.locator("#pdlgName").fill("ALICE");
     await adminPage.locator("#pdlgPass").fill("longenough1");
@@ -818,7 +835,7 @@ test.describe("the admin's profile controls", () => {
   });
 
   test("Cancel closes the dialog and adds nothing", async ({ adminPage }) => {
-    await openSettings(adminPage);
+    await openSettings(adminPage, "profiles");
     const before = await adminPage.locator("#sProfile option").count();
     await adminPage.locator("#sAddProfile").click();
     await adminPage.locator("#pdlgName").fill(freshName("pdcancel"));
@@ -830,7 +847,7 @@ test.describe("the admin's profile controls", () => {
   });
 
   test("Escape closes the dialog and adds nothing", async ({ adminPage }) => {
-    await openSettings(adminPage);
+    await openSettings(adminPage, "profiles");
     const before = await adminPage.locator("#sProfile option").count();
     await adminPage.locator("#sAddProfile").click();
     await adminPage.locator("#pdlgName").fill(freshName("pdesc"));
@@ -841,7 +858,7 @@ test.describe("the admin's profile controls", () => {
 
   test("a profile added is in the selector, Settings opens on it with nothing set, and it signs in with the password chosen", async ({ adminPage, baseURL }) => {
     const name = freshName("pdnew");
-    await openSettings(adminPage);
+    await openSettings(adminPage, "goals");
     await adminPage.locator("#sAddProfile").click();
     await adminPage.locator("#pdlgName").fill(name);
     await adminPage.locator("#pdlgPass").fill(PROFILE_PASSWORD);
@@ -851,7 +868,9 @@ test.describe("the admin's profile controls", () => {
     await slow(adminPage.locator("#sProfile")).toHaveValue(name);
     await slow(adminPage.locator("#sProfile option", { hasText: name })).toHaveCount(1);
     await slow(goalsCard(adminPage).locator(".chip")).toHaveText("none set");
+    await goSection(adminPage, "signin");
     await slow(webCard(adminPage).locator(".chip")).toHaveText("password set");
+    await goSection(adminPage, "connections");
     await slow(garminCard(adminPage).locator(".chip")).toHaveText("not connected (optional)");
     await slow(renphoCard(adminPage).locator(".chip")).toHaveText("not connected (optional)");
     slow(await signsIn(baseURL, name, PROFILE_PASSWORD)).toBe(200);
@@ -859,7 +878,7 @@ test.describe("the admin's profile controls", () => {
 
   test("Enter in the password field adds the profile", async ({ adminPage }) => {
     const name = freshName("pdenter");
-    await openSettings(adminPage);
+    await openSettings(adminPage, "profiles");
     await adminPage.locator("#sAddProfile").click();
     await adminPage.locator("#pdlgName").fill(name);
     await adminPage.locator("#pdlgPass").fill(PROFILE_PASSWORD);
@@ -869,7 +888,7 @@ test.describe("the admin's profile controls", () => {
   });
 
   test("choosing a profile in the selector shows its goals: alice's 2200 kcal, 130 g protein, 250 g carbs, 70 g fat", async ({ adminPage }) => {
-    await openSettings(adminPage);
+    await openSettings(adminPage, "goals");
     await adminPage.locator("#sProfile").selectOption("alice");
     await slow(goalField(adminPage, "kcal")).toHaveValue("2200");
     await slow(goalField(adminPage, "proteinG")).toHaveValue("130");
@@ -879,17 +898,18 @@ test.describe("the admin's profile controls", () => {
   });
 
   test("choosing a profile with no goals shows none set, not the goals of the one before", async ({ adminPage, profile }) => {
-    await openSettings(adminPage);
+    await openSettings(adminPage, "goals");
     await adminPage.locator("#sProfile").selectOption("alice");
     await slow(goalField(adminPage, "kcal")).toHaveValue("2200");
     await adminPage.locator("#sProfile").selectOption(profile.name);
     await slow(goalsCard(adminPage).locator(".chip")).toHaveText("none set");
     await slow(goalField(adminPage, "kcal")).toHaveValue("");
+    await goSection(adminPage, "signin");
     await slow(webCard(adminPage).locator(".chip")).toHaveText("password set");
   });
 
   test("what was typed for one profile is not carried to another when the selector changes", async ({ adminPage, profile }) => {
-    await openSettings(adminPage);
+    await openSettings(adminPage, "goals");
     await adminPage.locator("#sProfile").selectOption(profile.name);
     await slow(goalsCard(adminPage).locator(".chip")).toHaveText("none set");
     await goalField(adminPage, "kcal").fill("1777");
@@ -900,7 +920,7 @@ test.describe("the admin's profile controls", () => {
   });
 
   test("a goal the admin saves goes to the profile chosen, not to the one shown first", async ({ adminPage, profile }) => {
-    await openSettings(adminPage);
+    await openSettings(adminPage, "goals");
     await adminPage.locator("#sProfile").selectOption(profile.name);
     await slow(goalsCard(adminPage).locator(".chip")).toHaveText("none set");
     await goalField(adminPage, "kcal").fill("1900");
@@ -955,30 +975,32 @@ test.describe("a profile's own Settings", () => {
 // ── the Settings view as a whole ──
 
 test.describe("the Settings view", () => {
-  test("the six cards come in order: nutrition goals, units, Garmin, Renpho, web sign-in, Claude (MCP); the note is never shown", async ({ me }) => {
+  test("the sections hold the cards in order: Overview, Connections (Garmin, Renpho, Food AI), Goals (preview, nutrition goals), Display (appearance, units), Sign-in (web, Claude (MCP), saved passwords); the note is never shown", async ({ me }) => {
+    const titles = async (section: SettingsSection) => { await goSection(me, section); return me.locator(`#sbody .spane[data-section="${section}"] .scard h2`).allTextContents(); };
     await openSettings(me);
-    await slow(me.locator("#sbody h2").nth(0)).toContainText("Nutrition goals");
-    await slow(me.locator("#sbody h2").nth(1)).toContainText("Units");
-    await slow(me.locator("#sbody h2").nth(2)).toContainText("Garmin account");
-    await slow(me.locator("#sbody h2").nth(3)).toContainText("Renpho scale");
-    await slow(me.locator("#sbody h2").nth(4)).toContainText("Web sign-in");
-    await slow(me.locator("#sbody h2").nth(5)).toContainText("Claude (MCP)");
+    expect((await titles("connections")).map((s) => s.replace(/\s+/g, " ").trim().split(/ (?=not|connected|on|off)/)[0])).toEqual([expect.stringContaining("Garmin account"), expect.stringContaining("Renpho scale"), expect.stringContaining("Food AI")]);
+    expect(await titles("goals")).toEqual([expect.stringContaining("How the Food view will show them"), expect.stringContaining("Nutrition goals")]);
+    expect(await titles("display")).toEqual([expect.stringContaining("Appearance"), expect.stringContaining("Units")]);
+    expect(await titles("signin")).toEqual([expect.stringContaining("Web sign-in"), expect.stringContaining("Claude (MCP)"), expect.stringContaining("Saved passwords")]);
     await slow(me.locator("#sNote")).toBeHidden();
   });
 
   test("the encryption note warns of plain text when CREDENTIALS_KEY is not set, and says nothing when all is encrypted", async ({ me, profile }) => {
     const settings = await settingsOf(profile.api);
-    await openSettings(me);
-    const banner = me.locator("#sbody > .sline").first();
-    if (settings.encryption.enabled && settings.encryption.plain === 0) await slow(me.locator("#sbody > .sline")).toHaveCount(0);
-    else if (!settings.encryption.enabled) await slow(banner).toContainText("Saved passwords are stored as plain text in the database.");
-    else await slow(banner).toContainText("is still plain text");
+    await openSettings(me, "signin");
+    const note = me.locator("#sbody .scard", { has: me.locator("h2", { hasText: "Saved passwords" }) }).locator(".sline").first();
+    if (settings.encryption.enabled && settings.encryption.plain === 0) await slow(note).toHaveText("Saved passwords are encrypted.");
+    else if (!settings.encryption.enabled) await slow(note).toContainText("Saved passwords are stored as plain text in the database");
+    else await slow(note).toContainText("is still plain text");
+    // and the overview says so as a thing to look at
+    if (!(settings.encryption.enabled && settings.encryption.plain === 0)) { await goSection(me, "overview"); await slow(me.locator(".sattn").first()).toContainText("plain text"); }
   });
 
   test("alice's Settings show her cards: Garmin and Renpho not connected, the password set (read only)", async ({ alice }) => {
-    await openSettings(alice);
+    await openSettings(alice, "connections");
     await slow(garminCard(alice).locator(".chip")).toHaveText("not connected (optional)");
     await slow(renphoCard(alice).locator(".chip")).toHaveText("not connected (optional)");
+    await goSection(alice, "signin");
     await slow(webCard(alice).locator(".chip")).toHaveText("password set");
   });
 });

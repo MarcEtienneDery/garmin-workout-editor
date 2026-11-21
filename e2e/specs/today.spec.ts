@@ -4,7 +4,7 @@
  * the fresh profile only. Garmin is not connected for either, so the Sync button and the profile picker are absent for them.
  */
 import type { Page } from "@playwright/test";
-import { test, expect, openView, loginAs, today, daysAgo, daysAhead, ADMIN_TOKEN } from "../support/fixtures";
+import { test, expect, openView, loginAs, today, daysAgo, daysAhead, ADMIN_TOKEN, chooseTheme, toggleTheme } from "../support/fixtures";
 
 // The machine is shared by every spec run at once: a page can take many seconds to answer, so each test has more than the default 30 s.
 test.describe.configure({ timeout: 60_000 });
@@ -184,6 +184,85 @@ test.describe("alice's day", () => {
     await expect(alice.locator("body")).toHaveAttribute("data-view", "recovery");
   });
 
+  test("each tile draws its last days as a line, described in words for a screen reader", async ({ alice }) => {
+    await openToday(alice);
+    await expect(alice.locator("#tbody .tfig svg.tspark")).toHaveCount(4);
+    for (const [label, words] of [["Steps", /^Steps, last 7 days: /], ["Intensity minutes", /^Intensity minutes a day, last 7 days: /], ["Body Battery", /^Body Battery on waking, last 7 days: /], ["Sleep", /^Sleep, last 7 days: /]] as const) {
+      const line = tile(alice, label).locator("svg.tspark");
+      await expect(line).toHaveAttribute("role", "img");
+      await expect(line).toHaveAttribute("aria-label", words);
+      await expect(line.locator("polyline").first()).toHaveAttribute("points", /\d/);
+    }
+  });
+
+  test("the line of a tile ends in a dot on today, and the trend the server sent is what it says", async ({ alice }) => {
+    await openToday(alice);
+    const data = await todayData(alice);
+    expect(data.trend).toHaveLength(7);
+    expect(data.trend[6].day).toBe(today());
+    const label = await tile(alice, "Steps").locator("svg.tspark").getAttribute("aria-label");
+    expect(label).toContain(grouped(data.trend[6].steps));
+    await expect(tile(alice, "Steps").locator("svg.tspark circle")).toHaveCount(1);
+  });
+
+  test("the readiness is a ring that says its score, with the same score on the chip", async ({ alice }) => {
+    await openToday(alice);
+    const data = await todayData(alice);
+    const ring = card(alice).locator(".tgauge");
+    await expect(ring).toHaveAttribute("role", "img");
+    await expect(ring).toHaveAttribute("aria-label", `Readiness ${data.readiness.score} out of 100`);
+    await expect(ring.locator(".tgn")).toHaveText(String(data.readiness.score));
+  });
+
+  test("today's workout row can be opened from the keyboard, and its picture says what its colours are", async ({ alice }) => {
+    await openToday(alice);
+    const tempo = card(alice).locator(".twk", { hasText: "Tempo intervals" });
+    await expect(tempo.locator(".tleg")).toContainText("Warm-up");
+    await expect(tempo.locator(".tleg")).toContainText("Work");
+    await tempo.focus();
+    await alice.keyboard.press("Enter");
+    await expect(alice.locator("body")).toHaveAttribute("data-view", "plans");
+    await expect(alice.locator("#current")).toContainText("alice-run-block.json");
+  });
+
+  test("the theme button switches the view between dark and light, says what it will do, and the choice is kept", async ({ alice }) => {
+    await openToday(alice);
+    const view = alice.locator("body");
+    await expect(view).toHaveAttribute("data-theme", "dark");
+    await expect(view).toHaveAttribute("data-theme", "dark");
+    const darkBg = await alice.locator("#tscroll").evaluate((el) => getComputedStyle(el).backgroundColor);
+    await toggleTheme(alice);
+    await expect(view).toHaveAttribute("data-theme", "light");
+    await expect(view).toHaveAttribute("data-theme", "light");
+    const lightBg = await alice.locator("#tscroll").evaluate((el) => getComputedStyle(el).backgroundColor);
+    expect(lightBg).not.toBe(darkBg);
+    await alice.reload();
+    await expect(alice.locator("#tbody")).not.toContainText("Loading", { timeout: 20_000 });
+    await expect(view).toHaveAttribute("data-theme", "light");
+    await toggleTheme(alice);
+    await expect(view).toHaveAttribute("data-theme", "dark");
+  });
+
+  test("in both themes the cards read as text on their own background: the numbers keep a readable contrast", async ({ alice }) => {
+    await openToday(alice);
+    const contrast = () =>
+      alice.locator("#tbody .tfig").first().evaluate((el) => {
+        const lum = (css: string) => {
+          const [r, g, b] = (css.match(/[\d.]+/g) ?? []).slice(0, 3).map(Number).map((v) => { const c = v / 255; return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; });
+          return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+        };
+        const fg = lum(getComputedStyle(el.querySelector("b")!).color), bg = lum(getComputedStyle(el).backgroundColor), note = lum(getComputedStyle(el.querySelector("span")!).color);
+        const ratio = (a: number, c: number) => (Math.max(a, c) + 0.05) / (Math.min(a, c) + 0.05);
+        return { number: ratio(fg, bg), note: ratio(note, bg) };
+      });
+    for (const theme of ["dark", "light"]) {
+      if (theme === "light") await chooseTheme(alice, "light");
+      const { number, note } = await contrast();
+      expect(number, `${theme}: the number`).toBeGreaterThanOrEqual(7);
+      expect(note, `${theme}: the note under it`).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
   test("the food section says nothing is logged today, against the goals", async ({ alice }) => {
     await openToday(alice);
     const food = alice.locator("#tbody .tfsum");
@@ -255,7 +334,7 @@ test.describe("alice's day", () => {
 
 const VIEWS: [string, string, string][] = [
   ["today", "#tbody .tcard", "#tbody"],
-  ["calendar", "#cgrid .cday", "#cview"],
+  ["calendar", "#cwBoard .wday", "#cview"],
   ["activities", "#aview", "#aview"],
   ["recovery", "#rview", "#rview"],
   ["weight", "#bview", "#bview"],
@@ -278,7 +357,7 @@ test.describe("a profile with nothing", () => {
   test("says there is nothing planned today, and shows no tiles, readiness or sync", async ({ me }) => {
     await openToday(me);
     await expect(me.locator("#tbody")).toContainText("Nothing is planned for today.");
-    await expect(me.locator("#tbody .rfigs")).toHaveCount(0);
+    await expect(me.locator("#tbody .tfigs")).toHaveCount(0);
     await expect(me.locator("#tbody .tch .chip")).toHaveCount(0);
     await expect(me.locator("#tAsOf")).toBeEmpty();
     await expect(me.locator("#tSync")).toBeHidden();

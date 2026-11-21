@@ -130,6 +130,75 @@ describe("the goals form", () => {
   });
 });
 
+describe("the overview of the Settings view", () => {
+  const NM = require("../web/public/nutritionModel.js");
+  const NOW = 10 * 3_600_000;
+  const base = (over: any = {}) => ({
+    garmin: { connected: false, email: null, hasPassword: false, check: null },
+    web: { hasPassword: true },
+    renpho: { account: null, settings: {}, state: {} },
+    encryption: { enabled: true, plain: 0 },
+    goals: { values: {}, fields: [] },
+    ...over,
+  });
+
+  it("says how the Garmin login stands: none, saved and untested, accepted, refused, unreadable, mock", () => {
+    expect(SM.garminState({ connected: false }, false, NOW).label).toBe("Not connected");
+    expect(SM.garminState({ connected: true, email: "a@b.c", check: null }, false, NOW)).toMatchObject({ label: "Connected", tone: "" });
+    expect(SM.garminState({ connected: true, email: "a@b.c", check: { ok: true, message: "", at: NOW - 2 * 3_600_000 } }, false, NOW)).toMatchObject({ tone: "ok", text: "a@b.c: accepted 2 h ago." });
+    expect(SM.garminState({ connected: true, email: "a@b.c", check: { ok: false, message: "Bad password", at: NOW - 60_000 } }, false, NOW)).toMatchObject({ label: "Login refused", tone: "err" });
+    expect(SM.garminState({ connected: true, email: null, error: "no key" }, false, NOW)).toMatchObject({ label: "Key unreadable", tone: "err" });
+    expect(SM.garminState({ connected: true, email: "a@b.c", check: null }, true, NOW).label).toBe("Mock mode");
+  });
+
+  it("is all clear when nothing is wrong, and lists what needs attention, each with where to fix it", () => {
+    expect(SM.overview(base(), { mock: false }, NOW)).toMatchObject({ ok: true, headline: "Everything is set up", items: [] });
+    const d = base({
+      garmin: { connected: true, email: "a@b.c", check: { ok: false, message: "x", at: NOW } },
+      renpho: { account: { email: "r@b.c" }, settings: {}, state: { error: "boom", errorKind: "other" } },
+      encryption: { enabled: false, plain: 3 },
+    });
+    const o = SM.overview(d, { mock: false }, NOW);
+    expect(o.headline).toBe("3 things need attention");
+    expect(o.worst).toBe("err");
+    expect(o.items.map((i: any) => [i.key, i.fix.section])).toEqual([["garmin", "connections"], ["renpho", "connections"], ["plain", "signin"]]);
+    expect(SM.overview(base({ web: { hasPassword: false } }), { mock: false }, NOW).items[0]).toMatchObject({ key: "web", tone: "warn" });
+    expect(SM.overview(base({ encryption: { enabled: true, plain: 1 } }), {}, NOW).headline).toBe("1 thing needs attention");
+  });
+
+  it("tells the Food AI and the sign-in apart in their tiles", () => {
+    expect(SM.aiTile({ enabled: true, backend: "gemini", remaining: 14, limit: 20 })).toMatchObject({ label: "Gemini", text: "14 of 20 estimates left today" });
+    expect(SM.aiTile({ enabled: false, backend: null, remaining: 0, limit: 20 }).label).toBe("Off");
+    expect(SM.signinTile(base({ encryption: { enabled: false, plain: 2 } }))).toMatchObject({ tone: "warn", text: "2 saved passwords are still plain text." });
+    expect(SM.signinTile(base({ web: { hasPassword: false } })).label).toBe("No password");
+  });
+
+  it("counts and lists the food goals, leaving out the burn share and the weight", () => {
+    const goals = { values: { kcal: 2400, proteinG: 150, kcalBurnPct: 50, weightKg: 80 }, fields: [{ key: "kcal", label: "Calories", unit: "kcal" }, { key: "proteinG", label: "Protein", unit: "g" }, { key: "kcalBurnPct", kind: "burn" }, { key: "weightKg", kind: "weight" }] };
+    expect(SM.goalCount(goals)).toBe(2);
+    expect(SM.goalChips(goals).map((c: any) => c.key)).toEqual(["kcal", "proteinG"]);
+  });
+
+  it("previews a sample day against the goals with the Food view's tolerance, and works the burn example", () => {
+    expect(SM.previewDay({ kcal: 2400, proteinG: 150 }, 0.5)).toMatchObject({ left: 1200, rows: [{ label: "Calories", amount: 1200, state: "short" }, { label: "Protein", amount: 75 }] });
+    expect(SM.previewDay({ kcal: 2000 }, 1.05).rows[0].state).toBe("ok");
+    expect(SM.previewDay({ kcal: 2000 }, 1.2).rows[0].state).toBe("over");
+    expect(SM.previewDay({}, 0.5)).toEqual({ rows: [], left: null });
+    expect(SM.burnExample({ kcal: 2600, kcalBurnPct: 50 })!.text).toBe(`${(2600).toLocaleString()} + 50 % × 800 = ${(3000).toLocaleString()} kcal`);
+    expect(SM.burnExample({ kcal: 2600 })).toBeNull();
+    // the tolerance is the Food view's
+    const justOver = 1 + NM.TARGET_TOLERANCE + 0.001, onEdge = 1 + NM.TARGET_TOLERANCE - 0.001;
+    expect(SM.previewDay({ kcal: 2000 }, justOver).rows[0].state).toBe("over");
+    expect(SM.previewDay({ kcal: 2000 }, onEdge).rows[0].state).toBe("ok");
+  });
+
+  it("checks the new password as it is typed", () => {
+    expect(SM.passwordChecklist("short", "short")).toEqual([{ ok: false, text: "At least 8 characters" }, { ok: true, text: "Both typed the same" }]);
+    expect(SM.passwordChecklist("longenough", "different")).toEqual([{ ok: true, text: "At least 8 characters" }, { ok: false, text: "Both typed the same" }]);
+    expect(SM.passwordChecklist("", "")[1].ok).toBe(false);
+  });
+});
+
 describe("setting an assistant up with the MCP server", () => {
   it("names the server after the profile, in a form every client takes", () => {
     expect(SM.mcpServerName("MED")).toBe("garmin-med");

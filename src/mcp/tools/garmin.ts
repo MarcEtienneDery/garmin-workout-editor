@@ -68,14 +68,45 @@ export function assertActive(logical: string): void {
   if (getStore().head(logical)?.archivedAt != null) throw new Error(`${logical} is archived: unarchive it before sending its workouts to Garmin.`);
 }
 
-export async function uploadPlan(profile: string | undefined, logicalPath: string, dryRun = false) {
+/**
+ * The workouts of a plan an action is limited to, by their place in its list (the web editor's "only what needs it"). Without `only` an
+ * action takes every workout. A place the plan has no workout at is refused, so a stale page cannot upload something else.
+ */
+function placesIn(list: readonly unknown[], only: readonly number[] | undefined): number[] | null {
+  if (only === undefined) return null;
+  const places = [...new Set(only)].sort((a, b) => a - b);
+  const missing = places.find((i) => !Number.isInteger(i) || i < 0 || i >= list.length);
+  if (missing !== undefined) throw new Error(`The plan has no workout number ${missing + 1}.`);
+  if (places.length === 0) throw new Error("No workouts chosen.");
+  return places;
+}
+
+/** A plan's text as the workouts at `places` alone, and the way to put the text uploading them returns back into the whole plan. */
+function restrictText(text: string, only: readonly number[] | undefined): { text: string; merge: (updated: string) => string } {
+  const data: any = JSON.parse(text);
+  const list: any[] = Array.isArray(data) ? data : data.workouts;
+  const places = placesIn(list, only);
+  if (!places) return { text, merge: (updated) => updated };
+  const wrap = (workouts: any[]) => JSON.stringify(Array.isArray(data) ? workouts : { ...data, workouts }, null, 2);
+  return {
+    text: wrap(places.map((i) => list[i])),
+    merge: (updated) => {
+      const back: any = JSON.parse(updated), got: any[] = Array.isArray(back) ? back : back.workouts, all = list.slice();
+      places.forEach((i, k) => { all[i] = got[k]; });
+      return wrap(all);
+    },
+  };
+}
+
+export async function uploadPlan(profile: string | undefined, logicalPath: string, dryRun = false, only?: readonly number[]) {
   const session = getSession(profile);
   if (!dryRun) assertLive(session, "upload_workouts");
   const logical = checkedPath(logicalPath);
   const doc = getStore().get(logical);
   if (!doc) throw new Error(`File not found: ${logical}`);
   if (!dryRun) assertActive(logical);
-  const result = await session.editor.uploadWorkoutsFromText(doc.text, dryRun, (updated) => getStore().put(logical, updated, { source: "mcp" }), logical);
+  const part = restrictText(doc.text, only);
+  const result = await session.editor.uploadWorkoutsFromText(part.text, dryRun, (updated) => getStore().put(logical, part.merge(updated), { source: "mcp" }), logical);
   return {
     path: logical,
     dryRun,
@@ -85,12 +116,18 @@ export async function uploadPlan(profile: string | undefined, logicalPath: strin
   };
 }
 
-export async function schedulePlan(profile: string | undefined, logicalPath: string) {
+/** The plan with only the workouts at `only` in it (the same workout objects, so what an action sets on them shows in the whole plan). */
+function restrictPlan<T extends { workouts: any[] }>(plan: T, only: readonly number[] | undefined): T {
+  const places = placesIn(plan.workouts, only);
+  return places ? { ...plan, workouts: places.map((i) => plan.workouts[i]) } : plan;
+}
+
+export async function schedulePlan(profile: string | undefined, logicalPath: string, only?: readonly number[]) {
   const session = getSession(profile);
   assertLive(session, "schedule_plan");
   const logical = checkedPath(logicalPath);
   assertActive(logical);
-  const plan = session.editor.parseWorkoutPlan(storedText(logical));
+  const plan = restrictPlan(session.editor.parseWorkoutPlan(storedText(logical)), only);
 
   const attempted = plan.workouts.flatMap((w) =>
     [w.scheduledDate ?? []].flat().map((date) => ({
@@ -107,13 +144,14 @@ export async function schedulePlan(profile: string | undefined, logicalPath: str
   };
 }
 
-export async function uploadAndSchedulePlan(profile: string | undefined, logicalPath: string) {
+export async function uploadAndSchedulePlan(profile: string | undefined, logicalPath: string, only?: readonly number[]) {
   const session = getSession(profile);
   assertLive(session, "upload_and_schedule_plan");
 
   const logical = checkedPath(logicalPath);
   assertActive(logical);
-  const plan = session.editor.parseWorkoutPlan(storedText(logical));
+  const whole = session.editor.parseWorkoutPlan(storedText(logical));
+  const plan = restrictPlan(whole, only);
   const before = plan.workouts.map((w) => w.workoutId);
 
   let changed = false;
@@ -123,7 +161,7 @@ export async function uploadAndSchedulePlan(profile: string | undefined, logical
     // Persist new ids even if a later step threw, so the next run replaces
     // the right workouts instead of creating duplicates.
     changed = plan.workouts.some((w, i) => String(w.workoutId) !== String(before[i]));
-    if (changed) writeJsonDoc(logical, plan);
+    if (changed) writeJsonDoc(logical, whole); // the chosen workouts are the whole plan's own objects, so their new ids are in it
   }
 
   return {
@@ -139,14 +177,16 @@ export async function uploadAndSchedulePlan(profile: string | undefined, logical
   };
 }
 
-export async function sendPlanToDevice(profile: string | undefined, logicalPath: string, deviceId?: number) {
+export async function sendPlanToDevice(profile: string | undefined, logicalPath: string, deviceId?: number, only?: readonly number[]) {
   const session = getSession(profile);
   assertLive(session, "send_to_device");
 
   assertActive(checkedPath(logicalPath));
   const data = readJsonDoc(checkedPath(logicalPath));
-  const { workouts } = extractWorkouts(data);
-  if (workouts.length === 0) throw new Error("No workouts found in file.");
+  const all = extractWorkouts(data).workouts;
+  if (all.length === 0) throw new Error("No workouts found in file.");
+  const places = placesIn(all, only);
+  const workouts = places ? places.map((i) => all[i]) : all;
 
   const flagged = workouts.filter((w) => w?.sendToDevice);
   const toSend = flagged.length > 0 ? flagged : workouts;

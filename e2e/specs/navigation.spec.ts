@@ -3,7 +3,7 @@
  * address, Back and Forward open a view, and that the page raises no error on the way. Reads only: alice's data is never changed.
  */
 import type { Page } from "@playwright/test";
-import { test as base, expect, loginAs, ADMIN_TOKEN } from "../support/fixtures";
+import { test as base, expect, loginAs, ADMIN_TOKEN, toggleTheme } from "../support/fixtures";
 
 /**
  * The server closes an idle connection after a few seconds, and a client that sends on it meets a reset (and a loaded machine answers
@@ -90,6 +90,91 @@ const isOn = (page: Page, view: View | "settings") => slow(page.locator("body"))
 /** Map tiles are never reached: a spec that opens a map answers them itself. */
 test.beforeEach(async ({ page }) => {
   await page.route("**/tile.openstreetmap.org/**", (route) => route.fulfill({ status: 204, body: "" }));
+});
+
+test.describe("the rail", () => {
+  test("is a narrow column down the left edge, with the views one under another and every pane beside it", async ({ alice }) => {
+    await openView(alice, "today");
+    const box = await alice.evaluate(() => {
+      const r = (el: Element) => el.getBoundingClientRect();
+      const header = r(document.querySelector("header")!), buttons = [...document.querySelectorAll("#views button")].filter((b) => (b as HTMLElement).offsetParent).map((b) => r(b));
+      return { header: { left: header.left, width: header.width, height: header.height }, buttons: buttons.map((b) => ({ left: Math.round(b.left), top: Math.round(b.top), width: Math.round(b.width) })), view: r(document.getElementById("tview")!).left, window: innerHeight };
+    });
+    expect(box.header.left).toBe(0);
+    expect(box.header.width).toBeGreaterThanOrEqual(72);
+    expect(box.header.width).toBeLessThanOrEqual(90);
+    expect(Math.round(box.header.height)).toBe(box.window);
+    expect(new Set(box.buttons.map((b) => b.left)).size).toBe(1); // one column
+    expect(box.buttons.map((b) => b.top)).toEqual([...box.buttons.map((b) => b.top)].sort((x, y) => x - y)); // top to bottom, in the strip's order
+    for (const b of box.buttons) expect(b.width).toBeLessThanOrEqual(box.header.width);
+    expect(box.view).toBeGreaterThanOrEqual(box.header.width);
+  });
+
+  test("shows each view as an icon over its name, and the name is the button's text", async ({ alice }) => {
+    await openView(alice, "today");
+    const buttons = strip(alice);
+    const count = await buttons.count();
+    expect(count).toBeGreaterThanOrEqual(6);
+    for (let i = 0; i < count; i++) {
+      const parts = await buttons.nth(i).evaluate((el) => {
+        const svg = el.querySelector("svg")!.getBoundingClientRect(), name = el.querySelector("span")!.getBoundingClientRect();
+        return { icon: svg.width, iconAbove: svg.bottom <= name.top + 1, hidden: el.querySelector("svg")!.getAttribute("aria-hidden") };
+      });
+      expect(parts.icon).toBeGreaterThanOrEqual(18);
+      expect(parts.iconAbove).toBe(true);
+      expect(parts.hidden).toBe("true"); // the name is what a screen reader says
+    }
+  });
+
+  test("marks the open view, and a keyboard can reach and press every one", async ({ alice }) => {
+    await openView(alice, "today");
+    await alice.locator("#vToday").focus();
+    for (const id of ["vPlans", "vCalendar"]) {
+      await alice.keyboard.press("Tab");
+      await expect(alice.locator(`#${id}`)).toBeFocused();
+    }
+    await alice.keyboard.press("Enter");
+    await isOn(alice, "calendar");
+    await expectOnly(alice, "calendar");
+  });
+
+  test("keeps the account at its foot, and its menu opens beside the rail, clear of it", async ({ alice }) => {
+    await openView(alice, "today");
+    await alice.locator("#accountBtn").click();
+    await slow(alice.locator("#accountMenu")).toBeVisible();
+    const gap = await alice.evaluate(() => document.getElementById("accountMenu")!.getBoundingClientRect().left - document.querySelector("header")!.getBoundingClientRect().right);
+    expect(gap).toBeGreaterThanOrEqual(0);
+    const foot = await alice.evaluate(() => innerHeight - document.getElementById("accountBtn")!.getBoundingClientRect().bottom);
+    expect(foot).toBeLessThan(40);
+  });
+
+  test("turns light with the light theme, on Today and on Plans, and stays light when the view changes", async ({ alice }) => {
+    await openView(alice, "today");
+    const bg = () => alice.locator("header").evaluate((el) => getComputedStyle(el).backgroundColor);
+    const dark = await bg();
+    await toggleTheme(alice);
+    await expect(alice.locator("body")).toHaveAttribute("data-theme", "light");
+    const light = await bg();
+    expect(light).not.toBe(dark);
+    await alice.locator("#vPlans").click();
+    await isOn(alice, "plans");
+    expect(await bg()).toBe(light);
+    await alice.locator("#vToday").click();
+    await isOn(alice, "today");
+    expect(await bg()).toBe(light);
+  });
+
+  test("keeps the sync pill under the views, with the short word, and the full words in its tooltip", async ({ alice }) => {
+    await alice.route("**/api/sync-activity", (route) => route.fulfill({ json: { now: Date.now(), profiles: { alice: { syncing: ["activities", "wellness"], limit: null } } } }));
+    await openView(alice, "today");
+    const pill = alice.locator("#syncActivity");
+    await expect(pill).toBeVisible();
+    await expect(pill.locator(".ssShort")).toBeVisible();
+    await expect(pill.locator(".ssLong")).toBeHidden();
+    await expect(pill).toHaveAttribute("title", /runs in the background/);
+    const inside = await alice.evaluate(() => { const a = document.getElementById("syncActivity")!.getBoundingClientRect(), h = document.querySelector("header")!.getBoundingClientRect(); return a.left >= h.left && a.right <= h.right; });
+    expect(inside).toBe(true);
+  });
 });
 
 test.describe("which views a profile sees", () => {

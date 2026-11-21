@@ -1,6 +1,6 @@
 /**
- * The Recovery view: the readiness of a day with its signals, the day and range controls, the trend charts, the table of every
- * stored number, Garmin's raw responses, and the empty and error states. Reads alice's data (read only) and checks the page
+ * The Recovery view: the readiness of a day with its signals (the Verdict), the day and range controls, the trend charts (the Trends), the
+ * table of every stored number and Garmin's raw responses (the Data), and the empty and error states. Reads alice's data (read only) and checks the page
  * against GET /api/wellness, which the suite reads as admin (the oracle). A fresh profile and the admin's view of one cover
  * the states alice does not have.
  */
@@ -51,6 +51,8 @@ interface Day {
 interface Wellness {
   today: string;
   date: string;
+  week: { day: string; band: string; score: number | null }[];
+  readinessDays: { day: string; band: string; score: number | null }[];
   readiness: {
     band: "go-harder" | "as-planned" | "back-off" | "unknown";
     score: number | null;
@@ -95,11 +97,35 @@ const notCounted = (missing: string[]) => "Not counted: " + missing.map((m) => m
 
 // ── the page ─────────────────────────────────────────────────────────────────────────────────────
 
-const card = (page: Page) => page.locator("#rbody .rready");
+/** The verdict of the day: the card with the gauge, the band and what to do. */
+const card = (page: Page) => page.locator("#rbody .rhero");
 const table = (page: Page) => page.locator("#rbody table.rmetrics");
 const rows = (page: Page) => table(page).locator("tbody tr");
 const chart = (page: Page, title: string) => page.locator("#rbody .rc", { has: page.locator("b", { hasText: title }) });
-const CHART_TITLES = ["HRV overnight (ms)", "Resting heart rate (bpm)", "Breathing (/min)", "Sleep (h)", "Body Battery", "Stress", "Steps", "Intensity minutes"];
+const CHART_TITLES = ["Readiness (score)", "HRV overnight (ms)", "Resting heart rate (bpm)", "Breathing (/min)", "Sleep (h)", "Body Battery", "Stress", "Steps", "Intensity minutes"];
+const part = (page: Page, name: "Verdict" | "Trends" | "Data") => page.locator("#rTabs").getByRole("button", { name, exact: true });
+
+/** Opens one of the three parts of the view and waits until it is the one drawn. */
+async function openPart(page: Page, name: "Verdict" | "Trends" | "Data") {
+  await part(page, name).click();
+  await expect(part(page, name)).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("#rbody")).toHaveAttribute("data-tab", name.toLowerCase());
+}
+/** The Trends, with their charts drawn. */
+async function openTrends(page: Page) {
+  await openPart(page, "Trends");
+  await expect(page.locator("#rbody .rcharts")).toBeVisible();
+}
+/** The Data, the table open (it is by default) and, with `raw`, Garmin's responses open too. */
+async function openData(page: Page, raw = false) {
+  await openPart(page, "Data");
+  await expect(table(page)).toBeVisible();
+  if (raw) {
+    const box = page.locator("#rbody details.racc").nth(1);
+    if (!(await box.evaluate((el: HTMLDetailsElement) => el.open))) await box.locator("summary").first().click();
+    await expect(box).toHaveAttribute("open", "");
+  }
+}
 
 /** Opens the view and waits for its first answer to be drawn: the day controls do nothing before it, as the person would find them. */
 async function openRecovery(page: Page) {
@@ -130,11 +156,11 @@ function cellOf(t: { heads: string[]; rows: Map<string, string[]> }, day: string
   return cells![hits[occurrence]] ?? "";
 }
 
-/** Points a fraction of the way across a chart (0 to 1); the plot area starts at 40 of 600 and ends at 592, so 0.075 is its first day and 0.98 its last. */
+/** Points a fraction of the way across a chart's plot area (0 to 1): 0.02 is over its first day and 0.98 over its last. */
 async function aim(c: Locator, fraction: number): Promise<{ x: number; y: number }> {
-  const svg = c.locator("svg.rcsvg");
-  await svg.scrollIntoViewIfNeeded();
-  const box = await svg.boundingBox();
+  const over = c.locator("rect.rc-over");
+  await over.scrollIntoViewIfNeeded();
+  const box = await over.boundingBox();
   expect(box).not.toBeNull();
   return { x: box!.x + box!.width * fraction, y: box!.y + box!.height / 2 };
 }
@@ -147,11 +173,11 @@ async function click(page: Page, c: Locator, fraction: number) {
   await page.mouse.click(x, y);
 }
 
-/** Picks a day in the date picker and waits for the card to show it. */
+/** Picks a day in the date picker and waits for the title of the view to show it. */
 async function pickDay(page: Page, day: string) {
   await page.locator("#rDate").fill(day);
   await expect(page.locator("#rDate")).toHaveValue(day);
-  await expect(card(page)).toContainText(label(day));
+  await expect(page.locator("#rDayLabel")).toContainText(label(day));
 }
 
 // ── alice: 45 days stored ─────────────────────────────────────────────────────────────────────────
@@ -178,11 +204,12 @@ test.describe("Recovery view, alice (45 days stored, no Garmin login)", () => {
   test("today's card names the band, the score and the confidence", async ({ alice, admin }) => {
     const { readiness: r, today } = await wellness(admin, "days=30");
     await openRecovery(alice);
-    await expect(card(alice)).toHaveClass(`rready ${BAND_CLASS[r.band]}`);
+    await expect(card(alice)).toHaveClass(`rhero b-${BAND_CLASS[r.band]}`);
     await expect(card(alice).locator(".rband")).toHaveText(BAND_LABEL[r.band]);
-    await expect(card(alice).locator(".rscore")).toHaveText(`${r.score}/ 100`);
-    await expect(card(alice).locator(".rwhen")).toContainText(`${label(today)} (today)`);
-    await expect(card(alice).locator(".rwhen .chip")).toHaveText(`${r.confidence} confidence`);
+    await expect(card(alice).locator(".rgauge .rmid b")).toHaveText(String(r.score));
+    await expect(card(alice).locator(".rverdict .eyebrow")).toHaveText(`Readiness · ${label(today)} (today)`);
+    await expect(card(alice).locator(".rchips .chipx").first()).toHaveText(`${r.confidence} confidence`);
+    await expect(card(alice).locator(".rchips .chipx").nth(1)).toHaveText(`${r.signals.length} of ${r.signals.length + r.missing.length} signals counted`);
   });
 
   test("the card gives the suggestion for the band", async ({ alice, admin }) => {
@@ -194,29 +221,35 @@ test.describe("Recovery view, alice (45 days stored, no Garmin login)", () => {
   test("every signal of the day is listed with its value, its baseline and its reason", async ({ alice, admin }) => {
     const { readiness: r } = await wellness(admin, "days=30");
     await openRecovery(alice);
-    const signals = card(alice).locator(".rsigs");
-    await expect(signals.locator(".nm")).toHaveText(r.signals.map((s) => SIGNAL_LABEL[s.name]));
-    await expect(signals.locator(".val")).toHaveText(r.signals.map((s) => s.value));
+    const signals = alice.locator("#rbody .rsigcard .rsig");
+    await expect(signals).toHaveCount(r.signals.length);
     for (const [i, s] of r.signals.entries()) {
-      const why = signals.locator(".why").nth(i);
-      await expect(why).toContainText(s.reason);
-      if (s.baseline) await expect(why.locator("small")).toHaveText(s.baseline);
+      const row = signals.nth(i);
+      await expect(row.locator(".nm")).toContainText(SIGNAL_LABEL[s.name]);
+      await expect(row.locator(".val")).toHaveText(s.value);
+      await expect(row.locator(".why")).toHaveText(s.reason);
+      if (s.baseline) await expect(row.locator(".base")).toHaveText(s.baseline);
+      else await expect(row.locator(".base")).toHaveCount(0);
     }
+    await expect(signals.locator(".nm em")).toHaveText(["COUNTS MOST"]); // the HRV counts twice what the others do
     // the six signals a full day gives, in the order the model scores them
     expect(r.signals.map((s) => s.name)).toEqual(["hrv", "restingHr", "sleep", "bodyBattery", "stress", "load"]);
   });
 
-  test("the training load line gives the sessions and the units against the usual", async ({ alice, admin }) => {
+  test("the training load card gives the sessions and the units against the usual, and the intensity minutes against theirs", async ({ alice, admin }) => {
     const { readiness: r } = await wellness(admin, "days=30");
     const load = r.load!;
     expect(load).not.toBeNull();
-    const usual = load.usual === null ? "" : ` against ${fmt(load.usual)} usual`;
-    const intensity = load.intensity ? `, and ${fmt(load.intensity.acute)} intensity minutes${load.intensity.usual !== null ? ` against ${fmt(load.intensity.usual)} usual` : ""} (all day, recorded or not)` : "";
-    const since = load.hoursSinceHard !== null ? `; last hard session ${load.hoursSinceHard} h before the day` : "";
     await openRecovery(alice);
-    await expect(card(alice).locator(".rmiss").first()).toHaveText(
-      `Load, 3 days before: ${load.sessions} session${load.sessions === 1 ? "" : "s"}, ${fmt(load.acute)} units${usual}${intensity}${since}.`,
-    );
+    const bars = alice.locator("#rbody .rload .rbullet");
+    await expect(bars.first().locator(".l")).toHaveText(`Last 3 days · ${load.sessions} session${load.sessions === 1 ? "" : "s"}${fmt(load.acute)} units`);
+    await expect(bars.first().locator(".n")).toContainText(load.usual === null ? "no usual to compare with yet" : `usual ${fmt(load.usual)}`);
+    if (load.intensity) {
+      await expect(bars.nth(1).locator(".l")).toHaveText(`Intensity minutes, last 3 days${fmt(load.intensity.acute)} min`);
+      if (load.intensity.usual !== null) await expect(bars.nth(1).locator(".n")).toContainText(`usual ${fmt(load.intensity.usual)}`);
+    }
+    const hard = load.hoursSinceHard === null ? "none in 3 days" : `${fmt(Math.round(load.hoursSinceHard))} h ago`;
+    await expect(alice.locator("#rbody .rload .rkv div").first().locator("b")).toHaveText(hard);
   });
 
   test("a day the readiness scores go-harder shows the green band, and says what was not counted", async ({ alice, admin }) => {
@@ -227,13 +260,13 @@ test.describe("Recovery view, alice (45 days stored, no Garmin login)", () => {
     expect(data.readiness.band).toBe("go-harder");
     await openRecovery(alice);
     await pickDay(alice, day);
-    await expect(card(alice)).toHaveClass("rready go");
+    await expect(card(alice)).toHaveClass("rhero b-go");
     await expect(card(alice).locator(".rband")).toHaveText("Go harder");
-    await expect(card(alice).locator(".rscore")).toHaveText(`${data.readiness.score}/ 100`);
+    await expect(card(alice).locator(".rgauge .rmid b")).toHaveText(String(data.readiness.score));
     await expect(card(alice).locator(".rsug")).toHaveText(data.readiness.suggestion);
-    await expect(card(alice).locator(".rmiss").last()).toHaveText(notCounted(data.readiness.missing));
-    await expect(card(alice).locator(".rmiss").last()).toContainText("Stress yesterday: no stress figure for yesterday");
-    await expect(card(alice).locator(".rmiss").last()).toContainText("Training load: no sessions in the last 31 days");
+    await expect(alice.locator("#rbody .rmiss")).toHaveText(notCounted(data.readiness.missing));
+    await expect(alice.locator("#rbody .rmiss")).toContainText("Stress yesterday: no stress figure for yesterday");
+    await expect(alice.locator("#rbody .rmiss")).toContainText("Training load: no sessions in the last 31 days");
   });
 
   test("a day with nothing stored says Not enough data, with no score and no signals", async ({ alice, admin }) => {
@@ -241,13 +274,14 @@ test.describe("Recovery view, alice (45 days stored, no Garmin login)", () => {
     const day = addDays(first.sync.oldest!, -1);
     await openRecovery(alice);
     await pickDay(alice, day);
-    await expect(card(alice)).toHaveClass("rready unknown");
+    await expect(card(alice)).toHaveClass("rhero b-unknown");
     await expect(card(alice).locator(".rband")).toHaveText("Not enough data");
-    await expect(card(alice).locator(".rscore")).toHaveCount(0);
-    await expect(card(alice).locator(".rsigs")).toHaveCount(0);
+    await expect(card(alice).locator(".rgauge")).toHaveCount(0);
+    await expect(alice.locator("#rbody .rsigcard")).toHaveCount(0);
+    await expect(card(alice).locator(".rchange")).toHaveCount(0);
     await expect(card(alice).locator(".rsug")).toHaveText("Not enough data to judge the day: train as planned and go by feel.");
-    await expect(card(alice).locator(".rmiss").last()).toContainText("HRV: no data stored for the day");
-    await expect(card(alice).locator(".rmiss").last()).toContainText("Sleep: no data stored for the day");
+    await expect(alice.locator("#rbody .rmiss")).toContainText("HRV: no data stored for the day");
+    await expect(alice.locator("#rbody .rmiss")).toContainText("Sleep: no data stored for the day");
   });
 
   test("a day with nothing stored has no points in its charts and no table rows, rather than zeros", async ({ alice, admin }) => {
@@ -255,11 +289,13 @@ test.describe("Recovery view, alice (45 days stored, no Garmin login)", () => {
     const day = addDays(first.sync.oldest!, -1);
     await openRecovery(alice);
     await pickDay(alice, day);
-    await expect(alice.locator("#rbody .rc .rcnone")).toHaveCount(8);
+    await openTrends(alice);
+    await expect(alice.locator("#rbody .rc .rcnone")).toHaveCount(CHART_TITLES.length);
     await expect(alice.locator("#rbody .rc .rcnone").first()).toHaveText("No data in this range.");
     await expect(alice.locator("#rbody svg.rcsvg")).toHaveCount(0);
-    await expect(rows(alice)).toHaveCount(0);
     await expect(alice.locator("#rbody h3").nth(0)).toHaveText("Trends, 0 days");
+    await openData(alice);
+    await expect(rows(alice)).toHaveCount(0);
   });
 
   test("◀ steps back a day, and ▶ is disabled on today", async ({ alice, admin }) => {
@@ -312,6 +348,7 @@ test.describe("Recovery view, alice (45 days stored, no Garmin login)", () => {
     await openRecovery(alice);
     await pickDay(alice, day);
     await expect(alice.locator("#rNext")).toBeEnabled();
+    await openData(alice);
     await expect(rowOf(alice, day)).toHaveClass(/sel/);
   });
 
@@ -326,31 +363,47 @@ test.describe("Recovery view, alice (45 days stored, no Garmin login)", () => {
     await expect(alice.locator("#rNext")).toBeDisabled();
   });
 
-  test("the range select sets how many days the table lists: 14, then 30", async ({ alice }) => {
+  test("the range select is with the trends, and sets how many days the charts and the table list: 14, then 30", async ({ alice }) => {
     await openRecovery(alice);
-    await expect(rows(alice)).toHaveCount(30);
+    await expect(alice.locator("#rRange")).toBeHidden(); // it is the trends' own
+    await openTrends(alice);
+    await expect(alice.locator("#rRange")).toBeVisible();
+    await expect(alice.locator("#rbody .rth #rRange")).toHaveCount(1);
+    await expect(alice.locator("#rbody .rth h3")).toHaveText("Trends, 30 days");
     await alice.locator("#rRange").selectOption("14");
-    await expect(rows(alice)).toHaveCount(14);
     await expect(chart(alice, "Steps").locator("rect.rc-bar")).toHaveCount(14);
+    await expect(alice.locator("#rbody .rth h3")).toHaveText("Trends, 14 days");
+    await openData(alice);
+    await expect(rows(alice)).toHaveCount(14);
+    await expect(alice.locator("#rRange")).toBeHidden();
+    await openTrends(alice);
     await alice.locator("#rRange").selectOption("30");
+    await openData(alice);
     await expect(rows(alice)).toHaveCount(30);
+    await openTrends(alice);
     await expect(alice.locator("#rRange")).toHaveValue("30");
   });
 
   test("60 and 90 days list the 45 days stored, and no empty rows past them", async ({ alice }) => {
     await openRecovery(alice);
+    await openTrends(alice);
     await alice.locator("#rRange").selectOption("60");
-    await expect(rows(alice)).toHaveCount(45);
     await expect(alice.locator("#rbody h3").nth(0)).toHaveText("Trends, 45 days");
-    await alice.locator("#rRange").selectOption("90");
+    await openData(alice);
     await expect(rows(alice)).toHaveCount(45);
+    await openTrends(alice);
+    await alice.locator("#rRange").selectOption("90");
+    await openData(alice);
+    await expect(rows(alice)).toHaveCount(45);
+    await openTrends(alice);
     await expect(alice.locator("#rRange")).toHaveValue("90");
   });
 
   test("each chart has a mark per stored day in the range", async ({ alice }) => {
     await openRecovery(alice);
+    await openTrends(alice);
     await alice.locator("#rRange").selectOption("14");
-    await expect(rows(alice)).toHaveCount(14);
+    await expect(alice.locator("#rbody .rth h3")).toHaveText("Trends, 14 days");
     await expect(chart(alice, "HRV overnight").locator("circle.rc-dot")).toHaveCount(14);
     await expect(chart(alice, "Resting heart rate").locator("circle.rc-dot")).toHaveCount(14);
     await expect(chart(alice, "Breathing").locator("circle.rc-dot")).toHaveCount(14);
@@ -359,18 +412,20 @@ test.describe("Recovery view, alice (45 days stored, no Garmin login)", () => {
     await expect(chart(alice, "Stress").locator("rect.rc-bar")).toHaveCount(14);
     await expect(chart(alice, "Steps").locator("rect.rc-bar")).toHaveCount(14);
     await expect(chart(alice, "Intensity minutes").locator("rect.rc-part.moderate")).toHaveCount(14);
+    await expect(chart(alice, "Readiness").locator("rect.rc-bar")).toHaveCount(14);
   });
 
   test("a range of 30 days draws the same marks for every stored day of it", async ({ alice }) => {
     await openRecovery(alice);
-    await expect(rows(alice)).toHaveCount(30);
+    await openTrends(alice);
     await expect(chart(alice, "HRV overnight").locator("circle.rc-dot")).toHaveCount(30);
     await expect(chart(alice, "Steps").locator("rect.rc-bar")).toHaveCount(30);
     await expect(chart(alice, "Body Battery").locator("line.rc-range")).toHaveCount(30);
   });
 
-  test("the eight trend charts are drawn under their titles", async ({ alice }) => {
+  test("the nine trend charts are drawn under their titles, the readiness first", async ({ alice }) => {
     await openRecovery(alice);
+    await openTrends(alice);
     await expect(alice.locator("#rbody .rc")).toHaveCount(CHART_TITLES.length);
     await expect(alice.locator("#rbody .rc .rch b")).toHaveText(CHART_TITLES);
     await expect(alice.locator("#rbody h3").nth(0)).toHaveText("Trends, 30 days");
@@ -379,10 +434,11 @@ test.describe("Recovery view, alice (45 days stored, no Garmin login)", () => {
   test("hovering a chart reads out that day's numbers, and leaving it goes back to the picked day", async ({ alice, admin }) => {
     const data = await wellness(admin, "days=30");
     await openRecovery(alice);
+    await openTrends(alice);
     const hrv = chart(alice, "HRV overnight");
     const first = data.days[0], last = data.days[data.days.length - 1];
     const reading = (d: Day) => `${label(d.day)}: ${fmt(d.hrvLastNight)} ms · balanced ${fmt(d.hrvBalancedLow)}–${fmt(d.hrvBalancedHigh)}`;
-    await hover(alice, hrv, 0.075);
+    await hover(alice, hrv, 0.02);
     await expect(hrv.locator(".rcr")).toHaveText(reading(first));
     await hover(alice, hrv, 0.98);
     await expect(hrv.locator(".rcr")).toHaveText(reading(last));
@@ -395,6 +451,7 @@ test.describe("Recovery view, alice (45 days stored, no Garmin login)", () => {
   test("a hover on a day reads out the Body Battery range and the average stress of the day", async ({ alice, admin }) => {
     const data = await wellness(admin, "days=30");
     await openRecovery(alice);
+    await openTrends(alice);
     const bb = chart(alice, "Body Battery");
     await hover(alice, bb, 0.98);
     const last = data.days[data.days.length - 1];
@@ -404,26 +461,52 @@ test.describe("Recovery view, alice (45 days stored, no Garmin login)", () => {
     await expect(stress.locator(".rcr")).toHaveText(`${label(last.day)}: average ${fmt(last.avgStress)} · max ${fmt(last.maxStress)}`);
   });
 
-  test("a click on a chart picks that day", async ({ alice, admin }) => {
+  test("a click on a chart picks that day, and the trends stay", async ({ alice, admin }) => {
     const data = await wellness(admin, "days=14");
     await openRecovery(alice);
+    await openTrends(alice);
     await alice.locator("#rRange").selectOption("14");
-    await expect(rows(alice)).toHaveCount(14);
+    await expect(alice.locator("#rbody .rth h3")).toHaveText("Trends, 14 days");
     const day = data.days[0].day;
-    await click(alice, chart(alice, "Steps"), 0.075);
+    await click(alice, chart(alice, "Steps"), 0.02);
     await expect(alice.locator("#rDate")).toHaveValue(day);
-    await expect(card(alice)).toContainText(label(day));
-    await expect(rowOf(alice, day)).toHaveClass(/sel/);
+    await expect(part(alice, "Trends")).toHaveAttribute("aria-pressed", "true");
     await expect(chart(alice, "Steps").locator("rect.rc-sel")).toHaveCount(1);
+    await expect(chart(alice, "Steps").locator(".rcr")).toContainText(label(day));
+    await openPart(alice, "Verdict");
+    await expect(card(alice)).toContainText(label(day));
+  });
+
+  test("the readiness chart draws a bar for each day's verdict, in the colour of its zone, and reads it out", async ({ alice, admin }) => {
+    const data = await wellness(admin, "days=30");
+    await openRecovery(alice);
+    await openTrends(alice);
+    const c = chart(alice, "Readiness");
+    const zone = (s: number | null) => (s === null ? "" : s < 37.5 ? "back" : s >= 70 ? "go" : "plan");
+    const days = data.readinessDays;
+    expect(days).toHaveLength(30);
+    await expect(c.locator("rect.rc-bar")).toHaveCount(days.filter((d) => d.score !== null).length);
+    for (const z of ["go", "plan", "back"]) await expect(c.locator(`rect.rc-bar.${z}`)).toHaveCount(days.filter((d) => zone(d.score) === z).length);
+    await expect(c.locator(".rcl")).toContainText("A normal day, 50");
+    const last = days[days.length - 1];
+    await hover(alice, c, 0.98);
+    await expect(c.locator(".rcr")).toHaveText(`${label(last.day)}: ${last.score} · ${BAND_LABEL[last.band as keyof typeof BAND_LABEL].toLowerCase()}`);
+    // the first of the charts takes the width of the page, and the others two across
+    const widths = await alice.locator("#rbody .rcharts .rc").evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().width)));
+    expect(widths[0]).toBeGreaterThan(widths[1] * 1.7);
   });
 
   test("a click on a table row picks that day and marks its row", async ({ alice, admin }) => {
     const data = await wellness(admin, "days=30");
     const day = data.days[data.days.length - 5].day;
     await openRecovery(alice);
+    await openData(alice);
+    await expect(alice.locator("#rbody tr.sel")).toHaveCount(1);
     await rowOf(alice, day).click();
     await expect(alice.locator("#rDate")).toHaveValue(day);
+    await expect(part(alice, "Verdict")).toHaveAttribute("aria-pressed", "true"); // the day opens in the Verdict, where its readiness is
     await expect(card(alice)).toContainText(label(day));
+    await openData(alice);
     await expect(alice.locator("#rbody tr.sel td.day")).toHaveText(label(day));
     await expect(alice.locator("#rbody tr.sel")).toHaveCount(1);
   });
@@ -431,6 +514,7 @@ test.describe("Recovery view, alice (45 days stored, no Garmin login)", () => {
   test("the table lists each day newest first with the numbers stored for it", async ({ alice, admin }) => {
     const data = await wellness(admin, "days=30");
     await openRecovery(alice);
+    await openData(alice);
     await expect(rows(alice)).toHaveCount(30);
     await expect(rows(alice).first().locator("td.day")).toHaveText(label(data.today));
     await expect(rows(alice).last().locator("td.day")).toHaveText(label(data.days[0].day));
@@ -455,6 +539,7 @@ test.describe("Recovery view, alice (45 days stored, no Garmin login)", () => {
   test("a number Garmin did not give is a dash in the table, not a zero", async ({ alice, admin }) => {
     const data = await wellness(admin, "days=30");
     await openRecovery(alice);
+    await openData(alice);
     await expect(rows(alice)).toHaveCount(30);
     // alice's days carry no waking breathing, no lowest breath and no SpO2: every such cell reads as a dash
     expect(data.days.every((d) => d.avgWakingRespiration === null && d.lowRespiration === null && d.lowestSpo2 === null)).toBeTruthy();
@@ -469,6 +554,7 @@ test.describe("Recovery view, alice (45 days stored, no Garmin login)", () => {
   test("the raw responses list each kind with its size, and the kinds not stored say so", async ({ alice, admin }) => {
     const data = await wellness(admin, "days=30");
     await openRecovery(alice);
+    await openData(alice, true);
     const raw = alice.locator("#rbody details.rraw");
     await expect(raw).toHaveCount(8);
     await expect(raw.locator("summary b")).toHaveText(["Daily summary", "Sleep", "HRV", "Heart rate", "Stress", "Body Battery", "Respiration", "SpO2"]);
@@ -489,6 +575,7 @@ test.describe("Recovery view, alice (45 days stored, no Garmin login)", () => {
     expect(oracle.ok()).toBeTruthy();
     const stored = (await oracle.json()) as { data: unknown };
     await openRecovery(alice);
+    await openData(alice, true);
     const summary = alice.locator("#rbody details.rraw").nth(0);
     await summary.locator("summary").click();
     await expect(summary.locator("pre")).toContainText('"totalSteps"');
@@ -499,6 +586,7 @@ test.describe("Recovery view, alice (45 days stored, no Garmin login)", () => {
 
   test("a kind with nothing stored does not open", async ({ alice }) => {
     await openRecovery(alice);
+    await openData(alice, true);
     const none = alice.locator("#rbody details.rraw.none").first();
     await none.locator("summary").click({ force: true });
     await expect(none).not.toHaveAttribute("open", "");
@@ -530,20 +618,25 @@ test.describe("Recovery view, alice (45 days stored, no Garmin login)", () => {
     await expect(about).toContainText("src/shared/readiness.ts");
   });
 
-  test("no NaN, undefined or null on the view, for any day, range or state", async ({ alice, admin }) => {
+  test("no NaN, undefined or null on the view, for any day, range or state, in any of its three parts", async ({ alice, admin }) => {
+    test.setTimeout(150_000);
     const data = await wellness(admin, "days=30");
     await openRecovery(alice);
     const days = [data.today, data.sync.oldest!, addDays(data.sync.oldest!, -1), addDays(data.today, -20)];
     for (const range of ["14", "30", "60", "90"]) {
+      await openTrends(alice);
       await alice.locator("#rRange").selectOption(range);
       for (const day of days) {
         await pickDay(alice, day);
-        await expect(card(alice)).toBeVisible();
-        const text = (await alice.locator("#rbody").textContent()) ?? "";
-        const svg = (await alice.locator("#rbody svg").evaluateAll((els) => els.map((e) => e.outerHTML).join(""))) ?? "";
-        expect(text, `${range} days, ${day}`).not.toMatch(/NaN|undefined|null|Infinity/);
-        expect(svg, `${range} days, ${day}`).not.toMatch(/NaN|undefined|Infinity/);
-        expect(await alice.locator("#rNote").textContent()).not.toMatch(/NaN|undefined|null/);
+        for (const name of ["Verdict", "Trends", "Data"] as const) {
+          await openPart(alice, name);
+          const text = (await alice.locator("#rbody").textContent()) ?? "";
+          const svg = (await alice.locator("#rview svg").evaluateAll((els) => els.map((e) => e.outerHTML).join(""))) ?? "";
+          expect(text, `${name}, ${range} days, ${day}`).not.toMatch(/NaN|undefined|null|Infinity/);
+          expect(svg, `${name}, ${range} days, ${day}`).not.toMatch(/NaN|undefined|Infinity/);
+          expect(await alice.locator("#rNote").textContent()).not.toMatch(/NaN|undefined|null/);
+          expect(await alice.locator("#rstrip").textContent()).not.toMatch(/NaN|undefined|null|Infinity/);
+        }
       }
     }
   });
@@ -585,6 +678,7 @@ test.describe("Recovery view, as the admin", () => {
     await page.goto("/#recovery");
     await page.locator("#rProfile").selectOption("alice");
     await expect(card(page)).toBeVisible();
+    await openData(page);
     await expect(rows(page)).toHaveCount(30);
     await page.locator("#rProfile").selectOption(profile.name);
     await expect(page.locator("#rbody")).toContainText("No health data is stored yet");
@@ -630,6 +724,7 @@ test.describe("Recovery view, when the server fails", () => {
   test("a raw response that fails shows the reason in its box", async ({ alice }) => {
     await alice.route(/\/api\/wellness\/raw\?/, (route) => route.fulfill({ status: 404, contentType: "application/json", body: JSON.stringify({ error: "No sleep data is stored for that day." }) }));
     await openRecovery(alice);
+    await openData(alice, true);
     const sleep = alice.locator("#rbody details.rraw").nth(1);
     await sleep.locator("summary").click();
     await expect(sleep.locator("pre")).toHaveText("No sleep data is stored for that day.");

@@ -194,26 +194,31 @@ test.describe("Plans: the file list", () => {
     await expect(me.locator("#filelist")).not.toContainText("alice-");
   });
 
-  test("a profile's own data files sit under their own heading, with only Duplicate and Delete", async ({ me, profile }) => {
+  test("a profile's own data files sit under their own heading, with Duplicate, Rename and Delete in the row's menu", async ({ me, profile }) => {
     await makeFile(profile.api, `data/${profile.name}/notes.json`, JSON.stringify({ hello: 1 }));
     await makeFile(profile.api, `workout-plans/${profile.name}-listed.json`, planJson());
     await openPlans(me);
     await expect(rowOf(me, "notes.json")).toHaveCount(1);
     await expect(me.locator("#filelist h2", { hasText: `data/${profile.name}` })).toHaveCount(1);
-    const buttons = rowOf(me, "notes.json").locator("button");
-    await expect(buttons).toHaveCount(2);
-    await expect(buttons.nth(0)).toHaveAttribute("title", "Duplicate the file");
-    await expect(buttons.nth(1)).toHaveAttribute("title", "Delete the file");
+    await expect(rowOf(me, "notes.json").locator("button")).toHaveCount(1); // the ⋯
+    await rowOf(me, "notes.json").locator("button.more").click();
+    const items = me.locator("#pmenu").getByRole("menuitem");
+    await expect(items).toHaveCount(3);
+    await expect(items.nth(0)).toHaveAttribute("title", "Duplicate the file");
+    await expect(items.nth(1)).toHaveAttribute("title", "Rename the file");
+    await expect(items.nth(2)).toHaveAttribute("title", "Delete the file");
   });
 
   test("a plan's row offers Archive, Duplicate and Delete, and no Garmin button for a profile without Garmin", async ({ me, profile }) => {
     await makeFile(profile.api, `workout-plans/${profile.name}-rowbtns.json`, planJson());
     await openPlans(me);
-    const buttons = rowOf(me, `${profile.name}-rowbtns.json`).locator("button");
-    await expect(buttons).toHaveCount(3);
-    await expect(buttons.nth(0)).toHaveAttribute("title", /^Archive the plan/);
-    await expect(buttons.nth(1)).toHaveAttribute("title", "Duplicate the file");
-    await expect(buttons.nth(2)).toHaveAttribute("title", "Delete the file");
+    await rowOf(me, `${profile.name}-rowbtns.json`).locator("button.more").click();
+    const items = me.locator("#pmenu").getByRole("menuitem");
+    await expect(items).toHaveCount(4);
+    await expect(items.nth(0)).toHaveAttribute("title", "Duplicate the file");
+    await expect(items.nth(1)).toHaveAttribute("title", "Rename the file");
+    await expect(items.nth(2)).toHaveAttribute("title", /^Archive the plan/);
+    await expect(items.nth(3)).toHaveAttribute("title", "Delete the file");
   });
 
   test("the open file's row is highlighted, and a click on a row opens that file", async ({ me, profile }) => {
@@ -429,7 +434,8 @@ test.describe("Plans: Duplicate", () => {
     await makeFile(profile.api, `workout-plans/${profile.name}-rowopen.json`, planJson({ notes: "open file" }));
     await openPlans(me);
     await openPlan(me, `${profile.name}-rowopen.json`);
-    await rowOf(me, `${profile.name}-rowsrc.json`).locator("button[title='Duplicate the file']").click();
+    await rowOf(me, `${profile.name}-rowsrc.json`).locator("button.more").click();
+    await me.locator("#pmenu button[title='Duplicate the file']").click();
     await expect(me.locator("#dlgInput")).toHaveValue(`workout-plans/${profile.name}-rowsrc-copy.json`);
     await me.locator("#dlgOk").click();
     await expect(me.locator("#current")).toContainText(`${profile.name}-rowsrc-copy.json`);
@@ -569,7 +575,8 @@ test.describe("Plans: Delete", () => {
     await makeFile(profile.api, `workout-plans/${profile.name}-rowkeep.json`, planJson({ notes: "keep" }));
     await openPlans(me);
     await openPlan(me, `${profile.name}-rowkeep.json`);
-    await rowOf(me, `${profile.name}-rowdel.json`).locator("button[title='Delete the file']").click();
+    await rowOf(me, `${profile.name}-rowdel.json`).locator("button.more").click();
+    await me.locator("#pmenu button[title='Delete the file']").click();
     await me.locator("#dlgOk").click();
     await expect(rowOf(me, `${profile.name}-rowdel.json`)).toHaveCount(0);
     await expect(me.locator("#current")).toContainText(`${profile.name}-rowkeep.json`);
@@ -743,11 +750,12 @@ test.describe("Plans: Archive", () => {
     await expect(me.locator("#archive")).toHaveText("Unarchive");
     await expect(me.locator("#archive")).toBeEnabled();
     await me.locator("#fileBtn").click(); // close the menu again
-    const buttons = rowOf(me, `${profile.name}-arbtn.json`).locator("button");
-    await expect(buttons).toHaveCount(3);
-    await expect(buttons.nth(0)).toHaveAttribute("title", "Unarchive the plan");
-    await expect(buttons.nth(1)).toHaveAttribute("title", "Duplicate the file");
-    await expect(buttons.nth(2)).toHaveAttribute("title", "Delete the file");
+    await rowOf(me, `${profile.name}-arbtn.json`).locator("button.more").click();
+    const items = me.locator("#pmenu").getByRole("menuitem");
+    await expect(items).toHaveCount(3);
+    await expect(items.nth(0)).toHaveAttribute("title", "Unarchive the plan");
+    await expect(items.nth(1)).toHaveAttribute("title", "Duplicate the file");
+    await expect(items.nth(2)).toHaveAttribute("title", "Delete the file");
   });
 
   test("Unarchive brings the plan back to the list", async ({ me, profile }) => {

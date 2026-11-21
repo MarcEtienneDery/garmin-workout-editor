@@ -708,7 +708,7 @@ test.describe("what the Garmin and Settings reads say", () => {
     const settings = await profile.api.get("/api/settings");
     const settingsText = await settings.text();
     expect(settingsText).not.toContain(secret);
-    expect(JSON.parse(settingsText).garmin).toEqual({ connected: true, email, hasPassword: true });
+    expect(JSON.parse(settingsText).garmin).toEqual({ connected: true, email, hasPassword: true, check: null });
     const garmin = await profile.api.get("/api/garmin");
     const garminText = await garmin.text();
     expect(garminText).not.toContain(secret);

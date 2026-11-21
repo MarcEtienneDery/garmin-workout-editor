@@ -91,15 +91,22 @@ describe("running", () => {
   });
 
   it("reports the latest and the best VO2max", () => {
-    expect(run().vo2max).toEqual({ latest: { value: 52, date: "2026-09-09" }, best: { value: 52, date: "2026-09-09" } });
+    expect(run().vo2max).toEqual({ latest: { value: 52, date: "2026-09-09" }, best: { value: 52, date: "2026-09-09" }, series: [{ date: "2026-09-07", value: 50 }, { date: "2026-09-09", value: 52 }] });
     const lower = computeLifetime(input({ rows: [row("1", "2026-01-01 08:00:00", "running", { vo2: 54 }), row("2", "2026-02-01 08:00:00", "running", { vo2: 51 })] })).running!;
-    expect(lower.vo2max).toEqual({ latest: { value: 51, date: "2026-02-01" }, best: { value: 54, date: "2026-01-01" } });
+    expect(lower.vo2max).toEqual({ latest: { value: 51, date: "2026-02-01" }, best: { value: 54, date: "2026-01-01" }, series: [{ date: "2026-01-01", value: 54 }, { date: "2026-02-01", value: 51 }] });
+  });
+
+  it("gives the VO2max of each day a run stated one, oldest first, the last of a day when there were two", () => {
+    const s = computeLifetime(input({ rows: [
+      row("2", "2026-02-01 18:00:00", "running", { vo2: 53 }), row("1", "2026-02-01 08:00:00", "running", { vo2: 52 }), row("3", "2026-01-10 08:00:00", "running", { vo2: 50 }), row("4", "2026-03-01 08:00:00", "running", { vo2: null }),
+    ] })).running!;
+    expect(s.vo2max.series).toEqual([{ date: "2026-01-10", value: 50 }, { date: "2026-02-01", value: 53 }]);
   });
 
   it("copes with a run that has no distance, time, or anything else", () => {
     const bare = computeLifetime(input({ rows: [row("1", "2026-01-01 08:00:00", "running", { distance: null, duration: null })] })).running!;
     expect(bare).toEqual(expect.objectContaining({ runs: 1, meters: 0, seconds: 0, avgPaceSec: null, longest: null, bestPace: null, biggestClimb: null, efforts: [] }));
-    expect(bare.vo2max).toEqual({ latest: null, best: null });
+    expect(bare.vo2max).toEqual({ latest: null, best: null, series: [] });
   });
 });
 
@@ -146,6 +153,29 @@ describe("strength", () => {
     expect(chin.best).toBeNull(); // bodyweight
     expect(chin.heaviest).toBeNull();
     expect(lift().exercises.find((x) => x.name === "Plank")!.reps).toBe(60);
+  });
+
+  it("keeps the best estimated 1RM of each session an exercise was in, oldest first, for a sparkline", () => {
+    const e = lift().exercises;
+    expect(e.find((x) => x.name === "Barbell Bench Press")!.history).toEqual([{ date: "2026-09-01", oneRm: 233.3 }, { date: "2026-09-08", oneRm: 247.5 }]);
+    expect(e.find((x) => x.name === "Chin Up")!.history).toEqual([]); // bodyweight: no estimate
+    expect(e.find((x) => x.name === "Plank")!.history).toEqual([]);
+  });
+
+  it("keeps the sets per exercise of the recent sessions, for the muscles a period trained", () => {
+    const { recent } = lift();
+    expect(recent).toEqual([
+      { date: "2026-09-01", exercises: [{ name: "Barbell Bench Press", sets: 3 }, { name: "Plank", sets: 2 }] },
+      { date: "2026-09-08", exercises: [{ name: "Barbell Bench Press", sets: 4 }, { name: "Chin Up", sets: 1 }] },
+    ]);
+  });
+
+  it("keeps only the sessions of the 120 days before the newest one, and none without details", () => {
+    const old = { id: "0", date: "2026-04-01", sets: [{ exerciseName: "Squat", category: "SQUAT", sets: 2, reps: 5, weight: 100 }] };
+    const near = { id: "9", date: "2026-05-15", sets: [{ exerciseName: "Squat", category: "SQUAT", sets: 3, reps: 5, weight: 100 }] };
+    const s = computeLifetime(input({ rows: [...rows, row("0", "2026-04-01 08:00:00", "strength_training"), row("9", "2026-05-15 08:00:00", "strength_training")], lifts: [old, near, ...lifts] })).strength!;
+    expect(s.recent.map((x) => x.date)).toEqual(["2026-05-15", "2026-09-01", "2026-09-08"]); // 2026-05-15 is 116 days before 2026-09-08, 2026-04-01 is 160
+    expect(computeLifetime(input({ rows })).strength!.recent).toEqual([]);
   });
 
   it("counts the sessions of a lift once even when it comes up twice in one", () => {

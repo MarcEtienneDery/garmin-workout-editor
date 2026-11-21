@@ -8,7 +8,7 @@
  */
 import { type APIRequestContext, type Locator, type Page } from "@playwright/test";
 import { type Profile, test as base, expect as baseExpect, openView, today, daysAgo, loginAs, ADMIN_TOKEN, PASSWORD } from "../support/fixtures";
-import { dayLine, enterByHand, labelOf, macro, nutrientRow, nutrients, openFood, ring, ringBig, ringSmall, summary } from "../support/food";
+import { dayLine, enterByHand, labelOf, macro, mealMacros, meal, nutrientRow, nutrients, openFood, openInsights, ring, ringBig, ringSmall, summary } from "../support/food";
 
 /**
  * The fixtures send the sign-ins and the profile's creation again when the connection was reset; the API calls a test makes itself are
@@ -118,7 +118,7 @@ test.describe("Food goals: the day's calorie ring", () => {
     await expect(ring(me)).toHaveClass(/st-short/);
     await expect(ring(me)).toHaveAttribute("aria-label", "780 kcal eaten · 1,220 kcal left · goal 2,000 kcal");
     await expect(ring(me).locator(".gtick")).toHaveCount(0);
-    await expect(me.locator("#fbody .fcard .fleg span")).toHaveText(["Protein 26 %", "Carbs 51 %", "Fat 23 %"]);
+    await expect(me.locator("#fbody .fsum .fleg span")).toHaveText(["Protein 26 %", "Carbs 51 %", "Fat 23 %"]);
   });
 
   test("the ring's arcs add up to the share of the goal eaten", async ({ me, profile }) => {
@@ -186,6 +186,7 @@ test.describe("Food goals: the day's calorie ring", () => {
     await expect(ringBig(alice)).toHaveText("505");
     await expect.poll(async () => Object.values(await arcsOf(alice)).reduce((a, b) => a + b, 0)).toBeCloseTo(77.05, 0); // 1,695 / 2,200
     await expect(dayLine(alice)).toHaveText("1,695 kcal eaten · goal 2,200 kcal");
+    await openInsights(alice);
     await expect(chart(alice, "Calories eaten").locator(".rcl")).toContainText("Goal 2,200 kcal");
   });
 
@@ -193,11 +194,10 @@ test.describe("Food goals: the day's calorie ring", () => {
     await openFood(alice);
     await alice.locator("#fPrev").click();
     await expect(alice.locator("#fDate")).toHaveValue(daysAgo(1));
-    const rows = alice.locator("#fbody .fcard").first().locator(".fmeal-row");
-    await expect(rows.nth(0).locator(".fmn")).toHaveText("P 11 · C 81 · F 5 · 18 % of the goal");
-    await expect(rows.nth(1).locator(".fmn")).toHaveText("P 34 · C 48 · F 20 · 24 % of the goal");
-    await expect(rows.nth(2).locator(".fmn")).toHaveText("P 41 · C 62 · F 24 · 29 % of the goal");
-    await expect(rows.nth(3).locator(".fmn")).toHaveText("P 17 · C 8 · F 3 · 6 % of the goal");
+    for (const [m, macros, share] of [["breakfast", "P 11 · C 81 · F 5", "18 % of the goal"], ["lunch", "P 34 · C 48 · F 20", "24 % of the goal"], ["dinner", "P 41 · C 62 · F 24", "29 % of the goal"], ["snack", "P 17 · C 8 · F 3", "6 % of the goal"]] as const) {
+      await expect(mealMacros(alice, m)).toHaveText(macros);
+      await expect(meal(alice, m).locator(".fmsh")).toHaveText(share);
+    }
   });
 
   test("alice's today has her goals and nothing logged against them", async ({ alice }) => {
@@ -374,6 +374,7 @@ test.describe("Food goals: the calorie goal that follows the burn", () => {
     await expect(dayLine(me)).toHaveText("620 kcal eaten · goal 2,000 kcal");
     const progress = (await (await profile.api.get("/api/nutrition?days=7")).json()).progress;
     expect(progress.find((p: any) => p.key === "kcal")).toMatchObject({ goal: 2000, amount: 620, adjust: { base: 2000, pct: 50, activeKcal: null, added: null } });
+    await openInsights(me);
     await expect(chart(me, "Calories eaten").locator(".rcl")).toContainText("Goal 2,000 kcal + 50 % of active");
   });
 
@@ -381,10 +382,12 @@ test.describe("Food goals: the calorie goal that follows the burn", () => {
     await setGoals(profile.api, { kcal: 2000, kcalBurnPct: 50 });
     await addFoods(profile.api, today(), "lunch", [{ name: "Lunch", kcal: 500 }]); // the chart draws a legend for a day with food
     await openFood(me);
+    await openInsights(me);
     await expect(chart(me, "Calories eaten").locator(".rcl")).toContainText("+ 50 % of active");
     await setGoals(profile.api, { kcalBurnPct: null });
     await reopenFood(me);
     await expect(summary(me).locator(".fburn")).toHaveCount(0);
+    await openInsights(me);
     await expect(chart(me, "Calories eaten").locator(".rcl")).toContainText("Goal 2,000 kcal");
     await expect(chart(me, "Calories eaten").locator(".rcl")).not.toContainText("active");
   });
@@ -407,6 +410,7 @@ test.describe("Food goals: the trend charts", () => {
     await setGoals(profile.api, { kcal: 2000 });
     await addFoods(profile.api, today(), "lunch", [{ name: "Lunch", kcal: 700 }]);
     await openFood(me);
+    await openInsights(me);
     const calories = chart(me, "Calories eaten");
     await expect(calories).toBeVisible();
     await expect(calories.locator("svg .rc-goal")).toHaveCount(1);
@@ -418,10 +422,12 @@ test.describe("Food goals: the trend charts", () => {
     await setGoals(profile.api, { kcal: 2000 });
     await addFoods(profile.api, today(), "lunch", [{ name: "Lunch", kcal: 500, proteinG: 30 }]);
     await openFood(me);
+    await openInsights(me);
     await expect(me.locator(".rcharts .rch b").filter({ hasText: /^Calories eaten/ })).toHaveCount(1);
     await expect(me.locator(".rcharts .rch b").filter({ hasText: /^Protein \(g\)/ })).toHaveCount(0);
     await setGoals(profile.api, { proteinG: 100 });
     await reopenFood(me);
+    await openInsights(me);
     const protein = chart(me, "Protein (g)");
     await expect(protein).toBeVisible();
     await expect(protein.locator("svg .rc-goal")).toHaveCount(1);
@@ -432,6 +438,7 @@ test.describe("Food goals: the trend charts", () => {
     await setGoals(profile.api, { proteinG: 100 });
     await addFoods(profile.api, today(), "lunch", [{ name: "Chicken", kcal: 300, proteinG: 40, carbsG: 0, fatG: 10 }]);
     await openFood(me);
+    await openInsights(me);
     await expect(chart(me, "Calories eaten").locator("svg .rc-goal")).toHaveCount(0);
     await expect(chart(me, "Macros").locator("svg .rc-part.protein")).not.toHaveCount(0);
     await expect(chart(me, "Macros").locator("svg .rc-part.fat")).not.toHaveCount(0);
@@ -441,6 +448,7 @@ test.describe("Food goals: the trend charts", () => {
     await openFood(alice);
     await alice.locator("#fPrev").click();
     await expect(alice.locator("#fDate")).toHaveValue(daysAgo(1));
+    await openInsights(alice);
     await expect(chart(alice, "Protein (g)").locator(".rcr")).toHaveText(`${labelOf(daysAgo(1))}: 103 g · 79 % of the goal`);
   });
 });
@@ -508,6 +516,7 @@ test.describe("Food goals: the profiles and the goals' own rules", () => {
   test("the Settings card counts the goals set, and shows the calorie goal in its field", async ({ me, profile }) => {
     await setGoals(profile.api, { kcal: 2000, proteinG: 100, sodiumMg: 2300 });
     await openView(me, "settings");
+    await me.locator("#sbody .snav [data-section='goals']").click();
     await expect(me.locator(".scard").filter({ hasText: "Nutrition goals" }).locator(".chip")).toHaveText("3 set");
     await expect(me.locator("#s-goal_kcal")).toHaveValue("2000");
     await expect(me.locator("#s-goal_proteinG")).toHaveValue("100");

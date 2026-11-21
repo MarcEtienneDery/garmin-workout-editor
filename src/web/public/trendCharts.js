@@ -1,6 +1,7 @@
 /*
  * trendCharts.js — the pictures of the Recovery and Weight views: one small chart per measure over the days (a line with
- * Garmin's balanced range, a goal level, stacked parts (a part with a `weight` counts that many times in the bar), a range, bars), all sharing one hover cursor, and a click that picks the day.
+ * Garmin's balanced range, a goal level, stacked parts (a part with a `weight` counts that many times in the bar), a range, bars, or dots with
+ * a fitted line and a band around it and, if asked, a second series of dots with a line of its own), all sharing one hover cursor, and a click that picks the day.
  * Plain DOM and SVG, no library. What to draw comes from RecoveryModel / WeightModel, the scales from RecoveryModel; they have the tests.
  */
 (function (root) {
@@ -8,7 +9,7 @@
 
   const RM = root.RecoveryModel;
   const { make, html } = root.ActivityCharts;
-  const W = 600, H = 124, LEFT = 40, RIGHT = 8, TOP = 8, BOTTOM = 18;
+  const DEFAULT_W = 600, DEFAULT_H = 124, DEFAULT_LEFT = 40, RIGHT = 8, TOP = 8, BOTTOM = 18;
 
   /** A path through the points, broken wherever a day has no value (`connect`: joined across them, for what is measured now and then). */
   function pathOf(points, connect = false) {
@@ -25,16 +26,24 @@
   /** Decimals for the tick labels: enough that neighbouring ticks do not read the same. */
   const tickDigits = (ticks) => { const step = ticks.length > 1 ? ticks[1] - ticks[0] : 1; return step < 0.1 ? 2 : step < 1 ? 1 : 0; };
 
-  /** One chart. Returns the element and a function that puts its cursor on a day (null: back to the picked day). */
-  function chart(days, spec, { selected, onHover, onPick }) {
+  /**
+   * One chart. Returns the element and a function that puts its cursor on a day (null: back to the picked day). `width` and `height` are the
+   * size of its drawing in its own units (a view that draws it narrower or taller than the Recovery view's 600 by 124 says so, which keeps its
+   * text at a readable size) and `left` the room for the scale's labels; a spec's `ticks` is how many grid lines it aims for.
+   */
+  function chart(days, spec, { selected, onHover, onPick, width = DEFAULT_W, height = DEFAULT_H, left = DEFAULT_LEFT }) {
+    const W = width, H = height, LEFT = left; // `left` is room for the labels of the scale
     const card = html("div", "rc"), head = html("div", "rch"), readout = html("span", "rcr");
+    if (spec.id) card.dataset.chart = spec.id; // for a view to colour a chart of its own
     head.append(html("b", "", spec.title + (spec.unit ? ` (${spec.unit})` : "")), readout);
     card.append(head);
+    const summary = spec.summary ? spec.summary(days) : ""; // a line of words under the title: how the days stood against the goal
+    if (summary) card.append(html("div", "rcs", summary));
 
     const n = days.length, step = (W - LEFT - RIGHT) / Math.max(1, n), xAt = (i) => LEFT + step * (i + 0.5);
     const per = (fn) => days.map((d, i) => { const v = fn(d, i, days); return RM.valid(v) ? v : null; }); // a value may look at the days around it
     let values = [], include = [];
-    let totals = null, lows = null, highs = null, bandLo = null, bandHi = null, refs = null, vals = null;
+    let totals = null, lows = null, highs = null, bandLo = null, bandHi = null, refs = null, vals = null, vals2 = null, refs2 = null;
     const goal = spec.goal && RM.valid(spec.goal.value) ? spec.goal.value : null; // one level for every day (a daily goal)
     const goals = spec.goal && typeof spec.goal.values === "function" ? per(spec.goal.values) : null; // or a level of its own for each day (a goal that follows something of the day)
     if (spec.kind === "stack") {
@@ -47,10 +56,14 @@
     }
     if (spec.band) { bandLo = per((d) => spec.band(d)[0]); bandHi = per((d) => spec.band(d)[1]); include = include.concat(bandLo, bandHi); }
     if (spec.ref) { refs = per(spec.ref.value); include = include.concat(refs); }
+    if (spec.second) { // a second series of dots, with a line of its own (what a view that compares two things on one scale draws)
+      vals2 = per(spec.second.value); include = include.concat(vals2);
+      if (spec.second.ref) { refs2 = per(spec.second.ref.value); include = include.concat(refs2); }
+    }
     if (goal !== null) include = include.concat([goal]);
     if (goals) include = include.concat(goals);
 
-    const sc = RM.scale(values, { min: spec.min, max: spec.max, include });
+    const sc = RM.scale(values, { min: spec.min, max: spec.max, include, count: spec.ticks });
     if (!sc || !values.some((v) => v !== null)) {
       card.append(html("div", "rcnone", "No data in this range."));
       return { el: card, setCursor() {} };
@@ -80,8 +93,9 @@
       flush();
     }
     if (refs && refs.some((v) => v !== null)) svg.append(make("path", { class: "rc-ref", d: pathOf(refs.map((v, i) => (v === null ? null : [xAt(i), yAt(v)]))) }));
+    if (refs2 && refs2.some((v) => v !== null)) svg.append(make("path", { class: "rc-ref rc-ref2", d: pathOf(refs2.map((v, i) => (v === null ? null : [xAt(i), yAt(v)]))) }));
 
-    const bw = Math.max(2, step * 0.7);
+    const bw = Math.max(2, step * 0.7), used = new Set(); // `used`: the colours the bars came in, for the legend
     days.forEach((d, i) => {
       if (spec.kind === "stack") {
         let acc = 0;
@@ -91,13 +105,17 @@
           acc += v;
         }
       } else if (spec.kind === "bars" && vals[i] !== null) {
-        svg.append(make("rect", { x: xAt(i) - bw / 2, y: yAt(vals[i]), width: bw, height: Math.max(0, yAt(Math.max(sc.min, 0)) - yAt(vals[i])), class: `rc-bar ${spec.color ? spec.color(d) : ""}` }));
+        const colour = spec.color ? spec.color(d) : "";
+        if (colour) used.add(colour);
+        svg.append(make("rect", { x: xAt(i) - bw / 2, y: yAt(vals[i]), width: bw, height: Math.max(0, yAt(Math.max(sc.min, 0)) - yAt(vals[i])), class: `rc-bar ${colour}` }));
       } else if (spec.kind === "range" && lows[i] !== null && highs[i] !== null) {
         svg.append(make("line", { x1: xAt(i), x2: xAt(i), y1: yAt(lows[i]), y2: yAt(highs[i]), class: "rc-range" }));
       }
     });
     if (spec.kind === "line") svg.append(make("path", { class: "rc-line", d: pathOf(vals.map((v, i) => (v === null ? null : [xAt(i), yAt(v)])), spec.connect) }));
-    if (spec.kind === "line" || spec.kind === "range") vals.forEach((v, i) => { if (v !== null) svg.append(make("circle", { cx: xAt(i), cy: yAt(v), r: 2.4, class: "rc-dot" })); });
+    if (vals2) vals2.forEach((v, i) => { if (v !== null) svg.append(make("circle", { cx: xAt(i), cy: yAt(v), r: 2.4, class: "rc-dot rc-dot2" })); });
+    // dots only (`dots`): the weigh-ins are not joined; the one of the picked day is drawn larger
+    if (spec.kind === "line" || spec.kind === "range" || spec.kind === "dots") vals.forEach((v, i) => { if (v !== null) svg.append(make("circle", { cx: xAt(i), cy: yAt(v), r: spec.kind === "dots" && i === sel ? 4.5 : 2.4, class: "rc-dot" + (i === sel ? " sel" : "") })); });
 
     if (goal !== null) svg.append(make("line", { x1: LEFT, x2: W - RIGHT, y1: yAt(goal), y2: yAt(goal), class: "rc-goal" })); // over the bars, under the cursor
     if (goals && goals.some((v) => v !== null)) { // steps from day to day, broken where a day has no goal
@@ -123,9 +141,12 @@
 
     const legend = html("div", "rcl");
     const key = (cls, text) => { const s = html("span", "rck"), i = html("i", cls); s.append(i, text); legend.append(s); };
-    if (spec.band) key("sw-band", "Garmin's balanced range");
+    if (spec.kind === "dots") key("sw-dot", spec.dotLabel || "weigh-in");
+    if (spec.second) key("sw-dot2", spec.second.label);
+    if (spec.band) key("sw-band", spec.bandLabel || "Garmin's balanced range");
     if (spec.ref) key("sw-ref", spec.ref.label);
     if (goal !== null || (goals && goals.some((v) => v !== null))) key("sw-goal", spec.goal.label);
+    for (const cls of used) if (spec.colorKeys && spec.colorKeys[cls]) key(`sw-${cls}`, spec.colorKeys[cls]); // a colour the bars came in, with its words
     if (spec.kind === "stack") for (const p of spec.parts) key(`sw-part ${p.cls}`, p.label);
     if (spec.kind === "range") key("sw-range", "low to high of the day, dot on waking");
     if (legend.childNodes.length) card.append(legend);
@@ -145,12 +166,12 @@
   }
 
   /** The charts of a view for the days (oldest first); `selected` is the day picked, onPick(day) is called on a click. */
-  function trends(days, specs, { selected, onPick }) {
+  function trends(days, specs, { selected, onPick, width, height, left }) {
     const box = html("div", "rcharts");
     const cards = [];
     const hover = (i) => cards.forEach((c) => c.setCursor(i));
     for (const spec of specs) {
-      const c = chart(days, spec, { selected, onHover: hover, onPick });
+      const c = chart(days, spec, { selected, onHover: hover, onPick, width: spec.width || width, height: spec.height || height, left: spec.left || left }); // a spec may ask for a drawing of its own size (one that takes the whole width)
       cards.push(c);
       box.append(c.el);
     }

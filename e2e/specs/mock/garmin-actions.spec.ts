@@ -8,7 +8,7 @@
  * workouts. Archiving a plan that has Garmin workouts is refused by the page with the same reason.
  */
 import { test as base, expect, loginAs, openView, mondayOf, daysAhead, today, type Profile } from "../../support/fixtures";
-import { type APIRequestContext, type Page } from "@playwright/test";
+import { type APIRequestContext, type Locator, type Page } from "@playwright/test";
 
 const REFUSAL = "Mock mode: Garmin writes are disabled.";
 const GARMIN_PASSWORD = "garmin-password";
@@ -102,6 +102,18 @@ function trackApi(page: Page): string[] {
 const GARMIN_CALLS = /\/api\/(garmin\/|workouts|activities\/sync|wellness\/sync)/;
 
 /** Open the Plans view and the plan with this name in the list. */
+/** Opens a file row's ⋯ menu and returns its items. */
+async function openRowMenu(page: Page, row: Locator) {
+  await row.locator("button.more").click();
+  return page.locator("#pmenu [role=menuitem]");
+}
+
+/** Validate lives in the JSON editor, so the plan is switched to it first. */
+async function openJsonEditor(page: Page): Promise<void> {
+  await page.locator('#emode [data-mode="json"]').click();
+  await expect(page.locator("#editorFrame")).toBeVisible();
+}
+
 async function openPlan(page: Page, name: string): Promise<void> {
   await openView(page, "plans");
   await page.locator("#filelist .file", { hasText: name }).click();
@@ -123,7 +135,7 @@ test.describe("Plans view: the Garmin menu in mock mode", () => {
       await expect(gme.locator(`#${id}`)).toBeDisabled();
       await expect(gme.locator(`#${id}`)).toHaveAttribute("title", REFUSAL);
     }
-    await expect(gme.locator("#garminBtn")).toHaveAttribute("aria-expanded", "false");
+    await expect(gme.locator("#gdrawer")).toBeHidden();
   });
 
   test("the Garmin menu is disabled for a plan that has no Garmin ids either", async ({ gme, garmin }) => {
@@ -138,16 +150,17 @@ test.describe("Plans view: the Garmin menu in mock mode", () => {
     await openView(gme, "plans");
     const row = gme.locator("#filelist .file", { hasText: plan.name });
     await expect(row).toBeVisible();
-    await expect(row.locator(".wact button")).toHaveCount(3);
-    await expect(row.locator('.wact button[title="Upload the plan to Garmin"]')).toHaveCount(0);
-    await expect(row.locator('.wact button[title="Schedule the plan on the Garmin calendar"]')).toHaveCount(0);
-    await expect(row.locator('.wact button[title="Send the plan to the watch"]')).toHaveCount(0);
-    await expect(row.locator('.wact button[title^="Archive the plan"]')).toHaveCount(1);
+    await expect(row.locator(".wact button")).toHaveCount(1);
+    const items = await openRowMenu(gme, row);
+    await expect(items).toHaveCount(4);
+    await expect(items.filter({ hasText: "Put on Garmin" })).toHaveCount(0);
+    await expect(items.filter({ hasText: "Archive" })).toHaveCount(1);
   });
 
   test("the Garmin pane keeps its empty note: no action has run", async ({ gme, garmin }) => {
     const plan = await putPlan(garmin.api, `${garmin.name}-pane`, [run("Pane")]);
     await openPlan(gme, plan.name);
+    await openJsonEditor(gme);
     await gme.locator("#validate").click();
     await expect(gme.locator("#problems")).toContainText("Valid");
     await expect(gme.locator("#activity")).toHaveText("No Garmin action run yet.");
@@ -175,6 +188,7 @@ test.describe("Plans view: the Garmin menu in mock mode", () => {
     const plan = await putPlan(garmin.api, `${garmin.name}-quiet`, [run("Quiet", { workoutId: 703 })]);
     const calls = trackApi(gme);
     await openPlan(gme, plan.name);
+    await openJsonEditor(gme);
     await gme.locator("#validate").click();
     await expect(gme.locator("#problems")).toContainText("Valid");
     expect(calls.filter((c) => GARMIN_CALLS.test(c))).toEqual([]);
@@ -183,6 +197,7 @@ test.describe("Plans view: the Garmin menu in mock mode", () => {
   test("the Validate button checks the open plan and reports it valid", async ({ gme, garmin }) => {
     const plan = await putPlan(garmin.api, `${garmin.name}-valid`, [run("Good one"), run("Good two")]);
     await openPlan(gme, plan.name);
+    await openJsonEditor(gme);
     await gme.locator("#validate").click();
     await expect(gme.locator("#problems")).toContainText("Valid — 2 workouts.");
   });
@@ -240,9 +255,11 @@ test.describe("Plans view: archiving in mock mode", () => {
     await openView(gme, "plans");
     await gme.locator("#filelist details.shelved summary").click();
     const row = gme.locator("#filelist .shelved .file", { hasText: plan.name });
-    await expect(row.locator(".wact button")).toHaveCount(3);
-    await expect(row.locator('.wact button[title="Unarchive the plan"]')).toHaveCount(1);
-    await expect(row.locator('.wact button[title^="Upload"]')).toHaveCount(0);
+    await expect(row.locator(".wact button")).toHaveCount(1);
+    const items = await openRowMenu(gme, row);
+    await expect(items).toHaveCount(3);
+    await expect(items.filter({ hasText: "Unarchive" })).toHaveCount(1);
+    await expect(items.filter({ hasText: "Put on Garmin" })).toHaveCount(0);
   });
 
   test("the Garmin button of an archived plan says it is archived, not that mock mode refuses it", async ({ gme, garmin }) => {
@@ -263,7 +280,8 @@ test.describe("Plans view: archiving in mock mode", () => {
     await openView(gme, "plans");
     await gme.locator("#filelist details.shelved summary").click();
     const row = gme.locator("#filelist .shelved .file", { hasText: plan.name });
-    await row.locator('.wact button[title="Unarchive the plan"]').click();
+    await openRowMenu(gme, row);
+    await gme.locator("#pmenu [role=menuitem]", { hasText: "Unarchive" }).click();
     await expect(gme.locator("#toast")).toContainText("Unarchived");
     await expect(gme.locator("#filelist details.shelved")).toHaveCount(0);
     expect(await archivedAt(garmin.api, plan.path)).toBeNull();

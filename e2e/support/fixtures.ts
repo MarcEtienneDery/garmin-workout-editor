@@ -63,10 +63,21 @@ export async function openView(page: Page, view: string): Promise<void> {
   await expect(page.locator("body")).toHaveAttribute("data-view", view);
 }
 
+/** The theme, set the way Settings > Appearance sets it (the page's own function, which keeps the choice for the views after). */
+export const chooseTheme = (page: Page, theme: "dark" | "light") =>
+  page.evaluate((t) => (window as any).setTheme(t, true), theme);
+
+/** The other theme, as the button that every view's bar had before the theme moved to Settings. */
+export const toggleTheme = (page: Page) =>
+  page.evaluate(() => (window as any).setTheme(document.body.dataset.theme === "light" ? "dark" : "light", true));
+
 let counter = 0;
 const unique = () => `t${Date.now().toString(36)}${(counter++).toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
 /** Show the Plans view and the Workouts view's dialog on the form or on the JSON: the choice the page keeps in the browser. */
+/** Open the Calendar on its month grid and not its week (the page keeps the choice in the browser): for the specs of the month. Call it before the page is opened. */
+export const monthView = (page: Page) => page.addInitScript(() => { try { localStorage.setItem("calendarView", "month"); } catch { /* the default week stays */ } });
+
 export const chooseEditMode = (page: Page, mode: "form" | "json") => page.addInitScript((m) => localStorage.setItem("planEditor.editMode", m), mode);
 
 export const test = base.extend<{ admin: APIRequestContext; profile: Profile; me: Page; alice: Page; editMode: "form" | "json" | undefined }>({

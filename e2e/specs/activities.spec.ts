@@ -6,7 +6,6 @@
 import type { Page } from "@playwright/test";
 import { test, expect, openView, loginAs, ADMIN_TOKEN, PASSWORD, daysAgo, daysAhead, today, mondayOf } from "../support/fixtures";
 
-const DAY = 86_400_000;
 
 interface Stored {
   id: string;
@@ -65,8 +64,6 @@ const newestFirst = (a: Stored, b: Stored) => (a.date === b.date ? b.time.locale
 const fmt = (iso: string, opts: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat("en-CA", { timeZone: "UTC", ...opts }).format(new Date(`${iso}T00:00:00Z`));
 const monthAndDay = (iso: string) => fmt(iso, { month: "short", day: "numeric" });
 const weekdayAndDay = (iso: string) => fmt(iso, { weekday: "short", month: "short", day: "numeric" });
-const longDate = (iso: string) => fmt(iso, { weekday: "long", month: "long", day: "numeric", year: "numeric" });
-const monthTitle = (iso: string) => fmt(iso, { month: "long", year: "numeric" });
 const durationText = (s: number) => {
   const m = Math.round(s / 60);
   return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${String(m % 60).padStart(2, "0")} min`;
@@ -75,12 +72,6 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 const exact = (s: string) => new RegExp(`^${s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`);
 const label = (type: string) => type.split("_").map((w) => w[0].toUpperCase() + w.slice(1)).join(" ");
 /** The first day of the month after (or before) the month of an ISO day. */
-const shiftMonth = (iso: string, n: number) => {
-  const d = new Date(`${iso}T00:00:00Z`);
-  d.setUTCDate(1);
-  d.setUTCMonth(d.getUTCMonth() + n);
-  return d.toISOString().slice(0, 10);
-};
 
 /** The weeks of some rows, newest first, the way the list groups them: each with its totals. */
 function weekTotals(rows: Stored[]) {
@@ -98,42 +89,11 @@ function weekTotals(rows: Stored[]) {
   }));
 }
 
-/** The number of week rows a month's grid has, Monday first, as the calendar draws it. */
-function gridWeeks(month: string) {
-  const first = `${month}-01`;
-  const last = shiftMonth(first, 1);
-  const lastDay = new Date(Date.parse(last + "T00:00:00Z") - DAY).toISOString().slice(0, 10);
-  const span = Date.parse(`${lastDay}T00:00:00Z`) - Date.parse(`${mondayOf(first)}T00:00:00Z`);
-  return Math.ceil((span / DAY + 1) / 7);
-}
-
-/** The months from one day's month to another's: -1 for the month before. */
-const monthDiff = (from: string, to: string) => (Number(to.slice(0, 4)) - Number(from.slice(0, 4))) * 12 + (Number(to.slice(5, 7)) - Number(from.slice(5, 7)));
-
-/**
- * Turns the calendar to the month of a day, when it shows another: a day a few days back or ahead is in another month near the start or
- * the end of one, and the grid holds only the weeks of its own month. From today's month (*Today*, which also picks today), by steps.
- */
-async function showMonthOf(page: Page, iso: string) {
-  if ((await page.locator("#aTitle").textContent()) === monthTitle(iso)) return;
-  await page.locator("#aToday").click();
-  const n = monthDiff(today(), iso);
-  for (let i = 0; i < Math.abs(n); i++) await page.locator(n < 0 ? "#aPrev" : "#aNext").click();
-  await expect(page.locator("#aTitle")).toHaveText(monthTitle(iso));
-}
-
-/** A day of the grid by its date. The chips of its activities lie over the middle of the cell, so the day is pressed at its number. */
-const cell = (page: Page, iso: string) => page.getByRole("button", { name: exact(longDate(iso)) });
-/** Presses a day, on its month's grid. */
-async function pressDay(page: Page, iso: string) {
-  await showMonthOf(page, iso);
-  await cell(page, iso).click({ position: { x: 6, y: 6 } });
-}
 const row = (page: Page, name: string) => page.locator("#alist .arow").filter({ has: page.locator(".nm", { hasText: exact(name) }) });
 /** A record of the Stats view, by its label (exactly: "1 km" is not "10 km"). */
 const record = (page: Page, label: string) => page.locator(".srec").filter({ has: page.locator(".srl", { hasText: exact(label) }) });
 const tile = (page: Page, block: string, name: string) =>
-  page.locator("#astats h3", { hasText: exact(block) }).locator("xpath=following-sibling::*[1]").locator(".stile", { has: page.locator("span", { hasText: exact(name) }) }).locator("b");
+  page.locator("#astats .acard", { has: page.locator(".aeyebrow", { hasText: exact(block) }) }).locator(".stile", { has: page.locator("small", { hasText: exact(name) }) }).locator("b");
 
 test.describe("Activities list", () => {
   test("the list opens on the 12-week range with every stored activity", async ({ alice }) => {
@@ -161,11 +121,7 @@ test.describe("Activities list", () => {
     await openView(alice, "activities");
     for (const [i, w] of weeks.entries()) {
       const header = alice.locator("#alist .awk").nth(i);
-      await expect(header.locator("span")).toHaveText([
-        plural(w.sessions, "session"),
-        ...(w.km ? [`${w.km} km`] : []),
-        ...(w.seconds ? [durationText(w.seconds)] : []),
-      ]);
+      await expect(header.locator("span")).toHaveText([plural(w.sessions, "session"), ...(w.km ? [`${w.km} km`] : []), ...(w.seconds ? [durationText(w.seconds)] : [])].join(" · "));
     }
   });
 
@@ -182,27 +138,32 @@ test.describe("Activities list", () => {
   test("a run's row gives its day and start time, its distance, its time and its pace", async ({ alice }) => {
     await openView(alice, "activities");
     const r = row(alice, "Morning run 9000");
-    await expect(r.locator("small").first()).toHaveText(`${weekdayAndDay(daysAgo(1))} · 07:00`);
-    await expect(r.locator(".met")).toHaveText("7 km · 40 min · 5:03 /km");
+    await expect(r.locator(".ameta span").first()).toHaveText(`${weekdayAndDay(daysAgo(1))} · 07:00`);
+    await expect(r.locator(".ak b")).toHaveText("7 km");
+    await expect(r.locator(".ak small")).toHaveText("5:03 /km · 148 bpm");
   });
 
   test("a run's row shows its training effect under the numbers", async ({ alice }) => {
     await openView(alice, "activities");
     const easy = row(alice, "Easy run");
-    await expect(easy.locator(".met")).toContainText("8 km · 40 min · 5:03 /km");
-    await expect(easy.locator(".met small")).toHaveText("Aerobic Base");
+    await expect(easy.locator(".ak b")).toHaveText("8 km");
+    await expect(easy.locator(".ak small")).toContainText("5:03 /km");
+    await expect(easy.locator(".ameta .atag:not(.plan)")).toHaveText("Aerobic Base");
   });
 
-  test("a ride's row shows its heart rate in place of a pace", async ({ alice }) => {
+  test("a ride's row shows its speed and heart rate in place of a pace", async ({ alice }) => {
     await openView(alice, "activities");
-    await expect(row(alice, "Ride 9024").locator(".met")).toHaveText("25 km · 40 min · 148 bpm");
+    const ride = row(alice, "Ride 9024");
+    await expect(ride.locator(".ak b")).toHaveText("25 km");
+    await expect(ride.locator(".ak small")).toHaveText("21.6 km/h · 148 bpm");
   });
 
   test("a gym session's row shows its time and heart rate, with no distance or pace", async ({ alice }) => {
     await openView(alice, "activities");
     const gym = row(alice, "Gym session 9019");
-    await expect(gym.locator(".met")).toHaveText("50 min · 148 bpm");
-    await expect(gym.locator(".met")).not.toContainText("km");
+    await expect(gym.locator(".ak b")).toHaveText("50 min");
+    await expect(gym.locator(".ak small")).toHaveText("148 bpm");
+    await expect(gym.locator(".ak")).not.toContainText("km");
   });
 
   test("the 4-week range keeps only the activities of the last 28 days", async ({ alice }) => {
@@ -225,12 +186,12 @@ test.describe("Activities list", () => {
     }
   });
 
-  test("the range stays as it was chosen when the calendar is opened and the list again", async ({ alice }) => {
+  test("the range stays as it was chosen when Progress is opened and the Log again", async ({ alice }) => {
     const { activities } = await storedFor(alice);
     const recent = activities.filter((a) => a.date >= daysAgo(28));
     await openView(alice, "activities");
     await alice.locator("#aRange").selectOption("4w");
-    await alice.locator("#aModes button[data-mode=calendar]").click();
+    await alice.locator("#aModes button[data-mode=stats]").click();
     await expect(alice.locator("#aRange")).toBeHidden();
     await alice.locator("#aModes button[data-mode=list]").click();
     await expect(alice.locator("#aRange")).toHaveValue("4w");
@@ -242,7 +203,7 @@ test.describe("Activities list", () => {
     await alice.locator("#aSearch").fill("EASY");
     await expect(alice.locator("#alist .arow .nm")).toHaveText(["Easy run"]);
     await expect(alice.locator("#alist .awk")).toHaveCount(1);
-    await expect(alice.locator("#alist .awk span")).toHaveText(["1 session", "8 km", "40 min"]);
+    await expect(alice.locator("#alist .awk span")).toHaveText("1 session · 8 km · 40 min");
   });
 
   test("clearing the search brings every activity back", async ({ alice }) => {
@@ -319,7 +280,7 @@ test.describe("Activities list", () => {
     await openView(alice, "activities");
     await alice.locator("#aTypes .tchip", { hasText: "Strength" }).click();
     const header = alice.locator("#alist .awk", { has: alice.locator("b", { hasText: exact(`Week of ${monthAndDay(week)}`) }) });
-    await expect(header.locator("span")).toHaveText([plural(strength.length, "session"), durationText(strength.reduce((a, r) => a + (r.seconds ?? 0), 0))]);
+    await expect(header.locator("span")).toHaveText(`${plural(strength.length, "session")} · ${durationText(strength.reduce((a, r) => a + (r.seconds ?? 0), 0))}`);
   });
 
   test("a profile without a Garmin login gets no Sync button and no Fetch prompt", async ({ alice }) => {
@@ -384,252 +345,13 @@ test.describe("Activities list", () => {
   });
 });
 
-test.describe("Activities calendar", () => {
-  test("the month is a Monday-first grid, with the week totals on the right", async ({ alice }) => {
-    const { activities } = await storedFor(alice);
-    await openView(alice, "activities");
-    await alice.locator("#aModes button[data-mode=calendar]").click();
-    await expect(alice.locator("#aTitle")).toHaveText(monthTitle(today()));
-    await expect(alice.locator("#adow span")).toHaveText(["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun", "Week"]);
-    const month = today().slice(0, 7);
-    const weeks = gridWeeks(month);
-    await expect(alice.locator("#agrid .cweek")).toHaveCount(weeks);
-    const expected = Array.from({ length: weeks }, (_, i) => {
-      const monday = new Date(Date.parse(`${mondayOf(`${month}-01`)}T00:00:00Z`) + i * 7 * DAY).toISOString().slice(0, 10);
-      const list = activities.filter((a) => a.date >= monday && a.date < new Date(Date.parse(monday + "T00:00:00Z") + 7 * DAY).toISOString().slice(0, 10));
-      return list.length ? `${plural(list.length, "session")}` : "";
-    });
-    for (const [i, text] of expected.entries()) {
-      if (text) await expect(alice.locator("#agrid .cweek").nth(i).locator(".cwtot b")).toHaveText(text);
-      else await expect(alice.locator("#agrid .cweek").nth(i).locator(".cwtot")).toBeEmpty();
-    }
-  });
-
-  test("each week's total gives its distance and time as well as its sessions", async ({ alice }) => {
-    const { activities } = await storedFor(alice);
-    await openView(alice, "activities");
-    await alice.locator("#aModes button[data-mode=calendar]").click();
-    const week = mondayOf(daysAgo(3));
-    await showMonthOf(alice, daysAgo(3));
-    const list = activities.filter((a) => mondayOf(a.date) === week);
-    const km = Math.round(list.reduce((a, r) => a + (r.km ?? 0), 0) * 10) / 10;
-    const seconds = list.reduce((a, r) => a + (r.seconds ?? 0), 0);
-    // the grid's first row starts on the Monday of the 1st of the month
-    const rowIndex = Math.round((Date.parse(`${week}T00:00:00Z`) - Date.parse(`${mondayOf(`${daysAgo(3).slice(0, 7)}-01`)}T00:00:00Z`)) / (7 * DAY));
-    await expect(alice.locator("#agrid .cweek").nth(rowIndex).locator(".cwtot")).toContainText(`${plural(list.length, "session")}${km} km · ${durationText(seconds)}`);
-  });
-
-  test("every activity is a chip on its day, and a day with two shows both in time order", async ({ alice }) => {
-    await openView(alice, "activities");
-    await alice.locator("#aModes button[data-mode=calendar]").click();
-    await showMonthOf(alice, daysAgo(3));
-    await expect(cell(alice, daysAgo(3))).toBeVisible();
-    await expect(alice.locator(`#agrid .cbar[title*="${daysAgo(3)}"]`)).toHaveText(["Morning run 9001", "Gym session 9019"]);
-    await expect(alice.locator(`#agrid .cbar[title*="${daysAgo(3)}"]`).nth(1)).toHaveAttribute("title", /Strength Training · \S+ 18:00/);
-  });
-
-  test("the days outside the month are dimmed, and today is marked", async ({ alice }) => {
-    await openView(alice, "activities");
-    await alice.locator("#aModes button[data-mode=calendar]").click();
-    await expect(alice.locator("#agrid .cday.today")).toHaveAttribute("aria-label", longDate(today()));
-    expect(await alice.locator("#agrid .cday.out").count()).toBeGreaterThan(0);
-  });
-
-  test("previous, next and today move through the months, and today selects today", async ({ alice }) => {
-    await openView(alice, "activities");
-    await alice.locator("#aModes button[data-mode=calendar]").click();
-    await alice.locator("#aPrev").click();
-    await expect(alice.locator("#aTitle")).toHaveText(monthTitle(shiftMonth(today(), -1)));
-    await alice.locator("#aNext").click();
-    await alice.locator("#aNext").click();
-    await expect(alice.locator("#aTitle")).toHaveText(monthTitle(shiftMonth(today(), 1)));
-    await alice.locator("#aToday").click();
-    await expect(alice.locator("#aTitle")).toHaveText(monthTitle(today()));
-    await expect(alice.locator("#aDay h3")).toHaveText(longDate(today()));
-    await expect(alice.locator("#aDay .arow .nm")).toHaveText(["Today's shakeout"]);
-  });
-
-  test("a previous month's activities are in its grid, though the list's range is 4 weeks", async ({ alice }) => {
-    const { activities } = await storedFor(alice);
-    const older = activities.filter((a) => a.date < daysAgo(28)).sort(newestFirst)[0];
-    await openView(alice, "activities");
-    await alice.locator("#aRange").selectOption("4w");
-    await alice.locator("#aModes button[data-mode=calendar]").click();
-    // the calendar shows the month of that run, and the run is on its grid
-    for (let i = 0; i < 12 && !(await alice.locator("#aTitle").textContent())?.includes(monthTitle(older.date)); i++) {
-      await alice.locator("#aPrev").click();
-    }
-    await expect(alice.locator(`#agrid .cbar[title*="${older.date}"]`, { hasText: older.name })).toHaveCount(1);
-  });
-
-  test("clicking a day lists its activities below the grid, in time order", async ({ alice }) => {
-    await openView(alice, "activities");
-    await alice.locator("#aModes button[data-mode=calendar]").click();
-    await pressDay(alice, daysAgo(3));
-    await expect(alice.locator("#aDay h3")).toHaveText(longDate(daysAgo(3)));
-    await expect(alice.locator("#aDay .arow .nm")).toHaveText(["Morning run 9001", "Gym session 9019"]);
-  });
-
-  test("a day with nothing on it says so", async ({ alice }) => {
-    await openView(alice, "activities");
-    await alice.locator("#aModes button[data-mode=calendar]").click();
-    await pressDay(alice, daysAgo(4));
-    await expect(alice.locator("#aDay h3")).toHaveText(longDate(daysAgo(4)));
-    await expect(alice.locator("#aDay")).toContainText("Nothing on this day.");
-  });
-
-  test("clicking an activity's chip opens its page beside the grid and marks the chip", async ({ alice }) => {
-    await openView(alice, "activities");
-    await alice.locator("#aModes button[data-mode=calendar]").click();
-    await alice.locator("#agrid .cbar", { hasText: "Gym session 9019" }).click();
-    await expect(alice.locator("#aDetailTitle")).toHaveText("Gym session 9019");
-    await expect(alice.locator("#agrid .cbar.sel")).toHaveText("Gym session 9019");
-  });
-
-  test("the calendar follows the sport chips and the search", async ({ alice }) => {
-    await openView(alice, "activities");
-    await alice.locator("#aModes button[data-mode=calendar]").click();
-    await alice.locator("#aTypes .tchip", { hasText: "Cycling" }).click();
-    // the two rides, 6 and 20 days ago, each on its own month's grid, which shows nothing but rides
-    for (const [day, name] of [[daysAgo(6), "Ride 9024"], [daysAgo(20), "Ride 9025"]]) {
-      await showMonthOf(alice, day);
-      await expect(alice.locator(`#agrid .cbar.act[title*="${day}"]`, { hasText: name })).toHaveCount(1);
-      await expect(alice.locator("#agrid .cbar.act").first()).toBeVisible();
-      await expect(alice.locator("#agrid .cbar.act").filter({ hasNotText: /^Ride / })).toHaveCount(0);
-    }
-    await showMonthOf(alice, today());
-    await alice.locator("#aTypes .tchip", { hasText: "Cycling" }).click();
-    await alice.locator("#aSearch").fill("gym");
-    await expect(alice.locator("#agrid .cbar.act").first()).toBeVisible();
-    await expect(alice.locator("#agrid .cbar.act").filter({ hasNotText: "Gym session" })).toHaveCount(0);
-  });
-
-  test("a day with more activities than fit shows a count, and the count opens the day", async ({ alice }) => {
-    const extra = Array.from({ length: 4 }, (_, i) => ({
-      id: `extra-${i}`, date: daysAgo(3), time: `${String(8 + i).padStart(2, "0")}:00`, type: "running", name: `Extra run ${i + 1}`, km: 5, seconds: 1500, paceSec: 300,
-      avgHr: 140, maxHr: 160, effect: null, aerobic: null, elevation: null, calories: null, sets: null, reps: null, workoutId: null, detailed: false,
-    }));
-    await editList(alice, (rows) => [...rows, ...extra]);
-    await openView(alice, "activities");
-    await alice.locator("#aModes button[data-mode=calendar]").click();
-    // six activities that day: three chips and "+3 more"
-    await showMonthOf(alice, daysAgo(3));
-    await expect(alice.locator(`#agrid .cbar.act[title*="${daysAgo(3)}"]`)).toHaveCount(3);
-    await alice.locator("#agrid .cbar.more", { hasText: "+3 more" }).click();
-    await expect(alice.locator("#aDay .arow")).toHaveCount(6);
-  });
-
-  test("Show planned is off at first, and pressing it adds the plan's workouts", async ({ alice }) => {
-    await openView(alice, "activities");
-    await alice.locator("#aModes button[data-mode=calendar]").click();
-    const toggle = alice.locator("#aPlanned");
-    await expect(toggle).toHaveAttribute("aria-pressed", "false");
-    await expect(alice.locator("#agrid .cbar.plan")).toHaveCount(0);
-    await toggle.click();
-    await expect(toggle).toHaveAttribute("aria-pressed", "true");
-    await showMonthOf(alice, daysAhead(1)); // the first strength session, tomorrow
-    await expect(alice.locator("#agrid .cbar.plan", { hasText: "Full body strength" }).first()).toBeVisible();
-  });
-
-  test("a done workout ticks the activity that answers it, and one activity answers one session", async ({ alice }) => {
-    await openView(alice, "activities");
-    await alice.locator("#aModes button[data-mode=calendar]").click();
-    await alice.locator("#aPlanned").click();
-    // the Easy run was done: its activity is ticked
-    await showMonthOf(alice, daysAgo(2));
-    await expect(alice.locator("#agrid .cbar.act.ok", { hasText: "Easy run" })).toHaveCount(1);
-    await showMonthOf(alice, today());
-    // today's Tempo intervals is answered by today's run (the same sport, on the same day): nothing is left open for it
-    await expect(alice.locator("#agrid .cbar.act.ok", { hasText: "Today's shakeout" })).toHaveCount(1);
-    await expect(alice.locator("#agrid .cbar.plan", { hasText: "Tempo intervals" })).toHaveCount(0);
-  });
-
-  test("the day list says which planned workouts were done, and which are still to come", async ({ alice }) => {
-    await openView(alice, "activities");
-    await alice.locator("#aModes button[data-mode=calendar]").click();
-    await alice.locator("#aPlanned").click();
-    await pressDay(alice, daysAgo(2));
-    await expect(alice.locator("#aDay .aplan.done b")).toHaveText("✓ Easy run");
-    await expect(alice.locator("#aDay .aplan.done span")).toHaveText("planned, done");
-    await pressDay(alice, today());
-    await expect(alice.locator("#aDay .aplan.done b")).toHaveText("✓ Tempo intervals");
-    await pressDay(alice, daysAhead(1));
-    await expect(alice.locator("#aDay .aplan b")).toHaveText("Full body strength");
-    await expect(alice.locator("#aDay .aplan span")).toHaveText("planned");
-  });
-
-  test("an upcoming workout is dashed and grey; the next month's workouts show in that month", async ({ alice }) => {
-    await openView(alice, "activities");
-    await alice.locator("#aModes button[data-mode=calendar]").click();
-    await alice.locator("#aPlanned").click();
-    await showMonthOf(alice, daysAhead(1));
-    const upcoming = alice.locator("#agrid .cbar.plan.upcoming", { hasText: "Full body strength" }).first();
-    await expect(upcoming).toHaveAttribute("title", /Planned \(upcoming\)/);
-    // the Long run is three days ahead: the next month's grid, unless it falls in this one
-    await showMonthOf(alice, daysAhead(3));
-    await expect(alice.locator("#agrid .cbar.plan", { hasText: "Long run" })).toHaveCount(1);
-    await expect(alice.locator("#agrid .cbar.plan.upcoming", { hasText: "Long run" })).toHaveCount(1);
-  });
-
-  test("a planned workout on a past day with nothing done is red, and the day says so", async ({ alice }) => {
-    const missed = daysAgo(8);
-    await editPlans(alice, (plans) => [
-      ...plans,
-      { path: "workout-plans/e2e-missed.json", owner: "alice", weekStart: mondayOf(missed), weekEnd: mondayOf(missed), start: missed, end: missed, workouts: [{ index: 0, workoutName: "Missed intervals", workoutType: "running", workoutId: null, dates: [missed] }] },
-    ]);
-    await openView(alice, "activities");
-    await alice.locator("#aModes button[data-mode=calendar]").click();
-    await alice.locator("#aPlanned").click();
-    await showMonthOf(alice, missed); // eight days back is last month's grid early in a month
-    await expect(alice.locator("#agrid .cbar.plan.missed", { hasText: "Missed intervals" })).toHaveAttribute("title", /Planned \(not done\)/);
-    await pressDay(alice, missed);
-    await expect(alice.locator("#aDay .aplan.missed b")).toHaveText("Missed intervals");
-    await expect(alice.locator("#aDay .aplan.missed span")).toHaveText("planned, not done");
-  });
-
-  test("a workout due today that nothing has answered yet is amber", async ({ alice }) => {
-    await editList(alice, (rows) => rows.filter((r) => r.name !== "Today's shakeout"));
-    await openView(alice, "activities");
-    await alice.locator("#aModes button[data-mode=calendar]").click();
-    await alice.locator("#aPlanned").click();
-    await expect(alice.locator("#agrid .cbar.plan.today", { hasText: "Tempo intervals" })).toHaveCount(1);
-    await pressDay(alice, today());
-    await expect(alice.locator("#aDay .aplan.today b")).toHaveText("Tempo intervals");
-    await expect(alice.locator("#aDay .aplan.today span")).toHaveText("planned for today");
-  });
-
-  test("turning Show planned off hides the plan's workouts again", async ({ alice }) => {
-    await openView(alice, "activities");
-    await alice.locator("#aModes button[data-mode=calendar]").click();
-    await alice.locator("#aPlanned").click();
-    await showMonthOf(alice, daysAhead(1)); // the workouts to come: on the last day of a month, all of them are in the next one
-    await expect(alice.locator("#agrid .cbar.plan").first()).toBeVisible();
-    await alice.locator("#aPlanned").click();
-    await expect(alice.locator("#aPlanned")).toHaveAttribute("aria-pressed", "false");
-    await expect(alice.locator("#agrid .cbar.plan")).toHaveCount(0);
-  });
-
-  test("when the plans cannot be read the calendar still shows the activities", async ({ alice }) => {
-    const errors: string[] = [];
-    alice.on("pageerror", (e) => errors.push(e.message));
-    await alice.route(/\/api\/calendar/, (route) => route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ error: "no plans" }) }));
-    await openView(alice, "activities");
-    await alice.locator("#aModes button[data-mode=calendar]").click();
-    await alice.locator("#aPlanned").click();
-    await expect(alice.locator("#aPlanned")).toHaveAttribute("aria-pressed", "true");
-    await expect(alice.locator("#agrid .cbar.plan")).toHaveCount(0);
-    await expect(alice.locator("#agrid .cbar.act").first()).toBeVisible();
-    expect(errors).toEqual([]);
-  });
-});
-
 test.describe("Activities stats", () => {
   test("Stats gives the lifetime totals, as the server counts them", async ({ alice }) => {
     const { activities } = await storedFor(alice);
     const stats = await statsFor(alice);
     await openView(alice, "activities");
     await alice.locator("#aModes button[data-mode=stats]").click();
-    await expect(alice.locator("#astats h3").first()).toHaveText("Overall");
+    await expect(alice.locator("#astats .aeyebrow").first()).toHaveText("Overall");
     await expect(tile(alice, "Overall", "activities")).toHaveText(String(activities.length));
     await expect(tile(alice, "Overall", "time")).toHaveText(durationText(stats.seconds));
     await expect(tile(alice, "Overall", "active days")).toHaveText(String(stats.activeDays));
@@ -679,25 +401,25 @@ test.describe("Activities stats", () => {
     await expect(tile(alice, "Strength", "time")).toHaveText(durationText(strength.seconds));
     await expect(tile(alice, "Strength", "volume lifted")).toHaveText(/^[\d,]+ lb$/);
     await expect(alice.locator("#astats .anote", { hasText: "The exercise figures cover" })).toHaveText(`The exercise figures cover ${strength.detailed} of ${strength.sessions} sessions; the others have no details stored yet.`);
-    const rows = alice.locator("#astats h3", { hasText: "Exercises" }).locator("+ .aexs .aex");
-    await expect(rows).toHaveCount(strength.exercises.length);
-    for (const [i, e] of strength.exercises.entries()) {
+    const rows = alice.locator("#astats .alifts .aexc2");
+    await expect(rows).toHaveCount(Math.min(12, strength.exercises.length));
+    for (const [i, e] of strength.exercises.slice(0, 12).entries()) {
       await expect(rows.nth(i).locator(".aexn")).toHaveText(e.name);
-      await expect(rows.nth(i).locator(".aext")).toHaveText(`${e.sessions} sessions`);
-      await expect(rows.nth(i).locator(".aexchip").first()).toHaveText(/^est\. 1RM [\d.]+ lb$/);
+      await expect(rows.nth(i).locator("small").first()).toContainText(`${e.sessions} session`);
+      await expect(rows.nth(i).locator(".aexrm")).toHaveText(/^[\d.,]+ lb$|^–$/);
     }
   });
 
-  test("the by-year table has a row for each year with its counts", async ({ alice }) => {
+  test("By year has a row for each year with its counts", async ({ alice }) => {
     const { years } = await statsFor(alice);
     await openView(alice, "activities");
     await alice.locator("#aModes button[data-mode=stats]").click();
-    const rows = alice.locator("#astats table.atable tr");
-    await expect(rows).toHaveCount(years.length + 1);
+    const rows = alice.locator("#astats .ayears .ayr");
+    await expect(rows).toHaveCount(years.length);
     const y = years[0];
-    await expect(rows.nth(1).locator("td").first()).toHaveText(String(y.year));
-    await expect(rows.nth(1).locator("td").nth(1)).toHaveText(String(y.activities));
-    await expect(rows.nth(1).locator("td").nth(3)).toHaveText(String(y.runs));
+    await expect(rows.first().locator("b")).toHaveText(String(y.year));
+    await expect(rows.first().locator("small")).toContainText(`${y.activities.toLocaleString()} activities`);
+    await expect(rows.first().locator("small")).toContainText(`${y.runs.toLocaleString()} runs`);
   });
 
   test("Stats shows no NaN, undefined or null anywhere", async ({ alice }) => {
@@ -749,7 +471,7 @@ test.describe("Activities stats", () => {
     });
     await openView(alice, "activities");
     await alice.locator("#aModes button[data-mode=stats]").click();
-    await expect(alice.locator("#astats h3", { hasText: exact("Best efforts") })).toBeVisible();
+    await expect(alice.locator("#astats .aeyebrow", { hasText: exact("Best efforts and records") })).toBeVisible();
     const fast = record(alice, "1 km");
     await expect(fast.locator(".srv")).toHaveText("4:00");
     await expect(fast.locator(".srd")).toHaveText("4:00 /km · 2026-10-01 · Morning run 9014");
@@ -777,14 +499,14 @@ test.describe("Activities stats", () => {
     await openView(alice, "activities");
     await alice.locator("#aModes button[data-mode=stats]").click();
     await expect(tile(alice, "Strength", "volume lifted")).toHaveText("6,000 lb");
-    const lift = alice.locator("#astats .aex", { hasText: "Barbell Back Squat" });
+    const lift = alice.locator("#astats .aexc2", { hasText: "Barbell Back Squat" });
     await expect(lift.locator(".aexn")).toHaveText("Barbell Back Squat");
-    await expect(lift.locator(".aext")).toHaveText("3 sessions");
-    await expect(lift.locator(".aexchip")).toHaveText(["est. 1RM 117 lb", "heaviest 100 lb × 5", "12 sets · 60 reps", "6,000 lb"]);
-    await expect(lift.locator(".aexnote")).toHaveText("from 5 @ 100 lb on 2026-10-01 · last 2026-10-20");
+    await expect(lift.locator(".aexrm")).toHaveText("117 lb");
+    await expect(lift.locator("small").first()).toHaveText("3 sessions · 12 sets · 60 reps · 6,000 lb · heaviest 100 lb × 5");
+    await expect(lift.locator("small").last()).toHaveText("from 5 @ 100 lb on 2026-10-01 · last 2026-10-20");
     const oneRm = alice.locator("#astats .help", { hasText: "est. 1RM" });
     await expect(oneRm).toBeHidden(); // behind the ⓘ of the Exercises heading until asked for
-    await alice.locator("#astats h3", { hasText: "Exercises" }).getByRole("button", { name: "About est. 1RM" }).click();
+    await alice.locator("#astats .alifts").getByRole("button", { name: "About est. 1RM" }).click();
     await expect(oneRm).toBeVisible();
     await expect(oneRm).toContainText("Epley formula");
     await expect(alice.locator("#astats")).not.toHaveText(/NaN|undefined|null|Infinity/);
@@ -799,25 +521,22 @@ test.describe("Activities stats", () => {
 });
 
 test.describe("Activities view in every mode", () => {
-  test("no NaN, undefined or null shows in the list, the calendar or the stats", async ({ alice }) => {
+  test("no NaN, undefined or null shows in the log or in Progress", async ({ alice }) => {
     await openView(alice, "activities");
     await expect(alice.locator("#alist .arow").first()).toBeVisible();
-    await expect(alice.locator("#aview")).not.toHaveText(/NaN|undefined|null/);
-    await alice.locator("#aModes button[data-mode=calendar]").click();
-    await expect(alice.locator("#agrid .cweek").first()).toBeVisible();
     await expect(alice.locator("#aview")).not.toHaveText(/NaN|undefined|null/);
     await alice.locator("#aModes button[data-mode=stats]").click();
     await expect(alice.locator("#astats .stile").first()).toBeVisible();
     await expect(alice.locator("#aview")).not.toHaveText(/NaN|undefined|null/);
   });
 
-  test("the list's rows and the calendar's chips are keyboard buttons", async ({ alice }) => {
+  test("the list's rows and the records of Progress are keyboard buttons", async ({ alice }) => {
     await openView(alice, "activities");
     const first = alice.locator("#alist .arow").first();
     await expect(first).toHaveAttribute("role", "button");
     await expect(first).toHaveAttribute("tabindex", "0");
-    await alice.locator("#aModes button[data-mode=calendar]").click();
-    await expect(alice.locator("#agrid .cday").first()).toHaveAttribute("role", "button");
-    await expect(alice.locator("#agrid .cday").first()).toHaveAttribute("tabindex", "0");
+    await alice.locator("#aModes button[data-mode=stats]").click();
+    await expect(alice.locator("#astats .srec.go").first()).toHaveAttribute("role", "button");
+    await expect(alice.locator("#astats .srec.go").first()).toHaveAttribute("tabindex", "0");
   });
 });

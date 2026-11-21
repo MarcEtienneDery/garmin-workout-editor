@@ -392,7 +392,7 @@ test.describe("what each login is shown", () => {
     await foodFor(page, "bob");
     await stepFoodBack(page, "bob");
     await expect(page.locator("#fDate")).toHaveValue(daysAgo(1));
-    await expect(page.locator("#fbody")).toContainText("Breakdown");
+    await expect(page.locator("#fbody")).toContainText("Nothing logged");
     await expect(page.locator("#fbody")).not.toContainText("Oatmeal");
     await expect(page.locator("#fbody")).not.toContainText("Salmon and rice");
   });

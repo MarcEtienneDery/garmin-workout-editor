@@ -267,3 +267,124 @@ describe("route and series", () => {
     expect(A.routeIndexFor(null, 0)).toBe(-1);
   });
 });
+
+describe("the ribbon of the last weeks", () => {
+  const rows = [
+    { date: "2026-11-15", type: "running", seconds: 3000 }, { date: "2026-11-14", type: "strength_training", seconds: 3600 },
+    { date: "2026-11-02", type: "cycling", seconds: 1800 }, { date: "2026-10-26", type: "swimming", seconds: 1200 }, { date: "2025-01-01", type: "running", seconds: 999 },
+  ];
+
+  it("gives the weeks oldest first with the week of today last, each starting on its Monday", () => {
+    const { weeks } = A.ribbon(rows, "2026-11-15", 12);
+    expect(weeks).toHaveLength(12);
+    expect(weeks[11].week).toBe("2026-11-09");
+    expect(weeks[10].week).toBe("2026-11-02");
+    expect(weeks[0].week).toBe("2026-08-24");
+  });
+
+  it("adds each week's sessions and time, by sport, and leaves out what is before the first week", () => {
+    const { weeks, peak } = A.ribbon(rows, "2026-11-15", 12);
+    expect(weeks[11]).toEqual({ week: "2026-11-09", count: 2, seconds: 6600, bySport: { run: 3000, str: 3600, ride: 0, other: 0 } });
+    expect(weeks[10].bySport.ride).toBe(1800);
+    expect(weeks[9].bySport.other).toBe(1200); // swimming
+    expect(peak).toBe(6600);
+    expect(weeks.reduce((a: number, w: any) => a + w.count, 0)).toBe(4); // the 2025 run is outside
+  });
+
+  it("has a zero peak, and empty weeks, with no activity", () => {
+    const empty = A.ribbon([], "2026-11-15", 4);
+    expect(empty.peak).toBe(0);
+    expect(empty.weeks.map((w: any) => w.count)).toEqual([0, 0, 0, 0]);
+  });
+
+  it("names the sport of a type for the view", () => {
+    expect([A.sportKey("running"), A.sportKey("strength_training"), A.sportKey("cycling"), A.sportKey("swimming"), A.sportKey(undefined)]).toEqual(["run", "str", "ride", "other", "other"]);
+  });
+});
+
+describe("the consistency map", () => {
+  const rows = [
+    { date: "2026-11-15", type: "running", seconds: 3000 }, { date: "2026-11-15", type: "strength_training", seconds: 1000 }, // two sessions on a day
+    { date: "2026-11-14", type: "running", seconds: 600 }, { date: "2026-11-13", type: "cycling", seconds: 6000 }, { date: "2026-11-10", type: "running", seconds: 3000 },
+  ];
+
+  it("is a column of seven days for each week, Monday first, oldest first, ending with the week of today", () => {
+    const { weeks } = A.heatmap(rows, "2026-11-15", 26);
+    expect(weeks).toHaveLength(26);
+    expect(weeks.every((w: any) => w.length === 7)).toBe(true);
+    expect(weeks[25][0].date).toBe("2026-11-09");
+    expect(weeks[25][6].date).toBe("2026-11-15");
+    expect(weeks[0][0].date).toBe("2026-05-18");
+  });
+
+  it("adds the sessions and the time of a day, and gives a level from the minutes", () => {
+    const { weeks } = A.heatmap(rows, "2026-11-15", 4);
+    const day = (d: string) => weeks.flat().find((x: any) => x.date === d);
+    expect(day("2026-11-15")).toEqual({ date: "2026-11-15", future: false, count: 2, seconds: 4000, level: 3 });
+    expect(day("2026-11-14").level).toBe(1); // 10 minutes
+    expect(day("2026-11-13").level).toBe(4); // 100 minutes
+    expect(day("2026-11-12").level).toBe(0);
+    expect([0, 1, 1799, 1800, 3599, 3600, 5399, 5400].map(A.heatLevel)).toEqual([0, 1, 1, 2, 2, 3, 3, 4]);
+  });
+
+  it("marks the days after today as the future, with no level", () => {
+    const { weeks } = A.heatmap(rows, "2026-11-12", 2);
+    const after = weeks.flat().filter((x: any) => x.date > "2026-11-12");
+    expect(after.length).toBeGreaterThan(0);
+    expect(after.every((x: any) => x.future && x.level === 0)).toBe(true);
+  });
+
+  it("counts the active days, the longest run of them and the run that ends today", () => {
+    const h = A.heatmap(rows, "2026-11-15", 26);
+    expect(h.activeDays).toBe(4);
+    expect(h.longestStreak).toBe(3); // the 13th to the 15th
+    expect(h.currentStreak).toBe(3);
+  });
+
+  it("counts the run back from yesterday when today has nothing yet", () => {
+    expect(A.heatmap(rows, "2026-11-16", 26).currentStreak).toBe(3);
+    expect(A.heatmap(rows, "2026-11-17", 26).currentStreak).toBe(0); // two days with nothing
+    expect(A.heatmap([], "2026-11-15", 4)).toEqual(expect.objectContaining({ activeDays: 0, longestStreak: 0, currentStreak: 0 }));
+  });
+});
+
+describe("the small helpers of the detail and of Progress", () => {
+  it("tells a recent record from an old one", () => {
+    expect(A.isRecent("2026-11-01", "2026-11-15")).toBe(true);
+    expect(A.isRecent("2026-10-16", "2026-11-15")).toBe(true); // exactly 30 days
+    expect(A.isRecent("2026-10-15", "2026-11-15")).toBe(false);
+    expect(A.isRecent("2026-11-20", "2026-11-15")).toBe(false); // not yet
+    expect(A.isRecent(undefined, "2026-11-15")).toBe(false);
+  });
+
+  it("fills the steps of a five-step meter from a training effect", () => {
+    expect([0, 0.4, 0.5, 3.9, 5, 7, undefined, -1].map(A.meterSteps)).toEqual([0, 0, 1, 4, 5, 5, 0, 0]);
+  });
+
+  it("draws planned against done as two bars on one scale, with the difference", () => {
+    const rows = A.plannedBars({ seconds: 2880, km: 10 }, { seconds: 2970, km: 10.4 });
+    expect(rows.map((r: any) => r.label)).toEqual(["Time", "Distance"]);
+    const distance = rows[1];
+    expect(distance).toEqual(expect.objectContaining({ planned: "10 km", actual: "10.4 km", pct: 4 }));
+    expect(distance.fill).toBeCloseTo((10.4 / 13) * 100, 0);
+    expect(distance.tick).toBeCloseTo((10 / 13) * 100, 0);
+    expect(distance.fill).toBeGreaterThan(distance.tick);
+    expect(A.plannedBars({ seconds: 0, km: 0 }, { seconds: 100, km: 1 })).toEqual([]); // nothing planned to compare with
+  });
+
+  it("puts a series on a box, the largest value at the top, and says what changed", () => {
+    const s = A.seriesPoints([{ date: "2026-01-01", value: 50 }, { date: "2026-02-01", value: 54 }, { date: "2026-03-01", value: 52 }], 100, 30);
+    expect(s.points[0].x).toBe(0);
+    expect(s.points[2].x).toBe(100);
+    expect(s.points[1].y).toBeLessThan(s.points[0].y); // the larger value is higher (a smaller y)
+    expect(s).toEqual(expect.objectContaining({ min: 50, max: 54, change: 2 }));
+    expect(s.points.every((p: any) => p.y >= 0 && p.y <= 30)).toBe(true);
+  });
+
+  it("makes no sparkline of fewer than two values, and none of NaN for equal ones", () => {
+    expect(A.seriesPoints([], 100, 30)).toBeNull();
+    expect(A.seriesPoints([{ date: "2026-01-01", value: 50 }], 100, 30)).toBeNull();
+    const flat = A.seriesPoints([{ date: "2026-01-01", value: 50 }, { date: "2026-01-02", value: 50 }], 100, 30);
+    expect(JSON.stringify(flat)).not.toMatch(/NaN/);
+  });
+});

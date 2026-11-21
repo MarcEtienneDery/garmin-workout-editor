@@ -3,7 +3,7 @@ const NM = require("../web/public/nutritionModel.js");
 import { MAX_PHOTOS, MAX_TEXT, MIN_TEXT } from "../shared/foodAi";
 import { NUTRIENTS } from "../shared/nutrients";
 import { MEALS, parseProduct, totalsOf } from "../shared/nutrition";
-import { goalProgress } from "../shared/nutritionGoals";
+import { TARGET_TOLERANCE, goalProgress } from "../shared/nutritionGoals";
 
 const TODAY = "2026-10-18";
 const day = (over: Record<string, unknown> = {}) => ({ day: "2026-10-17", kcal: 2000, proteinG: 150, carbsG: 200, fatG: 44, entries: 5, burnedKcal: 2500, burnedSoFar: false, netKcal: -500, ...over });
@@ -703,5 +703,210 @@ describe("a calorie goal that follows the burn", () => {
     expect(eaten.read(day())).toBe(`${(2000).toLocaleString()} kcal · burned ${(2500).toLocaleString()}`);
     expect(NM.charts({ burn: true, goals: { kcal: 2200 } })[0].goal).toEqual({ label: `Goal ${(2200).toLocaleString()} kcal`, value: 2200 }); // fixed: one level
     expect(NM.charts({ burn: true, goals: { kcalBurnPct: 50 } })[0].goal).toBeUndefined(); // a share of nothing
+  });
+});
+
+describe("where a day stands against a goal, as the cards say it", () => {
+  it("uses the server's tolerance", () => {
+    expect(NM.TARGET_TOLERANCE).toBe(TARGET_TOLERANCE);
+  });
+
+  it("gives the same state as the server for a floor, a ceiling and an aim, at and around every edge", () => {
+    const goals = { kcal: 2000, proteinG: 100, sodiumMg: 2300 };
+    const differs: string[] = [];
+    for (const ratio of [0, 0.5, 0.89, 0.9, 0.91, 0.999, 1, 1.0001, 1.09, 1.1, 1.11, 2]) {
+      const totals = { entries: 1, kcal: 2000 * ratio, proteinG: 100 * ratio, carbsG: 0, fatG: 0, nutrients: { sodiumMg: { amount: 2300 * ratio, foods: 1 } } } as any;
+      const by = Object.fromEntries(goalProgress(goals, totals).map((r) => [r.key, r.state]));
+      if (NM.standing("target", 2000 * ratio, 2000) !== by.kcal) differs.push(`an aim at ${ratio}`);
+      if (NM.standing("min", 100 * ratio, 100) !== by.proteinG) differs.push(`a floor at ${ratio}`);
+      if (NM.standing("max", 2300 * ratio, 2300) !== by.sodiumMg) differs.push(`a ceiling at ${ratio}`);
+    }
+    expect(differs).toEqual([]);
+  });
+});
+
+describe("the calorie chart's colours, summary and words", () => {
+  const goals = { kcal: 2000 };
+  const days = [day({ day: "2026-10-12", kcal: 1500 }), day({ day: "2026-10-13", kcal: 2000 }), day({ day: "2026-10-14", kcal: 2150 }), day({ day: "2026-10-15", kcal: 2300 }), day({ day: "2026-10-16", kcal: null, entries: 0 }), day({ day: TODAY, kcal: 900 })];
+  const [eaten, , protein] = NM.charts({ burn: true, today: TODAY, goals: { ...goals, proteinG: 100 } });
+
+  it("colours a day over the goal beyond the tolerance, and no other", () => {
+    expect(days.map((d) => eaten.color(d))).toEqual(["", "", "", "over", "", ""]); // 2,150 is within 10 % of 2,000, 2,300 is over
+    expect(eaten.colorKeys).toEqual({ over: "Over the goal" });
+  });
+
+  it("counts the finished days on target (under the goal counts) and over, leaving out a day with nothing logged and today, which is not over", () => {
+    expect(eaten.summary(days)).toBe("3 of 4 finished days on target · 1 over"); // 1,500 is under the goal, which counts as on target
+  });
+
+  it("leaves out the part that is none, and says nothing when there is no finished day", () => {
+    expect(eaten.summary([days[0], days[1], days[2]])).toBe("3 of 3 finished days on target");
+    expect(eaten.summary([days[5]])).toBe("");
+  });
+
+  it("says in the hover that a day was over the goal", () => {
+    expect(eaten.read(days[3])).toBe(`${(2300).toLocaleString()} kcal · burned ${(2500).toLocaleString()} · over the goal`);
+    expect(eaten.read(days[2])).toBe(`${(2150).toLocaleString()} kcal · burned ${(2500).toLocaleString()}`);
+  });
+
+  it("has none of it without a calorie goal", () => {
+    const [none] = NM.charts({ burn: true, today: TODAY, goals: {} });
+    expect(none.color).toBeUndefined();
+    expect(none.summary).toBeUndefined();
+    expect(none.read(days[3])).toBe(`${(2300).toLocaleString()} kcal · burned ${(2500).toLocaleString()}`);
+  });
+
+  it("follows the day's own goal when the goal follows the burn", () => {
+    const [follow] = NM.charts({ burn: true, today: TODAY, goals: { kcal: 2000, kcalBurnPct: 50 } });
+    expect(follow.color(day({ kcal: 2300, kcalGoal: 2600 }))).toBe(""); // 2,300 against 2,600: under
+    expect(follow.color(day({ kcal: 2300, kcalGoal: 2000 }))).toBe("over");
+  });
+
+  it("counts the days that reached the protein goal", () => {
+    const ds = [day({ day: "2026-10-12", proteinG: 120 }), day({ day: "2026-10-13", proteinG: 100 }), day({ day: "2026-10-14", proteinG: 99 }), day({ day: "2026-10-15", proteinG: null }), day({ day: TODAY, proteinG: 10 })];
+    expect(protein.summary(ds)).toBe("2 of 3 finished days reached 100 g");
+  });
+});
+
+describe("the week strip", () => {
+  // 2026-10-12 is a Monday; TODAY (the 18th) is the Sunday that ends the week.
+  const week = (over: Record<string, any> = {}) => ["12", "13", "14", "15", "16", "17", "18"].map((d) => ({ day: `2026-10-${d}`, kcal: 0, entries: 0, kcalGoal: 2000, ...(over[d] || {}) }));
+  const view = (extra: Record<string, unknown> = {}) => ({ today: TODAY, date: TODAY, goals: { kcal: 2000 }, week: week({ 12: { kcal: 1500, entries: 3 }, 13: { kcal: 2300, entries: 4 }, 14: { kcal: 2100, entries: 2 }, 18: { kcal: 700, entries: 1 } }), ...extra });
+
+  it("is empty when the server sent no week", () => {
+    expect(NM.weekStrip({ today: TODAY, date: TODAY })).toEqual([]);
+    expect(NM.weekStrip(null)).toEqual([]);
+  });
+
+  it("gives seven days, Monday first, with their weekday and number", () => {
+    const strip = NM.weekStrip(view());
+    expect(strip.map((d: any) => `${d.weekday} ${d.number}`)).toEqual(["Mon 12", "Tue 13", "Wed 14", "Thu 15", "Fri 16", "Sat 17", "Sun 18"]);
+  });
+
+  it("tells a day over the goal from one on target, with 10 % to spare, and a day under the goal is on target", () => {
+    const states = NM.weekStrip(view()).map((d: any) => d.state);
+    expect(states.slice(0, 3)).toEqual(["ok", "over", "ok"]); // 1,500 under, 2,300 over, 2,100 within the 10 %
+  });
+
+  it("marks a day with nothing logged, a day not yet come, today and the day shown", () => {
+    const strip = NM.weekStrip(view({ today: "2026-10-15", date: "2026-10-13" }));
+    expect(strip[3].state).toBe("none"); // Thursday the 15th is today and nothing is logged
+    expect(strip[4].state).toBe("future");
+    expect(strip[3].today).toBe(true);
+    expect(strip[1].selected).toBe(true);
+    expect(strip.filter((d: any) => d.selected || d.today)).toHaveLength(2);
+  });
+
+  it("fills a day's bar up to its goal and no further, with none for a day that has nothing", () => {
+    const strip = NM.weekStrip(view());
+    expect(strip[0].pct).toBeCloseTo(0.75);
+    expect(strip[1].pct).toBe(1);
+    expect(strip[2].kcal).toBe(2100);
+    expect(strip.map((d: any) => d.text)).toEqual([(1500).toLocaleString(), (2300).toLocaleString(), (2100).toLocaleString(), "–", "–", "–", (700).toLocaleString()]);
+    expect(strip[5].pct).toBeNull();
+    expect(strip[5].kcal).toBeNull();
+  });
+
+  it("has no bar and no over without a calorie goal", () => {
+    const strip = NM.weekStrip(view({ goals: {} }));
+    expect(strip.map((d: any) => d.pct)).toEqual(Array(7).fill(null));
+    expect(strip.map((d: any) => d.state)).toEqual(["ok", "ok", "ok", "none", "none", "none", "ok"]);
+  });
+
+  it("follows each day's own goal when the goal follows the burn", () => {
+    const strip = NM.weekStrip(view({ goals: { kcal: 2000, kcalBurnPct: 50 }, week: week({ 12: { kcal: 2300, entries: 3, kcalGoal: 2600 }, 13: { kcal: 2300, entries: 3, kcalGoal: 2000 } }) }));
+    expect([strip[0].state, strip[1].state]).toEqual(["ok", "over"]);
+  });
+
+  it("says each day in words, for a screen reader", () => {
+    const strip = NM.weekStrip(view());
+    expect(strip[0].label).toBe(`Monday 12 Oct, ${(1500).toLocaleString()} kcal`);
+    expect(strip[1].label).toBe(`Tuesday 13 Oct, ${(2300).toLocaleString()} kcal, over the goal`);
+    expect(strip[5].label).toBe("Saturday 17 Oct, nothing logged");
+    expect(NM.weekStrip(view({ today: "2026-10-15" }))[6].label).toBe("Sunday 18 Oct, not yet");
+  });
+});
+
+describe("the insights of a range", () => {
+  const finished = [
+    day({ day: "2026-10-12", kcal: 1800, proteinG: 120, burnedKcal: 2400, kcalGoal: 2000 }),
+    day({ day: "2026-10-13", kcal: 2400, proteinG: 90, burnedKcal: 2400, kcalGoal: 2000 }),
+    day({ day: "2026-10-14", kcal: 2000, proteinG: 130, burnedKcal: 2400, kcalGoal: 2000 }),
+    day({ day: "2026-10-15", kcal: 0, entries: 0, proteinG: null }),
+    day({ day: TODAY, kcal: 500, proteinG: 20, entries: 1, burnedKcal: 900, burnedSoFar: true }),
+  ];
+  const view = (extra: Record<string, unknown> = {}) => ({ today: TODAY, days: finished, goals: { kcal: 2000, proteinG: 100 }, ...extra });
+
+  it("is empty when no day is finished", () => {
+    expect(NM.insightTiles(view({ days: [finished[4]] }))).toEqual([]);
+    expect(NM.insightTiles({ today: TODAY })).toEqual([]);
+  });
+
+  it("averages the finished days, leaving out today and a day with nothing logged", () => {
+    const [average] = NM.insightTiles(view());
+    expect(average.label).toBe("Average · 3 days");
+    expect(average.value).toBe((2067).toLocaleString()); // (1,800 + 2,400 + 2,000) / 3
+    expect(average.note).toBe(`kcal a day · goal ${(2000).toLocaleString()}`);
+  });
+
+  it("counts the days on target (under the goal counts) and over it", () => {
+    const tile = NM.insightTiles(view()).find((t: any) => t.label === "On target");
+    expect(tile).toEqual({ label: "On target", value: "2 of 3", note: "days · 1 over the goal" }); // 2,400 is over, 1,800 and 2,000 are not
+    expect(NM.insightTiles(view({ days: [finished[0]] })).find((t: any) => t.label === "On target").note).toBe("days · none over the goal");
+  });
+
+  it("gives the protein average and how many days reached the goal, or only the average without a goal", () => {
+    const tile = NM.insightTiles(view()).find((t: any) => t.label === "Protein");
+    expect(tile.value).toBe("113 g");
+    expect(tile.note).toBe("a day · goal 100 · reached 2 of 3");
+    expect(NM.insightTiles(view({ goals: { kcal: 2000 } })).find((t: any) => t.label === "Protein").note).toBe("a day");
+  });
+
+  it("compares what was eaten with what Garmin counted as burned, from three days of it", () => {
+    const tile = NM.insightTiles(view()).find((t: any) => t.label === "Eaten vs burned");
+    expect(tile.value).toBe(NM.signed(-333)); // (−600 + 0 + −400) / 3
+    expect(tile.note).toBe("kcal a day, on average");
+    expect(NM.insightTiles(view({ days: finished.slice(0, 2) })).some((t: any) => t.label === "Eaten vs burned")).toBe(false);
+  });
+
+  it("has no calorie tiles without a calorie goal and no burn tile with fewer than three days of it", () => {
+    const labels = NM.insightTiles(view({ goals: {}, days: finished.slice(0, 2) })).map((t: any) => t.label);
+    expect(labels).toEqual(["Average · 2 days", "Protein"]);
+  });
+});
+
+describe("the pattern of the weekdays", () => {
+  // Two Mondays (1,500, 1,700), two Tuesdays (2,000, 2,200), two Wednesdays (1,900, 2,100), two Saturdays (2,800, 3,000), Sunday once.
+  const days = [
+    day({ day: "2026-10-05", kcal: 1500, proteinG: 120 }), day({ day: "2026-10-06", kcal: 2000, proteinG: 120 }), day({ day: "2026-10-07", kcal: 1900, proteinG: 120 }),
+    day({ day: "2026-10-10", kcal: 2800, proteinG: 60 }), day({ day: "2026-10-11", kcal: 2000, proteinG: 120 }),
+    day({ day: "2026-10-12", kcal: 1700, proteinG: 120 }), day({ day: "2026-10-13", kcal: 2200, proteinG: 120 }), day({ day: "2026-10-14", kcal: 2100, proteinG: 120 }),
+    day({ day: "2026-10-17", kcal: 3000, proteinG: 60 }), day({ day: TODAY, kcal: 100, entries: 1 }),
+  ];
+
+  it("is null with fewer than three weekdays that have two days", () => {
+    expect(NM.weekdayPattern({ today: TODAY, days: days.slice(0, 4) })).toBeNull();
+    expect(NM.weekdayPattern({ today: TODAY, days: [] })).toBeNull();
+    expect(NM.weekdayPattern({ today: TODAY })).toBeNull();
+  });
+
+  it("averages each weekday, Monday first, with null for a weekday that has a single day", () => {
+    const { rows } = NM.weekdayPattern({ today: TODAY, days });
+    expect(rows.map((r: any) => r.short)).toEqual(["M", "T", "W", "T", "F", "S", "S"]);
+    expect(rows.map((r: any) => r.kcal)).toEqual([1600, 2100, 2000, null, null, 2900, null]); // Sunday has only the 11th: today is not finished
+  });
+
+  it("says which weekday runs highest and which is lowest in protein", () => {
+    const { sentence, peak } = NM.weekdayPattern({ today: TODAY, days });
+    expect(sentence).toBe(`Saturdays average ${(2900).toLocaleString()} kcal, ${(1300).toLocaleString()} more than Mondays. Protein is lowest on Saturdays (60 g).`);
+    expect(peak).toBe(2900);
+  });
+
+  it("says nothing of a spread under 10 %, nor of a protein that is even", () => {
+    const even = [
+      day({ day: "2026-10-05", kcal: 2000 }), day({ day: "2026-10-06", kcal: 2050 }), day({ day: "2026-10-07", kcal: 2000 }),
+      day({ day: "2026-10-12", kcal: 2000 }), day({ day: "2026-10-13", kcal: 2050 }), day({ day: "2026-10-14", kcal: 2000 }),
+    ];
+    expect(NM.weekdayPattern({ today: TODAY, days: even }).sentence).toBe("");
   });
 });

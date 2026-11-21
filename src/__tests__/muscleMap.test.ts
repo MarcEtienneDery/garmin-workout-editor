@@ -237,3 +237,86 @@ describe("the figures", () => {
     expect(MM.figure("back")).not.toMatch(/NaN|undefined/);
   });
 });
+
+describe("what made a muscle's score", () => {
+  const bench = { name: "BARBELL_BENCH_PRESS", sets: 4 }, extension = { name: "CABLE_OVERHEAD_TRICEPS_EXTENSION", sets: 3 };
+
+  it("lists, for each muscle, the exercises that worked it and the ones that only helped", () => {
+    const { muscles } = MM.detail([bench, extension]);
+    const chest = muscles.find((m: any) => m.id === "chest");
+    expect(chest.from).toEqual([{ name: "BARBELL_BENCH_PRESS", sets: 4, kind: "direct" }, { name: "CABLE_OVERHEAD_TRICEPS_EXTENSION", sets: 3, kind: "helps" }]);
+    const triceps = muscles.find((m: any) => m.id === "triceps");
+    expect(triceps.from.map((f: any) => `${f.name}:${f.kind}`)).toEqual(["BARBELL_BENCH_PRESS:helps", "CABLE_OVERHEAD_TRICEPS_EXTENSION:direct"]);
+  });
+
+  it("agrees with tally on the muscles, their order and their scores", () => {
+    const t = MM.tally([bench, extension]), d = MM.detail([bench, extension]);
+    expect(d.muscles.map((m: any) => [m.id, m.score])).toEqual(t.muscles.map((m: any) => [m.id, m.score]));
+    expect(d.max).toBe(t.max);
+  });
+
+  it("leaves out an exercise with no known muscles, as tally does, and keeps it as unknown", () => {
+    const d = MM.detail([bench, { name: "JUMPING_JACK", sets: 2 }]);
+    expect(d.unknown).toEqual([{ name: "JUMPING_JACK", sets: 2 }]);
+    expect(d.muscles.every((m: any) => m.from.every((f: any) => f.name !== "JUMPING_JACK"))).toBe(true);
+  });
+
+  it("is empty, not an error, for nothing", () => {
+    expect(MM.detail([]).muscles).toEqual([]);
+    expect(MM.detail(undefined).muscles).toEqual([]);
+  });
+});
+
+describe("the groups", () => {
+  it("cover every muscle of the list once", () => {
+    const ids = MM.GROUPS.flatMap((g: any) => g.muscles).sort();
+    expect(ids).toEqual(MM.MUSCLES.map((m: any) => m.id).sort());
+  });
+
+  it("share the muscle work between push, pull, legs and core in whole percents", () => {
+    const shares = MM.groupShares(MM.tally([{ name: "BARBELL_BENCH_PRESS", sets: 4 }, { name: "LAT_PULLDOWN", sets: 4 }]).muscles);
+    expect(shares.map((s: any) => s.id)).toEqual(["push", "pull", "legs", "core"]);
+    expect(shares.find((s: any) => s.id === "legs").pct).toBe(0);
+    expect(shares.reduce((a: number, s: any) => a + s.pct, 0)).toBeGreaterThanOrEqual(99);
+    expect(shares.find((s: any) => s.id === "push").score + shares.find((s: any) => s.id === "pull").score).toBe(MM.tally([{ name: "BARBELL_BENCH_PRESS", sets: 4 }, { name: "LAT_PULLDOWN", sets: 4 }]).muscles.reduce((a: number, m: any) => a + m.score, 0));
+  });
+
+  it("are all zero, not NaN, when nothing was worked", () => {
+    expect(MM.groupShares([]).map((s: any) => s.pct)).toEqual([0, 0, 0, 0]);
+  });
+});
+
+describe("the muscles that got too little", () => {
+  it("lists every muscle under the sets given, the untrained ones too, fewest first", () => {
+    const { muscles } = MM.tally([{ name: "BARBELL_BENCH_PRESS", sets: 8 }]); // chest 8, triceps 4, front delts 4 (helped: half of 8)
+    const few = MM.fewerThan(muscles, 5);
+    expect(few.some((m: any) => m.id === "chest")).toBe(false);
+    expect(few.find((m: any) => m.id === "triceps")).toEqual({ id: "triceps", label: "Triceps", sets: 4 });
+    expect(few.find((m: any) => m.id === "calves")).toEqual({ id: "calves", label: "Calves", sets: 0 });
+    expect(few[0].sets).toBe(0);
+    expect(few.map((m: any) => m.sets)).toEqual([...few.map((m: any) => m.sets)].sort((a: number, b: number) => a - b));
+  });
+
+  it("is every muscle when nothing was trained", () => {
+    expect(MM.fewerThan([], 4)).toHaveLength(MM.MUSCLES.length);
+  });
+});
+
+describe("the sessions of a period", () => {
+  const sessions = [
+    { date: "2026-11-01", exercises: [{ name: "A", sets: 2 }] },
+    { date: "2026-11-10", exercises: [{ name: "A", sets: 3 }, { name: "B", sets: 1 }] },
+    { date: "2026-11-14", exercises: [{ name: "B", sets: 4 }] },
+  ];
+
+  it("adds up the sets per exercise of the sessions on the days from one to another, both ends in", () => {
+    const sum = MM.sumSessions(sessions, "2026-11-10", "2026-11-14");
+    expect(sum.sessions).toBe(2);
+    expect(sum.exercises).toEqual([{ name: "A", sets: 3 }, { name: "B", sets: 5 }]);
+  });
+
+  it("is empty for a period with no session", () => {
+    expect(MM.sumSessions(sessions, "2026-12-01", "2026-12-31")).toEqual({ exercises: [], sessions: 0 });
+    expect(MM.sumSessions(undefined, "2026-01-01", "2026-12-31")).toEqual({ exercises: [], sessions: 0 });
+  });
+});
