@@ -33,7 +33,6 @@ function readVersion(): string {
   }
 }
 
-/** The website's icon files, which this server shares: an SVG, and a PNG for the clients that do not take SVG. */
 export type IconFile = "icon.svg" | "apple-touch-icon.png";
 export function readIcon(name: IconFile): Buffer | undefined {
   try {
@@ -43,11 +42,6 @@ export function readIcon(name: IconFile): Buffer | undefined {
   }
 }
 
-/**
- * The icons clients may show beside the server, as data URIs because the endpoint is behind the token and a client could not
- * fetch a URL from it. The PNG comes first: the spec has clients support PNG and JPEG, while SVG is optional. Read once, since a
- * server is built for every HTTP request; a missing file is left out.
- */
 let icons: { src: string; mimeType: string; sizes: string[] }[] | undefined;
 function serverIcons(): NonNullable<typeof icons> {
   icons ??= (
@@ -88,7 +82,6 @@ export function buildDailyAdjustPrompt(date?: string, profile?: string): string 
 5. STOP and ask for my explicit confirmation before any Garmin upload or scheduling.`;
 }
 
-/** Build a fully-registered MCP server. Cheap to call; HTTP mode creates one per request. */
 export function createServer(): McpServer {
   const server = new McpServer(
     { name: "garmin-workout-editor", title: "Garmin Workout Editor", version: readVersion(), icons: serverIcons() },

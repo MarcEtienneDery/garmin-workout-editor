@@ -1,19 +1,3 @@
-/**
- * Records the README's animations (docs/media/*.webp) from the editor running on the demo database (seed.ts):
- *
- *   npm run demo:record                  every scene
- *   npm run demo:record -- food plans    some of them
- *   npm run demo:record -- --gif         GIFs instead of WebP
- *
- * Each scene drives a fresh page with Playwright while Chrome's screencast keeps every frame it paints, with its time; ffmpeg
- * then turns the frames into an animation at the pace they were painted. pointer.js draws the pointer (headless Chrome draws none).
- * Needs ffmpeg with libwebp on the PATH. Emoji need a color emoji font: without one installed, point FONTCONFIG_FILE at a
- * fonts.conf that adds one.
- *
- * Nothing is reached but OpenStreetMap (the map tiles) and Open Food Facts (the food search). The food AI's answer is the
- * recorder's own (ESTIMATE below), so no Claude login is needed: what the recording shows of it is the page, not a real estimate.
- * The food scenes fix the page's clock at 18:40 UTC, so the meal the page suggests is dinner whatever the time of the recording.
- */
 import { chromium, devices, type Browser, type BrowserContext, type Locator, type Page } from "@playwright/test";
 import { execFileSync } from "child_process";
 import * as fs from "fs";
@@ -25,20 +9,16 @@ import { DEMO_PASSWORD, DEMO_USER } from "./seed";
 const OUT = path.resolve(__dirname, "../../docs/media");
 const PORT = Number(process.env.DEMO_PORT ?? 8781);
 const DESKTOP = { width: 1024, height: 700 };
-/** The width recorded: GitHub shows a README image at most about 900 px wide. */
 const WIDTH = 900;
 const FPS = 10;
-/** Animated WebP: full color at about half a GIF's size, and GitHub shows it like a GIF. --gif makes GIFs (128 colors) instead. */
 const FORMAT = process.argv.includes("--gif") ? "gif" : "webp";
 
-// ─── a scene ──────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 interface Frame {
   file: string;
   at: number;
 }
 
-/** A page being recorded, with the moves a person makes: the pointer glides, the keys are typed one at a time. */
 class Stage {
   private x = DESKTOP.width / 2;
   private y = DESKTOP.height / 2;
@@ -48,7 +28,6 @@ class Stage {
     return this.page.waitForTimeout(ms);
   }
 
-  /** Glide the pointer to a point (to a fraction of a box: 0.5, 0.5 is its middle), `stepMs` a step. */
   async moveTo(target: Locator | { x: number; y: number }, fx = 0.5, fy = 0.5, stepMs = 12) {
     let x: number, y: number;
     if ("x" in target) ({ x, y } = target);
@@ -71,7 +50,6 @@ class Stage {
     return { x, y };
   }
 
-  /** Point at it, then click (or tap, on a phone). */
   async click(target: Locator, { fx = 0.5, fy = 0.5, wait = 450 } = {}) {
     const { x, y } = await this.moveTo(target, fx, fy);
     if (this.touch) await this.page.touchscreen.tap(x, y);
@@ -83,7 +61,6 @@ class Stage {
     await this.pause(wait);
   }
 
-  /** Press on `from`, carry it slowly to `to` with the button held, hold it there a moment, and let go (a mouse drag). */
   async drag(from: Locator, to: Locator, { hold = 450, wait = 450 } = {}) {
     await this.moveTo(from);
     await this.pause(250);
@@ -100,7 +77,6 @@ class Stage {
     await this.page.keyboard.type(text, { delay });
   }
 
-  /** Sweep the pointer across a box, left to right, as when reading a chart. */
   async sweep(target: Locator, from = 0.1, to = 0.9, ms = 2200, fy = 0.5) {
     await this.moveTo(target, from, fy);
     const box = (await target.boundingBox())!;
@@ -112,7 +88,6 @@ class Stage {
     }
   }
 
-  /** Scroll the pane that holds an element until the element is near the top of it. */
   async reveal(target: Locator, ms = 1100) {
     await target.waitFor();
     const dy = await target.evaluate((el) => {
@@ -123,7 +98,6 @@ class Stage {
     await this.scroll(target, dy, ms);
   }
 
-  /** Scroll the pane that holds an element by dy pixels, easing in and out. */
   async scroll(within: Locator, dy: number, ms = 900) {
     const steps = Math.max(1, Math.round(ms / 30));
     let done = 0;
@@ -142,25 +116,18 @@ class Stage {
 
 interface Scene {
   name: string;
-  /** Recorded on a phone (a Pixel 7) instead of a desktop browser. */
   phone?: boolean;
-  /** The address the scene starts on, already drawn when the recording starts. */
   start: string;
-  /** What must be on screen before the recording starts. */
   ready?: (page: Page) => Promise<unknown>;
-  /** Set up the page before it loads (routes). */
   before?: (page: Page) => Promise<unknown>;
   run: (s: Stage, page: Page) => Promise<void>;
 }
 
-// ─── the scenes, in the order they run (the food ones change the log, so they come last) ────────────────────────────────
 
 const meal = (page: Page, name: string) => page.locator(`#fbody section.fmeal[data-meal="${name}"]`);
 
-/** Dinner time on the page's clock, today (see the header): the bar at the bottom and the quick-add strip add to Dinner. */
 const atDinner = (page: Page) => page.clock.setFixedTime(new Date(`${new Date().toISOString().slice(0, 10)}T18:40:00Z`));
 
-/** What the food AI is answered with (see the header). */
 const ESTIMATE = {
   items: [
     { name: "Grilled chicken breast", portion: "150 g", meal: "dinner", amount: 150, unit: "g", kcal: 248, proteinG: 46, carbsG: 0, fatG: 5, nutrients: { sodiumMg: 110, potassiumMg: 390 } },
@@ -172,11 +139,6 @@ const ESTIMATE = {
   remaining: 28,
 };
 
-/**
- * The workout the Calendar scene drags, and the day it drops it on: an Easy run (else any workout) from today on, in the week after
- * this one (else this week, else any), and the nearest free day of its week in this month, from today on. Marked data-demo="drag"
- * and "drop"; true when found. A string: tsx would add its helpers to a function passed to the page.
- */
 const MOVE_PICK = `(() => {
   const today = new Date().toISOString().slice(0, 10), weeks = [...document.querySelectorAll("#cgrid .cweek")];
   const at = weeks.findIndex((wk) => wk.querySelector(".cday.today"));
@@ -221,13 +183,11 @@ const SCENES: Scene[] = [
   {
     name: "plans",
     start: "/#plans",
-    // the page's Monaco editor is the global `editor` (a script-level binding, not a property of window)
     ready: (page) => page.waitForFunction('typeof editor !== "undefined" && !!editor && document.getElementById("new").onclick !== null'),
     run: async (s, page) => {
       const form = page.locator("#pform");
       await s.pause(700);
       await s.click(page.locator("#filelist .file").filter({ hasText: "half-marathon-build" }), { wait: 1400 });
-      // the interval workout in the form: one rep more, and a faster pace on the reps
       await s.click(page.locator("#outline .row.wk .name").filter({ hasText: "Intervals 6 x 800 m" }), { wait: 1600 });
       await s.click(form.locator(".wf-rep").getByRole("button", { name: "Times: one more" }), { wait: 900 });
       const from = form.getByLabel("Pace from");
@@ -236,7 +196,6 @@ const SCENES: Scene[] = [
       await page.keyboard.type("4:00", { delay: 110 });
       await page.keyboard.press("Tab");
       await s.pause(1400);
-      // the change, already in the plan's JSON
       await s.click(page.locator("#emode button[data-mode=json]"), { wait: 400 });
       await page.evaluate(`(() => {
         const m = editor.getModel().findMatches('"Intervals 6 x 800 m"', false, false, true, null, false)[0];
@@ -244,7 +203,6 @@ const SCENES: Scene[] = [
       })()`);
       await s.pause(2200);
       await s.click(page.locator("#emode button[data-mode=form]"), { wait: 800 });
-      // a strength workout: exercises with their sets, and two of them made a superset
       await s.click(page.locator("#outline .row.wk .name").filter({ hasText: "Strength A" }), { wait: 1600 });
       await s.reveal(form.locator(".wf-ex").filter({ hasText: "Bent Over Row With Barbell" }), 1200);
       await s.click(form.getByRole("button", { name: "More for Bent Over Row With Barbell" }), { wait: 700 });
@@ -261,15 +219,13 @@ const SCENES: Scene[] = [
   {
     name: "calendar",
     start: "/#calendar",
-    // the month grid (the page opens on the week board, which keeps the choice in the browser)
-    before: (page) => page.addInitScript(() => { try { localStorage.setItem("calendarView", "month"); } catch { /* the week stays */ } }),
+    before: (page) => page.addInitScript(() => { try { localStorage.setItem("calendarView", "month"); } catch { } }),
     ready: (page) => page.locator("#cgrid .cday").first().waitFor(),
     run: async (s, page) => {
       await s.pause(1500);
       await s.click(page.locator("#cModes button[data-mode=plans]"), { wait: 1500 });
       await s.click(page.locator("#cModes button[data-mode=workouts]"), { wait: 1500 });
       await s.click(page.locator("#cModes button[data-mode=both]"), { wait: 1000 });
-      // a workout dragged onto a free day (MOVE_PICK), the question the drop asks, and the toast once the plan is saved
       if (!(await page.evaluate(MOVE_PICK))) throw new Error("calendar: no workout with a free day beside it to drag");
       await s.drag(page.locator('#cgrid [data-demo="drag"]'), page.locator('#cgrid [data-demo="drop"]'));
       await page.locator("#dlg").waitFor();
@@ -277,7 +233,6 @@ const SCENES: Scene[] = [
       await s.click(page.locator("#dlgOk"), { wait: 300 });
       await page.locator("#toast").filter({ hasText: "Moved" }).waitFor();
       await s.pause(2600);
-      // to the month beside this one that holds more of the plans (the seed dates them from 3 weeks before this week to 5 after), and back
       const [there, back] = new Date().getUTCDate() > 15 ? ["#cNext", "#cPrev"] : ["#cPrev", "#cNext"];
       await s.click(page.locator(there), { wait: 1600 });
       await s.click(page.locator(back), { wait: 1200 });
@@ -327,7 +282,6 @@ const SCENES: Scene[] = [
       await s.pause(1800);
       await s.scroll(page.locator("#rbody"), 520, 1200);
       await s.pause(600);
-      // the trend charts are on the Trends tab
       await s.click(page.locator("#rTabs").getByRole("button", { name: "Trends", exact: true }), { wait: 1200 });
       const chart = page.locator("#rbody svg.rcsvg").first();
       await s.sweep(chart, 0.05, 0.95, 3000);
@@ -344,7 +298,6 @@ const SCENES: Scene[] = [
     run: async (s, page) => {
       await s.pause(1500);
       await s.sweep(page.locator("#bbody svg.rcsvg").first(), 0.05, 0.95, 2500);
-      // the Body tab: the body fat, muscle and calories charts
       await s.click(page.locator("#bTabs").getByRole("button", { name: "Body", exact: true }), { wait: 1500 });
       await s.click(page.locator("#bRange"), { wait: 300 });
       await page.locator("#bRange").selectOption("90");
@@ -363,7 +316,6 @@ const SCENES: Scene[] = [
       await s.pause(1000);
       await s.click(page.locator("#views button, #views a").filter({ hasText: "Calendar" }), { wait: 1500 });
       await s.click(page.locator("#cwBoard .wday.today, #cwBoard .wday.sel").first(), { wait: 1600 });
-      // a plan opens on its outline; a workout tapped there opens in the form, and a set is one tap more
       await s.click(page.locator("#views button, #views a").filter({ hasText: "Plans" }), { wait: 1200 });
       await s.click(page.locator('#tabbar [data-tab="files"]'), { wait: 900 });
       await s.click(page.locator("#filelist .file").filter({ hasText: "half-marathon-build" }), { wait: 1500 });
@@ -372,7 +324,6 @@ const SCENES: Scene[] = [
       await s.pause(500);
       await s.click(page.locator("#pform .wf-line").first().getByRole("button", { name: "Sets: one more" }), { wait: 1600 });
       await s.click(page.locator("#views button, #views a").filter({ hasText: "Food" }), { wait: 1800 });
-      // the add sheet over the whole screen: a food logged lately, one tap
       await s.click(meal(page, "snack").getByRole("button", { name: "Add a food to Snacks" }), { wait: 1200 });
       await s.click(page.locator("#fsh .frec").filter({ hasText: "Protein shake" }).first(), { wait: 1500 });
       await s.click(page.locator("#fsh .fsh-foot").getByRole("button", { name: "Done" }), { wait: 900 });
@@ -387,9 +338,7 @@ const SCENES: Scene[] = [
     ready: (page) => meal(page, "dinner").waitFor(),
     run: async (s, page) => {
       await s.pause(1600);
-      // one tap on a food logged often
       await s.click(page.locator("#fbody .fchip").filter({ hasText: "Salmon with rice" }), { wait: 1600 });
-      // a food from Open Food Facts, by its quantity, in the add sheet
       await s.click(page.locator("#fdSearch"), { wait: 700 });
       await page.keyboard.type("skyr", { delay: 110 });
       const result = page.locator("#fsh .fresults button.fr:not(.frec)").first();
@@ -397,7 +346,6 @@ const SCENES: Scene[] = [
       await s.pause(1200);
       await s.click(result, { wait: 1000 });
       const picker = page.locator("#fsh .fpick");
-      // Add waits for the product's own page (a string, not a function: tsx would add its helpers to a function's code)
       await page.waitForFunction('!document.querySelector("#fsh .fpick button.primary").disabled', null, { timeout: 15_000 });
       const quantity = picker.getByRole("spinbutton", { name: "Quantity" });
       await s.click(quantity, { wait: 150 });
@@ -405,7 +353,6 @@ const SCENES: Scene[] = [
       await page.keyboard.type("175", { delay: 140 });
       await s.pause(1200);
       await s.click(picker.locator("button.primary"), { wait: 1500 });
-      // by hand: the calories follow the macros
       await s.click(page.locator("#fsh").getByRole("tab", { name: "By hand" }), { wait: 600 });
       const form = page.locator("#fsh form.fform");
       await s.type(form.locator(".fname"), "Rice cakes, 2", 60);
@@ -452,7 +399,6 @@ const SCENES: Scene[] = [
   },
 ];
 
-// ─── recording ────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 async function record(browser: Browser, base: string, scene: Scene, work: string): Promise<string> {
   const options = scene.phone
@@ -481,7 +427,6 @@ async function record(browser: Browser, base: string, scene: Scene, work: string
     cdp.send("Page.screencastFrameAck", { sessionId: f.sessionId }).catch(() => {});
   });
   await cdp.send("Page.startScreencast", { format: "png", maxWidth: viewport.width, maxHeight: viewport.height, everyNthFrame: 1 });
-  // a first frame even when nothing moves
   await page.mouse.move(viewport.width / 2, viewport.height / 2);
   const stage = new Stage(page, !!scene.phone);
   await scene.run(stage, page);
@@ -491,7 +436,6 @@ async function record(browser: Browser, base: string, scene: Scene, work: string
   await context.close();
   if (!frames.length) throw new Error(`${scene.name}: no frame was painted`);
 
-  // ffmpeg's concat list: each frame for as long as it stayed on screen, the last one held for a moment
   const list = frames.map((f, i) => `file '${f.file}'\nduration ${Math.max(0.01, (i + 1 < frames.length ? frames[i + 1].at : Math.max(end, f.at + 1)) - f.at).toFixed(3)}`);
   list.push(`file '${frames[frames.length - 1].file}'`);
   fs.writeFileSync(path.join(dir, "frames.txt"), list.join("\n"));
@@ -511,14 +455,12 @@ async function main() {
   fs.mkdirSync(OUT, { recursive: true });
   const work = fs.mkdtempSync(path.join(os.tmpdir(), "demo-frames-"));
   const demo = await startDemo(PORT);
-  // CHROMIUM_PATH: a browser Playwright did not install itself (a container, say); it then also needs --no-sandbox
   const browser = await chromium.launch(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH, args: ["--no-sandbox"] } : {});
   try {
     for (const scene of scenes) console.log(await record(browser, demo.url, scene, work));
   } finally {
     await browser.close();
     demo.stop();
-    // KEEP_FRAMES=1 keeps the PNG of every frame (to look at one), in the folder printed here
     if (process.env.KEEP_FRAMES) console.log(`frames kept in ${work}`);
     else fs.rmSync(work, { recursive: true, force: true });
   }

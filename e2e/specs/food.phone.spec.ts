@@ -1,13 +1,6 @@
-/**
- * The Food view on a phone: the days, the summary in the first screen, the quick-add strip, the bar at the bottom, the add sheet over
- * the whole screen (Recent with one tap to add and Undo, the search results and the quantity picker, By hand), and the touch sizes of
- * all of it. alice's food is read only; anything that logs a food uses a profile of its own (`me`). Open Food Facts is never reached:
- * the search is answered by page.route.
- */
 import { test, expect, openView, daysAgo, today, type Locator, type Page, type Profile, chooseTheme, toggleTheme } from "../support/fixtures";
 import { dayButton, openInsights, pickMeal, sheet, sheetTab } from "../support/food";
 
-/** What sticks out past the phone's width, as shown: an element is cut at the edge of any box above it that clips its content. */
 async function stickingOut(page: Page): Promise<string[]> {
   return page.evaluate(() => {
     const width = document.documentElement.clientWidth;
@@ -30,43 +23,34 @@ async function stickingOut(page: Page): Promise<string[]> {
   });
 }
 
-// The suite shares this machine with other runs, so a step can take longer than the default 30 s on a loaded box: the time is kept
-// generous here, while every wait on the page is still a web-first assertion that ends as soon as the page is there.
 test.setTimeout(60_000);
 
-/** Opens the Food view and waits until its day has loaded: the day arrows and the meals do nothing before that. */
 async function openFood(page: Page) {
   await openView(page, "food");
   await expect(page.locator("#fbody .fmeal").first()).toBeVisible();
 }
 
-/** A meal's block on the day shown: the section that holds its foods and its +. */
 const meal = (page: Page, name: string) => page.locator(`#fbody .fmeal[data-meal="${name}"]`);
 const MEAL_LABEL: Record<string, string> = { breakfast: "Breakfast", lunch: "Lunch", dinner: "Dinner", snack: "Snacks" };
 
-/** Opens the add sheet from a meal's + (on the search). */
 async function openSheet(page: Page, name: string) {
   await meal(page, name).getByRole("button", { name: `Add a food to ${MEAL_LABEL[name]}` }).tap();
   await expect(sheet(page)).toBeVisible();
 }
 
-/** The sheet's parts: its search box, its list, its form by hand and its picker. */
 const searchBox = (page: Page) => page.locator("#fsh .fq");
 const results = (page: Page) => page.locator("#fsh .fresults");
 const form = (page: Page) => page.locator("#fsh form.fform");
 const picker = (page: Page) => page.locator("#fsh .fpick");
 
-/** Turns the sheet to its form by hand. */
 async function byHand(page: Page, name: string) {
   await openSheet(page, name);
   await sheetTab(page, "By hand").tap();
   await expect(form(page)).toBeVisible();
 }
 
-/** The heights, rounded, of the elements a locator finds. */
 const heights = (locator: Locator) => locator.evaluateAll((els) => els.map((el) => Math.round(el.getBoundingClientRect().height)));
 
-/** Logs foods of the profile's own log, through its API, on a day (today unless given). */
 async function logFoods(profile: Profile, mealName: string, items: { name: string; kcal: number; proteinG?: number; carbsG?: number; fatG?: number }[], day = today()) {
   const res = await profile.api.post("/api/nutrition", {
     data: { action: "add", profile: profile.name, day, meal: mealName, items: items.map((i) => ({ proteinG: 1, carbsG: 1, fatG: 1, ...i })) },
@@ -74,7 +58,6 @@ async function logFoods(profile: Profile, mealName: string, items: { name: strin
   expect(res.ok()).toBeTruthy();
 }
 
-/** Open the food search results the page asks for: the Open Food Facts answer is a fixture, the page is what is tested. */
 const searchAnswer = (foods: object[]) => JSON.stringify({ foods });
 const oats = {
   code: null,
@@ -149,7 +132,7 @@ test.describe("the day at a glance", () => {
     await alice.locator("#fPrev").tap();
     await expect(alice.locator("#fbody .fsum .fring .fctr b")).toHaveText("505");
     const ring = (await alice.locator("#fbody .fsum .fring").boundingBox())!, macros = (await alice.locator("#fbody .fsum .fmacs").boundingBox())!;
-    expect(macros.x).toBeGreaterThanOrEqual(ring.x + ring.width - 1); // beside the ring, not under it
+    expect(macros.x).toBeGreaterThanOrEqual(ring.x + ring.width - 1);
     expect(macros.y).toBeLessThan(ring.y + ring.height);
     const card = (await alice.locator("#fbody .fsum").boundingBox())!;
     expect(card.height).toBeLessThan(alice.viewportSize()!.height / 2);
@@ -177,7 +160,6 @@ test.describe("the bar at the bottom and the sheet", () => {
     const dock = (await alice.locator("#fdock").boundingBox())!;
     expect(dock.y + dock.height).toBeGreaterThanOrEqual(alice.viewportSize()!.height - 1);
     for (const h of await heights(alice.locator("#fdock button"))) expect(h).toBeGreaterThanOrEqual(44);
-    // the page scrolls above it: the last of the page is not hidden under the bar
     await alice.locator("#fview").evaluate((el) => el.scrollTo(0, el.scrollHeight));
     const page = (await alice.locator("#fbody").boundingBox())!;
     expect(page.y + page.height).toBeLessThanOrEqual(dock.y + 1);
@@ -211,7 +193,7 @@ test.describe("the bar at the bottom and the sheet", () => {
 
   test("while a box of the sheet has the cursor (the keyboard is up) its foot gives its room to the list", async ({ alice }) => {
     await openFood(alice);
-    await alice.locator("#fdSearch").tap(); // the bar's search puts the cursor in the box
+    await alice.locator("#fdSearch").tap();
     await expect(searchBox(alice)).toBeFocused();
     await expect(alice.locator("#fsh .fsh-foot")).toBeHidden();
     await searchBox(alice).blur();
@@ -403,7 +385,7 @@ test.describe("searching by name (answers faked)", () => {
     await expect(meal(me, "lunch").locator(".fe .fn")).toHaveText(["Rolled oats · 100 g"]);
     await expect(searchBox(me)).toBeVisible();
     await expect(searchBox(me)).not.toBeFocused();
-    await expect(results(me).locator(".frec", { hasText: "Rolled oats" })).toBeVisible(); // the list of foods used lately has it now
+    await expect(results(me).locator(".frec", { hasText: "Rolled oats" })).toBeVisible();
   });
 
   test("the quantity field is 16 px, so the phone does not zoom in when it is focused", async ({ me }) => {
@@ -417,7 +399,6 @@ test.describe("searching by name (answers faked)", () => {
 });
 
 test.describe("nothing opens that was not tapped open", () => {
-  /** What is open in the Food view: the add sheet (and what it shows) and the foods whose details are shown. */
   const opened = (page: Page) =>
     page.evaluate(() => {
       const out: string[] = [];

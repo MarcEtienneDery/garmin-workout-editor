@@ -1,6 +1,3 @@
-/**
- * muscleMap.js is the plain script the page loads to say which muscles a strength workout trains, and to draw them.
- */
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const MM = require("../web/public/muscleMap.js");
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -19,7 +16,7 @@ describe("the muscles of an exercise", () => {
     expect(MM.musclesOf("Weighted Chin Up")).toEqual(MM.musclesOf("WEIGHTED_CHIN_UP"));
     expect(MM.musclesOf("Weighted Chin Up").primary).toEqual(["lats", "biceps"]);
     expect(MM.musclesOf("Single Leg Romanian Deadlift With Dumbbell").primary).toEqual(["hamstrings", "glutes"]);
-    expect(MM.musclesOf("3 Way Calf Raise").primary).toEqual(["calves"]); // Garmin keys a name that starts with a number with an underscore: _3_WAY_CALF_RAISE
+    expect(MM.musclesOf("3 Way Calf Raise").primary).toEqual(["calves"]);
     expect(MM.musclesOf("_45_DEGREE_PLANK").primary).toEqual(["abs"]);
   });
 
@@ -28,13 +25,12 @@ describe("the muscles of an exercise", () => {
     expect(MM.musclesOf("LEG_CURL").primary).toEqual(["hamstrings"]);
     expect(MM.musclesOf("DUMBBELL_WRIST_CURL").primary).toEqual(["forearms"]);
     expect(MM.musclesOf("UPRIGHT_ROW").primary).toEqual(["sideDelts", "traps"]);
-    expect(MM.musclesOf("CROSSOVER_CHIN_UP").primary).toEqual(["lats", "biceps"]); // not a cable crossover
-    expect(MM.musclesOf("FRONT_RAISE").primary).toEqual(["frontDelts"]); // not a T raise
-    expect(MM.musclesOf("SWISS_BALL_PIKE").primary).toEqual(["abs"]); // not a pike push-up
+    expect(MM.musclesOf("CROSSOVER_CHIN_UP").primary).toEqual(["lats", "biceps"]);
+    expect(MM.musclesOf("FRONT_RAISE").primary).toEqual(["frontDelts"]);
+    expect(MM.musclesOf("SWISS_BALL_PIKE").primary).toEqual(["abs"]);
     expect(MM.musclesOf("FARMERS_CARRY_WALK_LUNGE").primary).toEqual(["forearms", "quads", "glutes"]);
     expect(MM.musclesOf("INCLINE_REVERSE_FLYE").primary).toEqual(["rearDelts"]);
     expect(MM.musclesOf("Side Plank").primary).toEqual(["obliques"]);
-    // names a word match gets wrong: a hurdle is not an RDL, a reverse curl-up is not a biceps curl, a flutter kick is not a glute kick
     expect(MM.musclesOf("HANGING_HURDLE").primary).toEqual(["abs"]);
     expect(MM.musclesOf("REVERSE_CURL_UP").primary).toEqual(["abs"]);
     expect(MM.musclesOf("FLUTTER_KICKS").primary).toEqual(["abs"]);
@@ -42,8 +38,8 @@ describe("the muscles of an exercise", () => {
     expect(MM.musclesOf("STRAIGHT_LEG_CRUNCH_WITH_BALL").primary).toEqual(["abs"]);
     expect(MM.musclesOf("LYING_STRAIGHT_LEG_RAISE").primary).toEqual(["abs"]);
     expect(MM.musclesOf("STRAIGHT_ARM_PLANK").primary).toEqual(["abs"]);
-    expect(MM.musclesOf("SHOULDER_ABDUCTION").primary).toEqual(["sideDelts"]); // not a hip abduction
-    expect(MM.musclesOf("DONKEY_CALF_RAISE").primary).toEqual(["calves"]); // not a donkey kick
+    expect(MM.musclesOf("SHOULDER_ABDUCTION").primary).toEqual(["sideDelts"]);
+    expect(MM.musclesOf("DONKEY_CALF_RAISE").primary).toEqual(["calves"]);
     expect(MM.musclesOf("SINGLE_LEG_RDL_CIRCUIT").primary).toEqual(["hamstrings", "glutes"]);
   });
 
@@ -97,7 +93,7 @@ describe("the table of exercises", () => {
   });
 
   it("works out something for every lifting exercise: what is left with no muscle is a machine or a stretch", () => {
-    const MACHINES = new Set(["INDOOR_ROW", "CALORIE_ROW"]); // a rowing machine sits in Garmin's ROW category
+    const MACHINES = new Set(["INDOOR_ROW", "CALORIE_ROW"]);
     const left: Record<string, string[]> = {};
     for (const [name, category] of Object.entries(map)) if (!MM.musclesOf(name) && !MACHINES.has(name) && !/STRETCH/.test(name)) (left[category] = left[category] || []).push(name);
     const LIFTING = ["BENCH_PRESS", "ROW", "PULL_UP", "SHOULDER_PRESS", "CURL", "TRICEPS_EXTENSION", "FLYE", "SHRUG", "DEADLIFT", "SQUAT", "LUNGE", "LEG_CURL", "CALF_RAISE", "HIP_RAISE", "HYPEREXTENSION", "OLYMPIC_LIFT", "CORE", "CHOP", "SHOULDER_STABILITY", "PUSH_UP", "PLANK", "CRUNCH", "SIT_UP", "LEG_RAISE", "HIP_SWING", "HIP_STABILITY", "SLED", "SLEDGE_HAMMER", "TIRE", "BATTLE_ROPE"];
@@ -119,7 +115,6 @@ describe("every muscle can be trained by a Garmin exercise", () => {
     expect(wrong).toEqual([]);
   });
 
-  // one ordinary exercise for each muscle, followed through the whole path: a workout with 3 sets of it -> its sets -> the muscles -> the figures
   const EXEMPLAR: Record<string, string> = {
     chest: "BARBELL_BENCH_PRESS", frontDelts: "BARBELL_SHOULDER_PRESS", sideDelts: "DUMBBELL_LATERAL_RAISE", rearDelts: "FACE_PULL", traps: "BARBELL_SHRUG",
     lats: "LAT_PULLDOWN", upperBack: "BARBELL_ROW", lowerBack: "HYPEREXTENSION", biceps: "BARBELL_BICEPS_CURL", triceps: "TRICEPS_PRESSDOWN", forearms: "BARBELL_WRIST_CURL",
@@ -133,11 +128,9 @@ describe("every muscle can be trained by a Garmin exercise", () => {
     const plan = WM.analyze({ workoutType: "strength_training", steps: [{ stepType: "interval", targetType: "no.target", exerciseName: exercise, endCondition: "reps", endConditionValue: 8, numberOfRepeats: 3, repeatGroupIndex: 0 }] });
     const t = MM.tally(plan.setCounts), trained = t.muscles.find((m: { id: string }) => m.id === id);
     expect(trained).toMatchObject({ id, direct: 3, score: expect.any(Number) });
-    expect(trained.score).toBeGreaterThanOrEqual(6); // a primary muscle: 2 for each of the 3 sets
-    // the same through a done activity, which names the exercise as Garmin lists a set: "Barbell Bench Press"
+    expect(trained.score).toBeGreaterThanOrEqual(6);
     const done = MM.tally([{ name: exercise.split("_").map((w: string) => w[0] + w.slice(1).toLowerCase()).join(" "), sets: 3 }]);
     expect(done.muscles.find((m: { id: string }) => m.id === id)).toMatchObject({ id, direct: 3 });
-    // and it is drawn: on the front or the back figure, in a colour other than the grey of a muscle not trained
     const paint = (muscle: string) => { const m = t.muscles.find((x: { id: string }) => x.id === muscle); return m ? { fill: MM.fillOf(m.score, t.max), title: `${m.label}` } : null; };
     const fills = [...MM.figure("front", paint).matchAll(new RegExp(`data-muscle="${id}" fill="(#\\w+)"`, "g")), ...MM.figure("back", paint).matchAll(new RegExp(`data-muscle="${id}" fill="(#\\w+)"`, "g"))].map((m: RegExpMatchArray) => m[1]);
     expect(fills.length).toBeGreaterThan(0);
@@ -154,14 +147,14 @@ describe("what a workout trains", () => {
 
   it("scores 2 for a set of a primary muscle and 1 for a set of a secondary one", () => {
     const t = MM.tally(WORKOUT), by = Object.fromEntries(t.muscles.map((m: any) => [m.id, m]));
-    expect(by.chest).toMatchObject({ direct: 3, indirect: 2, score: 8 }); // bench primary, triceps extension secondary
-    expect(by.triceps).toMatchObject({ direct: 2, indirect: 3, score: 7 }); // extensions primary, bench secondary
+    expect(by.chest).toMatchObject({ direct: 3, indirect: 2, score: 8 });
+    expect(by.triceps).toMatchObject({ direct: 2, indirect: 3, score: 7 });
     expect(by.lats).toMatchObject({ direct: 3, indirect: 0, score: 6 });
     expect(by.biceps).toMatchObject({ direct: 3, score: 6 });
     expect(by.upperBack).toMatchObject({ direct: 0, indirect: 3, score: 3 });
     expect(by.quads).toBeUndefined();
     expect(t.max).toBe(8);
-    expect(t.muscles[0].id).toBe("chest"); // the most trained first
+    expect(t.muscles[0].id).toBe("chest");
   });
 
   it("says a muscle's score in sets: a primary set is one, a secondary set is half", () => {
@@ -198,15 +191,14 @@ describe("the colour", () => {
 
   it("is one colour, more of it the more sets, and grey for a muscle not trained", () => {
     const grey = MM.fillOf(0, 8), faint = MM.fillOf(1, 8), mid = MM.fillOf(4, 8), full = MM.fillOf(8, 8);
-    expect(grey).toBe(MM.fillOf(5, 0)); // nothing trained, nothing shaded
+    expect(grey).toBe(MM.fillOf(5, 0));
     expect(channels(full)[0]).toBeGreaterThan(channels(mid)[0]);
     expect(channels(mid)[0]).toBeGreaterThan(channels(faint)[0]);
-    expect(channels(faint)[0]).toBeGreaterThan(channels(grey)[0]); // a single set still shows against the grey
-    // one hue: the grey turns red, and the other two channels stay low
+    expect(channels(faint)[0]).toBeGreaterThan(channels(grey)[0]);
     const [r, g, b] = channels(full);
     expect(r).toBeGreaterThan(200);
     expect(Math.max(g, b)).toBeLessThan(90);
-    expect(MM.fillOf(100, 8)).toBe(full); // never past the full colour
+    expect(MM.fillOf(100, 8)).toBe(full);
   });
 });
 
@@ -219,9 +211,9 @@ describe("the figures", () => {
     expect(front).toContain('aria-label="Front of the body"');
     expect(back).toContain('aria-label="Back of the body"');
     expect(front).toContain('data-muscle="chest" fill="#e8453c"><title>Chest: 4 sets</title>');
-    expect((front.match(/data-muscle="chest"[^>]*>(<title>.*?<\/title>)?(<path[^>]*\/>){2}<\/g>/g) || []).length).toBe(1); // a path and its mirror
+    expect((front.match(/data-muscle="chest"[^>]*>(<title>.*?<\/title>)?(<path[^>]*\/>){2}<\/g>/g) || []).length).toBe(1);
     expect(front).toContain('data-muscle="abs"');
-    expect(front).not.toContain('data-muscle="lats"'); // a back muscle
+    expect(front).not.toContain('data-muscle="lats"');
     expect(back).toContain('data-muscle="lats"');
     expect(back).not.toContain('data-muscle="abs"');
     expect(back).not.toContain("Chest: 4 sets");
@@ -288,7 +280,7 @@ describe("the groups", () => {
 
 describe("the muscles that got too little", () => {
   it("lists every muscle under the sets given, the untrained ones too, fewest first", () => {
-    const { muscles } = MM.tally([{ name: "BARBELL_BENCH_PRESS", sets: 8 }]); // chest 8, triceps 4, front delts 4 (helped: half of 8)
+    const { muscles } = MM.tally([{ name: "BARBELL_BENCH_PRESS", sets: 8 }]);
     const few = MM.fewerThan(muscles, 5);
     expect(few.some((m: any) => m.id === "chest")).toBe(false);
     expect(few.find((m: any) => m.id === "triceps")).toEqual({ id: "triceps", label: "Triceps", sets: 4 });

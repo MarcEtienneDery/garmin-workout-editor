@@ -1,13 +1,7 @@
-/**
- * The Activities view on a phone: the Log and then, once one is tapped, the activity on its own, the ribbon and the filters inside the width, the
- * muscle map stacked and compact, Progress's cards one under the other, nothing sticking out sideways, in both themes, and the controls big enough
- * to tap. alice (27 activities, the details of a few, no Garmin login) is read only.
- */
 import { test, expect, openView, type Page, toggleTheme } from "../support/fixtures";
 
 test.setTimeout(60_000);
 
-/** What sticks out past the phone's width, as shown (an element is cut at the edge of any box above it that clips its content). */
 async function stickingOut(page: Page): Promise<string[]> {
   return page.evaluate(() => {
     const width = document.documentElement.clientWidth;
@@ -90,7 +84,6 @@ test.describe("the Activities view on a phone", () => {
     const card = alice.locator("#astats .ammc");
     await expect(card).not.toHaveClass(/open/);
     await card.scrollIntoViewIfNeeded();
-    // the drawing and the list both inside the card, the drawing not squeezed to nothing
     const [c, d, l] = [(await card.boundingBox())!, (await card.locator(".ammleft").boundingBox())!, (await card.locator(".ammright").boundingBox())!];
     expect(d.width).toBeGreaterThanOrEqual(120);
     for (const b of [d, l]) { expect(b.x).toBeGreaterThanOrEqual(c.x - 1); expect(b.x + b.width).toBeLessThanOrEqual(c.x + c.width + 1); }

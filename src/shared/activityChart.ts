@@ -1,19 +1,6 @@
-/**
- * activityChart.ts — an activity's chart data: what is kept of Garmin's answers, and how the charts are read from it.
- *
- * Three read-only Garmin answers hold what the graphs need:
- *   details  /activity-service/activity/{id}/details   the time series (metricDescriptors + activityDetailMetrics) and the route
- *   splits   /activity-service/activity/{id}/splits    the laps the watch recorded (lapDTOs)
- *   zones    /activity-service/activity/{id}/hrTimeInZones   seconds in each heart-rate zone, with the zone's lower bound
- *
- * pruneChart keeps them in the shape Garmin sent, only smaller (a few hundred samples, no nested objects), and
- * buildChart reads the charts from that every time they are asked for. The parsing is deliberately forgiving: a missing
- * metric leaves its series empty rather than failing, and a change to how it is read never needs Garmin again.
- */
 
 import type { ExerciseSet } from "./types";
 
-/** Rows kept of a series or a route, however many Garmin sends. */
 export const MAX_SAMPLES = 300;
 const MAX_LAPS = 500;
 
@@ -31,20 +18,14 @@ export interface StoredChart {
 }
 
 const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
-/**
- * Every plain value of an object (numbers, text, flags), without nested objects and arrays. The fields the charts use are
- * not guessed at here: a field Garmin names differently is kept all the same, and reading it is a parser change, not a refetch.
- */
 const scalars = (o: any): Record<string, number | string | boolean> =>
   Object.fromEntries(Object.entries(o && typeof o === "object" ? o : {}).filter(([, v]) => typeof v === "number" || typeof v === "string" || typeof v === "boolean")) as Record<string, number | string | boolean>;
 
-/** At most `max` of the rows, evenly spread, always the first and the last. */
 export function decimate<T>(rows: T[], max: number): T[] {
   if (rows.length <= max || max < 2) return rows.length <= max ? rows : rows.slice(0, max);
   return Array.from({ length: max }, (_, i) => rows[Math.round((i * (rows.length - 1)) / (max - 1))]);
 }
 
-/** Garmin's three answers, smaller. Anything missing or oddly shaped is left out, not guessed at. */
 export function pruneChart(responses: ChartResponses): StoredChart {
   const d = responses.details ?? {};
   const descriptors = (Array.isArray(d.metricDescriptors) ? d.metricDescriptors : []).map((m: any) => ({
@@ -66,17 +47,9 @@ export function pruneChart(responses: ChartResponses): StoredChart {
   };
 }
 
-// ── Reading the charts ───────────────────────────────────────────────────
 
 const roundTo = (n: number, places: number): number => Math.round(n * 10 ** places) / 10 ** places;
 
-/**
- * The laps the watch recorded, as the interval rows get_activities gives for a run: one per lap, in order, with its kind
- * (warmup, active, recovery, cooldown) and the step of the structured workout it belongs to. Garmin's own summary of a run
- * groups the laps by kind, so two 3 km reps come back as one 6 km block with no way to tell the second from the first; the
- * laps keep what happened inside each rep. Distances in Garmin's laps are always meters (a lap of 16 m at the end is not 16 km).
- * Empty when the activity has no laps stored.
- */
 export function lapIntervals(stored: StoredChart | null | undefined): ExerciseSet[] {
   const laps: any[] = Array.isArray(stored?.splits?.lapDTOs) ? stored!.splits!.lapDTOs : [];
   return laps.map((l, i) => {
@@ -105,48 +78,39 @@ export interface Lap {
   maxHr: number | null;
   gain: number | null;
   cadence: number | null;
-  /** INTERVAL, WARMUP, COOLDOWN, RECOVERY, ACTIVE ... as the watch labelled the lap. */
   kind: string | null;
 }
 
 export interface KmSplit {
-  /** 1-based; the last one may be shorter than the others. */
   index: number;
   meters: number;
   seconds: number;
   paceSec: number | null;
   avgHr: number | null;
-  /** Net climb over the split, in meters. */
   climb: number | null;
 }
 
 export interface Zone {
   zone: number;
-  /** Lower bound in bpm, and the next zone's lower bound (null for the last). */
   low: number | null;
   high: number | null;
   seconds: number;
 }
 
 export interface ChartData {
-  /** One value per sample, null where Garmin gave none. Time in seconds from the start, distance in meters. */
   time: (number | null)[];
   distance: (number | null)[];
   hr: (number | null)[];
-  /** Pace in seconds per km; null where the speed was too low to mean a pace. */
   pace: (number | null)[];
   elevation: (number | null)[];
   cadence: (number | null)[];
-  /** The route, with each point's distance so the cursor can find it; null for an activity without GPS. */
   route: { lat: number[]; lon: number[]; distance: (number | null)[] } | null;
   laps: Lap[];
   splits: KmSplit[];
   zones: Zone[] | null;
 }
 
-/** Slower than this is standing, not a pace (3.0 km/h is 20:00/km, and a pace graph needs better than that). */
 const MIN_SPEED = 0.8;
-/** The pace graph's limits, in seconds per km. */
 export const PACE_FASTEST = 120;
 export const PACE_SLOWEST = 900;
 
@@ -156,7 +120,6 @@ const pace = (speed: number | null): number | null => {
   return sec >= PACE_FASTEST && sec <= PACE_SLOWEST ? sec : null;
 };
 
-/** The column of one metric, found by the key Garmin names it with; the first of the keys that is there wins. */
 function column(descriptors: any[], rows: any[], keys: string[]): (number | null)[] | null {
   for (const key of keys) {
     const d = descriptors.find((x) => x && x.key === key && Number.isInteger(x.metricsIndex));
@@ -165,11 +128,6 @@ function column(descriptors: any[], rows: any[], keys: string[]): (number | null
   return null;
 }
 
-/**
- * The distance covered at an absolute time (ms), interpolated between the two samples around it; null when the time is
- * outside the series. Garmin's route points carry a time but, in practice, no distance, so this is how the graph cursor
- * and the map marker find each other.
- */
 function distanceAt(stamp: (number | null)[], distance: (number | null)[], t: unknown): number | null {
   if (typeof t !== "number") return null;
   const pts: { t: number; d: number }[] = [];
@@ -187,7 +145,6 @@ function distanceAt(stamp: (number | null)[], distance: (number | null)[], t: un
   return b.t === a.t ? a.d : a.d + ((t - a.t) / (b.t - a.t)) * (b.d - a.d);
 }
 
-/** Km splits worked out from the distance and time series: the time at each full kilometer by interpolation. */
 export function kmSplits(distance: (number | null)[], time: (number | null)[], hr: (number | null)[], elevation: (number | null)[]): KmSplit[] {
   const pts: { d: number; t: number; hr: number | null; e: number | null }[] = [];
   for (let i = 0; i < distance.length; i++) {
@@ -220,7 +177,6 @@ export function kmSplits(distance: (number | null)[], time: (number | null)[], h
   return out;
 }
 
-/** The charts of one activity, read from what was stored; null when nothing was stored. */
 export function buildChart(stored: StoredChart | null | undefined): ChartData | null {
   if (!stored || typeof stored !== "object") return null;
   const d = stored.details ?? ({} as StoredChart["details"]);
@@ -241,7 +197,6 @@ export function buildChart(stored: StoredChart | null | undefined): ChartData | 
   const elevation = column(descriptors, rows, ["directElevation", "directAltitude"]) ?? rows.map(() => null);
   const cadence = column(descriptors, rows, ["directDoubleCadence", "directRunCadence", "directBikeCadence"]) ?? rows.map(() => null);
 
-  // The route: Garmin's polyline, or failing that the latitude and longitude columns of the series.
   let route: ChartData["route"] = null;
   const poly = Array.isArray(d.geoPolylineDTO?.polyline) ? d.geoPolylineDTO!.polyline : [];
   const valid = (lat: unknown, lon: unknown) => typeof lat === "number" && typeof lon === "number" && Math.abs(lat) <= 90 && Math.abs(lon) <= 180 && !(lat === 0 && lon === 0);
@@ -290,18 +245,14 @@ export function buildChart(stored: StoredChart | null | undefined): ChartData | 
   };
 }
 
-// ── The numbers beside the charts ─────────────────────────────────────────
 
 export interface ActivityStats {
   minHr: number | null;
   maxHr: number | null;
-  /** Meters per second. */
   maxSpeed: number | null;
-  /** Seconds for the fastest kilometer, mile and 5 km. */
   fastest1k: number | null;
   fastestMile: number | null;
   fastest5k: number | null;
-  /** Centimeters. */
   stride: number | null;
   steps: number | null;
   maxCadence: number | null;
@@ -314,15 +265,12 @@ export interface ActivityStats {
   elapsedSeconds: number | null;
   aerobicMessage: string | null;
   anaerobicMessage: string | null;
-  /** Seconds in heart-rate zones 1 to 5, as the list item has them; null when it has none. */
   hrZones: number[] | null;
-  /** Time and distance by how the watch split the activity (run, walk, stand), when it did. */
   segments: { kind: string; seconds: number; meters: number }[];
 }
 
 const text = (v: unknown): string | null => (typeof v === "string" && v ? v : null);
 
-/** What the list item and the details say beyond the headline numbers; each is null when Garmin did not give it. */
 export function activityStats(raw: any, detail: any): ActivityStats {
   const r = raw ?? {}, s = detail?.summaryDTO ?? {};
   const first = (...values: unknown[]) => values.map(num).find((v) => v !== null) ?? null;

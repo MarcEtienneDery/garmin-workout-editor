@@ -31,7 +31,7 @@ describe("the Renpho scale's weigh-ins among the stored days", () => {
     const days = withScaleWeighIns(getStore(), PROFILE, "2026-10-01", "2026-10-05", []);
     expect(days.map((d) => d.day)).toEqual(["2026-10-01", "2026-10-03"]);
     expect(days[0]).toEqual(expect.objectContaining({ weightKg: 80.5, bodyFatPercent: 20.5, bmi: 25.2, totalKcal: null }));
-    expect(days[0].muscleKg).toBeCloseTo(36.23, 1); // 45% of 80 and of 81 kg, averaged
+    expect(days[0].muscleKg).toBeCloseTo(36.23, 1);
     expect(days[1]).toEqual(expect.objectContaining({ weightKg: 79.5, bodyFatPercent: null, muscleKg: null }));
   });
 

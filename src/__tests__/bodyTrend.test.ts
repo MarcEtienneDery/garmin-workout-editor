@@ -20,7 +20,6 @@ describe("bodyTrend", () => {
   });
 
   it("fits a line through every weigh-in, in any order, and says which way it goes", () => {
-    // 0.5 kg a week down, the days between left out and the order shuffled
     const losing = bodyTrend([weighed(14, 79), weighed(0, 80), weighed(7, 79.5), weighed(10, 79.3)].map((d) => d));
     expect(losing.direction).toBe("losing");
     expect(losing.perWeekKg).toBeCloseTo(-0.5, 1);

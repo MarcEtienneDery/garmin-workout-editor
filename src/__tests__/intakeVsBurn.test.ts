@@ -24,8 +24,8 @@ describe("what was eaten against what was burned", () => {
   it("averages the days that have both, whole, and counts the days with food", () => {
     eat(1, 2000); burn(1, 2600);
     eat(2, 2300); burn(2, 2700);
-    eat(3, 1500); // no burn stored for it: it does not count in the comparison
-    burn(4, 2900); // no food logged: unknown, not zero, so it is not eaten nothing against 2,900
+    eat(3, 1500);
+    burn(4, 2900);
     expect(intakeVsBurn(store, "MED", day(29), day(0), TODAY)).toEqual({ loggedDays: 3, days: 2, eatenKcal: 2150, burnedKcal: 2650 });
   });
 

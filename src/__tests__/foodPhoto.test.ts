@@ -5,7 +5,7 @@ describe("sizing a photo to send", () => {
   it("shrinks a phone photo so that its long edge is 1568 px, keeping its shape", () => {
     expect(FP.MAX_EDGE).toBe(1568);
     expect(FP.fitWithin(4000, 3000)).toEqual({ width: 1568, height: 1176 });
-    expect(FP.fitWithin(3000, 4000)).toEqual({ width: 1176, height: 1568 }); // a portrait photo
+    expect(FP.fitWithin(3000, 4000)).toEqual({ width: 1176, height: 1568 });
     expect(FP.fitWithin(2000, 2000)).toEqual({ width: 1568, height: 1568 });
     expect(FP.fitWithin(4032, 3024)).toEqual({ width: 1568, height: 1176 });
   });
@@ -38,7 +38,7 @@ describe("taking a photo with the camera", () => {
 
   it("can open the camera on a secure page whose browser has one", () => {
     expect(FP.cameraAvailable(camera, true)).toBe(true);
-    expect(FP.cameraAvailable(camera, undefined)).toBe(true); // a browser that does not say is let try
+    expect(FP.cameraAvailable(camera, undefined)).toBe(true);
   });
 
   it("cannot on a page that is not secure (plain http), nor in a browser without a camera API", () => {

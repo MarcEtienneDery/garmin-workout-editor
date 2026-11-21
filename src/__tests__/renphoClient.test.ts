@@ -9,7 +9,7 @@ describe("the protocol", () => {
     expect(sealed).toMatch(/^[A-Za-z0-9+/]+=*$/);
     expect(Buffer.from(sealed, "base64").length % 16).toBe(0);
     expect(decrypt(sealed)).toBe(text);
-    expect(encrypt("")).toBe(encrypt("")); // ECB: the same text, the same bytes
+    expect(encrypt("")).toBe(encrypt(""));
     expect(Buffer.from(encrypt(""), "base64").length).toBe(16);
     expect(decrypt(encrypt(""))).toBe("");
   });
@@ -46,7 +46,7 @@ describe("signing in", () => {
     const { fetchFn, calls } = fakeRenpho({ ...login, "renpho-aggregation/device/count": () => ({ scale: [{ tableName: "t1", userIds: ["1"], count: 2 }, { tableName: "bad" }] }) });
     const tables = await new RenphoClient("e@x.y", "pw", "US", fetchFn).scaleTables();
     expect(calls.map((c) => c.path)).toEqual(["renpho-aggregation/user/login", "renpho-aggregation/device/count"]);
-    expect(tables).toEqual([{ tableName: "t1", userIds: ["1"], count: 2 }]); // a table without users is of no use
+    expect(tables).toEqual([{ tableName: "t1", userIds: ["1"], count: 2 }]);
   });
 
   it("calls a refused login a login error that names what to check", async () => {

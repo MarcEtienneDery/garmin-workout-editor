@@ -1,8 +1,3 @@
-/**
- * The Renpho sync's side that touches Garmin and the clock: the upload of a FIT file to a profile's Garmin account, a run
- * for a profile, and the timer that starts the runs that are due (the web editor starts it; one process runs the timer,
- * and the lease keeps two runs of one profile apart whichever process starts them). The run itself is shared/renphoSync.ts.
- */
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
@@ -12,12 +7,10 @@ import { garminAvailable, getSession, requireAuth } from "../context";
 import { locked, holder } from "./activities";
 import { startBackgroundWellness } from "./wellness";
 
-/** How often the timer looks for a run that is due. */
 const TICK_MS = 5 * 60_000;
 
 const text = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
-/** What Garmin's upload answer says, as a few words; throws when it refused the file. A file Garmin already has is not a failure. */
 export function readUploadAnswer(answer: any): string {
   const result = answer?.detailedImportResult ?? answer?.data?.detailedImportResult;
   if (!result) return "";
@@ -32,11 +25,6 @@ export function readUploadAnswer(answer: any): string {
   return duplicates ? "Garmin already had it" : successes.length ? "taken in" : "accepted";
 }
 
-/**
- * What an upload that Garmin answered with an HTTP error says. The library throws `ERROR: (<status>), <text>, <JSON of the
- * answer>` for those, and a file Garmin already has comes back that way (409): its answer is read as an upload answer, so a
- * duplicate counts as taken in. An error that has no answer in it is thrown again as it was.
- */
 export function readUploadError(error: unknown): string {
   const match = /^ERROR: \((\d{3})\), [^,]*, ([\s\S]*)$/.exec(error instanceof Error ? error.message : "");
   if (!match) throw error;
@@ -49,7 +37,6 @@ export function readUploadError(error: unknown): string {
   return readUploadAnswer(answer) || (() => { throw error; })();
 }
 
-/** An upload to the profile's Garmin account of a FIT file, through the same endpoint Garmin Connect's import page uses. */
 export function pushToGarmin(profile: string): RenphoPush {
   return async (fit) => {
     const session = getSession(profile);
@@ -72,15 +59,13 @@ export function pushToGarmin(profile: string): RenphoPush {
   };
 }
 
-/** One run for a profile: fetch from Renpho and, when switched on, upload. Afterwards the Garmin weigh-ins of the days uploaded earlier are read again. */
 export async function runRenpho(profile: string, manual: boolean): Promise<RenphoRun> {
   const store = getStore();
-  // Garmin is optional: a profile without a login only fetches (the weigh-ins are shown from what Renpho sent)
   const garmin = garminAvailable(profile);
   const run = await syncRenpho(store, profile, { holder: holder(), manual, push: garmin ? pushToGarmin(profile) : undefined });
   if (run.ran && garmin) {
     try {
-      startBackgroundWellness(profile); // fills in the weigh-in rows that were forgotten for a second read
+      startBackgroundWellness(profile);
     } catch (error) {
       store.renpho.log(profile, "warn", `Could not start reading the weigh-ins back from Garmin: ${text(error)}`);
     }
@@ -90,7 +75,6 @@ export async function runRenpho(profile: string, manual: boolean): Promise<Renph
 
 let timer: NodeJS.Timeout | undefined;
 
-/** Start the timer that runs the profiles that are due (every few minutes it looks; each profile has its own interval). Safe to call twice. */
 export function startRenphoTimer(): void {
   if (timer) return;
   const tick = async () => {
@@ -102,7 +86,7 @@ export function startRenphoTimer(): void {
   };
   timer = setInterval(tick, TICK_MS);
   timer.unref();
-  setTimeout(tick, 15_000).unref(); // a first look soon after the server starts
+  setTimeout(tick, 15_000).unref();
 }
 
 export function stopRenphoTimer(): void {

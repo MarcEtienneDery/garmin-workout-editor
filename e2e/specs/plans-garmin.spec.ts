@@ -1,8 +1,3 @@
-/**
- * The Garmin drawer of the Plans view: what to do, the checks before it goes, a line for every workout with a tick, and a button that names the
- * action and the count and is the only confirmation. The server has no Garmin login for these profiles, so Garmin is switched on for the
- * page (e2e/support/garmin.ts) and the page's requests for what Garmin knows are answered there; what the page sends is read back.
- */
 import { test, expect, openView, mondayOf, daysAhead, today, type Page, type APIRequestContext } from "../support/fixtures";
 import { withGarmin, type GarminCalls, type GarminOptions } from "../support/garmin";
 
@@ -15,7 +10,6 @@ const run = (name: string, extra: Record<string, unknown> = {}) => ({
   ...extra,
 });
 
-/** Four workouts: up to date (id 11), differing (12), gone from Garmin (13) and not uploaded; the states are what Garmin is said to hold. */
 const WORKOUTS = () => [
   run("Easy run", { workoutId: 11, scheduledDate: [mondayOf(today()), daysAhead(7)] }),
   run("Intervals", { workoutId: 12, scheduledDate: [daysAhead(2)] }),
@@ -31,7 +25,6 @@ async function makePlan(api: APIRequestContext, name: string, workouts: unknown[
   return path;
 }
 
-/** The plan open on a page that has Garmin on. */
 async function openPlan(page: Page, api: APIRequestContext, profile: string, options: GarminOptions = { states: STATES }, workouts: unknown[] = WORKOUTS()): Promise<{ calls: GarminCalls; name: string }> {
   const name = `${profile}-drawer`;
   await makePlan(api, name, workouts);
@@ -40,7 +33,7 @@ async function openPlan(page: Page, api: APIRequestContext, profile: string, opt
   await page.locator("#filelist .file").filter({ hasText: name }).click();
   await expect(page.locator("#current")).toContainText(name);
   await expect(page.locator("#garminBtn")).toBeEnabled();
-  await expect(page.locator("#outline .row.wk .chip").first()).toHaveText("✓"); // the checks against Garmin have come in
+  await expect(page.locator("#outline .row.wk .chip").first()).toHaveText("✓");
   return { calls, name };
 }
 
@@ -108,7 +101,7 @@ test.describe("the drawer", () => {
     await expect.poll(() => calls.actions.length).toBe(1);
     expect(calls.actions[0]).toMatchObject({ action: "upload_schedule", indexes: [1, 2, 3], confirm: true, profile: profile.name });
     await expect(me.locator("#activity")).toContainText("✓ Upload + schedule");
-    await expect(drawer(me)).toBeVisible(); // it stays, to show how it went
+    await expect(drawer(me)).toBeVisible();
   });
 
   test("with every workout chosen the whole plan is sent (no indexes)", async ({ me, profile }) => {

@@ -1,8 +1,3 @@
-/**
- * Moving a workout on a phone. The Calendar's chips are thin bars there and a tap selects the day, so a finger held still on a day
- * lifts its workout, which then follows the finger to another day (where letting go asks before it moves); a finger that moves at
- * once scrolls the page as before. The Move menu is a sheet across the foot of the screen. Each test makes its own profile and plan, dated in 2031.
- */
 import type { Locator, Page } from "@playwright/test";
 import { test, expect, openView, monthView, type Profile } from "../support/fixtures";
 
@@ -39,14 +34,12 @@ async function openOnPlan(page: Page, plan: string) {
   await page.locator("#cview").evaluate((e) => e.scrollTo(0, 0));
 }
 
-/** A finger on the touch screen, through the browser's own input (Playwright's touchscreen only taps). */
 async function finger(page: Page) {
   const cdp = await page.context().newCDPSession(page);
   const send = (type: "touchStart" | "touchMove" | "touchEnd", points: { x: number; y: number }[]) => cdp.send("Input.dispatchTouchEvent", { type, touchPoints: points.map((p) => ({ x: Math.round(p.x), y: Math.round(p.y) })) });
   let at = { x: 0, y: 0 };
   return {
     down: async (p: { x: number; y: number }) => { at = p; await send("touchStart", [p]); },
-    /** Slide to `p` in small steps, as a finger does. */
     slide: async (p: { x: number; y: number }, steps = 10) => {
       const from = at;
       for (let i = 1; i <= steps; i++) await send("touchMove", [{ x: from.x + ((p.x - from.x) * i) / steps, y: from.y + ((p.y - from.y) * i) / steps }]);
@@ -62,7 +55,7 @@ test.describe("moving a workout on a phone", () => {
     await openOnPlan(me, name);
     const f = await finger(me);
     await f.down(await centre(cellOf(me, "2031-09-03")));
-    await me.waitForTimeout(500); // held still
+    await me.waitForTimeout(500);
     await expect(me.locator(".cghost")).toHaveText("Morning run");
     await f.slide(await centre(cellOf(me, "2031-09-05")));
     await expect(cellOf(me, "2031-09-05")).toHaveClass(/\bdrop\b/);
@@ -83,7 +76,7 @@ test.describe("moving a workout on a phone", () => {
     me.on("request", (r) => { if (r.url().endsWith("/api/plans/move")) sent++; });
     const f = await finger(me), start = await centre(cellOf(me, "2031-09-03"));
     await f.down(start);
-    await f.slide({ x: start.x + 120, y: start.y + 20 }, 6); // sideways onto another day, without the hold
+    await f.slide({ x: start.x + 120, y: start.y + 20 }, 6);
     await me.waitForTimeout(500);
     await expect(me.locator(".cghost")).toHaveCount(0);
     await f.up();
@@ -116,7 +109,7 @@ test.describe("moving a workout on a phone", () => {
     expect(b && Math.round(b.x)).toBe(0);
     expect(b && Math.round(b.width)).toBe(view.width);
     expect(b && Math.round(b.y + b.height)).toBe(view.height);
-    expect(await me.locator("#mvDate").evaluate((e) => getComputedStyle(e).fontSize)).toBe("16px"); // no zoom on focus
+    expect(await me.locator("#mvDate").evaluate((e) => getComputedStyle(e).fontSize)).toBe("16px");
     await me.locator("#mvNext").tap();
     await expect(menu).toBeHidden();
     await expect(me.locator("#toast")).toContainText("Moved Morning run to");

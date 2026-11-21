@@ -1,18 +1,9 @@
-/**
- * Signing in, staying signed in and signing out, in the page, and what each login is shown.
- *
- * Wrong passwords are counted per client address by the server (ten in a minute and the address waits), so this file sends
- * at most two: the wrong password of alice and the unknown user. Everything else signs in with the right secret.
- */
 import type { Page } from "@playwright/test";
 import { test, expect as baseExpect, loginAs, daysAgo, CSRF, PASSWORD, ADMIN_TOKEN } from "../support/fixtures";
 
-// This file shares one server with every other run: on a busy machine one answer (the session, the Garmin state) can take several
-// seconds, so a check waits up to 45 seconds and a test up to two minutes. The assertions themselves are the same.
 const expect = baseExpect.configure({ timeout: 45_000 });
 test.describe.configure({ timeout: 120_000 });
 
-/** Open a view of the page, signed in already, and wait until it is drawn (the fixtures' versions keep the shorter default wait). */
 async function openView(page: Page, view: string): Promise<void> {
   await page.goto(view === "today" ? "/" : `/#${view}`);
   await expect(page.locator("#login")).toBeHidden();
@@ -20,26 +11,21 @@ async function openView(page: Page, view: string): Promise<void> {
   await expect(page.locator("body")).toHaveAttribute("data-view", view);
 }
 
-/** The page is signed in and its header is up. */
 async function ready(page: Page): Promise<void> {
   await expect(page.locator("#login")).toBeHidden();
   await expect(page.locator("#views")).toBeVisible();
 }
 
-/** What the form says for a wrong user name or password, whether or not the profile exists. */
 const WRONG = "Wrong user name or password.";
 
-/** Fill in the sign-in form and press its button. */
 async function signIn(page: Page, user: string, password: string): Promise<void> {
   await page.locator("#loginUser").fill(user);
   await page.locator("#loginPass").fill(password);
   await page.locator("#loginSubmit").click();
 }
 
-/** The page's session check, which every load makes once: it is what decides whether the form shows. */
 const sessionCheck = (r: { url(): string }) => new URL(r.url()).pathname === "/api/session";
 
-/** Open the account menu and sign out from it; the page reloads and asks the session check whether to show the form. */
 async function signOutFromMenu(page: Page): Promise<void> {
   await page.locator("#accountBtn").click();
   const reloaded = page.waitForResponse(sessionCheck);
@@ -48,27 +34,23 @@ async function signOutFromMenu(page: Page): Promise<void> {
   await expect(page.locator("#login")).toBeVisible();
 }
 
-/** Reload the page and wait for the session check that decides whether the form shows. */
 async function reloadPage(page: Page): Promise<void> {
   const checked = page.waitForResponse(sessionCheck);
   await page.reload();
   await checked;
 }
 
-/** Open Settings from the account menu. */
 async function openSettings(page: Page): Promise<void> {
   await page.locator("#accountBtn").click();
   await page.locator("#openSettings").click();
   await expect(page.locator("#sview")).toBeVisible();
 }
 
-/** A nutrition answer for a profile, and for a day when one is asked for (the Food view's own query). */
 const foodAnswer = (profile: string, date: string | null) => (r: { url(): string }) => {
   const url = new URL(r.url());
   return url.pathname === "/api/nutrition" && url.searchParams.get("profile") === profile && url.searchParams.get("date") === date;
 };
 
-/** Open the Food view, then choose the profile (the admin's picker opens on a default one), and wait until today is drawn. */
 async function foodFor(page: Page, profile: string): Promise<void> {
   const first = page.waitForResponse((r) => new URL(r.url()).pathname === "/api/nutrition");
   await openView(page, "food");
@@ -77,7 +59,6 @@ async function foodFor(page: Page, profile: string): Promise<void> {
   await expect(page.locator("#fDayLabel")).toContainText("Today");
 }
 
-/** Pick a profile in the Food view and wait until its day is in. */
 async function pickFoodProfile(page: Page, profile: string): Promise<void> {
   const answered = page.waitForResponse(foodAnswer(profile, null));
   await page.locator("#fProfile").selectOption(profile);
@@ -85,14 +66,12 @@ async function pickFoodProfile(page: Page, profile: string): Promise<void> {
   await expect(page.locator("#fDayLabel")).toContainText("Today");
 }
 
-/** Step the Food view back one day for a profile, and wait until that day is in. */
 async function stepFoodBack(page: Page, profile: string): Promise<void> {
   const answered = page.waitForResponse(foodAnswer(profile, daysAgo(1)));
   await page.locator("#fPrev").click();
   await answered;
 }
 
-/** The paths of the API calls a page makes, in order. */
 function trackApi(page: Page): string[] {
   const calls: string[] = [];
   page.on("request", (r) => {
@@ -168,7 +147,7 @@ test.describe("the sign-in form", () => {
     await expect(page.locator("#loginError")).toHaveText(WRONG);
     await expect(page.locator("#login")).toBeVisible();
     await expect(page.locator("#account")).toBeHidden();
-    await expect(page.locator("#views")).toBeVisible(); // the page behind is there, with nothing in it
+    await expect(page.locator("#views")).toBeVisible();
     const cookies = await page.context().cookies();
     expect(cookies.find((c) => c.name === "plan_editor_session")).toBeUndefined();
   });
@@ -299,14 +278,13 @@ test.describe("staying signed in", () => {
     expect(cookie!.httpOnly).toBe(true);
     expect(cookie!.sameSite).toBe("Strict");
     expect(cookie!.path).toBe("/");
-    expect(cookie!.secure).toBe(false); // plain http on 127.0.0.1
+    expect(cookie!.secure).toBe(false);
     expect(await me.evaluate(() => document.cookie)).not.toContain("plan_editor_session");
   });
 
   test("a session that ends while the page is open shows the form, and signing in again returns to the page", async ({ me, profile }) => {
     await openView(me, "plans");
     await expect(me.locator("#filelist")).toBeVisible();
-    // the session is ended on the server (as if signed out in another window)
     await me.context().request.post("/api/logout", { headers: CSRF });
     await me.locator("#vCalendar").click();
     await expect(me.locator("#login")).toBeVisible();
@@ -405,7 +383,7 @@ test.describe("what each login is shown", () => {
     await expect(page.locator("#vWeight")).toBeHidden();
     await expect(page.locator("#vWorkouts")).toBeHidden();
     await expect(page.locator("#views button:visible")).toHaveText(["Today", "Plans", "Calendar", "Food"]);
-    const tab = await page.context().newPage(); // a fresh load of the address, signed in as bob
+    const tab = await page.context().newPage();
     await tab.goto("/#activities");
     await ready(tab);
     await expect(tab.locator("body")).toHaveAttribute("data-view", "today");

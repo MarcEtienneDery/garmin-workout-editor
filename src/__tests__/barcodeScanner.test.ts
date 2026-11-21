@@ -8,7 +8,6 @@ const R = L.map((p) => [...p].map((b) => (b === "0" ? "1" : "0")).join(""));
 const G = R.map((p) => [...p].reverse().join(""));
 const PARITY = ["LLLLLL", "LLGLGG", "LLGGLG", "LLGGGL", "LGLLGG", "LGGLLG", "LGGGLL", "LGLGLG", "LGLGGL", "LGGLGL"];
 
-/** The bars of an EAN-13 (a 12-digit UPC-A is one with a leading 0) or an EAN-8 as modules, the ZXing build having no writer for them. */
 function modules(code: string): boolean[] {
   const digits = [...(code.length === 12 ? `0${code}` : code)].map(Number);
   let bits = "101";
@@ -21,7 +20,6 @@ function modules(code: string): boolean[] {
   return [...bits + "101"].map((b) => b === "1");
 }
 
-/** A barcode as the pixels of a camera frame (RGBA): bars `scale` pixels per module, 60 modules tall, on grey, optionally turned a quarter. */
 function frame(code: string, { scale = 3, width = 640, height = 480, turned = false }: { scale?: number; width?: number; height?: number; turned?: boolean } = {}) {
   const row = modules(code);
   const bars = Array.from({ length: 60 }, () => row);

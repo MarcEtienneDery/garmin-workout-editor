@@ -1,9 +1,3 @@
-/**
- * profileImport.ts — take the profiles of the old `.env.<name>` files into the database, once. Profiles used to be those files
- * (GARMIN_EMAIL, GARMIN_PASSWORD and WEB_PASSWORD in each); they are rows now, and nothing reads the files any more.
- * What the database already holds is never replaced: a login or a web password saved there wins, as it did when the files
- * were still read.
- */
 import * as fs from "fs";
 import * as path from "path";
 import * as dotenv from "dotenv";
@@ -11,9 +5,7 @@ import { SealKeyError, type SqliteStore, isProfileName } from "./store";
 
 export interface ImportedProfile {
   name: string;
-  /** "imported": the file's login was saved; "kept": the database had one already; "none": the file has no Garmin login. */
   garmin: "imported" | "kept" | "none";
-  /** "imported", "kept" (the database had one already) or "none". */
   webPassword: "imported" | "kept" | "none";
 }
 
@@ -26,7 +18,6 @@ const hasLogin = (store: SqliteStore, name: string): boolean => {
   }
 };
 
-/** Import every `.env.<name>` of a directory (`.env.example` and names that are not profile names are skipped). */
 export function importEnvProfiles(store: SqliteStore, dir: string): ImportedProfile[] {
   const imported: ImportedProfile[] = [];
   for (const file of fs.readdirSync(dir).sort()) {

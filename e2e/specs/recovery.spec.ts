@@ -1,13 +1,6 @@
-/**
- * The Recovery view: the readiness of a day with its signals (the Verdict), the day and range controls, the trend charts (the Trends), the
- * table of every stored number and Garmin's raw responses (the Data), and the empty and error states. Reads alice's data (read only) and checks the page
- * against GET /api/wellness, which the suite reads as admin (the oracle). A fresh profile and the admin's view of one cover
- * the states alice does not have.
- */
 import type { APIRequestContext, Locator, Page } from "@playwright/test";
 import { test, expect, openView, loginAs, ADMIN_TOKEN } from "../support/fixtures";
 
-// ── oracle: GET /api/wellness as stored (the shapes the page reads) ──────────────────────────────
 
 interface Signal {
   name: string;
@@ -73,7 +66,6 @@ async function wellness(admin: APIRequestContext, query: string): Promise<Wellne
   return (await res.json()) as Wellness;
 }
 
-// ── how the page words things (the same rules, written out) ─────────────────────────────────────
 
 const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -92,12 +84,9 @@ const hm = (seconds: number | null | undefined) => {
 const BAND_LABEL = { "go-harder": "Go harder", "as-planned": "As planned", "back-off": "Back off", unknown: "Not enough data" } as const;
 const BAND_CLASS = { "go-harder": "go", "as-planned": "plan", "back-off": "back", unknown: "unknown" } as const;
 const SIGNAL_LABEL: Record<string, string> = { hrv: "HRV", restingHr: "Resting heart rate", sleep: "Sleep", bodyBattery: "Body Battery", stress: "Stress yesterday", load: "Training load" };
-/** "stress: no stress figure for yesterday" reads "Stress yesterday: no stress figure for yesterday". */
 const notCounted = (missing: string[]) => "Not counted: " + missing.map((m) => m.replace(/^(\w+): /, (_, k) => `${SIGNAL_LABEL[k] ?? k}: `)).join("; ") + ".";
 
-// ── the page ─────────────────────────────────────────────────────────────────────────────────────
 
-/** The verdict of the day: the card with the gauge, the band and what to do. */
 const card = (page: Page) => page.locator("#rbody .rhero");
 const table = (page: Page) => page.locator("#rbody table.rmetrics");
 const rows = (page: Page) => table(page).locator("tbody tr");
@@ -105,18 +94,15 @@ const chart = (page: Page, title: string) => page.locator("#rbody .rc", { has: p
 const CHART_TITLES = ["Readiness (score)", "HRV overnight (ms)", "Resting heart rate (bpm)", "Breathing (/min)", "Sleep (h)", "Body Battery", "Stress", "Steps", "Intensity minutes"];
 const part = (page: Page, name: "Verdict" | "Trends" | "Data") => page.locator("#rTabs").getByRole("button", { name, exact: true });
 
-/** Opens one of the three parts of the view and waits until it is the one drawn. */
 async function openPart(page: Page, name: "Verdict" | "Trends" | "Data") {
   await part(page, name).click();
   await expect(part(page, name)).toHaveAttribute("aria-pressed", "true");
   await expect(page.locator("#rbody")).toHaveAttribute("data-tab", name.toLowerCase());
 }
-/** The Trends, with their charts drawn. */
 async function openTrends(page: Page) {
   await openPart(page, "Trends");
   await expect(page.locator("#rbody .rcharts")).toBeVisible();
 }
-/** The Data, the table open (it is by default) and, with `raw`, Garmin's responses open too. */
 async function openData(page: Page, raw = false) {
   await openPart(page, "Data");
   await expect(table(page)).toBeVisible();
@@ -127,19 +113,12 @@ async function openData(page: Page, raw = false) {
   }
 }
 
-/** Opens the view and waits for its first answer to be drawn: the day controls do nothing before it, as the person would find them. */
 async function openRecovery(page: Page) {
   await openView(page, "recovery");
   await expect(card(page)).toBeVisible();
 }
 
-/** The table row of a day, by its first cell. */
 const rowOf = (page: Page, day: string) => rows(page).filter({ has: page.locator(`td.day:text-is("${label(day)}")`) });
-/**
- * A column's index in the table, by its header (the second header row names the fields). Some names are in two groups ("Awake" is
- * sleep and breathing): `occurrence` picks which, 0 for the first.
- */
-/** The table as text, read in one go: its field headers and each row's cells by its day label. */
 async function readTable(page: Page): Promise<{ heads: string[]; rows: Map<string, string[]> }> {
   const read = await table(page).evaluate((t) => ({
     heads: [...(t.querySelectorAll("thead tr")[1]?.querySelectorAll("th") ?? [])].map((th) => th.textContent ?? ""),
@@ -147,7 +126,6 @@ async function readTable(page: Page): Promise<{ heads: string[]; rows: Map<strin
   }));
   return { heads: read.heads, rows: new Map(read.rows.map((cells) => [cells[0], cells])) };
 }
-/** One cell of a read table: the day's row, and the column by its header (the nth one of that name). */
 function cellOf(t: { heads: string[]; rows: Map<string, string[]> }, day: string, header: string, occurrence = 0): string {
   const hits = t.heads.flatMap((h, i) => (h === header ? [i] : []));
   expect(hits.length, `a column "${header}"`).toBeGreaterThan(occurrence);
@@ -156,7 +134,6 @@ function cellOf(t: { heads: string[]; rows: Map<string, string[]> }, day: string
   return cells![hits[occurrence]] ?? "";
 }
 
-/** Points a fraction of the way across a chart's plot area (0 to 1): 0.02 is over its first day and 0.98 over its last. */
 async function aim(c: Locator, fraction: number): Promise<{ x: number; y: number }> {
   const over = c.locator("rect.rc-over");
   await over.scrollIntoViewIfNeeded();
@@ -173,14 +150,12 @@ async function click(page: Page, c: Locator, fraction: number) {
   await page.mouse.click(x, y);
 }
 
-/** Picks a day in the date picker and waits for the title of the view to show it. */
 async function pickDay(page: Page, day: string) {
   await page.locator("#rDate").fill(day);
   await expect(page.locator("#rDate")).toHaveValue(day);
   await expect(page.locator("#rDayLabel")).toContainText(label(day));
 }
 
-// ── alice: 45 days stored ─────────────────────────────────────────────────────────────────────────
 
 test.describe("Recovery view, alice (45 days stored, no Garmin login)", () => {
   test("the header button opens the view from Today", async ({ alice, admin }) => {
@@ -231,8 +206,7 @@ test.describe("Recovery view, alice (45 days stored, no Garmin login)", () => {
       if (s.baseline) await expect(row.locator(".base")).toHaveText(s.baseline);
       else await expect(row.locator(".base")).toHaveCount(0);
     }
-    await expect(signals.locator(".nm em")).toHaveText(["COUNTS MOST"]); // the HRV counts twice what the others do
-    // the six signals a full day gives, in the order the model scores them
+    await expect(signals.locator(".nm em")).toHaveText(["COUNTS MOST"]);
     expect(r.signals.map((s) => s.name)).toEqual(["hrv", "restingHr", "sleep", "bodyBattery", "stress", "load"]);
   });
 
@@ -253,7 +227,6 @@ test.describe("Recovery view, alice (45 days stored, no Garmin login)", () => {
   });
 
   test("a day the readiness scores go-harder shows the green band, and says what was not counted", async ({ alice, admin }) => {
-    // the first stored day has no stress figure for the day before and no sessions before it: those two signals are not counted
     const first = await wellness(admin, "days=30");
     const day = first.sync.oldest!;
     const data = await wellness(admin, `date=${day}&days=14`);
@@ -312,7 +285,6 @@ test.describe("Recovery view, alice (45 days stored, no Garmin login)", () => {
   test("▶ steps forward again, and Today goes back to today from any day", async ({ alice, admin }) => {
     const data = await wellness(admin, "days=30");
     await openRecovery(alice);
-    // each press waits for its day to be drawn, as a person pausing between presses does
     await alice.locator("#rPrev").click();
     await expect(alice.locator("#rDate")).toHaveValue(addDays(data.today, -1));
     await alice.locator("#rPrev").click();
@@ -325,7 +297,6 @@ test.describe("Recovery view, alice (45 days stored, no Garmin login)", () => {
     await expect(card(alice)).toContainText("(today)");
   });
 
-  // ◀ and ▶ step from the day asked for, not the day drawn, which trails while an answer is awaited (the first answer is held for 1.5 s here).
   test("two quick presses of ◀ step back two days, even while the first day is still loading", async ({ alice, admin }) => {
     const data = await wellness(admin, "days=30");
     await openRecovery(alice);
@@ -365,7 +336,7 @@ test.describe("Recovery view, alice (45 days stored, no Garmin login)", () => {
 
   test("the range select is with the trends, and sets how many days the charts and the table list: 14, then 30", async ({ alice }) => {
     await openRecovery(alice);
-    await expect(alice.locator("#rRange")).toBeHidden(); // it is the trends' own
+    await expect(alice.locator("#rRange")).toBeHidden();
     await openTrends(alice);
     await expect(alice.locator("#rRange")).toBeVisible();
     await expect(alice.locator("#rbody .rth #rRange")).toHaveCount(1);
@@ -443,7 +414,6 @@ test.describe("Recovery view, alice (45 days stored, no Garmin login)", () => {
     await hover(alice, hrv, 0.98);
     await expect(hrv.locator(".rcr")).toHaveText(reading(last));
     await alice.mouse.move(0, 0);
-    // the pointer has left: the readout is back on the picked day, which is today
     await expect(hrv.locator(".rcr")).toHaveText(reading(last));
     await expect(hrv.locator(".rcr")).toContainText(label(data.today));
   });
@@ -491,7 +461,6 @@ test.describe("Recovery view, alice (45 days stored, no Garmin login)", () => {
     const last = days[days.length - 1];
     await hover(alice, c, 0.98);
     await expect(c.locator(".rcr")).toHaveText(`${label(last.day)}: ${last.score} · ${BAND_LABEL[last.band as keyof typeof BAND_LABEL].toLowerCase()}`);
-    // the first of the charts takes the width of the page, and the others two across
     const widths = await alice.locator("#rbody .rcharts .rc").evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().width)));
     expect(widths[0]).toBeGreaterThan(widths[1] * 1.7);
   });
@@ -504,7 +473,7 @@ test.describe("Recovery view, alice (45 days stored, no Garmin login)", () => {
     await expect(alice.locator("#rbody tr.sel")).toHaveCount(1);
     await rowOf(alice, day).click();
     await expect(alice.locator("#rDate")).toHaveValue(day);
-    await expect(part(alice, "Verdict")).toHaveAttribute("aria-pressed", "true"); // the day opens in the Verdict, where its readiness is
+    await expect(part(alice, "Verdict")).toHaveAttribute("aria-pressed", "true");
     await expect(card(alice)).toContainText(label(day));
     await openData(alice);
     await expect(alice.locator("#rbody tr.sel td.day")).toHaveText(label(day));
@@ -541,7 +510,6 @@ test.describe("Recovery view, alice (45 days stored, no Garmin login)", () => {
     await openRecovery(alice);
     await openData(alice);
     await expect(rows(alice)).toHaveCount(30);
-    // alice's days carry no waking breathing, no lowest breath and no SpO2: every such cell reads as a dash
     expect(data.days.every((d) => d.avgWakingRespiration === null && d.lowRespiration === null && d.lowestSpo2 === null)).toBeTruthy();
     const t = await readTable(alice);
     for (const d of [data.days[0], data.days[15], data.days[data.days.length - 1]]) {
@@ -558,7 +526,6 @@ test.describe("Recovery view, alice (45 days stored, no Garmin login)", () => {
     const raw = alice.locator("#rbody details.rraw");
     await expect(raw).toHaveCount(8);
     await expect(raw.locator("summary b")).toHaveText(["Daily summary", "Sleep", "HRV", "Heart rate", "Stress", "Body Battery", "Respiration", "SpO2"]);
-    // the eight kinds the view lists; the stored weigh-in of the day is the Weight view's to show, not listed here
     const listed = ["summary", "sleep", "hrv", "heart_rate", "stress", "body_battery", "respiration", "spo2"];
     const stored = new Map(data.stored.filter((s) => listed.includes(s.kind)).map((s) => [s.kind, s]));
     expect([...stored.keys()]).toEqual(["summary", "sleep", "hrv"]);
@@ -580,7 +547,6 @@ test.describe("Recovery view, alice (45 days stored, no Garmin login)", () => {
     await summary.locator("summary").click();
     await expect(summary.locator("pre")).toContainText('"totalSteps"');
     await expect(summary.locator("pre")).toHaveText(new RegExp(`"calendarDate": "${data.date}"`));
-    // the page's layout keeps the numbers as they are: the text reads back to exactly what Garmin's response held
     expect(JSON.parse((await summary.locator("pre").textContent()) ?? "null")).toEqual(stored.data);
   });
 
@@ -642,7 +608,6 @@ test.describe("Recovery view, alice (45 days stored, no Garmin login)", () => {
   });
 });
 
-// ── a fresh profile: nothing stored, so no Recovery view ─────────────────────────────────────────
 
 test.describe("Recovery view, a fresh profile", () => {
   test("a fresh profile has no Recovery button", async ({ me }) => {
@@ -658,7 +623,6 @@ test.describe("Recovery view, a fresh profile", () => {
   });
 });
 
-// ── the admin reads every profile: a profile with nothing stored, and back to alice ──────────────
 
 test.describe("Recovery view, as the admin", () => {
   test("a profile with nothing stored says so, and offers no Sync", async ({ page, profile }) => {
@@ -688,7 +652,6 @@ test.describe("Recovery view, as the admin", () => {
   });
 });
 
-// ── failures: the view says why, and keeps what it had ─────────────────────────────────────────
 
 test.describe("Recovery view, when the server fails", () => {
   test("a failed load says why, in the view and in the note", async ({ alice }) => {
@@ -712,7 +675,7 @@ test.describe("Recovery view, when the server fails", () => {
     await alice.locator("#rPrev").click();
     await expect(alice.locator("#rNote")).toHaveText("The database is busy");
     await expect(alice.locator("#rNote")).toHaveClass(/err/);
-    await expect(card(alice)).toContainText(label(data.today)); // what was on screen stays
+    await expect(card(alice)).toContainText(label(data.today));
     await expect(alice.locator("#rDate")).toHaveValue(data.today);
     failing = false;
     await alice.locator("#rPrev").click();

@@ -1,18 +1,10 @@
-/**
- * Moving a workout to another day: dragging its chip in the Calendar (a drop asks before it moves anything), Move… in the Calendar's
- * day panel, and the Move menu of the days in a workout's picture (in the Plans view, and in the Workouts view with Garmin's answers
- * stubbed: the suite has no Garmin). A move saves the plan file at once and says so in a toast with Undo. Every test makes its own profile and plan, dated in 2031 so
- * that no other spec's data lands on its months.
- */
 import type { APIRequestContext, Locator, Page } from "@playwright/test";
 import { test, expect, openView, monthView, type Profile } from "../support/fixtures";
 
-// The Monaco editor of the page: the top-level `editor` of the page's own script.
 declare const editor: any;
 
 test.describe.configure({ timeout: 60_000 });
 
-// ── helpers ──────────────────────────────────────────────────────────────
 
 const longLabel = (day: string) => new Intl.DateTimeFormat("en-CA", { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${day}T00:00:00Z`));
 const monthTitle = (day: string) => new Intl.DateTimeFormat("en-CA", { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${day}T00:00:00Z`));
@@ -27,7 +19,6 @@ async function box(locator: Locator) {
   return b;
 }
 
-/** A plan file of the profile's, made through the API; its name carries the profile's (plan files share one folder). */
 async function addPlan(profile: Profile, suffix: string, workouts: object[]): Promise<{ path: string; name: string }> {
   const name = `${profile.name}-${suffix}`, path = `workout-plans/${name}.json`;
   const res = await profile.api.put(enc(path), { data: { text: JSON.stringify({ weekStart: "2031-09-01", weekEnd: "2031-09-07", workouts }, null, 2), create: true } });
@@ -35,24 +26,21 @@ async function addPlan(profile: Profile, suffix: string, workouts: object[]): Pr
   return { path, name };
 }
 
-/** The scheduledDate of each workout of a plan file, as saved. */
 async function savedDates(api: APIRequestContext, path: string): Promise<unknown[]> {
   const res = await api.get(enc(path));
   expect(res.ok()).toBeTruthy();
   return JSON.parse((await res.json()).text).workouts.map((w: any) => w.scheduledDate);
 }
 
-/** Open the Calendar on the month of the profile's plan, by its row in the legend; `mode` is pressed first. */
 async function openOnPlan(page: Page, plan: string, month: string, mode?: "workouts") {
   await monthView(page);
   await openView(page, "calendar");
   await expect(page.locator("#cNote")).not.toContainText("Loading", { timeout: 20_000 });
-  await page.locator("#cLegend .citem", { hasText: plan }).click(); // the plans' legend is not shown in Workouts mode
+  await page.locator("#cLegend .citem", { hasText: plan }).click();
   await expect(page.locator("#cTitle")).toHaveText(monthTitle(month));
   if (mode) await page.locator(`#cModes button[data-mode=${mode}]`).click();
 }
 
-/** How many chips named `name` sit in the column of `day`. */
 async function chipsOnDay(page: Page, day: string, name: string): Promise<number> {
   return page.evaluate(
     ({ label, name }) => {
@@ -68,7 +56,6 @@ async function chipsOnDay(page: Page, day: string, name: string): Promise<number
   );
 }
 
-/** The chip named `name` on `day`. */
 async function chipOn(page: Page, day: string, name: string): Promise<Locator> {
   const chips = weekOf(page, day).getByRole("button", { name, exact: true });
   const cell = await box(cellOf(page, day));
@@ -79,7 +66,6 @@ async function chipOn(page: Page, day: string, name: string): Promise<Locator> {
   throw new Error(`no chip ${name} on ${day}`);
 }
 
-/** Press the mouse on `from`, move it in steps as a hand does, and let go over `to` (a locator, or a point). */
 async function dragTo(page: Page, from: Locator, to: Locator | { x: number; y: number }, { wait = 0 } = {}) {
   const a = await box(from);
   const b = "x" in to ? { x: to.x, y: to.y, width: 0, height: 0 } : await box(to);
@@ -87,20 +73,18 @@ async function dragTo(page: Page, from: Locator, to: Locator | { x: number; y: n
   await page.mouse.down();
   await page.mouse.move(a.x + a.width / 2 + 12, a.y + a.height / 2 + 4, { steps: 3 });
   await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2, { steps: 10 });
-  if (wait) await page.waitForTimeout(wait); // held still there: over ◀ or ▶ the month turns
+  if (wait) await page.waitForTimeout(wait);
   await page.mouse.up();
 }
 
 const toast = (page: Page) => page.locator("#toast");
 
-/** Answer the question a drop asks: Move, or Cancel. */
 async function answerDrop(page: Page, press: "Move" | "Cancel" = "Move") {
   await expect(page.locator("#dlg")).toBeVisible();
   await page.locator(press === "Move" ? "#dlgOk" : "#dlgCancel").click();
   await expect(page.locator("#dlg")).toBeHidden();
 }
 
-// ── dragging in the Calendar ─────────────────────────────────────────────
 
 test.describe("dragging a workout in the Calendar", () => {
   test("a chip dropped on another day asks, then moves the workout there and saves the plan; Undo moves it back", async ({ me, profile }) => {
@@ -109,7 +93,7 @@ test.describe("dragging a workout in the Calendar", () => {
     const moved = me.waitForRequest((r) => r.url().endsWith("/api/plans/move"));
     await dragTo(me, await chipOn(me, "2031-09-03", "Morning run"), cellOf(me, "2031-09-05"));
     await expect(me.locator("#dlgTitle")).toHaveText("Move Morning run?");
-    await expect(me.locator("#dlgText")).toHaveText(`From ${longLabel("2031-09-03")} to ${longLabel("2031-09-05")}.`); // not on Garmin: Garmin is not mentioned
+    await expect(me.locator("#dlgText")).toHaveText(`From ${longLabel("2031-09-03")} to ${longLabel("2031-09-05")}.`);
     await expect(me.locator("#dlgOk")).toHaveText("Move");
     await expect(me.locator("#dlgOk")).toBeFocused();
     await answerDrop(me);
@@ -117,7 +101,7 @@ test.describe("dragging a workout in the Calendar", () => {
     await expect(toast(me)).toContainText("Moved Morning run to");
     await expect.poll(() => chipsOnDay(me, "2031-09-05", "Morning run")).toBe(1);
     expect(await chipsOnDay(me, "2031-09-03", "Morning run")).toBe(0);
-    await expect(me.locator("#cDayTitle")).toHaveText(longLabel("2031-09-05")); // the day it went to is the one shown
+    await expect(me.locator("#cDayTitle")).toHaveText(longLabel("2031-09-05"));
     expect(await savedDates(profile.api, path)).toEqual(["2031-09-05"]);
 
     await toast(me).getByRole("button", { name: "Undo" }).click();
@@ -179,13 +163,13 @@ test.describe("dragging a workout in the Calendar", () => {
     await me.mouse.move(a.x + a.width / 2, a.y + a.height / 2);
     await me.mouse.down();
     await me.mouse.move(target.x + target.width / 2, target.y + target.height / 2, { steps: 10 });
-    await expect(cellOf(me, "2031-09-05")).toHaveClass(/\bdrop\b/); // the day under it is lit
+    await expect(cellOf(me, "2031-09-05")).toHaveClass(/\bdrop\b/);
     await me.keyboard.press("Escape");
     await expect(me.locator(".cghost")).toHaveCount(0);
     await me.mouse.up();
     await expect(cellOf(me, "2031-09-05")).not.toHaveClass(/\bdrop\b/);
     expect(await chipsOnDay(me, "2031-09-03", "Morning run")).toBe(1);
-    await expect(me.locator("body")).toHaveAttribute("data-view", "calendar"); // a drag is not a click: the plan is not opened
+    await expect(me.locator("body")).toHaveAttribute("data-view", "calendar");
     await expect(me.locator("#dlg")).toBeHidden();
     expect(sent).toBe(0);
     expect(await savedDates(profile.api, path)).toEqual(["2031-09-03"]);
@@ -219,7 +203,7 @@ test.describe("dragging a workout in the Calendar", () => {
     await me.mouse.down();
     await me.mouse.move(next.x + next.width / 2, next.y + next.height / 2, { steps: 10 });
     await expect(me.locator("#cTitle")).toHaveText(monthTitle("2031-10-01"));
-    const target = await box(cellOf(me, "2031-10-08")); // the month has turned once: move off the arrow before it turns again
+    const target = await box(cellOf(me, "2031-10-08"));
     await me.mouse.move(target.x + target.width / 2, target.y + target.height / 2, { steps: 4 });
     await expect(me.locator("#cTitle")).toHaveText(monthTitle("2031-10-01"));
     await me.mouse.up();
@@ -233,7 +217,6 @@ test.describe("dragging a workout in the Calendar", () => {
   test("a move the plan no longer allows is refused, and the calendar shows the plan as it is", async ({ me, profile }) => {
     const { path, name } = await addPlan(profile, "stale", [{ workoutName: "Morning run", workoutType: "running", scheduledDate: "2031-09-03" }]);
     await openOnPlan(me, name, "2031-09-01");
-    // changed elsewhere since the page read it: the run is on Thursday now
     const doc = await (await profile.api.get(enc(path))).json();
     const res = await profile.api.put(enc(path), { data: { text: JSON.stringify({ weekStart: "2031-09-01", weekEnd: "2031-09-07", workouts: [{ workoutName: "Morning run", workoutType: "running", scheduledDate: "2031-09-04" }] }), version: doc.version } });
     expect(res.ok()).toBeTruthy();
@@ -246,7 +229,6 @@ test.describe("dragging a workout in the Calendar", () => {
   });
 });
 
-// ── Move… in the day panel ───────────────────────────────────────────────
 
 test.describe("Move… in the Calendar's day panel", () => {
   test("offers the day before, the day after and a week later, and moves the workout to the one picked", async ({ me, profile }) => {
@@ -263,7 +245,6 @@ test.describe("Move… in the Calendar's day panel", () => {
     await expect(me.locator("#mvNext")).toHaveText(`${short("2031-09-04")} ▶`);
     await expect(me.locator("#mvWeek")).toHaveText(`${short("2031-09-10")} (+1 week)`);
     await expect(me.locator("#mvNext")).toBeFocused();
-    // the menu sits by the button it came from
     const [b, m] = await Promise.all([box(row.getByRole("button", { name: "Move…" })), box(menu)]);
     expect(Math.abs(m.y - (b.y + b.height + 4)) < 2 || Math.abs(m.y + m.height - (b.y - 4)) < 2).toBe(true);
 
@@ -283,7 +264,7 @@ test.describe("Move… in the Calendar's day panel", () => {
     await move.click();
     await me.keyboard.press("Escape");
     await expect(me.locator("#moveMenu")).toBeHidden();
-    await expect(move).toBeFocused(); // back on the button it came from
+    await expect(move).toBeFocused();
     await move.click();
     await me.locator("#cTitle").click();
     await expect(me.locator("#moveMenu")).toBeHidden();
@@ -308,13 +289,10 @@ test.describe("Move… in the Calendar's day panel", () => {
   });
 });
 
-// ── the days in a workout's picture ──────────────────────────────────────
 
 test.describe("the Move menu of a workout's days in the Plans view", () => {
-  // the days of a workout's picture in the outline, which shows it with JSON chosen (the form's days are fields of the plan)
   test.use({ editMode: "json" });
 
-  /** The plan opened from its chip, on the outline with the workout's picture open. */
   async function openPicture(page: Page, plan: string, day: string, workout: string) {
     await openOnPlan(page, plan, "2031-09-01");
     await (await chipOn(page, day, workout)).click();
@@ -334,7 +312,6 @@ test.describe("the Move menu of a workout's days in the Plans view", () => {
     await me.locator("#mvNext").click();
     await expect(toast(me)).toContainText("Moved Long run to");
     expect(await savedDates(profile.api, path)).toEqual([["2031-09-07", "2031-09-15"]]);
-    // the editor holds the plan as saved: nothing to save, and the picture shows the new day
     await expect(me.locator("#save")).toBeDisabled();
     await expect(row.getByRole("button", { name: `Move ${longLabel("2031-09-15")} to another day` })).toBeVisible();
     await expect.poll(() => me.evaluate(() => editor.getValue())).toContain('"2031-09-15"');
@@ -348,7 +325,6 @@ test.describe("the Move menu of a workout's days in the Plans view", () => {
   test("a plan with unsaved changes is saved first, once asked; Cancel moves nothing", async ({ me, profile }) => {
     const { path, name } = await addPlan(profile, "unsaved", [{ workoutName: "Morning run", workoutType: "running", scheduledDate: "2031-09-03" }, { workoutName: "Swim", workoutType: "swimming", scheduledDate: "2031-09-04" }]);
     const row = await openPicture(me, name, "2031-09-03", "Morning run");
-    // an unsaved change: Duplicate the swim in the outline
     await me.locator("#outline .row[data-name='Swim'] button.more").click();
     await me.locator("#pmenu").getByRole("menuitem", { name: "Duplicate" }).click();
     await expect(me.locator("#save")).toBeEnabled();
@@ -365,7 +341,7 @@ test.describe("the Move menu of a workout's days in the Plans view", () => {
     await me.locator("#mvNext").click();
     await me.locator("#dlgOk").click();
     await expect(toast(me)).toContainText("Moved Morning run to");
-    expect(await savedDates(profile.api, path)).toEqual(["2031-09-04", "2031-09-04", "2031-09-04"]); // the copy of the swim was saved with it
+    expect(await savedDates(profile.api, path)).toEqual(["2031-09-04", "2031-09-04", "2031-09-04"]);
     await expect(me.locator("#save")).toBeDisabled();
   });
 });
@@ -374,7 +350,6 @@ test.describe("the Move menu of a workout's days in the Workouts view", () => {
   test("lists the days the plans put the workout on, and moves one in the plan, asking Garmin to follow", async ({ me, profile }) => {
     const plan = { workoutName: "Morning run", workoutType: "running", workoutId: 4242, scheduledDate: ["2031-09-03", "2031-09-10"] };
     const { path } = await addPlan(profile, "garmin", [plan]);
-    // the suite has no Garmin: the page is told this profile has one, and Garmin's answers come from the plan file as it stands
     const entry = async () => {
       const doc = await (await profile.api.get(enc(path))).json();
       return { path, index: 0, version: doc.version, workout: JSON.parse(doc.text).workouts[0], differences: [] };
@@ -399,7 +374,6 @@ test.describe("the Move menu of a workout's days in the Workouts view", () => {
     await detail.getByRole("button", { name: `Move ${longLabel("2031-09-10")} to another day` }).click();
     await me.locator("#mvPrev").click();
     expect((await moved).postDataJSON()).toEqual(expect.objectContaining({ plans: [{ path, index: 0 }], workoutName: "Morning run", from: "2031-09-10", to: "2031-09-09", garmin: true, confirm: true, profile: profile.name }));
-    // the real server has no Garmin login for the profile: the plan moves, and Garmin's calendar is not mentioned
     await expect(toast(me)).toHaveText(`Moved Morning run to ${short("2031-09-09")}.Undo`);
     expect(await savedDates(profile.api, path)).toEqual([["2031-09-03", "2031-09-09"]]);
     await expect(detail.getByRole("button", { name: `Move ${longLabel("2031-09-09")} to another day` })).toBeVisible();
@@ -419,7 +393,6 @@ test.describe("the Move menu of a workout's days in the Workouts view", () => {
   test("says when Garmin's calendar moved too, or why it did not", async ({ me, profile }) => {
     const { path, name } = await addPlan(profile, "said", [{ workoutName: "Morning run", workoutType: "running", workoutId: 4242, scheduledDate: "2031-09-03" }]);
     const answers = [{ state: "moved" }, { state: "not-scheduled" }, { state: "failed", reason: "Garmin said 500" }];
-    // the suite has no Garmin: the page is told this profile has one, and Garmin's part of each answer is made up
     await me.route("**/api/garmin", async (route) => {
       const info = await (await route.fetch()).json();
       await route.fulfill({ json: { ...info, enabled: true, connected: [profile.name], profileInfo: { [profile.name]: { ...info.profileInfo[profile.name], garmin: true } } } });
@@ -431,7 +404,7 @@ test.describe("the Move menu of a workout's days in the Workouts view", () => {
     await openOnPlan(me, name, "2031-09-01");
     const short = (day: string) => new Intl.DateTimeFormat("en-CA", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(`${day}T00:00:00Z`));
     await dragTo(me, await chipOn(me, "2031-09-03", "Morning run"), cellOf(me, "2031-09-04"));
-    await expect(me.locator("#dlgText")).toContainText(`If Garmin's calendar has it on ${longLabel("2031-09-03")}, it moves there too.`); // on Garmin: the question says so
+    await expect(me.locator("#dlgText")).toContainText(`If Garmin's calendar has it on ${longLabel("2031-09-03")}, it moves there too.`);
     await answerDrop(me);
     await expect(toast(me)).toContainText(`Moved Morning run to ${short("2031-09-04")}, on Garmin's calendar too.`);
     await expect.poll(() => chipsOnDay(me, "2031-09-04", "Morning run")).toBe(1);

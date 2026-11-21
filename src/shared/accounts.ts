@@ -1,14 +1,8 @@
-/**
- * accounts.ts — what the Settings view does with a profile's logins: the Garmin login and the Renpho login with its sync
- * settings (both optional, kept in the database), and the password of the profile's own sign-in to the web editor (which is
- * not optional). What it tells a browser never includes a password, only that one is set.
- */
 import { SETTING_FIELDS, getGoals } from "./nutritionGoals";
 import { garminLogin } from "./profileLoader";
 import { INTERVAL_HOURS, InviteError, type Invite, MAX_INVITE_USES, MAX_NOTE, MAX_PROFILE_NAME, type Measurement, type Prefs, type RenphoSettings, SealKeyError, type SqliteStore, WEIGHT_UNITS, isProfileName, normalizeCode, sealing } from "./store";
 import { isRealDay, localToday } from "./wellnessSync";
 
-/** A request the person can fix: the message is for them. */
 export class SettingsError extends Error {}
 
 const EMAIL = /^\S+@\S+\.\S+$/;
@@ -20,10 +14,8 @@ function checkEmail(email: unknown): string {
   return value;
 }
 
-// ── Garmin ──
 
 export interface GarminAccount {
-  /** A Garmin login is saved: the profile can sync and send workouts. Without one the app works without Garmin. */
   connected: boolean;
   email: string | null;
   hasPassword: boolean;
@@ -39,7 +31,6 @@ export function garminAccount(profile: string): GarminAccount & { error?: string
   }
 }
 
-/** The Garmin login saved now, or null (also when it is encrypted and cannot be read). */
 function savedLogin(profile: string) {
   try {
     return garminLogin(profile);
@@ -48,7 +39,6 @@ function savedLogin(profile: string) {
   }
 }
 
-/** Save the Garmin login. A blank password keeps the one saved; the first save needs one. */
 export function saveGarminLogin(store: SqliteStore, profile: string, input: { email?: unknown; password?: unknown }): void {
   const email = checkEmail(input.email);
   const typed = typeof input.password === "string" ? input.password : "";
@@ -56,13 +46,9 @@ export function saveGarminLogin(store: SqliteStore, profile: string, input: { em
   const password = typed || (before && before.email === email ? before.password : "");
   if (!password) throw new SettingsError("Enter the password.");
   store.credentials.put(profile, "garmin", email, password);
-  if (!before || before.email !== email || before.password !== password) { store.tokens.delete(profile); store.limits.clear(profile); } // the session that was open belongs to the old login: the next sign-in, and the test, must try this one
+  if (!before || before.email !== email || before.password !== password) { store.tokens.delete(profile); store.limits.clear(profile); }
 }
 
-/**
- * Forget the Garmin login and its session. What was synced stays, and the profile goes on without Garmin: uploading weigh-ins to
- * it is switched off, as there is nothing to upload to, and the error or wait the last sync left is forgotten, as none will run.
- */
 export function removeGarminLogin(store: SqliteStore, profile: string, now = Date.now()): void {
   store.credentials.delete(profile, "garmin");
   store.tokens.delete(profile);
@@ -75,7 +61,6 @@ export function removeGarminLogin(store: SqliteStore, profile: string, now = Dat
   }
 }
 
-/** Whether a Garmin login is saved (one that cannot be decrypted is there). */
 function hasGarminLogin(store: SqliteStore, profile: string): boolean {
   try {
     return store.credentials.get(profile, "garmin") !== null;
@@ -85,13 +70,7 @@ function hasGarminLogin(store: SqliteStore, profile: string): boolean {
   }
 }
 
-// ── Web sign-in ──
 
-/**
- * The password of a profile's own sign-in to the web editor, typed twice. It is mandatory (a profile has one from the day it is made,
- * and Settings cannot remove it), so a short one, an empty one and two fields that differ are all refused. The words are the ones the
- * page uses before it asks (settingsModel.js passwordProblem), so the person reads the same thing either way.
- */
 export function checkWebPassword(password: unknown, confirm: unknown): string {
   const typed = typeof password === "string" ? password : "";
   if (!typed) throw new SettingsError("Enter a password.");
@@ -100,12 +79,10 @@ export function checkWebPassword(password: unknown, confirm: unknown): string {
   return typed;
 }
 
-/** Set or change the password the profile signs in to the web editor with (the admin token needs none of this). */
 export function saveWebPassword(store: SqliteStore, profile: string, input: { password?: unknown; confirm?: unknown }): void {
   store.profiles.setWebPassword(profile, checkWebPassword(input.password, input.confirm));
 }
 
-/** Add a profile: a name and its web sign-in password, typed twice. Garmin and Renpho are optional and connected afterwards. */
 export function createProfile(store: SqliteStore, input: { name?: unknown; password?: unknown; confirm?: unknown }): string {
   const name = typeof input.name === "string" ? input.name.trim() : "";
   if (!isProfileName(name)) throw new SettingsError(`A profile name is letters, numbers, hyphens and underscores, at most ${MAX_PROFILE_NAME}.`);
@@ -114,13 +91,7 @@ export function createProfile(store: SqliteStore, input: { name?: unknown; passw
   return name;
 }
 
-// ── MCP token ──
 
-/**
- * The address the MCP server is reached at from outside (MCP_PUBLIC_URL, set on the web service), as the Settings view shows it in the
- * lines that set an assistant up: an http(s) address without a trailing slash, and without a trailing /mcp (the lines add it). Null when
- * it is not set or is not an address, and the lines then carry a placeholder for the host.
- */
 export function publicMcpUrl(env: NodeJS.ProcessEnv = process.env): string | null {
   const text = (env.MCP_PUBLIC_URL ?? "").trim();
   if (!text) return null;
@@ -133,27 +104,18 @@ export function publicMcpUrl(env: NodeJS.ProcessEnv = process.env): string | nul
   }
 }
 
-/** Make the profile's MCP token (replacing the one it had). The token comes back here, once: the database keeps only a hash of it. */
 export const createMcpToken = (store: SqliteStore, profile: string, now = Date.now()): string => store.mcpTokens.create(profile, now);
 
-/** The MCP half of the Settings view: where the server is, and whether the profile has a token (never the token). */
 export const mcpView = (store: SqliteStore, profile: string) => ({ url: publicMcpUrl(), token: store.mcpTokens.info(profile) });
 
-// ── Invites and sign-up ──
 
-/** A name is taken whatever its case: "med" next to "MED" would be two folders the lookups cannot tell apart. */
 export const profileTaken = (store: SqliteStore, name: string): string | undefined => {
   const wanted = name.trim().toLowerCase();
   return wanted ? store.profiles.names().find((p) => p.toLowerCase() === wanted) : undefined;
 };
 
-/** The days an invite made from the Settings view can last: the choices, and the longest. */
 export const MAX_INVITE_DAYS = 365;
 
-/**
- * Make an invite code: a note for the admin (who it is for), how many people may use it (1 to MAX_INVITE_USES, default 1) and the days it
- * works (1 to MAX_INVITE_DAYS; null or 0 for never expiring, default 7).
- */
 export function createInvite(store: SqliteStore, input: { note?: unknown; maxUses?: unknown; days?: unknown }, now = Date.now()): string {
   const note = typeof input.note === "string" ? input.note.trim() : "";
   if (note.length > MAX_NOTE) throw new SettingsError(`The note is at most ${MAX_NOTE} characters.`);
@@ -169,14 +131,8 @@ export function createInvite(store: SqliteStore, input: { note?: unknown; maxUse
   }
 }
 
-/** What the Settings view lists for the admin: every invite with its state and the profiles it made. */
 export const inviteList = (store: SqliteStore, now = Date.now()): Invite[] => store.invites.list(now);
 
-/**
- * A person makes their own profile with an invite code: the code, a name, and a password typed twice. The code is checked first (an
- * InviteError says what is wrong with it), then the name and password (a SettingsError), and the profile and the use of the code
- * are written together, so a code with one use left makes one profile. The profile is marked to show the welcome flow at its first sign-in.
- */
 export function signUp(store: SqliteStore, input: { code?: unknown; name?: unknown; password?: unknown; confirm?: unknown }, now = Date.now()): string {
   const status = store.invites.check(input.code, now);
   if (status !== "active") throw new InviteError(status);
@@ -193,7 +149,6 @@ export function signUp(store: SqliteStore, input: { code?: unknown; name?: unkno
   });
 }
 
-// ── Renpho ──
 
 export interface RenphoSettingsInput {
   email?: unknown;
@@ -207,7 +162,6 @@ export interface RenphoSettingsInput {
 
 const AREA = /^[A-Za-z]{2,3}$/;
 
-/** Save the Renpho login and settings (each given field; a blank password keeps the one saved). */
 export function saveRenpho(store: SqliteStore, profile: string, input: RenphoSettingsInput, now = Date.now()): void {
   const saved = store.credentials.get(profile, "renpho");
   const change: Partial<RenphoSettings> = {};
@@ -229,7 +183,6 @@ export function saveRenpho(store: SqliteStore, profile: string, input: RenphoSet
   if (input.pushEnabled !== undefined) {
     change.pushEnabled = input.pushEnabled === true;
     if (change.pushEnabled && !hasGarminLogin(store, profile)) throw new SettingsError("Connect Garmin first: the weigh-ins are uploaded to a Garmin account.");
-    // switching the upload on starts from today, unless a day was chosen: the scale's whole history is not sent by surprise
     if (change.pushEnabled && change.pushSince === undefined && !store.renpho.settings(profile).pushSince) change.pushSince = localToday(store, profile, now);
   }
   const wantsLogin = input.email !== undefined || (typeof input.password === "string" && input.password !== "");
@@ -239,7 +192,7 @@ export function saveRenpho(store: SqliteStore, profile: string, input: RenphoSet
     const password = typed || (saved && saved.email === email ? saved.password : "");
     if (!password) throw new SettingsError("Enter the password.");
     store.credentials.put(profile, "renpho", email, password, now);
-    store.renpho.saveState(profile, { error: null, errorKind: null, nextRunAt: null }, now); // a new login is worth another try
+    store.renpho.saveState(profile, { error: null, errorKind: null, nextRunAt: null }, now);
     store.renpho.log(profile, "info", "Renpho login saved.", now);
   }
   if ((change.fetchEnabled || change.pushEnabled) && !store.credentials.get(profile, "renpho")) throw new SettingsError("Save the Renpho login first.");
@@ -248,7 +201,6 @@ export function saveRenpho(store: SqliteStore, profile: string, input: RenphoSet
   if (change.pushEnabled !== undefined) store.renpho.log(profile, "info", change.pushEnabled ? `Upload to Garmin switched on${change.pushSince ? ` (weigh-ins from ${change.pushSince})` : ""}.` : "Upload to Garmin switched off.", now);
 }
 
-/** Forget the Renpho login and switch the sync off; the weigh-ins already kept stay. */
 export function removeRenpho(store: SqliteStore, profile: string, now = Date.now()): void {
   store.credentials.delete(profile, "renpho");
   store.renpho.saveSettings(profile, { fetchEnabled: false, pushEnabled: false });
@@ -256,7 +208,6 @@ export function removeRenpho(store: SqliteStore, profile: string, now = Date.now
   store.renpho.log(profile, "info", "Renpho login removed; the sync is off.", now);
 }
 
-/** The numbers of a weigh-in the Settings view lists, as Renpho sent them (to check against the app). */
 const SHOWN = ["weight", "bodyfat", "water", "muscle", "bone", "bmi", "visfat", "bodyage", "bmr", "weightUnit"] as const;
 
 const slim = (m: Measurement) => ({
@@ -268,7 +219,6 @@ const slim = (m: Measurement) => ({
   pushError: m.pushError,
 });
 
-/** The Renpho half of the Settings view: the login (never its password), the settings, how the runs go, the weigh-ins kept and the log. */
 export function renphoView(store: SqliteStore, profile: string, now = Date.now()) {
   let account: { email: string; hasPassword: true } | null = null, error: string | undefined;
   try {
@@ -292,9 +242,7 @@ export function renphoView(store: SqliteStore, profile: string, now = Date.now()
   };
 }
 
-// ── Preferences ──
 
-/** Change some of the profile's preferences (a key left out stays): weightUnit "lb" or "kg". */
 export function savePrefs(store: SqliteStore, profile: string, input: { weightUnit?: unknown }): Prefs {
   const prefs = store.prefs.get(profile);
   if (input.weightUnit !== undefined) {
@@ -305,17 +253,14 @@ export function savePrefs(store: SqliteStore, profile: string, input: { weightUn
   return prefs;
 }
 
-/** Everything the Settings view shows for a profile. */
 export function settingsView(store: SqliteStore, profile: string, now = Date.now()) {
   return {
     profile,
-    garmin: { ...garminAccount(profile), check: store.credentials.lastCheck(profile, "garmin") }, // check: what the last test of the login said, and when (null: never, or the login changed since)
+    garmin: { ...garminAccount(profile), check: store.credentials.lastCheck(profile, "garmin") },
     web: { hasPassword: store.profiles.webPasswordHash(profile) !== null },
-    // the daily food goals by key (with `kcalBurnPct`, the share of the burned calories the calorie goal adds), and what each can be set for (label, unit, whether it is a floor, a ceiling, an aim or the burn)
     goals: { values: getGoals(store, profile), fields: SETTING_FIELDS.map(({ max: _max, ...field }) => field) },
     renpho: renphoView(store, profile, now),
     mcp: mcpView(store, profile),
-    // whether the saved passwords are encrypted (CREDENTIALS_KEY), and how many are not
     encryption: { enabled: sealing(), plain: store.credentials.plainCount() },
   };
 }

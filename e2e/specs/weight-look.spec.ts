@@ -1,10 +1,3 @@
-/**
- * The Weight view in its new look: the week of the day shown, the verdict of the line through the weigh-ins (and the goal against it), the chart,
- * the weeks one by one, the calories burned and eaten, the Body part (only when the scale measured a body fat), the Data part, the empty states,
- * the goal set on the Weight tab and in Settings, both themes, and the sizes of the controls. alice (a weigh-in every third day for 45 days, 5 days
- * of food, no Garmin login) is read only: the states she does not have are made by changing her answer on its way to the page (`stub`), and the one
- * test that sets a goal on her takes it off again.
- */
 import { test, expect, openView, loginAs, daysAgo, today, mondayOf, PASSWORD, ADMIN_TOKEN, type APIRequestContext, type Page, chooseTheme, toggleTheme } from "../support/fixtures";
 
 const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -32,16 +25,14 @@ async function oracle(admin: APIRequestContext, query = ""): Promise<Weight> {
   return (await res.json()) as Weight;
 }
 
-/** alice's GET /api/weight as the page gets it, after `edit` has changed it. Call before the page is opened. */
 async function stub(page: Page, edit: (json: any) => void): Promise<void> {
   await page.route(/\/api\/weight\?/, async (route) => {
     const response = await route.fetch(), json = await response.json();
-    json.goalKg = null; // the goal the one test that sets one for real has on alice is not part of the states made here
+    json.goalKg = null;
     edit(json);
     await route.fulfill({ response, json });
   });
 }
-/** The weigh-ins of the answer, replaced: `kg(n)` is the weight of the n-th weigh-in (oldest first), `fat(n)` its body fat. */
 function weighIns(json: any, kg: (n: number) => number, fat: ((n: number) => number | null) | null = null): void {
   let n = 0;
   for (const d of json.days as Day[]) {
@@ -86,7 +77,7 @@ test.describe("the parts and the week", () => {
     await openWeight(alice);
     await expect(alice.locator("#bTabs button:visible")).toHaveText(["Weight", "Data"]);
     await expect(tab(alice, "Body")).toBeHidden();
-    await expect(alice.locator("#bbody .bsnap")).toHaveCount(0); // nor its three lines in the Weight part
+    await expect(alice.locator("#bbody .bsnap")).toHaveCount(0);
     await expect(alice.locator("#bbody .bweeks")).toBeVisible();
   });
 
@@ -102,7 +93,7 @@ test.describe("the parts and the week", () => {
       await expect(chip(alice, day).locator(".fwk")).toHaveText(d && d.weightKg !== null && !future ? fmt(d.weightKg * LB_PER_KG) : "–");
       if (future) await expect(chip(alice, day)).toBeDisabled();
     }
-    await expect(chip(alice, today())).toHaveAttribute("aria-current", "date"); // alice is weighed today
+    await expect(chip(alice, today())).toHaveAttribute("aria-current", "date");
     await expect(alice.locator("#bstrip [aria-current]")).toHaveCount(1);
     await expect(chip(alice, today())).toHaveClass(/\btoday\b/);
   });
@@ -200,7 +191,7 @@ test.describe("where the weight is going", () => {
     await expect(hero(alice).locator(".brate")).toHaveText("needs 3 weigh-ins over a week or more");
     await expect(hero(alice).locator(".bsum")).toHaveText("2 weigh-ins so far. A trend needs 3, spread over at least a week.");
     await expect(hero(alice).locator(".bkv > div").nth(1)).toContainText("no line yet");
-    await expect(alice.locator("#bbody .rc-ref")).toHaveCount(0); // no line is drawn for what is not a trend
+    await expect(alice.locator("#bbody .rc-ref")).toHaveCount(0);
     await expect(alice.locator("#bbody .rc-band")).toHaveCount(0);
   });
 
@@ -240,7 +231,7 @@ test.describe("where the weight is going", () => {
 });
 
 test.describe("the goal, typed in the unit", () => {
-  test.describe.configure({ mode: "serial" }); // both set a goal on alice, and take it off again
+  test.describe.configure({ mode: "serial" });
   test("is set on the Weight tab in pounds, kept in kilograms, changed and removed", async ({ alice, admin }) => {
     test.setTimeout(90_000);
     const set = async (kg: number | null) => expect((await admin.post("/api/settings/goals", { data: { profile: "alice", action: "save", goals: { weightKg: kg } } })).ok()).toBeTruthy();
@@ -255,7 +246,7 @@ test.describe("the goal, typed in the unit", () => {
       expect((await oracle(admin)).goalKg).toBeCloseTo(176.4 / LB_PER_KG, 1);
       await expect(alice.locator("#bbody .rc-goal")).toHaveCount(1);
 
-      await unitButton(alice, "kg").click(); // the same goal in the other unit
+      await unitButton(alice, "kg").click();
       await expect(hero(alice).locator(".bgoal .bnote")).toContainText(/Goal 80\.0 kg/);
       await hero(alice).getByRole("button", { name: "Change" }).click();
       const kgBox = alice.getByRole("textbox", { name: "Goal weight (kg)" });
@@ -301,8 +292,8 @@ test.describe("the chart, the weeks and the calories", () => {
     const c = chartOf(alice, "weight");
     await expect(c.locator(".rch b")).toHaveText("Weigh-ins and trend (lb)");
     await expect(c.locator("circle.rc-dot")).toHaveCount(body.weighIns);
-    await expect(c.locator("circle.rc-dot.sel")).toHaveCount(1); // the day picked, drawn larger
-    await expect(c.locator("path.rc-line")).toHaveCount(0); // the weigh-ins are not joined
+    await expect(c.locator("circle.rc-dot.sel")).toHaveCount(1);
+    await expect(c.locator("path.rc-line")).toHaveCount(0);
     await expect(c.locator("path.rc-ref")).toHaveCount(1);
     await expect(c.locator("path.rc-band")).toHaveCount(1);
     await expect(c.locator(".rcl")).toContainText("weigh-in");
@@ -319,7 +310,6 @@ test.describe("the chart, the weeks and the calories", () => {
     const over = chartOf(alice, "weight").locator(".rc-over"), box = (await over.boundingBox())!;
     await over.click({ position: { x: box.width * 0.9, y: box.height / 2 } });
     await expect(alice.locator("#bstrip [aria-current]")).toHaveCount(1);
-    // today may be outside the week the strip shows (on a Monday the week before), so only a chip that is there can be checked
     await expect(alice.locator(`#bstrip button.fwd[data-day="${today()}"][aria-current]`)).toHaveCount(0);
     await alice.evaluate(() => localStorage.removeItem("weightUnit"));
   });
@@ -440,7 +430,7 @@ test.describe("when there is nothing to draw", () => {
     await expect(card.locator("p")).toHaveText("Connect a Renpho scale or Garmin in Settings to get them.");
     await expect(alice.locator("#bTabs")).toBeHidden();
     await expect(alice.locator("#bweek")).toBeHidden();
-    await expect(alice.locator("#bUnits")).toBeVisible(); // the unit and the range stay, to look further back
+    await expect(alice.locator("#bUnits")).toBeVisible();
     await expect(alice.locator("#bRange")).toBeVisible();
     await card.getByRole("button", { name: "Open Settings" }).click();
     await expect(alice.locator("body")).toHaveAttribute("data-view", "settings");
@@ -475,7 +465,7 @@ test.describe("the Settings form takes the weight goal in the unit", () => {
     await expect(me.getByLabel("Weight goal (lb)")).toHaveValue("176.4");
     expect((await goals()).fields.at(-1)).toMatchObject({ key: "weightKg", unit: "kg", kind: "weight" });
 
-    await me.getByLabel("Calories (kcal)").fill("2100"); // a save with the weight not touched does not move it through the unit
+    await me.getByLabel("Calories (kcal)").fill("2100");
     await me.getByRole("button", { name: "Save goals" }).click();
     await expect(me.getByText("Goals saved.")).toBeVisible();
     expect((await goals()).values).toEqual({ kcal: 2100, weightKg: kg });
@@ -495,12 +485,12 @@ test.describe("the Settings form takes the weight goal in the unit", () => {
     await profile.api.post("/api/settings/goals", { data: { action: "save", goals: { weightKg: 70 } } });
     await openView(me, "settings");
     await me.locator("#sbody .snav [data-section='goals']").click();
-    await expect(me.locator(".scard", { has: me.getByRole("heading", { name: "Nutrition goals" }) }).locator(".chip").first()).toHaveText("none set"); // the weight to aim for is not a goal of the day
+    await expect(me.locator(".scard", { has: me.getByRole("heading", { name: "Nutrition goals" }) }).locator(".chip").first()).toHaveText("none set");
     await me.getByLabel("Weight goal (lb)").fill("4");
     await me.getByRole("button", { name: "Save goals" }).click();
     await expect(me.getByText(/must be a number of kilograms from 20 to 400/)).toBeVisible();
     await me.getByRole("button", { name: "Clear all goals" }).click();
-    await me.getByRole("dialog").getByRole("button", { name: "Clear all" }).click(); // it asks first
+    await me.getByRole("dialog").getByRole("button", { name: "Clear all" }).click();
     expect(((await (await profile.api.get("/api/settings")).json()) as any).goals.values).toEqual({});
   });
 
@@ -518,12 +508,10 @@ test.describe("the look, in both themes", () => {
     for (const theme of ["dark", "light"]) {
       if (theme === "light") await chooseTheme(alice, "light");
       await expect(alice.locator("body")).toHaveAttribute("data-theme", theme);
-      await alice.evaluate(() => Promise.all(document.getAnimations().map((a) => a.finished.catch(() => null)))); // the colours have settled
+      await alice.evaluate(() => Promise.all(document.getAnimations().map((a) => a.finished.catch(() => null))));
       const low = await alice.evaluate(() => {
-        // any CSS colour as red, green, blue and alpha, as the page's own canvas reads it (a mix of colours comes as color(srgb ...))
         const px = (css: string): number[] => { const c = document.createElement("canvas"); c.width = c.height = 1; const g = c.getContext("2d")!; g.fillStyle = css; g.fillRect(0, 0, 1, 1); const d = g.getImageData(0, 0, 1, 1).data; return [d[0], d[1], d[2], d[3] / 255]; };
         const lum = ([r, g, b]: number[]) => { const [x, y, z] = [r, g, b].map((v) => { const c = v / 255; return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; }); return 0.2126 * x + 0.7152 * y + 0.0722 * z; };
-        /** What the text sits on: the backgrounds from the page down to it, each blended over the one under it. */
         const bgOf = (el: Element): number[] => {
           const chain: number[][] = [];
           for (let p: Element | null = el; p; p = p.parentElement) chain.push(px(getComputedStyle(p).backgroundColor));

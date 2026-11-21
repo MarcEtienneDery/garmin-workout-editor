@@ -1,12 +1,7 @@
-/**
- * The Weight view on a phone: the week as a strip that scrolls to the day shown, the verdict first, the charts drawn narrower so their text can be read,
- * the parts one at a time, the weeks as two lines each, and nothing sticking out sideways, in both themes. alice is read only.
- */
 import { test, expect, openView, today, type Page, chooseTheme } from "../support/fixtures";
 
 test.setTimeout(60_000);
 
-/** What sticks out past the phone's width, as shown (an element is cut at the edge of any box above it that clips its content). */
 async function stickingOut(page: Page): Promise<string[]> {
   return page.evaluate(() => {
     const width = document.documentElement.clientWidth;
@@ -79,7 +74,7 @@ test.describe("the Weight part on a phone", () => {
   test("the title is dropped from the top for the room, the tabs take a line of their own, and the unit and the range share a line", async ({ alice }) => {
     await openWeight(alice);
     const [title, tabs, units, range] = await Promise.all(["#bTitle", "#bTabs", "#bUnits", "#bRange"].map(async (s) => (await alice.locator(s).boundingBox())!));
-    expect(title.height).toBeLessThan(5); // still in the page for a screen reader, but it takes no row
+    expect(title.height).toBeLessThan(5);
     expect(tabs.y).toBeLessThan(80);
     expect(Math.abs(units.y - range.y)).toBeLessThan(8);
   });
@@ -101,7 +96,7 @@ test.describe("the Weight part on a phone", () => {
   test("a week is two lines: its dates and average, then its change and a bar", async ({ alice }) => {
     await openWeight(alice);
     const row = alice.locator("#bbody .bwk").first(), [lab, avg, change] = await Promise.all([".lab", ".avg", ".ch"].map(async (s) => (await row.locator(s).boundingBox())!));
-    expect(change.y).toBeGreaterThan(lab.y + 4); // the change is under the dates
+    expect(change.y).toBeGreaterThan(lab.y + 4);
     expect(Math.abs(avg.y - lab.y)).toBeLessThan(10);
   });
 });

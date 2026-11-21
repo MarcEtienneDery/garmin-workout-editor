@@ -1,8 +1,3 @@
-/**
- * The Plans view's layout: the title with its dot and the pill for the checks, the plan laid out day by day (weeks Monday to Sunday, the
- * totals, workouts with no day), the ⋯ menus of the files and of the outline, the compact muscle map of a lifting workout, Monaco in the
- * page's colours, both themes, and the sizes of what is touched.
- */
 import { test, expect, openView, mondayOf, daysAhead, today, type Page, type APIRequestContext, toggleTheme } from "../support/fixtures";
 
 test.describe.configure({ timeout: 60_000 });
@@ -49,11 +44,11 @@ test.describe("the plan day by day", () => {
     await makePlan(profile.api, `${profile.name}-grid`, [lift("Upper", day(0, 0)), run("Easy", day(0, 1)), run("Tempo", [day(2, 2), day(2, 4)])]);
     await openPlan(me, `${profile.name}-grid`);
     await expect(me.locator(".sg .sgh")).toHaveText(["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]);
-    await expect(me.locator(".sg .sgw b")).toHaveText(["Week 1", "Week 2", "Week 3"]); // the empty week between is a row too
+    await expect(me.locator(".sg .sgw b")).toHaveText(["Week 1", "Week 2", "Week 3"]);
     await expect(me.locator(".sg .sgc")).toHaveCount(21);
     await expect(me.locator(".sg .sgc").nth(0).locator(".wc")).toHaveText("Upper");
     await expect(me.locator(".sg .sgc").nth(1).locator(".wc")).toHaveText("Easy");
-    await expect(me.locator(".sg .sgc").nth(7 + 3)).toHaveText(/^\d+$/); // an empty day: its number only
+    await expect(me.locator(".sg .sgc").nth(7 + 3)).toHaveText(/^\d+$/);
     await expect(me.locator(".sg .sgc").nth(14 + 2).locator(".wc")).toHaveText("Tempo");
     await expect(me.locator(".sg .sgc").nth(14 + 4).locator(".wc")).toHaveText("Tempo");
     await expect(me.locator(".sg .sgc.today")).toHaveCount(1);
@@ -85,7 +80,7 @@ test.describe("the plan day by day", () => {
   test("lists the workouts with no day, and the dates that are not days, under the grid", async ({ me, profile }) => {
     await makePlan(profile.api, `${profile.name}-loose`, [run("Easy", day(0, 1)), run("Someday", undefined), run("Typo", "2026-12-2")]);
     await openPlan(me, `${profile.name}-loose`);
-    await expect(me.locator(".ploose li")).toHaveCount(3); // the typo is both: it gives no day, and its date is named
+    await expect(me.locator(".ploose li")).toHaveCount(3);
     await expect(me.locator(".ploose")).toContainText("Someday has no day");
     await expect(me.locator(".ploose")).toContainText("Typo has no day");
     await expect(me.locator(".ploose")).toContainText('Typo date "2026-12-2" is not a day (YYYY-MM-DD)');
@@ -199,7 +194,7 @@ test.describe("a lifting workout", () => {
     await box.getByRole("button", { name: "Show less ‹" }).click();
     await expect(box.locator(".ammrow")).toHaveCount(5);
     const box2 = await box.boundingBox();
-    expect(box2!.height).toBeLessThan(260); // small beside the steps, not the whole pane
+    expect(box2!.height).toBeLessThan(260);
   });
 });
 
@@ -214,7 +209,7 @@ test.describe("Monaco in the page's colours", () => {
     await toggleTheme(me);
     await expect.poll(() => me.locator("#editor .monaco-editor-background").first().evaluate((el) => getComputedStyle(el).backgroundColor)).toBe("rgb(255, 253, 248)");
     await expect(root).not.toHaveClass(/vs-dark/);
-    await toggleTheme(me); // the choice is kept in the browser: leave it as it was found
+    await toggleTheme(me);
   });
 });
 

@@ -1,24 +1,13 @@
-/**
- * The Plans view's editor: opening a plan and its outline, the file tools' enabled state, editing and saving, the Checks pane
- * (validation, Validate, Format), the conflict with a change made elsewhere, Reload, and the Garmin buttons for a profile
- * without a Garmin login.
- *
- * Files written by a test carry the profile's name: workout-plans/ is one namespace for every profile, so a bare name would
- * collide with another test's file. alice's plans are read only.
- */
 import { test, expect as baseExpect, openView, daysAgo, daysAhead, today } from "../support/fixtures";
 import type { APIRequestContext, Page } from "@playwright/test";
 
-// The Monaco editor of the page: the top-level `editor` of the page's own script (window.editor is the #editor element).
 declare const editor: any;
 
-// The suite's server is shared, and can be slow when several suites run at once: give each step more time than the default.
 const expect = baseExpect.configure({ timeout: 20_000 });
 test.describe.configure({ timeout: 120_000 });
 
 const enc = (path: string) => `/api/file?path=${encodeURIComponent(path)}`;
 
-/** A small valid plan with one workout. */
 const planJson = (extra: Record<string, unknown> = {}) =>
   JSON.stringify(
     { weekStart: "2026-11-02", weekEnd: "2026-11-08", workouts: [{ workoutName: "Easy run", workoutType: "running", distanceMeters: 5000, scheduledDate: "2026-11-03" }], ...extra },
@@ -26,7 +15,6 @@ const planJson = (extra: Record<string, unknown> = {}) =>
     2,
   ) + "\n";
 
-/** The same plan with a workoutId on its workout: the Garmin copy of it exists. */
 const planWithIds = (extra: Record<string, unknown> = {}) =>
   planJson({ workouts: [{ workoutName: "Easy run", workoutType: "running", distanceMeters: 5000, scheduledDate: "2026-11-03", workoutId: 5511 }], ...extra });
 
@@ -47,7 +35,6 @@ async function writeFile(api: APIRequestContext, path: string, text: string): Pr
   expect(res.ok(), `saving ${path} elsewhere`).toBeTruthy();
 }
 
-/** Open a file from the list by its name, and wait until the page says it is the open file. */
 async function openPlan(page: Page, name: string): Promise<void> {
   await page.locator("#filelist .file").filter({ hasText: name }).click();
   await expect(page.locator("#current")).toContainText(name);
@@ -55,17 +42,12 @@ async function openPlan(page: Page, name: string): Promise<void> {
 
 const textOf = (page: Page) => page.evaluate(() => editor.getValue() as string);
 const setText = (page: Page, value: string) => page.evaluate((v) => editor.setValue(v), value);
-/** Type at the end of the JSON, with the keyboard, so the editor sees real key presses (and the unsaved mark follows). */
 async function typeAtEnd(page: Page, text: string): Promise<void> {
   await page.locator(".monaco-editor .view-lines").click();
   await page.keyboard.press("Control+End");
   await page.keyboard.type(text);
 }
 
-/**
- * Open the Plans view and wait until the editor can act: the toolbar's buttons get their handlers only once Monaco and the
- * workout schema have loaded, which openView does not wait for.
- */
 async function openPlans(page: Page): Promise<void> {
   await openView(page, "plans");
   await expect.poll(() => page.evaluate(() => typeof editor !== "undefined" && !!editor && document.getElementById("new")!.onclick !== null)).toBe(true);
@@ -73,8 +55,6 @@ async function openPlans(page: Page): Promise<void> {
 
 const GARMIN_REASON = "This profile has no Garmin login: add one in Settings.";
 
-// These specs are about the JSON editor and the outline beside it, the Plans view as it is with JSON chosen (the choice is kept in the
-// browser): the form, which a plan opens on otherwise, has workout-form.spec.ts.
 test.use({ editMode: "json" });
 
 test.describe("Plans: opening a plan", () => {
@@ -113,7 +93,6 @@ test.describe("Plans: opening a plan", () => {
     const rows = alice.locator("#outline .row.wk");
     await expect(rows).toHaveCount(4);
     await expect(rows.locator(".name")).toHaveText(["Easy run", "Tempo intervals", "Long run", "Full body strength"]);
-    // the line under a name says how many days, how long and how far; the days themselves are its title
     await expect(rows.nth(0).locator("small")).toHaveAttribute("title", daysAgo(2));
     await expect(rows.nth(1).locator("small")).toHaveAttribute("title", today());
     await expect(rows.nth(2).locator("small")).toHaveAttribute("title", daysAhead(3));
@@ -128,7 +107,7 @@ test.describe("Plans: opening a plan", () => {
     const rows = alice.locator("#outline .row.wk");
     await expect(rows.nth(1).locator("small")).toContainText("min");
     await expect(rows.nth(1).locator(".wv-chart.mini")).toHaveAttribute("aria-label", /^Workout profile: 3 steps, about \d+ min/);
-    await expect(rows.nth(3).locator("small")).toContainText("2 sets"); // lifting is sets, and too small a row for its muscles
+    await expect(rows.nth(3).locator("small")).toContainText("2 sets");
   });
 
   test("a workout's name opens its picture (steps and totals) and closes it again", async ({ alice }) => {
@@ -420,7 +399,7 @@ test.describe("Plans: the outline's workout buttons", () => {
     await makeFile(profile.api, `workout-plans/${profile.name}-add.json`, planJson());
     await openPlans(me);
     await openPlan(me, `${profile.name}-add.json`);
-    await me.locator("#outAdd").click(); // the outline's + Add: the same in the JSON, where the plan's page is not shown
+    await me.locator("#outAdd").click();
     await expect(me.locator("#dlgTitle")).toHaveText("Add a workout");
     await expect(me.locator("#dlgInput")).toHaveValue("New workout");
     await expect(me.locator("#dlgChoice")).toHaveValue("strength_training");

@@ -31,7 +31,7 @@ describe("when a run goes ahead", () => {
     store.credentials.put("MED", "renpho", "me@x.y", "pw");
     store.renpho.saveSettings("MED", { fetchEnabled: false });
     expect((await run(fetchFn)).reason).toMatch(/switched off/);
-    expect((await run(fetchFn, { manual: true })).ran).toBe(true); // a person asked for it
+    expect((await run(fetchFn, { manual: true })).ran).toBe(true);
     store.renpho.saveSettings("MED", { fetchEnabled: true });
     store.renpho.saveState("MED", { error: "refused", errorKind: "login" });
     expect((await run(fetchFn)).reason).toMatch(/refused the login/);
@@ -56,7 +56,7 @@ describe("fetching", () => {
     expect(result).toEqual({ ran: true, seen: 3, added: 3, others: 1, uploaded: 0, error: null });
     const kept = store.renpho.measurements("MED");
     expect(kept.map((m) => m.id)).toEqual(["3", "2", "1"]);
-    expect(kept[0].data).toEqual(renphoRow(3)); // exactly as it came
+    expect(kept[0].data).toEqual(renphoRow(3));
     expect(kept[0]).toEqual(expect.objectContaining({ measuredAt: renphoRow(3).timeStamp * 1000, day: "2025-10-12" }));
     expect(store.renpho.state("MED")).toEqual(expect.objectContaining({ lastRunAt: T0, lastOkAt: T0, nextRunAt: T0 + 3 * HOUR, error: null, errorKind: null }));
     expect(store.renpho.logLines("MED").map((l) => l.message)).toEqual([expect.stringMatching(/Renpho holds 3 weigh-ins of this account \(and 1 of other people on the scale, left out\); 3 new/), "Scheduled run started."]);
@@ -79,7 +79,7 @@ describe("fetching", () => {
 
   it("takes the day of a weigh-in in the user's zone", async () => {
     process.env.GARMIN_TZ = "America/Toronto";
-    const late = renphoRow(1, { timeStamp: Date.parse("2026-10-18T02:30:00Z") / 1000 }); // 22:30 the evening before in Toronto
+    const late = renphoRow(1, { timeStamp: Date.parse("2026-10-18T02:30:00Z") / 1000 });
     await run(renphoWith([late]).fetchFn);
     expect(store.renpho.measurements("MED")[0].day).toBe("2026-10-17");
   });
@@ -112,7 +112,7 @@ describe("fetching", () => {
   it("reports a failed login test without changing a working schedule", async () => {
     const down = (async () => { throw new Error("offline"); }) as unknown as typeof fetch;
     expect(await testRenphoLogin(store, "MED", down)).toEqual({ ok: false, message: expect.stringMatching(/Could not reach Renpho: offline/) });
-    expect(store.renpho.state("MED").errorKind).toBeNull(); // not a refusal
+    expect(store.renpho.state("MED").errorKind).toBeNull();
     store.credentials.delete("MED", "renpho");
     expect(await testRenphoLogin(store, "MED")).toEqual({ ok: false, message: "No Renpho login is saved." });
   });
@@ -130,9 +130,9 @@ describe("uploading to Garmin", () => {
     expect(store.renpho.counts("MED")).toEqual(expect.objectContaining({ pushed: 3, pending: 0 }));
     expect(store.renpho.logLines("MED")[0].message).toBe("Uploaded 3 weigh-ins to Garmin: taken in.");
     await run(renphoWith(rows(3)).fetchFn, { push, now: T0 + 3 * HOUR });
-    expect(pushed).toEqual([3]); // never again
+    expect(pushed).toEqual([3]);
     await run(renphoWith(rows(4)).fetchFn, { push, now: T0 + 6 * HOUR });
-    expect(pushed).toEqual([3, 1]); // only the new one
+    expect(pushed).toEqual([3, 1]);
   });
 
   it("holds back what is older than the start day", async () => {
@@ -188,12 +188,12 @@ describe("uploading to Garmin", () => {
     store.wellness.put("MED", day, "weight", { dateWeightList: [], totalAverage: null });
     const push = async () => "taken in";
     await run(renphoWith(rows(1)).fetchFn, { push });
-    expect(store.wellness.get("MED", day, "weight")).not.toBeNull(); // too soon: Garmin may not have it yet
+    expect(store.wellness.get("MED", day, "weight")).not.toBeNull();
     await run(renphoWith(rows(1)).fetchFn, { push, now: T0 + SETTLE_MS + 1 });
     expect(store.wellness.get("MED", day, "weight")).toBeNull();
     store.wellness.put("MED", day, "weight", { dateWeightList: [{ weight: 81_700 }] });
     await run(renphoWith(rows(1)).fetchFn, { push, now: T0 + 2 * SETTLE_MS });
-    expect(store.wellness.get("MED", day, "weight")).not.toBeNull(); // once only
+    expect(store.wellness.get("MED", day, "weight")).not.toBeNull();
   });
 });
 
@@ -212,10 +212,10 @@ describe("the runs that are due", () => {
   it("are the profiles that are switched on, past their next run and not running now", () => {
     store.renpho.saveSettings("SAM", { fetchEnabled: true });
     store.renpho.saveSettings("OFF", { fetchEnabled: false });
-    expect(dueProfiles(store, T0)).toEqual(["MED", "SAM"]); // never run: due now
+    expect(dueProfiles(store, T0)).toEqual(["MED", "SAM"]);
     store.renpho.saveState("MED", { nextRunAt: T0 + HOUR });
     store.renpho.claim("SAM", "x", 60_000, T0);
     expect(dueProfiles(store, T0)).toEqual([]);
-    expect(dueProfiles(store, T0 + HOUR)).toEqual(["MED", "SAM"]); // SAM's lease has run out by then
+    expect(dueProfiles(store, T0 + HOUR)).toEqual(["MED", "SAM"]);
   });
 });

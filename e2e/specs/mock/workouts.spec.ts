@@ -1,22 +1,9 @@
-/**
- * The Workouts view in mock mode (MOCK_MODE=true, port 8793).
- *
- * What the app really does here: the Garmin library is never listed. The page knows Garmin is refused and asks for nothing, so
- * the list stays empty under the note "Mock mode: Garmin writes are disabled.". With no row there is nothing to select, so Edit and
- * Delete cannot be reached from the page; the New dialog is the one path that works, and it writes to a plan file only, never to
- * Garmin. The server's refusals are checked through the API. The generated mock library (src/mocks.setup.ts) is what the MCP tools
- * answer with; the web editor does not list it: the README says the Garmin buttons stay disabled in mock mode.
- */
 import { test as base, expect, loginAs, openView, mondayOf, daysAhead, today, type Profile } from "../../support/fixtures";
 import { type APIRequestContext, type Page, type Response } from "@playwright/test";
 
 const REFUSAL = "Mock mode: Garmin writes are disabled.";
 const GARMIN_PASSWORD = "garmin-password";
 
-/**
- * The server closes an idle keep-alive connection a moment before the client reuses it, and that request meets ECONNRESET before
- * the server reads it: the request is sent again (it was never processed, so nothing is written twice).
- */
 async function sent<T>(call: () => Promise<T>): Promise<T> {
   for (let attempt = 1; ; attempt++) {
     try {
@@ -27,7 +14,6 @@ async function sent<T>(call: () => Promise<T>): Promise<T> {
   }
 }
 
-/** An API client whose requests are sent again when the connection was reset (see `sent`). */
 function reliable<A extends APIRequestContext>(api: A): A {
   return new Proxy(api, {
     get(target, prop) {
@@ -40,10 +26,6 @@ function reliable<A extends APIRequestContext>(api: A): A {
   });
 }
 
-/**
- * A fresh profile with a Garmin login saved, signed in on a page of its own. Mock mode accepts any Garmin login and never checks it.
- * Traces are off in this file: with them on, the API contexts of the shared fixtures lose their recordings at teardown.
- */
 const test = base.extend<{ garmin: Profile; gme: Page }>({
   admin: async ({ admin }, use) => use(reliable(admin)),
   profile: async ({ profile }, use) => use({ ...profile, api: reliable(profile.api) }),
@@ -59,7 +41,6 @@ const test = base.extend<{ garmin: Profile; gme: Page }>({
 });
 test.use({ trace: "off" });
 
-// The dialog's checks below are made on its JSON (the choice is kept in the browser): its form has its own describe, at the end.
 test.use({ editMode: "json" });
 
 const planWorkout = (name: string, extra: Record<string, unknown> = {}) => ({
@@ -69,7 +50,6 @@ const planWorkout = (name: string, extra: Record<string, unknown> = {}) => ({
   ...extra,
 });
 
-/** A plan file of the profile (its path is unique to the test). Returns the version the server gave it. */
 async function putPlan(api: APIRequestContext, path: string, workouts: unknown[]): Promise<number> {
   const body = { weekStart: mondayOf(today()), weekEnd: daysAhead(6), workouts };
   const res = await api.put(`/api/file?path=${encodeURIComponent(path)}`, { data: { text: JSON.stringify(body, null, 2), create: true } });
@@ -84,7 +64,6 @@ async function readPlan(api: APIRequestContext, path: string): Promise<{ version
   return { version: doc.version, data: JSON.parse(doc.text) };
 }
 
-/** Errors the page raises: uncaught exceptions, and console errors other than the 409s the refusals answer with. */
 function watchErrors(page: Page): string[] {
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
@@ -94,23 +73,14 @@ function watchErrors(page: Page): string[] {
   return errors;
 }
 
-/** Monaco loads after the page; the dialog needs it. */
 async function waitForEditor(page: Page): Promise<void> {
   await expect.poll(() => page.evaluate(() => typeof monaco !== "undefined" && !!monaco)).toBe(true);
 }
 
-/**
- * Replace the text of the dialog's editor. Select-all in Monaco under the test browser leaves its last character behind, so the
- * text is set through the editor itself; the page reacts to it as to typing.
- */
 async function typeInDialog(page: Page, text: string): Promise<void> {
   await page.evaluate((value) => dlgEditor.setValue(value), text);
 }
 
-/**
- * Open the New dialog. The dialog checks its template twice when it opens (at once, and again once the editor has been quiet for
- * half a second). Both checks are waited for, so one that is still pending cannot clear a message a test is about to look for.
- */
 async function openNewDialog(page: Page): Promise<void> {
   await waitForEditor(page);
   let checks = 0;
@@ -184,7 +154,6 @@ test.describe("Workouts view: the list in mock mode", () => {
     await expect(gme.locator("#wNote")).toHaveText(REFUSAL);
     await gme.locator("#wRefresh").click();
     await expect(gme.locator("#wNote")).toHaveText(REFUSAL);
-    // the New button is a later click the page answers: the refresh has been handled by then
     await openNewDialog(gme);
     expect(calls.filter((c) => c.includes("/api/workouts") || c.includes("/api/garmin/"))).toEqual([]);
   });
@@ -370,7 +339,7 @@ test.describe("Workouts view: the New dialog in mock mode", () => {
 });
 
 test.describe("Workouts view: the New dialog's form", () => {
-  test.use({ editMode: "form" }); // the form, which the dialog opens on unless the JSON was chosen
+  test.use({ editMode: "form" });
 
   test("+ New opens on the form: the name, the type, and the exercises a new lifting workout starts with", async ({ gme }) => {
     await openView(gme, "workouts");

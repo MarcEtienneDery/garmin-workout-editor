@@ -1,14 +1,8 @@
-/**
- * The Recovery view on a phone: the week scrolling to the day shown, the three parts, the verdict in one column (the gauge over the band, the signals,
- * last night, the load), the charts one over another and drawn for the width, the stored numbers scrolling inside their own box, the touch sizes,
- * and nothing sticking out sideways in either theme. alice's days are read only.
- */
 import type { Page } from "@playwright/test";
 import { test, expect, openView, chooseTheme, toggleTheme } from "../support/fixtures";
 
 test.setTimeout(60_000);
 
-/** What sticks out past the phone's width, as shown (an element is cut at the edge of any box above it that clips its content). */
 async function stickingOut(page: Page): Promise<string[]> {
   return page.evaluate(() => {
     const width = document.documentElement.clientWidth;
@@ -44,7 +38,7 @@ test.describe("the Verdict on a phone", () => {
     const lefts = await alice.evaluate(() => [".rhero", ".rsigcard", ".rnight", ".rload"].map((s) => Math.round(document.querySelector("#rbody " + s)!.getBoundingClientRect().left)));
     expect(new Set(lefts).size).toBe(1);
     const gauge = (await alice.locator("#rbody .rgauge").boundingBox())!, card = (await hero(alice).boundingBox())!;
-    expect(Math.abs(gauge.x + gauge.width / 2 - (card.x + card.width / 2))).toBeLessThan(4); // centred
+    expect(Math.abs(gauge.x + gauge.width / 2 - (card.x + card.width / 2))).toBeLessThan(4);
     await expect.poll(() => stickingOut(alice)).toEqual([]);
   });
 
@@ -85,7 +79,6 @@ test.describe("the week on a phone", () => {
     const [box, now] = [(await strip.boundingBox())!, (await alice.locator("#rstrip button.fwd[aria-current]").boundingBox())!];
     expect(now.x).toBeGreaterThanOrEqual(box.x - 1);
     expect(now.x + now.width).toBeLessThanOrEqual(box.x + box.width + 1);
-    // the band's words are on one line under the score, not wrapped
     const heights = await alice.locator("#rstrip .rwn").evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().height)));
     for (const h of heights) expect(h).toBeLessThan(18);
     await expect.poll(() => stickingOut(alice)).toEqual([]);
@@ -115,7 +108,6 @@ test.describe("the week on a phone", () => {
     await alice.locator("#rPrev").tap();
     await expect(alice.locator("#rDate")).not.toHaveValue(today);
     const picked = await alice.locator("#rDate").inputValue();
-    // a past day of the week the strip shows, other than today (on a Monday today is in the week after it)
     const other = alice.locator("#rstrip button.fwd:not(:disabled):not(.sel):not(.today)").first();
     const day = (await other.getAttribute("data-day"))!;
     await other.tap();

@@ -25,7 +25,7 @@ describe("sealing a secret", () => {
     expect(isSealed(sealed)).toBe(true);
     expect(sealed).not.toContain("hunter2");
     expect(open(sealed, "a|b")).toBe("hunter2");
-    expect(seal("hunter2", "a|b")).not.toBe(sealed); // a nonce of its own each time
+    expect(seal("hunter2", "a|b")).not.toBe(sealed);
   });
 
   it("refuses a value moved to another row, a wrong key and a missing key, saying why", () => {
@@ -69,12 +69,12 @@ describe("the credentials table", () => {
   });
 
   it("warns at start-up only while passwords are plain text and there is no key", () => {
-    expect(store.credentials.plainWarning()).toBeNull(); // nothing saved
+    expect(store.credentials.plainWarning()).toBeNull();
     store.credentials.put("MED", "garmin", "a@b.c", "plainpw");
     expect(store.credentials.plainWarning()).toMatch(/CREDENTIALS_KEY is not set: 1 saved Garmin\/Renpho password is stored as plain text/);
     store.credentials.put("MED", "renpho", "a@b.c", "plainpw");
     expect(store.credentials.plainWarning()).toMatch(/2 saved Garmin\/Renpho passwords are stored/);
-    process.env.CREDENTIALS_KEY = KEY; // set, the plain ones are sealed when read: no warning to give
+    process.env.CREDENTIALS_KEY = KEY;
     expect(store.credentials.plainWarning()).toBeNull();
   });
 
@@ -92,7 +92,7 @@ describe("the credentials table", () => {
     store.credentials.put("MED", "garmin", "a@b.c", "pw");
     delete process.env.CREDENTIALS_KEY;
     expect(() => store.credentials.get("MED", "garmin")).toThrow(SealKeyError);
-    expect(store.credentials.profiles("garmin")).toEqual(["MED"]); // the names do not need the key
+    expect(store.credentials.profiles("garmin")).toEqual(["MED"]);
   });
 });
 
@@ -104,7 +104,7 @@ describe("the last check of a login", () => {
     expect(store.credentials.lastCheck("MED", "garmin")).toEqual({ ok: true, message: "Garmin accepted the login.", at: 1_000 });
     expect(store.credentials.lastCheck("OTHER", "garmin")).toEqual({ ok: false, message: "refused", at: 2_000 });
     expect(store.credentials.lastCheck("MED", "renpho")).toBeNull();
-    store.credentials.recordCheck("MED", "garmin", false, "refused now", 3_000); // the newest replaces it
+    store.credentials.recordCheck("MED", "garmin", false, "refused now", 3_000);
     expect(store.credentials.lastCheck("MED", "garmin")).toEqual({ ok: false, message: "refused now", at: 3_000 });
   });
 

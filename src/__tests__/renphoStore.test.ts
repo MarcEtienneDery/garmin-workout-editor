@@ -24,7 +24,7 @@ describe("the Renpho settings", () => {
 describe("the weigh-in ledger", () => {
   it("keeps a weigh-in once, as Renpho sent it, and counts what is uploaded", () => {
     expect(store.renpho.addMeasurement("MED", m("1", 1_000_000))).toBe(true);
-    expect(store.renpho.addMeasurement("MED", m("1", 1_000_000, { weight: 99 }))).toBe(false); // what is there is left as it is
+    expect(store.renpho.addMeasurement("MED", m("1", 1_000_000, { weight: 99 }))).toBe(false);
     store.renpho.addMeasurement("MED", m("2", 2_000_000));
     store.renpho.addMeasurement("MED", m("3", 3_000_000));
     store.renpho.addMeasurement("SAM", m("1", 1_000_000));
@@ -34,7 +34,7 @@ describe("the weigh-in ledger", () => {
     store.renpho.markPushed("MED", ["1"], 9);
     store.renpho.markFailed("MED", ["2", "1"], "no");
     expect(store.renpho.counts("MED")).toEqual(expect.objectContaining({ pending: 2, pushed: 1, failed: 1 }));
-    expect(store.renpho.measurements("MED", { pending: true }).map((x) => x.id)).toEqual(["2", "3"]); // oldest first
+    expect(store.renpho.measurements("MED", { pending: true }).map((x) => x.id)).toEqual(["2", "3"]);
     expect(store.renpho.measurements("MED").find((x) => x.id === "1")).toEqual(expect.objectContaining({ pushedAt: 9, pushError: null }));
     expect(store.renpho.measurements("MED").find((x) => x.id === "2")!.pushError).toBe("no");
   });
@@ -66,7 +66,7 @@ describe("the sync's state and lease", () => {
     expect(store.renpho.claim("MED", "b", 1000, 500)).toBe(false);
     expect(store.renpho.claim("MED", "a", 1000, 500)).toBe(true);
     expect(store.renpho.claim("MED", "b", 1000, 5000)).toBe(true);
-    store.renpho.release("MED", "a"); // not the holder any more: nothing changes
+    store.renpho.release("MED", "a");
     expect(store.renpho.state("MED").holder).toBe("b");
     store.renpho.release("MED", "b");
     expect(store.renpho.state("MED").holder).toBeNull();

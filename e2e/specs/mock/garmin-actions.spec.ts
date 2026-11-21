@@ -1,12 +1,3 @@
-/**
- * The Garmin actions of a plan in mock mode (MOCK_MODE=true, port 8793).
- *
- * What the app really does here: mock mode turns the Garmin side off for the page. The Plans view's Garmin menu is disabled and
- * says why, the file list and the outline draw no Garmin buttons, and the plan-against-Garmin status bar stays hidden. The server
- * refuses every Garmin request (actions, the device list, the status check) with "Mock mode: Garmin writes are disabled.", and
- * nothing is written to a plan by them. What works is the plan itself: validating, saving, archiving a plan that has no Garmin
- * workouts. Archiving a plan that has Garmin workouts is refused by the page with the same reason.
- */
 import { test as base, expect, loginAs, openView, mondayOf, daysAhead, today, type Profile } from "../../support/fixtures";
 import { type APIRequestContext, type Locator, type Page } from "@playwright/test";
 
@@ -14,10 +5,6 @@ const REFUSAL = "Mock mode: Garmin writes are disabled.";
 const GARMIN_PASSWORD = "garmin-password";
 const ACTIONS = ["upload", "schedule", "upload_schedule", "send"] as const;
 
-/**
- * The server closes an idle keep-alive connection a moment before the client reuses it, and that request meets ECONNRESET before
- * the server reads it: the request is sent again (it was never processed, so nothing is written twice).
- */
 async function sent<T>(call: () => Promise<T>): Promise<T> {
   for (let attempt = 1; ; attempt++) {
     try {
@@ -28,7 +15,6 @@ async function sent<T>(call: () => Promise<T>): Promise<T> {
   }
 }
 
-/** An API client whose requests are sent again when the connection was reset (see `sent`). */
 function reliable<A extends APIRequestContext>(api: A): A {
   return new Proxy(api, {
     get(target, prop) {
@@ -41,10 +27,6 @@ function reliable<A extends APIRequestContext>(api: A): A {
   });
 }
 
-/**
- * A fresh profile with a Garmin login saved, signed in on a page of its own. Mock mode accepts any Garmin login and never checks it.
- * Traces are off in this file: with them on, the API contexts of the shared fixtures lose their recordings at teardown.
- */
 const test = base.extend<{ garmin: Profile; gme: Page }>({
   admin: async ({ admin }, use) => use(reliable(admin)),
   profile: async ({ profile }, use) => use({ ...profile, api: reliable(profile.api) }),
@@ -67,7 +49,6 @@ const run = (name: string, extra: Record<string, unknown> = {}) => ({
   ...extra,
 });
 
-/** A plan file of the profile (its path is unique to the test). Returns the version the server gave it. */
 async function putPlan(api: APIRequestContext, name: string, workouts: unknown[]): Promise<{ path: string; name: string; version: number }> {
   const path = `workout-plans/${name}.json`;
   const body = { weekStart: mondayOf(today()), weekEnd: daysAhead(6), workouts };
@@ -83,13 +64,11 @@ async function readPlan(api: APIRequestContext, path: string): Promise<{ version
   return { version: doc.version, text: doc.text, data: JSON.parse(doc.text) };
 }
 
-/** The archivedAt of a plan as the file list has it. */
 async function archivedAt(api: APIRequestContext, path: string): Promise<number | null> {
   const files = await (await api.get("/api/files")).json();
   return files.files.find((f: any) => f.path === path).archivedAt;
 }
 
-/** The API paths the page asks for, from now on. */
 function trackApi(page: Page): string[] {
   const calls: string[] = [];
   page.on("request", (r) => {
@@ -98,17 +77,13 @@ function trackApi(page: Page): string[] {
   return calls;
 }
 
-/** The endpoints that reach Garmin or act on it: GET /api/garmin (what the page knows of the logins) is not one of them. */
 const GARMIN_CALLS = /\/api\/(garmin\/|workouts|activities\/sync|wellness\/sync)/;
 
-/** Open the Plans view and the plan with this name in the list. */
-/** Opens a file row's ⋯ menu and returns its items. */
 async function openRowMenu(page: Page, row: Locator) {
   await row.locator("button.more").click();
   return page.locator("#pmenu [role=menuitem]");
 }
 
-/** Validate lives in the JSON editor, so the plan is switched to it first. */
 async function openJsonEditor(page: Page): Promise<void> {
   await page.locator('#emode [data-mode="json"]').click();
   await expect(page.locator("#editorFrame")).toBeVisible();

@@ -1,11 +1,3 @@
-/*
- * muscleMap.js — which muscles a strength workout trains, and the body drawing that shows it.
- *
- * Pure functions, loaded by the page as a plain script and require()d by the tests. A Garmin exercise name (BARBELL_BENCH_PRESS) gives
- * the muscles it works, from the table in exerciseMuscles.js: some primary, some secondary. A set counts 2 for each primary muscle and 1
- * for each secondary one, so a muscle's score is twice its "sets" (a primary set is a set, a secondary one half a set). The drawing
- * shades each muscle in one colour, darker the higher its score is against the workout's highest.
- */
 (function (root, factory) {
   const api = factory(typeof module === "object" && module.exports ? require("./exerciseMuscles.js") : root.ExerciseMuscles);
   if (typeof module === "object" && module.exports) module.exports = api;
@@ -13,10 +5,9 @@
 })(typeof self !== "undefined" ? self : this, function (EXERCISES) {
   "use strict";
 
-  const PRIMARY_POINTS = 2; // a primary muscle gets twice what a secondary one does
+  const PRIMARY_POINTS = 2;
   const SECONDARY_POINTS = 1;
 
-  /** The muscles drawn, in the order the list reads. */
   const MUSCLES = [
     { id: "chest", label: "Chest" },
     { id: "frontDelts", label: "Front delts" },
@@ -39,23 +30,14 @@
   ];
   const LABEL = Object.fromEntries(MUSCLES.map((m) => [m.id, m.label]));
 
-  // ── Exercise → muscles ──────────────────────────────────────────────────
-  // The table in exerciseMuscles.js has one line for each exercise Garmin lists. A name that is not there, and the exercises the table
-  // gives no muscles (cardio, warm-ups, stretches), work no muscle: the view says so.
 
-  /** The muscles an exercise works, { primary, secondary }, or null when none is known (cardio, or a name that is not Garmin's). */
   function musclesOf(exerciseName) {
-    let name = String(exerciseName || "").toUpperCase().replace(/[^A-Z0-9]+/g, "_").replace(/^_|_$/g, ""); // "Weighted Chin Up" as Garmin lists a done set, WEIGHTED_CHIN_UP as a plan has it
-    if (/^[0-9]/.test(name)) name = `_${name}`; // Garmin keys "3 Way Calf Raise" as _3_WAY_CALF_RAISE
+    let name = String(exerciseName || "").toUpperCase().replace(/[^A-Z0-9]+/g, "_").replace(/^_|_$/g, "");
+    if (/^[0-9]/.test(name)) name = `_${name}`;
     const found = Object.prototype.hasOwnProperty.call(EXERCISES, name) ? EXERCISES[name] : null;
     return found && found[0].length ? { primary: found[0], secondary: found[1] } : null;
   }
 
-  /**
-   * What a workout trains, from its exercises and their number of sets ([{ name, sets }]): per muscle the direct sets (as a primary
-   * muscle), the indirect sets (as a secondary one), and its score (2 a direct set, 1 an indirect one). `max` is the highest score;
-   * `unknown` lists the exercises with no known muscles, whose sets are not counted.
-   */
   function tally(exercises) {
     const found = new Map(), unknown = [];
     for (const { name, sets } of exercises || []) {
@@ -69,10 +51,6 @@
     return { muscles, max: muscles.length ? muscles[0].score : 0, unknown };
   }
 
-  /**
-   * `tally`, with for each muscle which exercises made its score: `from` is [{ name, sets, kind }], kind "direct" for an exercise that works
-   * the muscle first and "helps" for one that only helps (it counts half). The muscles come in the order tally gives them.
-   */
   function detail(exercises) {
     const t = tally(exercises), by = new Map(t.muscles.map((m) => [m.id, { ...m, from: [] }]));
     for (const { name, sets } of exercises || []) {
@@ -84,7 +62,6 @@
     return { ...t, muscles: t.muscles.map((m) => by.get(m.id)) };
   }
 
-  /** The muscles in four groups, for "how the work was shared": push, pull, legs, core. */
   const GROUPS = [
     { id: "push", label: "Push", muscles: ["chest", "frontDelts", "sideDelts", "triceps"] },
     { id: "pull", label: "Pull", muscles: ["lats", "upperBack", "rearDelts", "biceps", "traps", "forearms"] },
@@ -92,7 +69,6 @@
     { id: "core", label: "Core", muscles: ["abs", "obliques", "lowerBack"] },
   ];
 
-  /** The share of the muscle work (the scores) each group has, [{ id, label, score, pct }] with pct whole percents, 0 each when nothing was worked. */
   function groupShares(muscles) {
     const total = (muscles || []).reduce((a, m) => a + m.score, 0);
     return GROUPS.map((g) => {
@@ -101,16 +77,11 @@
     });
   }
 
-  /** Every muscle that got fewer than `sets` sets (none at all included), fewest first: [{ id, label, sets }]. */
   function fewerThan(muscles, sets) {
     const got = new Map((muscles || []).map((m) => [m.id, m.score / PRIMARY_POINTS]));
     return MUSCLES.map((m) => ({ id: m.id, label: m.label, sets: got.get(m.id) || 0 })).filter((m) => m.sets < sets).sort((a, b) => a.sets - b.sets || MUSCLES.findIndex((x) => x.id === a.id) - MUSCLES.findIndex((x) => x.id === b.id));
   }
 
-  /**
-   * The sets per exercise of the sessions ({ date, exercises: [{ name, sets }] }) on the days from `from` to `to` (YYYY-MM-DD, both
-   * included), added up by exercise name: [{ name, sets }], and how many sessions that was.
-   */
   function sumSessions(sessions, from, to) {
     const by = new Map();
     let count = 0;
@@ -122,29 +93,21 @@
     return { exercises: [...by].map(([name, sets]) => ({ name, sets })), sessions: count };
   }
 
-  /** A muscle's score as sets: a primary set is one, a secondary set half of one. "3", "4.5". */
   const setsOf = (score) => String(Math.round((score / PRIMARY_POINTS) * 10) / 10);
 
-  // ── Colour ──────────────────────────────────────────────────────────────
 
-  const COLD = [60, 60, 62]; // a muscle the workout does not train
-  const HOT = [232, 69, 60]; // the muscle trained most
-  const FLOOR = 0.28; // the lightest a trained muscle is drawn, so one set still shows against the grey
+  const COLD = [60, 60, 62];
+  const HOT = [232, 69, 60];
+  const FLOOR = 0.28;
 
   const hex = (rgb) => `#${rgb.map((v) => Math.round(v).toString(16).padStart(2, "0")).join("")}`;
   const mix = (t) => hex(COLD.map((c, i) => c + (HOT[i] - c) * t));
 
-  /** The fill of a muscle with `score` when the highest is `max`: one colour, more of it the more sets. */
   const fillOf = (score, max) => (score > 0 && max > 0 ? mix(FLOOR + (1 - FLOOR) * Math.min(1, score / max)) : hex(COLD));
 
-  // ── The drawing ─────────────────────────────────────────────────────────
-  // Two figures on a 120 x 262 grid, front and back. A shape is a list of points joined by a smooth closed curve ([x, y, ...]), or a
-  // rounded rectangle ({ rect: [x, y, w, h] }); each is drawn for the left side and again, mirrored, for the right. The body is the
-  // same outline on both figures.
 
   const W = 120, H = 262, MID = W / 2;
 
-  /** A smooth curve through the points (Catmull-Rom as cubic Béziers), closed or open. */
   function curve(pts, closed) {
     const n = pts.length, at = (i) => pts[closed ? (i + n) % n : Math.max(0, Math.min(n - 1, i))], f = (v) => Math.round(v * 10) / 10;
     let d = `M${f(pts[0][0])} ${f(pts[0][1])}`;
@@ -159,7 +122,6 @@
   const blob = (...flat) => curve(pairs(flat), true);
   const rect = (x, y, w, h, r = 2) => `M${x + r} ${y}H${x + w - r}Q${x + w} ${y} ${x + w} ${y + r}V${y + h - r}Q${x + w} ${y + h} ${x + w - r} ${y + h}H${x + r}Q${x} ${y + h} ${x} ${y + h - r}V${y + r}Q${x} ${y} ${x + r} ${y}Z`;
 
-  // The outline of the left half, from the neck down the arm and the leg to the foot; the centre line closes it.
   const OUTLINE = pairs([
     60, 24, 54, 26, 53.5, 33, 45, 36, 34, 40, 28, 45, 25, 56, 22, 72, 20, 90, 17, 106, 13, 124, 10, 136, 8, 146, 12, 152, 18, 148, 21, 138, 25, 120, 29, 102, 32, 88, 34, 74, 36, 62,
     39, 82, 42, 100, 40, 116, 38, 134, 39, 156, 41, 176, 41.5, 192, 40, 212, 42, 232, 43, 246, 41, 254, 51, 256, 55, 246, 55.5, 228, 57, 208, 56, 190, 57, 172, 59, 150, 60, 132,
@@ -195,10 +157,6 @@
   const mirror = (d) => `<path d="${d}" transform="translate(${W} 0) scale(-1 1)"/>`;
   const both = (d) => `<path d="${d}"/>${mirror(d)}`;
 
-  /**
-   * One figure as SVG text. `paint(id)` says how to draw a muscle: { fill, title }, or null to draw it untrained.
-   * Nothing from the person goes into the text: the muscle names are this file's, the titles are numbers.
-   */
   function figure(view, paint) {
     const shapes = view === "back" ? BACK : FRONT;
     const body = `<g class="mm-body" fill="${hex(COLD)}" fill-opacity=".45" stroke="#6a6a6a" stroke-width=".8" stroke-linejoin="round"><circle cx="${MID}" cy="13" r="10.5"/>${both(`${curve(OUTLINE)}Z`)}</g>`;

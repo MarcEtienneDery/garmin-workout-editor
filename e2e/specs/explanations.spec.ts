@@ -1,11 +1,6 @@
-/**
- * The explanations: what a view's numbers mean and how a setting works sit behind an ⓘ until asked for, and Show explanations in the
- * account menu shows them all, remembered in this browser. Reads only: alice's data is never changed (an ⓘ in a checkbox's row ticks nothing).
- */
 import type { Page } from "@playwright/test";
 import { test, expect, openView, chooseEditMode } from "../support/fixtures";
 
-/** The views whose notes on their numbers are one "About these numbers" line at their foot, by their body. */
 const FEET = [["today", "#tbody"], ["recovery", "#rbody"], ["weight", "#bbody"], ["food", "#fbody"]] as const;
 
 const aboutButton = (page: Page, body: string) => page.locator(`${body} .rfoot`).getByRole("button", { name: "About these numbers" });
@@ -14,7 +9,6 @@ const card = (page: Page, heading: string) => page.locator(".scard").filter({ ha
 
 type Section = "overview" | "connections" | "goals" | "display" | "signin";
 const SECTION_OF: Record<string, Section> = { "Nutrition goals": "goals", Units: "display", "Garmin account": "connections", "Renpho scale": "connections", "Web sign-in": "signin", "Claude (MCP)": "signin" };
-/** Shows a section of Settings (the list of sections is on the left). */
 async function showSection(page: Page, section: Section): Promise<void> {
   await page.locator(`#sbody .snav [data-section="${section}"]`).click();
   await expect(page.locator(`#sbody .spane[data-section="${section}"] .scard`).first()).toBeVisible({ timeout: 15_000 });
@@ -49,7 +43,7 @@ test.describe("each note behind its ⓘ", () => {
     await aboutButton(alice, "#fbody").click();
     await expect(aboutNote(alice, "#fbody")).toBeVisible();
     await alice.locator("#fPrev").click();
-    await expect(alice.locator("#fToday")).toBeVisible(); // the day before is drawn
+    await expect(alice.locator("#fToday")).toBeVisible();
     await expect(aboutNote(alice, "#fbody")).toBeVisible();
     await expect(aboutButton(alice, "#fbody")).toHaveAttribute("aria-expanded", "true");
   });
@@ -86,7 +80,7 @@ test.describe("each note behind its ⓘ", () => {
   });
 
   test("a workout's estimate says how it was timed behind its ⓘ", async ({ alice }) => {
-    await chooseEditMode(alice, "json"); // the outline's picture: the form has its own (workout-form.spec.ts)
+    await chooseEditMode(alice, "json");
     await openView(alice, "plans");
     await alice.locator("#filelist .file", { hasText: "alice-run-block.json" }).click();
     const tempo = alice.locator("#outline .row.wk").nth(1);
@@ -95,7 +89,7 @@ test.describe("each note behind its ⓘ", () => {
     await stat.getByRole("button", { name: "About the estimate" }).click();
     await expect(tempo.locator(".wv-sum > .help")).toBeVisible();
     await expect(tempo.locator(".wv-sum > .help")).toContainText("Steps with no pace target");
-    await expect(tempo.locator(".name")).toHaveAttribute("aria-expanded", "true"); // the picture stays open
+    await expect(tempo.locator(".name")).toHaveAttribute("aria-expanded", "true");
   });
 });
 
@@ -108,7 +102,7 @@ test.describe("Show explanations", () => {
     await expect(toggle).toHaveText("Show explanations");
     await expect(toggle).toHaveAttribute("aria-pressed", "false");
     await toggle.click();
-    await expect(alice.locator("#accountMenu")).toBeHidden(); // a menu item shuts the menu
+    await expect(alice.locator("#accountMenu")).toBeHidden();
     await expect(aboutNote(alice, "#tbody")).toBeVisible();
     await expect(aboutButton(alice, "#tbody")).toBeHidden();
 

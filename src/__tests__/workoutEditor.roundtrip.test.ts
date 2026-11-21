@@ -22,13 +22,11 @@ describe("WorkoutEditor - Round-trip Transformation", () => {
     garminClient = new GarminClient("test@example.com", "password123", true);
     editor = new WorkoutEditor(garminClient);
 
-    // Load the actual workouts-raw.json file
     const rawPath = path.join(__dirname, "../../data/workouts-raw.json");
     if (fs.existsSync(rawPath)) {
       const rawContent = fs.readFileSync(rawPath, "utf-8");
       rawWorkouts = JSON.parse(rawContent);
     } else {
-      // Skip test if file doesn't exist
       rawWorkouts = [];
     }
   });
@@ -39,28 +37,21 @@ describe("WorkoutEditor - Round-trip Transformation", () => {
       return;
     }
 
-    // Take first raw workout
     const originalRaw = rawWorkouts[0];
 
-    // Step 1: Export transformation (raw → DetailedWorkout)
     const transformed = (editor as any).transformSingleWorkout(originalRaw);
     expect(transformed).toBeDefined();
     expect(transformed.workoutName).toBe(originalRaw.workoutName);
     expect(transformed.workoutId).toBe(originalRaw.workoutId);
 
-    // Step 2: Upload transformation (DetailedWorkout → Garmin format)
     const garminWorkout = (editor as any).buildGarminWorkoutDetail(transformed);
     expect(garminWorkout).toBeDefined();
     expect(garminWorkout.workoutName).toBe(originalRaw.workoutName);
     expect(garminWorkout.workoutId).toBe(originalRaw.workoutId);
 
-    // Step 3: Check preserved fields (transformation is intentionally lossy -
-    // the intermediate DetailedWorkout format drops Garmin metadata like author
-    // details, displayOrder, strokeType, etc.)
     expect(garminWorkout.workoutName).toBe(originalRaw.workoutName);
     expect(garminWorkout.workoutId).toBe(originalRaw.workoutId);
 
-    // Top-level step count and step types must round-trip exactly
     const originalTopSteps = originalRaw.workoutSegments?.[0]?.workoutSteps ?? [];
     const roundtripTopSteps = garminWorkout.workoutSegments?.[0]?.workoutSteps ?? [];
     expect(roundtripTopSteps.length).toBe(originalTopSteps.length);
@@ -83,21 +74,17 @@ describe("WorkoutEditor - Round-trip Transformation", () => {
       try {
         const raw = rawWorkouts[i];
 
-        // Export transformation
         const transformed = (editor as any).transformSingleWorkout(raw);
         expect(transformed).toBeDefined();
 
-        // Upload transformation
         const garminWorkout = (editor as any).buildGarminWorkoutDetail(
           transformed
         );
         expect(garminWorkout).toBeDefined();
 
-        // Check preserved fields (transformation is intentionally lossy)
         expect(garminWorkout.workoutName).toBe(raw.workoutName);
         expect(garminWorkout.workoutId).toBe(raw.workoutId);
 
-        // Step count and types must round-trip exactly
         const originalTopSteps = raw.workoutSegments?.[0]?.workoutSteps ?? [];
         const roundtripTopSteps = garminWorkout.workoutSegments?.[0]?.workoutSteps ?? [];
         expect(roundtripTopSteps.length).toBe(originalTopSteps.length);
@@ -131,7 +118,6 @@ describe("WorkoutEditor - Round-trip Transformation", () => {
       return;
     }
 
-    // Find a workout with steps
     const workoutWithSteps = rawWorkouts.find(
       (w) =>
         w.workoutSegments &&
@@ -146,13 +132,11 @@ describe("WorkoutEditor - Round-trip Transformation", () => {
 
     const originalSteps = workoutWithSteps.workoutSegments[0].workoutSteps;
 
-    // Transform
     const transformed = (editor as any).transformSingleWorkout(workoutWithSteps);
     const garminWorkout = (editor as any).buildGarminWorkoutDetail(transformed);
 
     const roundtripSteps = garminWorkout.workoutSegments[0].workoutSteps;
 
-    // Verify step types match exactly
     const originalStepTypes = originalSteps.map((s: any) => s.stepType?.stepTypeKey);
     const roundtripStepTypes = roundtripSteps.map((s: any) => s.stepType?.stepTypeKey);
 

@@ -107,7 +107,7 @@ describe("Garmin authentication when Garmin throttles or refuses", () => {
 
     jest.advanceTimersByTime(20_000);
     expect(await garmin.authenticate()).toBe(false);
-    expect(connect.login).toHaveBeenCalledTimes(1); // Garmin was not asked
+    expect(connect.login).toHaveBeenCalledTimes(1);
     expect(garmin.authError().message).toMatch(/try again in 40 seconds/);
 
     jest.advanceTimersByTime(LOGIN_COOLDOWN_MS - 20_000);
@@ -121,7 +121,7 @@ describe("Garmin authentication when Garmin throttles or refuses", () => {
     const garmin = client();
     expect(await garmin.authenticate()).toBe(false);
 
-    cache().saveToken(EMAIL, tokens.oauth1, tokens.oauth2); // a login made elsewhere (the other process)
+    cache().saveToken(EMAIL, tokens.oauth1, tokens.oauth2);
     expect(await garmin.authenticate()).toBe(true);
     expect(connect.login).toHaveBeenCalledTimes(1);
   });
@@ -211,7 +211,7 @@ describe("the log of calls to Garmin", () => {
 
 describe("Garmin 429s are recorded for the page", () => {
   const limit = () => getStore().limits.get("MED");
-  beforeEach(() => { getStore(); }); // the database exists, as it does wherever a profile has a login
+  beforeEach(() => { getStore(); });
 
   it("records a login Garmin answers with 429, and counts each refusal once", async () => {
     connect.login.mockRejectedValue(tooMany());
@@ -251,7 +251,7 @@ describe("Garmin 429s are recorded for the page", () => {
 
     await expect(onFail(tooMany())).rejects.toThrow(/429/);
     expect(limit()?.count).toBe(1);
-    onOk({ config: { url: "https://sso.garmin.com/mobile/sso/en/sign-in" } }); // the sign-in page loading says nothing
+    onOk({ config: { url: "https://sso.garmin.com/mobile/sso/en/sign-in" } });
     expect(limit()?.count).toBe(1);
     onOk({ config: { url: "https://connectapi.garmin.com/userprofile-service/socialProfile" } });
     expect(limit()).toBeNull();

@@ -1,4 +1,3 @@
-/** The Settings view on a phone: the list of sections is the home screen, a section opens over the whole screen with a way back, and nothing goes sideways. */
 import { test, expect, type Page } from "../support/fixtures";
 
 test.setTimeout(60_000);

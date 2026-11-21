@@ -112,7 +112,7 @@ describe("the goals form", () => {
     const withBurn = [...fields.slice(0, 1), { key: "kcalBurnPct", label: "Share of active calories" }, ...fields.slice(1)];
     expect(SM.goalsPatch({ kcal: "2200", kcalBurnPct: "50" }, withBurn, {})).toEqual({ goals: { kcal: 2200, kcalBurnPct: 50 } });
     expect(SM.goalsPatch({ kcal: "2200", kcalBurnPct: "" }, withBurn, { kcal: 2200, kcalBurnPct: 50 })).toEqual({ goals: { kcal: 2200, kcalBurnPct: null } });
-    expect(SM.goalsPatch({ kcal: "2200", kcalBurnPct: "" }, withBurn, { kcal: 2200 })).toEqual({ goals: { kcal: 2200 } }); // off and was off
+    expect(SM.goalsPatch({ kcal: "2200", kcalBurnPct: "" }, withBurn, { kcal: 2200 })).toEqual({ goals: { kcal: 2200 } });
     expect(SM.goalsPatch({ kcal: "", kcalBurnPct: "50" }, withBurn, {})).toEqual({ error: "Set a calorie goal to add the burned calories to." });
     expect(SM.goalsPatch({ kcal: "2200", kcalBurnPct: "150" }, withBurn, {})).toEqual({ error: "The share of the active calories added to the calorie goal is at most 100 %." });
   });
@@ -186,7 +186,6 @@ describe("the overview of the Settings view", () => {
     expect(SM.previewDay({}, 0.5)).toEqual({ rows: [], left: null });
     expect(SM.burnExample({ kcal: 2600, kcalBurnPct: 50 })!.text).toBe(`${(2600).toLocaleString()} + 50 % × 800 = ${(3000).toLocaleString()} kcal`);
     expect(SM.burnExample({ kcal: 2600 })).toBeNull();
-    // the tolerance is the Food view's
     const justOver = 1 + NM.TARGET_TOLERANCE + 0.001, onEdge = 1 + NM.TARGET_TOLERANCE - 0.001;
     expect(SM.previewDay({ kcal: 2000 }, justOver).rows[0].state).toBe("over");
     expect(SM.previewDay({ kcal: 2000 }, onEdge).rows[0].state).toBe("ok");

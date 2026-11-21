@@ -1,5 +1,4 @@
-export {}; // a module of its own: the helpers below must not clash with those of the other model tests
-/** workoutListModel.js orders and narrows the Workouts view's list. */
+export {};
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const L = require("../web/public/workoutListModel.js");
 

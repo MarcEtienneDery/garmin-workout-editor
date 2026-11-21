@@ -1,4 +1,3 @@
-/** The header status on a phone: the words shorten to fit the strip of views, and a tap says the rest. Pixel 7 project; reads only. */
 import { test, expect, openView } from "../support/fixtures";
 
 test.setTimeout(60_000);

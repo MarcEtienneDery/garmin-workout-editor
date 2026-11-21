@@ -1,30 +1,19 @@
-/**
- * The Calendar view: where the plan files put their workouts, as a month grid in three modes (Plans: a bar per plan across its span;
- * Workouts: a chip per scheduled workout; Both, the default: each plan's bar with its workouts of the week inside it). Alice's plans are read-only and seeded relative to today; the fresh profiles made here
- * use dates in 2031, so no other spec's data lands on their months.
- */
 import type { APIRequestContext, Locator, Page } from "@playwright/test";
 import { test, expect, openView, monthView, loginAs, today, daysAgo, daysAhead, mondayOf, PASSWORD, chooseEditMode } from "../support/fixtures";
 
-// The machine is shared by every spec run at once: a page can take many seconds to answer, so each test has more than the default 30 s.
 test.describe.configure({ timeout: 60_000 });
 
-// ── helpers ──────────────────────────────────────────────────────────────
 
-/** The month title and the long day label the page shows (en-CA, as the browser formats them). */
 const monthTitle = (day: string) => new Intl.DateTimeFormat("en-CA", { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${day}T00:00:00Z`));
 const longLabel = (day: string) => new Intl.DateTimeFormat("en-CA", { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${day}T00:00:00Z`));
 const monthDiff = (from: string, to: string) => (Number(to.slice(0, 4)) - Number(from.slice(0, 4))) * 12 + (Number(to.slice(5, 7)) - Number(from.slice(5, 7)));
 const addDays = (day: string, n: number) => new Date(Date.parse(`${day}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
-/** The first day of the month `n` months away from a day's month ("YYYY-MM-01"). */
 const monthOffset = (day: string, n: number) => {
   const [y, m] = day.split("-").map(Number);
   return new Date(Date.UTC(y, m - 1 + n, 1)).toISOString().slice(0, 10);
 };
-/** What a day's number reads in its cell: the number, or "Oct 1" on the first of a month. */
 const dayNumber = (day: string) => (day.endsWith("-01") ? `${new Intl.DateTimeFormat("en-CA", { month: "short", timeZone: "UTC" }).format(new Date(`${day}T00:00:00Z`))} 1` : String(Number(day.slice(8))));
 
-/** How a month is laid out: the days before its first (Monday-first), its length and how many week rows the grid has. */
 function monthShape(day: string) {
   const [y, m] = day.split("-").map(Number);
   const lead = (new Date(Date.UTC(y, m - 1, 1)).getUTCDay() + 6) % 7;
@@ -41,21 +30,18 @@ async function box(locator: Locator) {
   return b;
 }
 
-/** Left and right edges of a bar sit on the cell's edges (2 px of slack for the bar's margin and border). */
 async function expectSpans(bar: Locator, from: Locator, to: Locator) {
   const [b, a, z] = await Promise.all([box(bar), box(from), box(to)]);
   expect(Math.abs(b.x - a.x)).toBeLessThanOrEqual(3);
   expect(Math.abs(b.x + b.width - (z.x + z.width))).toBeLessThanOrEqual(3);
 }
 
-/** Open the Calendar view and wait until the plans have arrived (the page's own "Loading…" note has gone); `mode` is then pressed. */
 async function openCalendar(page: Page, mode?: "both" | "plans" | "workouts"): Promise<void> {
   await monthView(page);
   await openView(page, "calendar");
   for (let attempt = 0; attempt < 3; attempt++) {
     await expect(page.locator("#cNote")).not.toContainText("Loading", { timeout: 20_000 });
     if (!(await page.locator("#cNote").evaluate((e) => e.classList.contains("err")))) break;
-    // the page shows "Failed to fetch" when a load is dropped and does not ask again: press its reload button, as a person would
     await page.locator("#cRefresh").click();
   }
   if (!mode) return;
@@ -63,7 +49,6 @@ async function openCalendar(page: Page, mode?: "both" | "plans" | "workouts"): P
   await expect(page.locator(`#cModes button[data-mode=${mode}]`)).toHaveAttribute("aria-pressed", "true");
 }
 
-/** Show the month of a day: Today first (which also selects today), then the arrows for the months between. */
 async function goToMonthOf(page: Page, day: string) {
   await page.locator("#cToday").click();
   const n = monthDiff(today(), day);
@@ -71,7 +56,6 @@ async function goToMonthOf(page: Page, day: string) {
   await expect(page.locator("#cTitle")).toHaveText(monthTitle(day));
 }
 
-/** How many chips named `name` sit in the column of `day`: a week row can hold the same workout on two of its days. */
 async function chipsOnDay(page: Page, day: string, name: string): Promise<number> {
   return page.evaluate(
     ({ label, name }) => {
@@ -89,10 +73,8 @@ async function chipsOnDay(page: Page, day: string, name: string): Promise<number
   );
 }
 
-/** Click a plan's row in the legend (the row jumps to the plan's first month). */
 const legendRow = (page: Page, name: string) => page.locator("#cLegend .citem", { hasText: name });
 
-/** A plan file for a profile, made through the API (201 when made). The name carries the profile's name: plan files share one folder. */
 async function addPlan(api: APIRequestContext, name: string, plan: unknown): Promise<string> {
   const path = `workout-plans/${name}.json`;
   const res = await api.put(`/api/file?path=${encodeURIComponent(path)}`, { data: { text: JSON.stringify(plan), create: true } });
@@ -100,18 +82,15 @@ async function addPlan(api: APIRequestContext, name: string, plan: unknown): Pro
   return path;
 }
 
-/** What the calendar gets when there are no plans at all (a test stubs the API for it: the shared plan is seen by every profile). */
 const NO_PLANS = { plans: [] };
 
-// Alice's seeded plans (see e2e/support/seed.ts): their names in the legend and the workouts on the grid.
 const RUN_BLOCK = "alice-run-block";
 const SOMEDAY = "alice-someday";
 const SHARED = "shared-base";
-const GREEN = "rgb(42, 125, 99)"; // running
-const BLUE = "rgb(58, 104, 176)"; // strength training
-const GREY = "rgb(102, 102, 102)"; // anything else (walking)
+const GREEN = "rgb(42, 125, 99)";
+const BLUE = "rgb(58, 104, 176)";
+const GREY = "rgb(102, 102, 102)";
 
-// ── the month grid ───────────────────────────────────────────────────────
 
 test.describe("month grid", () => {
   test("opens on the current month in Both mode", async ({ alice }) => {
@@ -143,14 +122,12 @@ test.describe("month grid", () => {
     const shape = monthShape(today());
     const dimmed = alice.locator("#cgrid .cday.out");
     await expect(dimmed).toHaveCount(shape.weeks * 7 - shape.days);
-    // a month that starts on a Monday and fills its last week has no neighbouring days to dim
     if (shape.weeks * 7 - shape.days > 0) {
       const background = (selector: string) => alice.locator(selector).first().evaluate((el) => getComputedStyle(el).backgroundColor);
-      expect(await background("#cgrid .cday.out")).not.toBe(await background("#cgrid .cday:not(.out)")); // a neighbouring day has a shade of its own
+      expect(await background("#cgrid .cday.out")).not.toBe(await background("#cgrid .cday:not(.out)"));
       const number = (selector: string) => alice.locator(selector).first().evaluate((el) => getComputedStyle(el).color);
-      expect(await number("#cgrid .cday.out .dnum")).not.toBe(await number("#cgrid .cday:not(.out) .dnum")); // and a dimmer number
+      expect(await number("#cgrid .cday.out .dnum")).not.toBe(await number("#cgrid .cday:not(.out) .dnum"));
     }
-    // the first cell of a grid that starts mid-week is the last days of the month before
     if (shape.lead > 0) await expect(alice.locator("#cgrid .cday").first()).toHaveClass(/out/);
   });
 
@@ -187,7 +164,7 @@ test.describe("month grid", () => {
 
   test("moving forward past December reaches January of the next year, and back again", async ({ alice }) => {
     await openCalendar(alice);
-    const toJanuary = 13 - Number(today().slice(5, 7)); // the months up to and including January of next year
+    const toJanuary = 13 - Number(today().slice(5, 7));
     for (let i = 0; i < toJanuary; i++) await alice.locator("#cNext").click();
     await expect(alice.locator("#cTitle")).toHaveText(monthTitle(`${Number(today().slice(0, 4)) + 1}-01-01`));
     await alice.locator("#cPrev").click();
@@ -196,14 +173,12 @@ test.describe("month grid", () => {
 
   test("moving back past January reaches December of the year before", async ({ alice }) => {
     await openCalendar(alice);
-    // stepping back month by month from this month's number reaches December of the year before
     for (let i = 0; i < Number(today().slice(5, 7)); i++) await alice.locator("#cPrev").click();
     await expect(alice.locator("#cTitle")).toHaveText(monthTitle(`${Number(today().slice(0, 4)) - 1}-12-01`));
   });
 
   test("clicking a day selects it, and the side panel shows its date", async ({ alice }) => {
     await openCalendar(alice);
-    // the neighbour of today in this month (tomorrow, or yesterday on the last day of the month)
     const other = Number(today().slice(8)) < monthShape(today()).days ? addDays(today(), 1) : addDays(today(), -1);
     await cellOf(alice, other).click({ position: { x: 6, y: 6 } });
     await expect(alice.locator("#cgrid .cday.sel")).toHaveCount(1);
@@ -221,7 +196,7 @@ test.describe("month grid", () => {
 
   test("a day can be selected from the keyboard", async ({ alice }) => {
     await openCalendar(alice);
-    const day = addDays(mondayOf(today()), 2); // Wednesday of this week
+    const day = addDays(mondayOf(today()), 2);
     await goToMonthOf(alice, day);
     await cellOf(alice, day).focus();
     await alice.keyboard.press("Enter");
@@ -230,7 +205,6 @@ test.describe("month grid", () => {
   });
 });
 
-// ── Plans mode ───────────────────────────────────────────────────────────
 
 test.describe("Plans mode", () => {
   test("a plan is one bar across the week it covers, and alice's run block spans the whole current week", async ({ alice }) => {
@@ -239,7 +213,6 @@ test.describe("Plans mode", () => {
     const bar = week.getByRole("button", { name: RUN_BLOCK, exact: true });
     await expect(bar).toHaveCount(1);
     const [b, row] = await Promise.all([box(bar), box(week)]);
-    // the plan starts on this Monday and runs past this Sunday, so the bar fills the row
     expect(Math.abs(b.x - row.x)).toBeLessThanOrEqual(3);
     expect(Math.abs(b.width - row.width)).toBeLessThanOrEqual(3);
   });
@@ -326,20 +299,17 @@ test.describe("Plans mode", () => {
     const week = weekOf(me, "2031-03-17");
     const bar = week.getByRole("button", { name: `${profile.name}-far`, exact: true });
     await expect(bar).toHaveCount(1);
-    // the bar in the week of the 17th stops at Wednesday the 19th
     await expectSpans(bar, week.locator(".cday").first(), cellOf(me, "2031-03-19"));
     await expect(weekOf(me, "2031-03-10").getByRole("button", { name: `${profile.name}-far`, exact: true })).toHaveCount(1);
   });
 });
 
-// ── Workouts mode ────────────────────────────────────────────────────────
 
 test.describe("Workouts mode", () => {
   test("each scheduled day gets a chip with the workout's name, on the day itself", async ({ alice }) => {
     await openCalendar(alice);
     await alice.locator("#cModes button[data-mode=workouts]").click();
     await expect(alice.locator("#cModes button[data-mode=workouts]")).toHaveAttribute("aria-pressed", "true");
-    // Easy run two days ago, Tempo intervals today, Long run in three days, Shared walk in two
     for (const [day, name] of [[daysAgo(2), "Easy run"], [today(), "Tempo intervals"], [daysAhead(3), "Long run"], [daysAhead(2), "Shared walk"]] as const) {
       await goToMonthOf(alice, day);
       await expect.poll(() => chipsOnDay(alice, day, name)).toBe(1);
@@ -366,7 +336,6 @@ test.describe("Workouts mode", () => {
     await goToMonthOf(alice, today());
     await expect(weekOf(alice, today()).getByRole("button", { name: "Tempo intervals", exact: true })).toHaveCSS("background-color", GREEN);
     await goToMonthOf(alice, daysAhead(1));
-    // the strength workout is on in 1 and 5 days, which may be the same week: every chip of it is blue
     const strength = weekOf(alice, daysAhead(1)).getByRole("button", { name: "Full body strength", exact: true });
     await expect(strength.first()).toBeVisible();
     for (const chip of await strength.all()) await expect(chip).toHaveCSS("background-color", BLUE);
@@ -413,7 +382,6 @@ test.describe("Workouts mode", () => {
     await expect(alice.locator("#cTypes .citem", { hasText: "Strength Training" })).toContainText("scheduled");
     await expect(alice.locator("#cTypes .citem", { hasText: "Running" })).toContainText("scheduled");
     await expect(alice.locator("#cTypes .citem", { hasText: "Walking" })).toContainText("1 scheduled");
-    // the plans' legend is not shown in this mode
     await expect(alice.locator("#cLegendTitle")).toBeHidden();
     await expect(alice.locator("#cLegend")).toBeHidden();
   });
@@ -430,12 +398,9 @@ test.describe("Workouts mode", () => {
   });
 });
 
-// ── Both mode (the default) ──────────────────────────────────────────────
 
-/** A plan's band in a week: the part of its bar that reaches down around its workouts (Both mode). */
 const bandOf = (page: Page, day: string, path: string) => weekOf(page, day).locator(`.cband[data-path="${path}"]`);
 
-/** `inner` lies within `outer` (1 px of slack for borders). */
 function expectInside(inner: { x: number; y: number; width: number; height: number }, outer: typeof inner) {
   expect(inner.x).toBeGreaterThanOrEqual(outer.x - 1);
   expect(inner.y).toBeGreaterThanOrEqual(outer.y - 1);
@@ -456,7 +421,6 @@ test.describe("Both mode", () => {
     expectInside(chip, band);
     expectInside(bar, band);
     expect(chip.y).toBeGreaterThanOrEqual(bar.y + bar.height - 1);
-    // and a workout of the shared plan is inside the shared plan's bar, not the run block's
     const day = daysAhead(2);
     await goToMonthOf(alice, day);
     const walk = await box(weekOf(alice, day).getByRole("button", { name: "Shared walk", exact: true }));
@@ -470,7 +434,6 @@ test.describe("Both mode", () => {
     const chips = alice.locator("#cgrid .cbar.wk"), bars = alice.locator("#cgrid .cbar:not(.wk)");
     await expect(chips.first()).toBeVisible();
     await expect(bars.first()).toBeVisible();
-    // the same chips and bars, in whatever order each mode lays them out (in Both, a workout sits in its plan's bar)
     const sorted = async (l: Locator) => (await l.allTextContents()).sort();
     const both = { chips: await sorted(chips), bars: await sorted(bars) };
     await alice.locator("#cModes button[data-mode=workouts]").click();
@@ -491,7 +454,6 @@ test.describe("Both mode", () => {
     const colour = await bar.evaluate((e) => getComputedStyle(e).backgroundColor);
     await expect(bandOf(alice, today(), "workout-plans/alice-run-block.json")).toHaveCSS("border-top-color", colour);
     await expect(week.getByRole("button", { name: "Tempo intervals", exact: true })).toHaveCSS("background-color", GREEN);
-    // the other modes draw no band
     await alice.locator("#cModes button[data-mode=plans]").click();
     await expect(alice.locator("#cgrid .cband")).toHaveCount(0);
     await alice.locator("#cModes button[data-mode=workouts]").click();
@@ -556,7 +518,6 @@ test.describe("Both mode", () => {
     expectInside(first, band);
     expectInside(second, band);
     expectInside(band, row);
-    // the bar's empty part, on Friday at the height of the chips, belongs to the day under it
     const friday = await box(cellOf(me, "2031-09-05"));
     await me.mouse.click(friday.x + friday.width / 2, first.y + first.height / 2);
     await expect(me.locator("#cDayTitle")).toHaveText(longLabel("2031-09-05"));
@@ -587,7 +548,6 @@ test.describe("Both mode", () => {
   });
 });
 
-// ── fresh profiles: what the files say, as the calendar draws it ──────────
 
 test.describe("a profile's own plans", () => {
   test("a plan with no dates at all is listed as 'No dates yet' and is not on the grid", async ({ me, profile }) => {
@@ -634,12 +594,10 @@ test.describe("a profile's own plans", () => {
     await legendRow(me, name).click();
     await me.locator("#cModes button[data-mode=workouts]").click();
     await expect(me.locator("#cTitle")).toHaveText(monthTitle("2031-03-01"));
-    // the one workout is on both of its dates: the 4th and the 6th share a week row
     await expect.poll(() => chipsOnDay(me, "2031-03-04", "Intervals")).toBe(1);
     await expect.poll(() => chipsOnDay(me, "2031-03-06", "Intervals")).toBe(1);
     await expect.poll(() => chipsOnDay(me, "2031-03-06", "Long")).toBe(1);
     await expect.poll(() => chipsOnDay(me, "2031-03-04", "Long")).toBe(0);
-    // the 6th has both workouts, one chip under the other
     const thu = weekOf(me, "2031-03-06");
     const first = await box(thu.getByRole("button", { name: "Intervals", exact: true }).first());
     const second = await box(thu.getByRole("button", { name: "Long", exact: true }));
@@ -647,7 +605,6 @@ test.describe("a profile's own plans", () => {
     await cellOf(me, "2031-03-06").click({ position: { x: 6, y: 6 } });
     await expect(me.locator("#cDay .citem", { hasText: "Intervals" })).toHaveCount(1);
     await expect(me.locator("#cDay .citem", { hasText: "Long" })).toHaveCount(1);
-    // the 4th has the one workout only
     await cellOf(me, "2031-03-04").click({ position: { x: 6, y: 6 } });
     await expect(me.locator("#cDay .citem", { hasText: "Intervals" })).toHaveCount(1);
     await expect(me.locator("#cDay .citem", { hasText: "Long" })).toHaveCount(0);
@@ -705,7 +662,6 @@ test.describe("a profile's own plans", () => {
     const name = `${profile.name}-added`;
     await expect(me.locator("#cLegend")).not.toContainText(name);
     await addPlan(profile.api, name, { weekStart: "2031-06-02", weekEnd: "2031-06-08", workouts: [{ workoutName: "Added run", workoutType: "running", scheduledDate: "2031-06-03" }] });
-    // a reload that the server answers late or drops under load is asked for again, as a person presses the button again
     await expect(async () => {
       await me.locator("#cRefresh").click();
       await expect(me.locator("#cLegend")).toContainText(name, { timeout: 2_000 });
@@ -747,7 +703,6 @@ test.describe("a profile's own plans", () => {
   });
 });
 
-// ── empty states (the plans come from the API, which a test may answer itself) ──
 
 test.describe("empty states", () => {
   test("with no plans at all, the Plans mode says so and the legend has nothing", async ({ page }) => {

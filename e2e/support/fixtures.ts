@@ -1,15 +1,3 @@
-/**
- * What every spec starts from. Import `test` and `expect` from here, not from @playwright/test.
- *
- *   alice     a page already signed in as the seeded profile alice (stored activities, health data, weigh-ins, plans, food).
- *             Read-only: never change her data, other specs read it at the same time.
- *   admin     an API client signed in as the admin (the access token); it can add profiles and reads every profile.
- *   profile   a profile made for this test alone, empty, with its own API client (`profile.api`) signed in as it. Use it, or
- *             `me` (a page signed in as it), for any spec that changes data: specs run in parallel on one database.
- *   me        a page signed in as `profile`.
- *
- * The server's time zone is UTC and so is the browser's, so the dates of dates.ts are the page's "today".
- */
 import { test as base, expect, request as pwRequest, type APIRequestContext, type Page, type BrowserContext } from "@playwright/test";
 import { ADMIN_TOKEN, PASSWORD } from "./seed";
 
@@ -17,13 +5,10 @@ export { expect, ADMIN_TOKEN, PASSWORD };
 export type { APIRequestContext, BrowserContext, Locator, Page, Request, Response, Route } from "@playwright/test";
 export * from "./dates";
 
-/** The header the server wants on every request that is not a GET (it keeps other sites from driving the API). */
 export const CSRF = { "X-Requested-With": "plan-editor" };
 
-/** No socket is kept between calls: Node closes an idle one after 5 s, and a request sent on it just then fails with ECONNRESET. */
 const FRESH_SOCKET = { Connection: "close" };
 
-/** A call that failed because the connection dropped is made again (the server was not asked, or did not answer): never one that was answered. */
 async function retrying<T>(call: () => Promise<T>): Promise<T> {
   for (let attempt = 1; ; attempt++) {
     try {
@@ -39,49 +24,40 @@ const basic = (user: string, secret: string) => ({ Authorization: `Basic ${Buffe
 export interface Profile {
   name: string;
   password: string;
-  /** Signed in as this profile (HTTP Basic), with the required header: `profile.api.get("/api/files")`. */
   api: APIRequestContext;
 }
 
-/** Sign a page's browser context in through the API, so the session cookie is set before the page loads. */
 export async function loginAs(target: Page | BrowserContext, user: string, secret: string): Promise<void> {
   const context = "context" in target ? (target as Page).context() : (target as BrowserContext);
   const res = await retrying(() => context.request.post("/api/login", { data: { user, password: secret }, headers: { ...CSRF, ...FRESH_SOCKET } }));
   if (!res.ok()) throw new Error(`Signing in as ${user} failed: ${res.status()} ${await res.text()}`);
 }
 
-/** Wait for the page to have loaded its first view (the sign-in form is gone and the header is up). */
 export async function ready(page: Page): Promise<void> {
   await expect(page.locator("#login")).toBeHidden();
   await expect(page.locator("#views")).toBeVisible();
 }
 
-/** Open the page on a view (`today`, `plans`, `calendar`, `food`, ...), signed in already, and wait until it is drawn. */
 export async function openView(page: Page, view: string): Promise<void> {
   await page.goto(view === "today" ? "/" : `/#${view}`);
   await ready(page);
   await expect(page.locator("body")).toHaveAttribute("data-view", view);
 }
 
-/** The theme, set the way Settings > Appearance sets it (the page's own function, which keeps the choice for the views after). */
 export const chooseTheme = (page: Page, theme: "dark" | "light") =>
   page.evaluate((t) => (window as any).setTheme(t, true), theme);
 
-/** The other theme, as the button that every view's bar had before the theme moved to Settings. */
 export const toggleTheme = (page: Page) =>
   page.evaluate(() => (window as any).setTheme(document.body.dataset.theme === "light" ? "dark" : "light", true));
 
 let counter = 0;
 const unique = () => `t${Date.now().toString(36)}${(counter++).toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
-/** Show the Plans view and the Workouts view's dialog on the form or on the JSON: the choice the page keeps in the browser. */
-/** Open the Calendar on its month grid and not its week (the page keeps the choice in the browser): for the specs of the month. Call it before the page is opened. */
-export const monthView = (page: Page) => page.addInitScript(() => { try { localStorage.setItem("calendarView", "month"); } catch { /* the default week stays */ } });
+export const monthView = (page: Page) => page.addInitScript(() => { try { localStorage.setItem("calendarView", "month"); } catch { } });
 
 export const chooseEditMode = (page: Page, mode: "form" | "json") => page.addInitScript((m) => localStorage.setItem("planEditor.editMode", m), mode);
 
 export const test = base.extend<{ admin: APIRequestContext; profile: Profile; me: Page; alice: Page; editMode: "form" | "json" | undefined }>({
-  /** `test.use({ editMode: "json" })`: the specs of a file or a describe see the JSON editor (the page opens on the form otherwise). */
   editMode: [undefined, { option: true }],
   page: async ({ page, editMode }, use) => {
     if (editMode) await chooseEditMode(page, editMode);

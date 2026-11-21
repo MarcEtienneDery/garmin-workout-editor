@@ -11,7 +11,6 @@ import ActivityExporter from "../activityExporter";
 import { GarminClient } from "../shared/garminClient";
 import { getMockClient, normalizeActivityType } from "../mocks.setup";
 
-/** The mock activities built into the slim shape, as the exporter's removed command-line path did before it wrote them to a file. */
 const extractData = async (exporter: ActivityExporter, limit: number, options: Parameters<ActivityExporter["buildExtractedActivities"]>[1] = {}) =>
   exporter.buildExtractedActivities(await exporter.fetchActivities(limit, true), options);
 
@@ -20,7 +19,7 @@ describe("ActivityExporter", () => {
   let garminClient: GarminClient;
 
   beforeEach(() => {
-    garminClient = new GarminClient("test@example.com", "password123", true); // mock mode
+    garminClient = new GarminClient("test@example.com", "password123", true);
     exporter = new ActivityExporter(garminClient);
   });
 
@@ -48,14 +47,12 @@ describe("ActivityExporter", () => {
       const data = await extractData(exporter, 1);
       const activity = data.activities[0];
 
-      // Core required fields
       expect(activity).toHaveProperty("id");
       expect(activity).toHaveProperty("activityName");
       expect(activity).toHaveProperty("activityType");
       expect(activity).toHaveProperty("startTime");
       expect(activity).toHaveProperty("duration");
 
-      // Week metadata
       expect(data).toHaveProperty("weekStart");
       expect(data).toHaveProperty("weekEnd");
     });
@@ -96,7 +93,7 @@ describe("ActivityExporter", () => {
       const speedToPace = (exporter as any).speedToPace.bind(exporter);
       expect(speedToPace(undefined)).toBeUndefined();
       expect(speedToPace(0)).toBeUndefined();
-      const pace = speedToPace(3); // 3 m/s
+      const pace = speedToPace(3);
       expect(pace).toBeCloseTo(1000 / 3 / 60, 6);
     });
 
@@ -192,7 +189,7 @@ describe("ActivityExporter", () => {
 
     it("should combine consecutive same-exercise sets with uniform reps and weight into sets++", () => {
       const activity = makeStrengthActivity([
-        activeSet("DEADLIFT", 5, 129276),  // ~285 lbs
+        activeSet("DEADLIFT", 5, 129276),
         activeSet("DEADLIFT", 5, 129276),
         activeSet("DEADLIFT", 5, 129276),
         activeSet("DEADLIFT", 5, 129276),
@@ -208,8 +205,8 @@ describe("ActivityExporter", () => {
 
     it("should combine consecutive sets with changing weight into weightList", () => {
       const activity = makeStrengthActivity([
-        activeSet("DEADLIFT", 10, 83916),  // ~185 lbs warmup
-        activeSet("DEADLIFT", 5, 129276),  // ~285 lbs
+        activeSet("DEADLIFT", 10, 83916),
+        activeSet("DEADLIFT", 5, 129276),
         activeSet("DEADLIFT", 5, 129276),
         activeSet("DEADLIFT", 5, 129276),
         activeSet("DEADLIFT", 5, 129276),
@@ -228,7 +225,7 @@ describe("ActivityExporter", () => {
 
     it("should accumulate volume correctly when consolidating", () => {
       const activity = makeStrengthActivity([
-        activeSet("BENCH_PRESS", 5, 129276),  // ~285 lbs
+        activeSet("BENCH_PRESS", 5, 129276),
         activeSet("BENCH_PRESS", 5, 129276),
         activeSet("BENCH_PRESS", 5, 129276),
       ]);
@@ -244,7 +241,7 @@ describe("ActivityExporter", () => {
       const activity = makeStrengthActivity([
         activeSet("DEADLIFT", 5, 129276),
         activeSet("SQUAT", 5, 129276),
-        activeSet("DEADLIFT", 5, 129276),  // same as first but not consecutive
+        activeSet("DEADLIFT", 5, 129276),
       ]);
 
       const result = transformActivities([activity])[0];
@@ -254,7 +251,7 @@ describe("ActivityExporter", () => {
 
     it("should combine consecutive same-exercise/same-weight sets with varying reps into repsList", () => {
       const activity = makeStrengthActivity([
-        activeSet("SHOULDER_PRESS", 14, 49896),  // ~110 lbs
+        activeSet("SHOULDER_PRESS", 14, 49896),
         activeSet("SHOULDER_PRESS", 11, 49896),
         activeSet("SHOULDER_PRESS", 10, 49896),
       ]);
@@ -271,8 +268,8 @@ describe("ActivityExporter", () => {
 
     it("should combine consecutive sets with same exercise but different weights into weightList", () => {
       const activity = makeStrengthActivity([
-        activeSet("DEADLIFT", 5, 83916),   // ~185 lbs
-        activeSet("DEADLIFT", 5, 129276),  // ~285 lbs
+        activeSet("DEADLIFT", 5, 83916),
+        activeSet("DEADLIFT", 5, 129276),
       ]);
 
       const result = transformActivities([activity])[0];
@@ -280,7 +277,7 @@ describe("ActivityExporter", () => {
       expect(result.exerciseSets).toHaveLength(1);
       const s = result.exerciseSets[0];
       expect(s.sets).toBe(2);
-      expect(s.reps).toBe(5);           // uniform reps → no repsList
+      expect(s.reps).toBe(5);
       expect(s.repsList).toBeUndefined();
       expect(s.weight).toBeUndefined();
       expect(s.weightList).toEqual([185, 285]);
@@ -301,7 +298,6 @@ describe("ActivityExporter", () => {
     });
 
     it("should detect a 2-exercise superset and collapse into 2 tagged entries", () => {
-      // BENCH, CURL alternating 3 rounds
       const activity = makeStrengthActivity([
         activeSet("BENCH_PRESS", 12, 74844),
         activeSet("CURL", 10, 31752),
@@ -324,7 +320,6 @@ describe("ActivityExporter", () => {
     });
 
     it("should include partial last round in the superset", () => {
-      // BENCH, CURL, PLANK × 2 rounds, then partial 3rd round (BENCH, CURL only)
       const activity = makeStrengthActivity([
         activeSet("BENCH_PRESS", 12, 74844),
         activeSet("CURL", 10, 31752),
@@ -343,7 +338,7 @@ describe("ActivityExporter", () => {
       expect(bench.sets).toBe(3);
       expect(bench.repsList).toEqual([12, 11, 11]);
       expect(curl.sets).toBe(3);
-      expect(plank.sets).toBe(2);  // only appeared in 2 of 3 rounds
+      expect(plank.sets).toBe(2);
       expect(bench.supersetGroup).toBe(curl.supersetGroup);
       expect(bench.supersetGroup).toBe(plank.supersetGroup);
     });
@@ -360,7 +355,6 @@ describe("ActivityExporter", () => {
       const bench = result.exerciseSets[0];
       const curl = result.exerciseSets[1];
 
-      // uniform reps → no repsList
       expect(bench.repsList).toBeUndefined();
       expect(bench.sets).toBe(2);
       expect(bench.volume).toBe(2 * 5 * bench.weight);
@@ -377,7 +371,6 @@ describe("ActivityExporter", () => {
 
       const result = transformActivities([activity])[0];
 
-      // 3 entries, too short for superset detection
       expect(result.exerciseSets).toHaveLength(3);
       result.exerciseSets.forEach((s: any) => expect(s.supersetGroup).toBeUndefined());
     });
@@ -422,7 +415,6 @@ describe("ActivityExporter", () => {
       const result = transformActivities([activity])[0];
 
       expect(result.exerciseSets.length).toBeGreaterThan(0);
-      // Fallback uses splitWarmupTopBackoffSets so names include suffixes
       expect(result.exerciseSets.some((s: any) => s.exerciseName.includes("Barbell Squat"))).toBe(true);
     });
   });
@@ -449,14 +441,11 @@ describe("ActivityExporter", () => {
 
   describe("Last Week Filtering", () => {
     it("should correctly identify last week dates in UTC", () => {
-      jest.useFakeTimers().setSystemTime(new Date("2026-02-08T12:00:00Z")); // Sunday
+      jest.useFakeTimers().setSystemTime(new Date("2026-02-08T12:00:00Z"));
       const getLastWeekDates = (exporter as any).getLastWeekDates.bind(exporter);
       
       const { weekStart, weekEnd } = getLastWeekDates();
 
-      // Feb 8, 2026 is Sunday, so:
-      // Current week: Mon Feb 2 - Sun Feb 8
-      // Last week: Mon Jan 26 - Sun Feb 1
       expect(weekStart.toISOString().split("T")[0]).toBe("2026-01-26");
       expect(weekEnd.toISOString().split("T")[0]).toBe("2026-02-01");
       
@@ -464,25 +453,21 @@ describe("ActivityExporter", () => {
     });
 
     it("should filter activities to only those from last week", () => {
-      jest.useFakeTimers().setSystemTime(new Date("2026-02-08T12:00:00Z")); // Sunday, Feb 8
+      jest.useFakeTimers().setSystemTime(new Date("2026-02-08T12:00:00Z"));
       const filterLastWeekActivities = (exporter as any).filterLastWeekActivities.bind(exporter);
 
       const activities = [
-        // Last week activities (Jan 26 - Feb 1)
         { startTimeGMT: "2026-01-26T10:00:00Z" },
         { startTimeGMT: "2026-01-28T15:00:00Z" },
         { startTimeGMT: "2026-02-01T23:00:00Z" },
-        // This week activities (Feb 2-8)
         { startTimeGMT: "2026-02-02T08:00:00Z" },
         { startTimeGMT: "2026-02-08T10:00:00Z" },
-        // Previous-previous week
         { startTimeGMT: "2026-01-25T10:00:00Z" },
         { startTimeGMT: "2026-01-20T15:00:00Z" },
       ];
 
       const result = filterLastWeekActivities(activities);
 
-      // Should only include Jan 26 - Feb 1
       expect(result.length).toBe(3);
       expect(result[0].startTimeGMT).toBe("2026-01-26T10:00:00Z");
       expect(result[1].startTimeGMT).toBe("2026-01-28T15:00:00Z");
@@ -492,18 +477,16 @@ describe("ActivityExporter", () => {
     });
 
     it("should handle startTimeLocal as fallback", () => {
-      jest.useFakeTimers().setSystemTime(new Date("2026-02-08T12:00:00Z")); // Sunday, Feb 8
+      jest.useFakeTimers().setSystemTime(new Date("2026-02-08T12:00:00Z"));
       const filterLastWeekActivities = (exporter as any).filterLastWeekActivities.bind(exporter);
 
       const activities = [
-        // Using startTimeLocal instead of startTimeGMT
-        { startTimeLocal: "2026-01-28T10:00:00Z" }, // Within last week
-        { startTimeLocal: "2026-02-10T10:00:00Z" }, // Outside last week
+        { startTimeLocal: "2026-01-28T10:00:00Z" },
+        { startTimeLocal: "2026-02-10T10:00:00Z" },
       ];
 
       const result = filterLastWeekActivities(activities);
 
-      // Should only include Jan 28 (within last week Jan 26 - Feb 1)
       expect(result.length).toBe(1);
       expect(result[0].startTimeLocal).toBe("2026-01-28T10:00:00Z");
 
@@ -511,19 +494,17 @@ describe("ActivityExporter", () => {
     });
 
     it("should handle edge case at week boundaries", () => {
-      // Test on Monday of current week (Feb 2)
-      jest.useFakeTimers().setSystemTime(new Date("2026-02-02T00:00:01Z")); // Monday, Feb 2
+      jest.useFakeTimers().setSystemTime(new Date("2026-02-02T00:00:01Z"));
       const filterLastWeekActivities = (exporter as any).filterLastWeekActivities.bind(exporter);
 
       const activities = [
-        { startTimeGMT: "2026-02-01T23:59:59Z" }, // Last moment of last week
-        { startTimeGMT: "2026-02-02T00:00:00Z" }, // First moment of this week
-        { startTimeGMT: "2026-01-26T00:00:00Z" }, // Start of last week
+        { startTimeGMT: "2026-02-01T23:59:59Z" },
+        { startTimeGMT: "2026-02-02T00:00:00Z" },
+        { startTimeGMT: "2026-01-26T00:00:00Z" },
       ];
 
       const result = filterLastWeekActivities(activities);
 
-      // Should include Jan 26 & Feb 1, but not Feb 2
       expect(result.length).toBe(2);
 
       jest.useRealTimers();
@@ -532,30 +513,26 @@ describe("ActivityExporter", () => {
     it("should not filter when filterToLastWeek is false", async () => {
       const data = await extractData(exporter, 5);
 
-      // Should include all 5 activities regardless of date
       expect(data.totalActivities).toBe(5);
       expect(data.activities.length).toBe(5);
     });
 
     it("should filter when filterToThisWeek is true", async () => {
-      // Mock the getThisWeekDates to control the week range
-      jest.useFakeTimers().setSystemTime(new Date("2026-02-08T12:00:00Z")); // Sunday in current week
+      jest.useFakeTimers().setSystemTime(new Date("2026-02-08T12:00:00Z"));
 
       const data = await extractData(exporter, 10, { filterToThisWeek: true });
 
-      // Total activities should be <= 10 (filtered to only this week)
       expect(data.activities.length).toBeLessThanOrEqual(10);
       expect(data.weekStart).toBeDefined();
       expect(data.weekEnd).toBeDefined();
 
-      // All activities should be within the week range
       const weekStart = new Date(data.weekStart);
       const weekEnd = new Date(data.weekEnd);
 
       data.activities.forEach((activity: any) => {
         const activityDate = new Date(activity.startTime);
         expect(activityDate.getTime()).toBeGreaterThanOrEqual(weekStart.getTime());
-        expect(activityDate.getTime()).toBeLessThanOrEqual(weekEnd.getTime() + 86400000); // +1 day to account for end-of-day
+        expect(activityDate.getTime()).toBeLessThanOrEqual(weekEnd.getTime() + 86400000);
       });
 
       jest.useRealTimers();
@@ -564,13 +541,11 @@ describe("ActivityExporter", () => {
 
   describe("This Week Filtering", () => {
     it("should correctly identify this week dates in UTC", () => {
-      jest.useFakeTimers().setSystemTime(new Date("2026-02-08T12:00:00Z")); // Sunday
+      jest.useFakeTimers().setSystemTime(new Date("2026-02-08T12:00:00Z"));
       const getThisWeekDates = (exporter as any).getThisWeekDates.bind(exporter);
 
       const { weekStart, weekEnd } = getThisWeekDates();
 
-      // Feb 8, 2026 is Sunday, so:
-      // This week: Mon Feb 2 - Sun Feb 8
       expect(weekStart.toISOString().split("T")[0]).toBe("2026-02-02");
       expect(weekEnd.toISOString().split("T")[0]).toBe("2026-02-08");
 
@@ -578,24 +553,20 @@ describe("ActivityExporter", () => {
     });
 
     it("should filter activities to only those from this week", () => {
-      jest.useFakeTimers().setSystemTime(new Date("2026-02-08T12:00:00Z")); // Sunday, Feb 8
+      jest.useFakeTimers().setSystemTime(new Date("2026-02-08T12:00:00Z"));
       const filterThisWeekActivities = (exporter as any).filterThisWeekActivities.bind(exporter);
 
       const activities = [
-        // This week activities (Feb 2-8)
         { startTimeGMT: "2026-02-02T10:00:00Z" },
         { startTimeGMT: "2026-02-05T15:00:00Z" },
         { startTimeGMT: "2026-02-08T23:00:00Z" },
-        // Last week activities (Jan 26 - Feb 1)
         { startTimeGMT: "2026-01-26T08:00:00Z" },
         { startTimeGMT: "2026-02-01T10:00:00Z" },
-        // Next week activities
         { startTimeGMT: "2026-02-09T15:00:00Z" },
       ];
 
       const result = filterThisWeekActivities(activities);
 
-      // Should only include Feb 2-8 (this week)
       expect(result.length).toBe(3);
       expect(result[0].startTimeGMT).toBe("2026-02-02T10:00:00Z");
       expect(result[1].startTimeGMT).toBe("2026-02-05T15:00:00Z");
@@ -605,13 +576,11 @@ describe("ActivityExporter", () => {
     });
 
     it("should handle this week filtering on different days", () => {
-      // Test on Wednesday
-      jest.useFakeTimers().setSystemTime(new Date("2026-02-04T12:00:00Z")); // Wednesday
+      jest.useFakeTimers().setSystemTime(new Date("2026-02-04T12:00:00Z"));
       const getThisWeekDates = (exporter as any).getThisWeekDates.bind(exporter);
 
       const { weekStart, weekEnd } = getThisWeekDates();
 
-      // Should still be Mon Feb 2 - Sun Feb 8
       expect(weekStart.toISOString().split("T")[0]).toBe("2026-02-02");
       expect(weekEnd.toISOString().split("T")[0]).toBe("2026-02-08");
 
@@ -619,13 +588,11 @@ describe("ActivityExporter", () => {
     });
 
     it("should handle Monday of the week", () => {
-      // Test on Monday (start of week)
-      jest.useFakeTimers().setSystemTime(new Date("2026-02-02T00:00:00Z")); // Monday
+      jest.useFakeTimers().setSystemTime(new Date("2026-02-02T00:00:00Z"));
       const getThisWeekDates = (exporter as any).getThisWeekDates.bind(exporter);
 
       const { weekStart, weekEnd } = getThisWeekDates();
 
-      // Should be Mon Feb 2 - Sun Feb 8
       expect(weekStart.toISOString().split("T")[0]).toBe("2026-02-02");
       expect(weekEnd.toISOString().split("T")[0]).toBe("2026-02-08");
 
@@ -635,7 +602,6 @@ describe("ActivityExporter", () => {
     it("should not conflict when both lastWeekOnly and thisWeekOnly are false", async () => {
       const data = await extractData(exporter, 5);
 
-      // Should include all 5 activities regardless of week
       expect(data.totalActivities).toBe(5);
       expect(data.activities.length).toBe(5);
     });

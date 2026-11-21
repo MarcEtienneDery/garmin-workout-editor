@@ -1,7 +1,3 @@
-/**
- * The Plans and Workouts views on a phone: one pane at a time with the tabs at the foot, the bar under the title, the plan day by day fitted
- * to the width, the Garmin drawer as a sheet from the foot of the screen, the menus as sheets, and nothing sticking out sideways.
- */
 import { test, expect, openView, mondayOf, daysAhead, today, type Page, type APIRequestContext } from "../support/fixtures";
 import { withGarmin } from "../support/garmin";
 
@@ -31,7 +27,6 @@ async function openPlan(page: Page, name: string): Promise<void> {
   await expect(page.locator("#pform .wf")).toBeVisible();
 }
 
-/** What sticks out past the phone's width, as shown. */
 async function stickingOut(page: Page): Promise<string[]> {
   return page.evaluate(() => {
     const width = document.documentElement.clientWidth;
@@ -70,7 +65,7 @@ test.describe("the Plans view on a phone", () => {
     const grid = (await me.locator(".sg").boundingBox())!;
     expect(grid.x + grid.width).toBeLessThanOrEqual(me.viewportSize()!.width);
     const chip = (await me.locator(".sg .wc").first().boundingBox())!;
-    expect(chip.width).toBeGreaterThanOrEqual(24); // a tap lands on it: wide enough to hit, not for a name
+    expect(chip.width).toBeGreaterThanOrEqual(24);
     await me.locator(".sg .wc", { hasText: "Tempo" }).tap();
     await expect(me.locator("#pcrumb")).toContainText("Workout 2 of 2");
   });
@@ -78,7 +73,7 @@ test.describe("the Plans view on a phone", () => {
   test("the Checks tab shows the checks alone, and the pill goes there", async ({ me, profile }) => {
     await makePlan(profile.api, `${profile.name}-phck`, [run("Easy", day(0, 1), { steps: [{ stepType: "interval", endCondition: "distance", endConditionValue: 5000 }] })]);
     await openPlan(me, `${profile.name}-phck`);
-    await expect(me.locator("#problemsPane")).not.toHaveClass(/open/); // a phone does not open it by itself
+    await expect(me.locator("#problemsPane")).not.toHaveClass(/open/);
     await me.locator("#vpill").tap();
     await expect(me.locator("body")).toHaveAttribute("data-tab", "problems");
     await expect(me.locator("#problems .msg.err")).toBeVisible();

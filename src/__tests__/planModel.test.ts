@@ -1,5 +1,4 @@
-export {}; // a module of its own: the helpers below must not clash with those of the other model tests
-/** planModel.js lays a plan out day by day and says which workouts a Garmin action takes and what its button reads. */
+export {};
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const P = require("../web/public/planModel.js");
 
@@ -12,7 +11,7 @@ describe("dates", () => {
     expect(["2026-02-30", "2026-11-9", "", null, 20261109].some(P.isDay)).toBe(false);
   });
   it("finds the Monday of a week, across a month and a year", () => {
-    expect(P.mondayOf("2026-11-15")).toBe("2026-11-09"); // a Sunday
+    expect(P.mondayOf("2026-11-15")).toBe("2026-11-09");
     expect(P.mondayOf("2026-11-09")).toBe("2026-11-09");
     expect(P.mondayOf("2026-01-01")).toBe("2025-12-29");
   });
@@ -80,10 +79,10 @@ describe("which workouts an action takes", () => {
   it("starts an upload with only what needs it: not on Garmin, differing, gone, or not told", () => {
     expect(P.defaultPick("upload", list, stateOf)).toEqual([1, 2, 3, 4]);
     expect(P.defaultPick("upload_schedule", list, stateOf)).toEqual([1, 2, 3, 4]);
-    expect(P.defaultPick("upload", list, () => undefined)).toEqual([0, 1, 2, 3, 4]); // still checking: all, none is ruled out
+    expect(P.defaultPick("upload", list, () => undefined)).toEqual([0, 1, 2, 3, 4]);
     expect(P.defaultPick("upload", list.slice(0, 1), () => "synced")).toEqual([]);
     expect(P.needsUpload(list[0], "synced")).toBe(false);
-    expect(P.needsUpload(w("x", "running", [], {}), "synced")).toBe(true); // no workoutId: never on Garmin
+    expect(P.needsUpload(w("x", "running", [], {}), "synced")).toBe(true);
   });
   it("starts a schedule with the workouts that have an id and a day, and a send with those flagged (else every one on Garmin)", () => {
     expect(P.defaultPick("schedule", list, stateOf)).toEqual([0, 1, 2]);
@@ -109,7 +108,7 @@ describe("which workouts an action takes", () => {
   });
   it("disables the button for nothing chosen, and for a schedule or a send with nothing it can use", () => {
     expect(P.describe("upload", list, [], stateOf)).toMatchObject({ disabled: true, count: 0 });
-    expect(P.describe("schedule", list, [3, 4], stateOf).disabled).toBe(true); // no ids
+    expect(P.describe("schedule", list, [3, 4], stateOf).disabled).toBe(true);
     expect(P.describe("send", list, [3], stateOf).disabled).toBe(true);
     expect(P.describe("upload", list, [3], stateOf).disabled).toBe(false);
     expect(P.describe("schedule", list, [0], stateOf).disabled).toBe(false);

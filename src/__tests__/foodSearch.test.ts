@@ -18,7 +18,6 @@ const YOGURT = {
   nutriments: { "energy-kcal_100g": 52.9411764705882, "energy-kj_100g": 229.5, "proteins_100g": 9.5, carbohydrates_100g: 4, fat_100g: 0 },
 };
 
-/** A fetcher that answers with `body` (or the given status) and remembers what it was asked. */
 function fake(answer: (url: string) => { status?: number; body?: unknown; json?: () => Promise<unknown> } | Error) {
   const calls: { url: string; headers: Record<string, string> }[] = [];
   const fetcher: Fetcher = async (url, init) => {
@@ -97,7 +96,6 @@ describe("a food from an Open Food Facts product", () => {
   });
 });
 
-// a Canadian product as Open Food Facts gives it from the product call: every `_100g` value in grams
 const KD = {
   code: "0068100904901",
   product_name: "Kraft Dinner",
@@ -117,7 +115,7 @@ describe("the nutrients of a product", () => {
     expect(toFood(YOGURT)?.nutrients).toEqual({});
     const blank = toFood({ ...KD, nutriments: { ...KD.nutriments, "trans-fat_100g": undefined, potassium_100g: null, calcium_100g: "", iron_100g: " " } })?.nutrients;
     for (const key of ["transFatG", "potassiumMg", "calciumMg", "ironMg"]) expect(blank).not.toHaveProperty(key);
-    expect(toFood({ ...KD, nutriments: { ...KD.nutriments, calcium_100g: 0 } })?.nutrients?.calciumMg).toBe(0); // a stated zero is a value
+    expect(toFood({ ...KD, nutriments: { ...KD.nutriments, calcium_100g: 0 } })?.nutrients?.calciumMg).toBe(0);
   });
 
   it("take the sodium from the salt when a label states the salt only (a gram of salt holds 0.4 g of sodium)", () => {
@@ -132,7 +130,7 @@ describe("the nutrients of a product", () => {
     expect(food?.nutrients).toMatchObject({ sugarsG: 12.9, calciumMg: 125 });
     expect(food?.nutrients).not.toHaveProperty("fiberG");
     expect(food?.nutrients).not.toHaveProperty("sodiumMg");
-    expect(food?.nutrients).not.toHaveProperty("ironMg"); // 70 g of iron in 100 g
+    expect(food?.nutrients).not.toHaveProperty("ironMg");
   });
 
   it("do not have to fit inside the carbohydrate: some labels count the fiber apart from it", () => {
@@ -155,7 +153,7 @@ describe("a product kept before the nutrients were read", () => {
     const up = fake(() => ({ body: { status: 1, product: { ...YOGURT, nutriments: { ...YOGURT.nutriments, fiber_100g: 0, sodium_100g: 0.04 } } } }));
     expect(await lookupBarcode(store, "0894700010137", up.fetcher, t0 + 1000)).toMatchObject({ complete: true, nutrients: { fiberG: 0, sodiumMg: 40 } });
     expect(await lookupBarcode(store, "0894700010137", up.fetcher, t0 + 2000)).toMatchObject({ nutrients: { sodiumMg: 40 } });
-    expect(up.calls).toHaveLength(1); // the second answer is the kept one
+    expect(up.calls).toHaveLength(1);
   });
 
   it("is still the answer, with no nutrients, when the service cannot be asked", async () => {
@@ -176,7 +174,7 @@ describe("looking up a barcode", () => {
     expect(calls).toHaveLength(1);
     expect(calls[0].url).toMatch(/^https:\/\/world\.openfoodfacts\.org\/api\/v2\/product\/894700010137\.json\?fields=code,product_name,product_name_en,product_name_fr,generic_name/);
     expect(calls[0].headers["User-Agent"]).toMatch(/^garmin-workout-editor\//);
-    expect(calls[0].headers["User-Agent"]).not.toMatch(/@/); // no address of the person
+    expect(calls[0].headers["User-Agent"]).not.toMatch(/@/);
   });
 
   it("answers a barcode scanned before from the database, until the month is over", async () => {
@@ -201,10 +199,10 @@ describe("looking up a barcode", () => {
     const miss = fake(() => ({ body: { code: "00000017", status: 0, status_verbose: "no code or invalid code" } }));
     expect(await lookupBarcode(store, "00000017", miss.fetcher)).toBeNull();
     expect(await lookupBarcode(store, "00000017", fake(() => ({ status: 404 })).fetcher)).toBeNull();
-    const stub = fake(() => ({ body: { status: 1, product: { code: "9780000000002" } } })); // a product with no data at all
+    const stub = fake(() => ({ body: { status: 1, product: { code: "9780000000002" } } }));
     expect(await lookupBarcode(store, "9780000000002", stub.fetcher)).toBeNull();
     const later = fake(() => ({ body: { status: 1, product: YOGURT } }));
-    expect(await lookupBarcode(store, "00000017", later.fetcher)).not.toBeNull(); // it was asked again: the miss was not kept
+    expect(await lookupBarcode(store, "00000017", later.fetcher)).not.toBeNull();
     expect(later.calls).toHaveLength(1);
   });
 
@@ -232,11 +230,11 @@ describe("searching by name", () => {
 
   it("answers the same words again from memory for ten minutes", async () => {
     const many = Array.from({ length: 12 }, (_, i) => hit(String(200 + i), `Rice ${i}`));
-    const { fetcher, calls } = fake(() => ({ body: { hits: many } })); // enough Canadian ones: one question each time
+    const { fetcher, calls } = fake(() => ({ body: { hits: many } }));
     const t0 = Date.now();
     await searchFoods("Rice", fetcher, t0);
     await searchFoods("rice ", fetcher, t0 + 9 * 60_000);
-    await searchFoods("RICE!", fetcher, t0 + 9 * 60_000); // the same words once cleaned
+    await searchFoods("RICE!", fetcher, t0 + 9 * 60_000);
     expect(calls).toHaveLength(1);
     await searchFoods("rice", fetcher, t0 + 11 * 60_000);
     expect(calls).toHaveLength(2);
@@ -258,7 +256,6 @@ describe("searching Canadian products first", () => {
   const hit = (code: string, name: string, countries: string[]) => ({ code, product_name: name, countries_tags: countries, nutriments: { "energy-kcal_100g": 100, proteins_100g: 5, carbohydrates_100g: 10, fat_100g: 2 } });
   const CA = ["en:canada"], WORLD = ["en:france"];
   const batch = (prefix: string, n: number, countries: string[]) => Array.from({ length: n }, (_, i) => hit(`${prefix}${String(i).padStart(6, "0")}`, `${prefix} ${i}`, countries));
-  /** A fetcher that answers the Canada search with `canadian` and any other with `world`. */
   const index = (canadian: unknown[], world: unknown[]) => fake((url) => ({ body: { hits: decodeURIComponent(url).includes('countries_tags:"en:canada"') ? canadian : world } }));
 
   it("asks for the products sold in Canada, and only those when there are enough", async () => {
@@ -308,7 +305,7 @@ describe("searching Canadian products first", () => {
     expect(await asked("(milk")).toBe("milk");
     expect(await asked('dempster"s bread')).toBe("dempster s bread");
     expect(await asked("Dempster's")).toBe("dempster's");
-    expect(await asked("mac AND cheese")).toBe("mac and cheese"); // the operator becomes a word
+    expect(await asked("mac AND cheese")).toBe("mac and cheese");
     expect(await asked("lait 2% crème-fraîche")).toBe("lait 2% crème-fraîche");
     expect(await asked("a:b  c^2")).toBe("a b c 2");
   });
@@ -337,7 +334,7 @@ describe("when Open Food Facts cannot answer", () => {
     try {
       const hang: Fetcher = (_url, init) => new Promise((_, reject) => init.signal.addEventListener("abort", () => reject(Object.assign(new Error("aborted"), { name: "AbortError" }))));
       const pending = expect(searchFoods("slow", hang)).rejects.toThrow(/did not answer in time/);
-      await jest.advanceTimersByTimeAsync(8100); // the Canada search is the first and last question
+      await jest.advanceTimersByTimeAsync(8100);
       await pending;
     } finally {
       jest.useRealTimers();

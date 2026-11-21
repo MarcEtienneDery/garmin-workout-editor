@@ -1,54 +1,32 @@
-/**
- * foodAiCli.ts — asking Claude for an estimate through Claude Code's headless mode (`claude -p`), for a server that has a Claude plan
- * (Pro, Max) and no API credit. The estimate then runs on the plan's own usage limits, not on a paid balance: Anthropic's support article
- * "Use the Claude Agent SDK with your Claude plan" says `claude -p` and the Agent SDK still draw from subscription limits (they paused a
- * change to that in June 2026, so it can change again). A plan is for one person: every profile of this server asks on that one login.
- *
- * One run is one question: the person's words and photos go in as one stream-json user message (images are content blocks, so there
- * are no files and no tools), Claude Code is given no tools at all and none of the machine's settings, hooks, skills or MCP servers
- * (`--tools ""`, `--restricted`, `--strict-mcp-config`, `--disable-slash-commands`), the food log's own system prompt replaces its default
- * one, and the answer is the `structured_output` of the final `result` event, which follows the same JSON Schema as the API's answer.
- * `--bare` is not used: it ignores the plan login. The login in a container is a token from `claude setup-token` (CLAUDE_CODE_OAUTH_TOKEN).
- *
- * The child gets an allowlist of the environment, never ANTHROPIC_API_KEY (which Claude Code would prefer to the plan, and bill). The
- * spawning is `runClaude`, injected in tests; everything else is plain functions.
- */
 import { spawn } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { FoodAiError } from "./foodAiError";
 
-/** A first run starts Claude Code and may fill its prompt cache; a slow one is still an answer. */
 export const CLI_TIMEOUT_MS = 90_000;
-/** Claude Code takes a few hundred MB: more than this at once on a NAS is a way to stall it. */
 export const CLI_MAX_RUNNING = 2;
 const MAX_OUTPUT = 8_000_000;
 
-/** One run of the program: what to start and with what. */
 export interface CliCall {
   bin: string;
   args: string[];
-  /** What to write to its stdin, which is then closed. */
   input: string;
   env: Record<string, string>;
   cwd: string;
   timeoutMs: number;
 }
 
-/** What a run left: its exit code, what it printed, and whether it had to be killed or could not be started. */
 export interface CliOutput {
   code: number | null;
   stdout: string;
   stderr: string;
   timedOut: boolean;
-  /** Set when the program could not be started (ENOENT: not installed). */
   error?: NodeJS.ErrnoException;
 }
 
 export type CliRunner = (call: CliCall) => Promise<CliOutput>;
 
-/** Start the program, feed it the input, and collect what it prints; it is killed at the timeout or when it prints more than MAX_OUTPUT. */
 export const runClaude: CliRunner = (call) =>
   new Promise((resolve) => {
     let settled = false, stdout = "", stderr = "", timedOut = false;
@@ -77,11 +55,10 @@ export const runClaude: CliRunner = (call) =>
     });
     child.on("error", (error) => done(null, error as NodeJS.ErrnoException));
     child.on("close", (code) => done(code));
-    child.stdin?.on("error", () => undefined); // it exited before reading: its own exit says why
+    child.stdin?.on("error", () => undefined);
     child.stdin?.end(call.input);
   });
 
-/** The environment variables the child may see: the ones it needs to run and reach Anthropic, and the plan login. Nothing else, ANTHROPIC_API_KEY least of all. */
 const PASS = ["PATH", "HOME", "USER", "LANG", "LC_ALL", "TZ", "TMPDIR", "SSL_CERT_FILE", "SSL_CERT_DIR", "NODE_EXTRA_CA_CERTS", "HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY", "https_proxy", "http_proxy", "no_proxy", "CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_CONFIG_DIR"];
 
 export function cliEnv(env: NodeJS.ProcessEnv): Record<string, string> {
@@ -93,7 +70,6 @@ export function cliEnv(env: NodeJS.ProcessEnv): Record<string, string> {
   return out;
 }
 
-/** The flags of a run: one message in and the events out as stream-json (the only way to send an image), the answer in a JSON Schema, no tools, nothing of the machine's configuration, nothing kept. */
 export function cliArgs(model: string, system: string, schema: unknown): string[] {
   return [
     "-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose",
@@ -103,12 +79,10 @@ export function cliArgs(model: string, system: string, schema: unknown): string[
   ];
 }
 
-/** The one user message of a run, as a line of stream-json: `content` is the blocks of the Messages API (images first, then the text). */
 export const cliInput = (content: unknown[]): string => `${JSON.stringify({ type: "user", message: { role: "user", content } })}\n`;
 
 const record = (v: unknown): Record<string, unknown> | null => (v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null);
 
-/** The events a run printed, one JSON object a line; a line that is not JSON is skipped. */
 function eventsOf(stdout: string): Record<string, unknown>[] {
   const events: Record<string, unknown>[] = [];
   for (const line of stdout.split("\n")) {
@@ -117,13 +91,11 @@ function eventsOf(stdout: string): Record<string, unknown>[] {
       const event = record(JSON.parse(line));
       if (event) events.push(event);
     } catch {
-      // not an event
     }
   }
   return events;
 }
 
-/** When the plan's window that refused the run opens again, in words ("in about 2 h 10 min"), from the run's rate limit event; "" when it says nothing of it. */
 function resetsIn(events: Record<string, unknown>[], now: number): string {
   for (const event of [...events].reverse()) {
     const info = event.type === "rate_limit_event" ? record(event.rate_limit_info) : null;
@@ -135,7 +107,6 @@ function resetsIn(events: Record<string, unknown>[], now: number): string {
   return "";
 }
 
-/** The failure a result event reports, in words. Claude Code's own text and the SDK's go to nobody: the class of failure is all the page learns. */
 function failureOf(result: Record<string, unknown>, events: Record<string, unknown>[], now: number): FoodAiError {
   const text = String(result.result ?? ""), status = Number(result.api_error_status) || 0;
   console.error(`food AI: claude reported an error${status ? ` (${status})` : ""}`);
@@ -149,7 +120,6 @@ function failureOf(result: Record<string, unknown>, events: Record<string, unkno
   return new FoodAiError("upstream", "Claude could not make this estimate. Try again.");
 }
 
-/** What a finished run came to: the answer as an object, null when Claude gave none, or `refused`. A run that failed to ask throws a FoodAiError. */
 export type CliReply = { stop: "ok"; answer: unknown } | { stop: "refused"; answer: null } | { stop: "unreadable"; answer: null };
 
 export function replyOf(out: CliOutput, now = Date.now()): CliReply {
@@ -176,16 +146,13 @@ export interface CliQuestion {
   model: string;
   system: string;
   schema: unknown;
-  /** The user message: image blocks first, then a text block. */
   content: unknown[];
 }
 
 let running = 0;
 
-/** How many runs are under way (for tests). */
 export const cliRunning = (): number => running;
 
-/** Ask Claude Code one question, in an empty directory of its own that is removed after; at most CLI_MAX_RUNNING at once. */
 export async function askCli(question: CliQuestion, env: NodeJS.ProcessEnv, run: CliRunner = runClaude): Promise<CliReply> {
   if (running >= CLI_MAX_RUNNING) throw new FoodAiError("busy", "Estimates are already running for someone else. Try again in a few seconds.");
   running++;

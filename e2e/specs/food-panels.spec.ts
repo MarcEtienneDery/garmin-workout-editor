@@ -1,11 +1,3 @@
-/**
- * The Food view opens nothing the person did not open. After an action (Save, Cancel, Move, Undo, Add) the only things open are those
- * the person had opened: no add sheet left open by a change once it is saved or cancelled, no food's details opened in the meal it was
- * moved to, nothing opened by a tap that logs a food, and nothing of one day (or profile) still open on another. The sheet shuts the
- * ways a dialog does (✕, Done, Back, Escape), and a dialog over it (the camera) shuts alone.
- *
- * Each test checks the whole view with `opened`, so a panel that opens anywhere else fails it too. Open Food Facts is never reached.
- */
 import { test, expect, openView, today, daysAgo, loginAs, ADMIN_TOKEN, type Page, type APIRequestContext } from "../support/fixtures";
 import { everyDay, labelOf, nutrients, openInsights, openSheet, pickMeal, sheetClose, sheetTab } from "../support/food";
 
@@ -18,23 +10,16 @@ const GRANOLA_PRODUCT = {
 const GRANOLA = { name: "Granola bars (Nature Valley) · 2 × 40 g", kcal: 360, proteinG: 6.4, carbsG: 49.6, fatG: 13.6, nutrients: { fiberG: 3.2 }, product: GRANOLA_PRODUCT };
 const OATS_HIT = { code: null, name: "Rolled oats", brand: null, per100: { kcal: 380, proteinG: 13, carbsG: 60, fatG: 7 }, nutrients: {}, complete: false, unit: "g", canada: false, servingG: null, servingText: null };
 
-/** Logs foods in a meal of a day through the API. */
 async function seed(api: APIRequestContext, day: string, meal: string, items: Record<string, unknown>[]): Promise<void> {
   const res = await api.post("/api/nutrition", { data: { action: "add", day, meal, items } });
   expect(res.ok()).toBeTruthy();
 }
 
-/** Answers the page's food search with Rolled oats, and a barcode with nothing, so nothing reaches Open Food Facts. */
 async function stubFoods(page: Page): Promise<void> {
   await page.route("**/api/foods/search*", (route) => route.fulfill({ json: { foods: [OATS_HIT] } }));
   await page.route("**/api/foods/barcode*", (route) => route.fulfill({ json: { food: null } }));
 }
 
-/**
- * What is open in the Food view, in the order of the page: the add sheet and what it shows ("sheet: find", the search; "ai", "hand",
- * "pick" the picker, "edit" a food changed by hand), the foods whose details are shown ("breakfast: Oatmeal"), the nutrients under the
- * summary, then any other dialog. Empty when nothing is.
- */
 function opened(page: Page): Promise<string[]> {
   return page.evaluate(() => {
     const out: string[] = [];
@@ -48,7 +33,6 @@ function opened(page: Page): Promise<string[]> {
   });
 }
 
-/** Waits until what is open in the Food view is exactly `what` (see `opened`). */
 const openIs = (page: Page, what: string[]) => expect.poll(() => opened(page)).toEqual(what);
 
 const section = (page: Page, meal: string) => page.locator(`#fbody section.fmeal[data-meal="${meal}"]`);
@@ -57,13 +41,11 @@ const searchBox = (page: Page) => page.locator("#fsh").getByRole("searchbox", { 
 const form = (page: Page) => page.locator("#fsh form.fform");
 const picker = (page: Page) => page.locator("#fsh .fpick");
 
-/** Opens the Food view and waits until its day has loaded. */
 async function openFood(page: Page) {
   await openView(page, "food");
   await expect(page.locator("#fbody .fmeal").first()).toBeVisible();
 }
 
-/** Opens a food's details (the person's tap on it). */
 async function openRow(page: Page, meal: string, name: string) {
   await row(page, meal, name).locator(".fhead").click();
   await expect(row(page, meal, name)).toHaveClass(/\bopen\b/);
@@ -80,7 +62,6 @@ test.describe("Food: a change shuts the sheet it opened", () => {
     await form(me).locator("button[type='submit']").click();
     await expect(row(me, "breakfast", "Oatmeal").locator(".fk")).toHaveText("320 kcal");
     await openIs(me, ["breakfast: Oatmeal"]);
-    // another action draws the view again: the sheet Change opened does not come back
     await row(me, "breakfast", "Oatmeal").getByRole("button", { name: "+ Add again" }).click();
     await expect(section(me, "breakfast").locator(".fe")).toHaveCount(3);
     await openIs(me, ["breakfast: Oatmeal"]);
@@ -110,7 +91,7 @@ test.describe("Food: a change shuts the sheet it opened", () => {
     await expect(me.locator("#fshTitle")).toHaveText("Add food");
     await openIs(me, ["sheet: find", "dinner: Oatmeal"]);
     await sheetTab(me, "By hand").click();
-    await expect(form(me).locator('input[aria-label="kcal"]')).toHaveValue(""); // nothing of the change is left in the form
+    await expect(form(me).locator('input[aria-label="kcal"]')).toHaveValue("");
   });
 
   test("Back during a change shuts the sheet and changes nothing", async ({ me, profile }) => {
@@ -315,7 +296,7 @@ test.describe("Food: another day (or profile) starts with nothing open", () => {
     await expect(section(alice, "breakfast").locator(".fe .fn")).toHaveText(["Oatmeal", "Banana"]);
     await openIs(alice, []);
     await openSheet(alice, "breakfast");
-    await expect(searchBox(alice)).toHaveValue(""); // the search of the other day is not carried over
+    await expect(searchBox(alice)).toHaveValue("");
   });
 
   test("the meal chosen for adding is forgotten on another day: the bar goes back to the meal of the hour", async ({ me, profile }) => {

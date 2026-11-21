@@ -45,7 +45,6 @@ describe("the daily table", () => {
     const sent = Object.keys(metricsFor("2026-01-01"));
     expect(all.map((f: any) => f.key).filter((k: string) => !sent.includes(k))).toEqual([]);
     expect(new Set(all.map((f: any) => f.key)).size).toBe(all.length);
-    // and the two tables show everything the server sends but the day itself, none of it twice
     const weightView = WM.GROUPS.flatMap((g: any) => g.fields.map((f: any) => f.key));
     expect(sent.filter((k) => k !== "day" && !all.some((f: any) => f.key === k) && !weightView.includes(k))).toEqual([]);
     expect(weightView.filter((k: string) => all.some((f: any) => f.key === k))).toEqual([]);
@@ -108,9 +107,9 @@ describe("the charts", () => {
     expect(by("bb").read(day)).toBe("75 on waking · 20–90 over the day");
     expect(by("stress").read(day)).toBe("average 28 · max 80");
     expect(by("steps").read(day)).toBe(`${(8000).toLocaleString()} steps`);
-    expect(by("intensity").read({ ...day, moderateMinutes: 30, vigorousMinutes: 14 })).toBe("58 min · 30 moderate, 14 vigorous"); // a vigorous minute counts twice
+    expect(by("intensity").read({ ...day, moderateMinutes: 30, vigorousMinutes: 14 })).toBe("58 min · 30 moderate, 14 vigorous");
     expect(by("intensity").read({ ...day, moderateMinutes: null, vigorousMinutes: 5 })).toBe("10 min · 0 moderate, 5 vigorous");
-    expect(by("intensity").read({ ...day, moderateMinutes: 0, vigorousMinutes: 0 })).toBe("0 min · 0 moderate, 0 vigorous"); // a stored zero is a day without any
+    expect(by("intensity").read({ ...day, moderateMinutes: 0, vigorousMinutes: 0 })).toBe("0 min · 0 moderate, 0 vigorous");
     for (const c of RM.CHARTS) expect(c.read(metricsFor("2026-01-02"))).toBe("–");
   });
 
@@ -124,15 +123,15 @@ describe("the charts", () => {
     });
 
     it("is the mean of the day and the two before it, and of fewer at the start of the range", () => {
-      const ds = days([[30, 0], [60, 0], [0, 45], [0, 0]]); // 30, 60, 90, 0
+      const ds = days([[30, 0], [60, 0], [0, 45], [0, 0]]);
       expect([0, 1, 2, 3].map((i) => ref(ds, i))).toEqual([30, 45, 60, 50]);
     });
 
     it("leaves out a day with nothing stored instead of counting it as zero, and has no value on such a day", () => {
       const ds = days([[30, 0], null, [60, 0], [0, 0]]);
       expect(ref(ds, 1)).toBeNull();
-      expect(ref(ds, 2)).toBe(45); // 30 and 60, not 30, 0 and 60
-      expect(ref(ds, 3)).toBe(30); // 60 and 0 (the day before it is unknown)
+      expect(ref(ds, 2)).toBe(45);
+      expect(ref(ds, 3)).toBe(30);
     });
 
     it("is said with the day under the cursor, when the days are known", () => {
@@ -177,7 +176,6 @@ describe("Garmin's responses", () => {
   });
 });
 
-// ── the verdict ───────────────────────────────────────────────────────────
 
 import { BACK_OFF_AT, GO_HARDER_AT } from "../shared/readiness";
 
@@ -211,7 +209,6 @@ describe("the zones of the score", () => {
 });
 
 describe("the week strip", () => {
-  // 2026-10-12 is a Monday
   const week = [["12", "as-planned", 61], ["13", "go-harder", 74], ["14", "as-planned", 58], ["15", "back-off", 33], ["16", "unknown", null], ["17", "unknown", null], ["18", "unknown", null]].map(([d, band, score]) => ({ day: `2026-10-${d}`, band, score }));
   const data = { week, date: "2026-10-15", today: "2026-10-16" };
 
@@ -310,7 +307,7 @@ describe("the signals of the day", () => {
     expect(RM.signalMeter(signal("sleep", 1)).pip).toBe("p1");
     expect(RM.signalMeter(signal("hrv", -2)).label).toBe("HRV: well below your normal");
     expect(RM.signalMeter(signal("sleep", 0)).label).toBe("Sleep: at your normal");
-    expect(steps(5)).toBe(4); // a score out of range stays on the scale
+    expect(steps(5)).toBe(4);
   });
 
   it("says what was not counted, with the signals' names", () => {
@@ -375,7 +372,7 @@ describe("last night", () => {
   it("colours the need as ok from 95 %, warn from 80 % and short under", () => {
     const cls = (seconds: number) => RM.sleepCard(night({ sleepSeconds: seconds })).cls;
     expect([29_000, 28_800, 23_000, 22_000, 14_000].map(cls)).toEqual(["ok", "ok", "warn", "short", "short"]);
-    expect(RM.sleepCard(night({ sleepSeconds: 40_000 })).fill).toBe(100); // more than the need fills the bar and no more
+    expect(RM.sleepCard(night({ sleepSeconds: 40_000 })).fill).toBe(100);
   });
 
   it("leaves out what is not stored, rather than a zero", () => {
@@ -398,7 +395,7 @@ describe("the readiness chart", () => {
   it("merges each day's readiness into the days of the range, a day without one unknown", () => {
     const days = RM.chartDays(data);
     expect(days.map((d: any) => [d.readinessScore, d.readinessBand])).toEqual([[52, "as-planned"], [74, "go-harder"], [null, "unknown"]]);
-    expect(days[0].hrvLastNight).toBe(50); // the rest of the day is kept
+    expect(days[0].hrvLastNight).toBe(50);
     expect(RM.chartDays({ days: data.days })[0]).toMatchObject({ readinessScore: null, readinessBand: "unknown" });
     expect(RM.chartDays(null)).toEqual([]);
   });

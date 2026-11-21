@@ -1,59 +1,27 @@
-/**
- * activitySync.ts — keep a profile's Garmin activities in the database (the `activities` table, see store/activities.ts).
- *
- * An activity is written once and rarely changes, so nothing stored is fetched again, except the details of an
- * activity that is still young, because RPE and feel are entered after the workout.
- *
- *   syncList     the list of activities, 100 a call. The first run pages back through the whole history and remembers
- *                where it got to, so an interrupted run resumes; once the history is complete, a run pages from the
- *                newest until it meets an activity it has (usually one call).
- *   syncDetails  the details (and strength sets) of the activities that lack them, newest first, one call each.
- *   syncCharts   the chart data (time series, route, laps, zones) of the activities that lack it, three calls each.
- *   startBackfill  runs both in the background until everything is stored.
- *
- * Garmin is reached through an ActivitySource, which serializes each call with the other Garmin work, so a long
- * backfill never holds the account for more than one call. The MCP server and the web editor are separate
- * processes: a lease in the database keeps them from syncing at once (each operation takes its own holder name, so
- * two in one process exclude each other too). A rate limit or a login failure stops the job and is recorded; the next
- * run picks up where this one stopped, and after a rate limit (never after a login failure, which could lock the
- * account) the job starts again by itself once the cool-off is over.
- */
 import { type ChartResponses, pruneChart } from "./activityChart";
 import { normalizeActivityType } from "./activityType";
 import type { NewActivity, SqliteStore } from "./store";
 
 export interface ActivitySource {
-  /** One page of Garmin's activity list, newest first; empty past the end of the history. */
   listPage(offset: number, limit: number): Promise<any[]>;
-  /** The details of one activity, including its exercise sets when it is a strength workout. */
   fetchDetail(activity: { id: string; type: string }): Promise<Record<string, unknown>>;
-  /**
-   * The chart data of one activity: its time series and route, its laps and its heart-rate zones. Only the details are
-   * required: a 404 on the laps or the zones leaves that part out. Optional: a source without it stores no charts.
-   */
   fetchChart?(activity: { id: string; type: string }): Promise<ChartResponses>;
 }
 
 export const PAGE_SIZE = 100;
-/** A resumed listing starts this far back, so an activity added or removed since the last run cannot leave a gap. */
 const OVERLAP = 20;
-/** Details fetched less than this after an activity started are fetched again later: feel and RPE are entered afterwards. */
 export const SETTLE_MS = 3 * 86_400_000;
 export const LEASE_MS = 3 * 60_000;
-/** After a rate limit or a login failure, a background sync waits this long before it tries again. */
 export const COOL_OFF_MS = 10 * 60_000;
 const DETAIL_GAP_MS = 500;
 
 const sleepFor = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 const message = (error: unknown) => (error instanceof Error ? error.message : String(error));
-/** Errors that mean Garmin will refuse the next call too: rate limits and login problems. */
 export const stopsSync = (error: unknown) => /\((429|401|403)\)|too many requests|authenticat/i.test(message(error));
-/** Only a rate limit goes away by waiting; a login failure is not retried on its own, as repeated logins can lock the account. */
 export const isRateLimit = (error: unknown) => /\(429\)|too many requests/i.test(message(error));
 const text = (v: unknown): string | null => (typeof v === "string" && v ? v : null);
 const number = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
 
-/** A row for the table from one item of Garmin's list; null when it lacks an id or a start time. */
 export function toNewActivity(item: any): NewActivity | null {
   const startGmt = text(item?.startTimeGMT) ?? text(item?.startTimeLocal);
   if (item?.activityId === undefined || item?.activityId === null || !startGmt) return null;
@@ -78,29 +46,17 @@ export class LeaseLost extends Error {
 }
 
 interface Pace {
-  /** Returns false when the lease was lost. */
   renew?: () => boolean;
 }
 
-/**
- * List the activities Garmin has and the table has not. It always starts at the newest end and pages back until a
- * page holds an activity it already has: everything older is stored too, if the history is complete. While it is
- * not (the first run, or one that was interrupted), it goes on from where the last run stopped, a little further
- * back, to the end of the history, and then records that the history is complete.
- */
 export async function syncList(store: SqliteStore, profile: string, source: ActivitySource, options: Pace = {}): Promise<{ added: number; pages: number; complete: boolean }> {
   const before = store.activities.state(profile);
   const result = await listActivities(store, profile, source, options);
-  if (before.error) store.activities.saveProgress(profile, { error: null }); // Garmin answered: whatever stopped the last sync is over
-  if (result.complete && !before.complete) retireActivityDocuments(store, profile); // once: a document restored later is left alone
+  if (before.error) store.activities.saveProgress(profile, { error: null });
+  if (result.complete && !before.complete) retireActivityDocuments(store, profile);
   return result;
 }
 
-/**
- * Activities used to be saved as documents (data/<profile>/activities.json and its variants), overwritten on each
- * fetch. Once the table holds the whole history those are stale copies, so they are deleted; like any deleted
- * document they stay restorable from the trash.
- */
 export function retireActivityDocuments(store: SqliteStore, profile: string): string[] {
   const gone: string[] = [];
   for (const meta of store.list("data/")) {
@@ -124,10 +80,9 @@ async function listActivities(store: SqliteStore, profile: string, source: Activ
     const items = list.map(toNewActivity).filter((a): a is NewActivity => a !== null);
     const fresh = table.insertNew(profile, items);
     added += fresh;
-    return fresh < items.length; // true: it held an activity we had
+    return fresh < items.length;
   };
 
-  // The newest end. New activities push the older ones back, so the place a resumed listing stopped moves with them.
   let offset = 0;
   for (;;) {
     const list = await page(offset);
@@ -142,7 +97,6 @@ async function listActivities(store: SqliteStore, profile: string, source: Activ
   }
   if (state.complete) return { added, pages, complete: true };
 
-  // The rest of the history, from a little before where the last run stopped.
   offset = Math.max(0, Math.max(offset, state.nextOffset + added) - OVERLAP);
   for (;;) {
     const list = await page(offset);
@@ -156,15 +110,12 @@ async function listActivities(store: SqliteStore, profile: string, source: Activ
 }
 
 export interface DetailOptions extends Pace {
-  /** Only this many, the newest first. */
   limit?: number;
-  /** Only these activities. */
   ids?: string[];
   gapMs?: number;
   sleep?: (ms: number) => Promise<void>;
 }
 
-/** Fetch the details that are missing (or may still change). Stops, and records why, on a rate limit or a login failure. */
 export async function syncDetails(store: SqliteStore, profile: string, source: ActivitySource, options: DetailOptions = {}): Promise<{ fetched: number; failed: number; stopped: string | null }> {
   const table = store.activities;
   const wanted = table.needingDetail(profile, { limit: options.limit, settleMs: SETTLE_MS, ids: options.ids });
@@ -191,11 +142,6 @@ export async function syncDetails(store: SqliteStore, profile: string, source: A
   return { fetched, failed, stopped: null };
 }
 
-/**
- * Fetch the chart data of the activities that have none: the time series and the route, the laps and the zones, kept
- * as Garmin sent them (pruned). An answer with no GPS or no series (a strength workout, an indoor or manual activity) is
- * an answer and is stored; only an error counts against an activity. Stops, and records why, on a rate limit or a login failure.
- */
 export async function syncCharts(store: SqliteStore, profile: string, source: ActivitySource, options: DetailOptions = {}): Promise<{ fetched: number; failed: number; stopped: string | null }> {
   const table = store.activities, fetchChart = source.fetchChart?.bind(source);
   if (!fetchChart) return { fetched: 0, failed: 0, stopped: null };
@@ -223,7 +169,6 @@ export async function syncCharts(store: SqliteStore, profile: string, source: Ac
   return { fetched, failed, stopped: null };
 }
 
-/** Hold the profile's sync lease while fn runs. ok: false when another process holds it. */
 export async function withLease<T>(store: SqliteStore, profile: string, holder: string, fn: (renew: () => boolean) => Promise<T>): Promise<{ ok: true; value: T } | { ok: false }> {
   const table = store.activities;
   if (!table.claim(profile, holder, LEASE_MS)) return { ok: false };
@@ -237,7 +182,6 @@ export async function withLease<T>(store: SqliteStore, profile: string, holder: 
 const running = new Map<string, Promise<void>>();
 const runKey = (store: SqliteStore, profile: string) => `${store.location}|${profile}`;
 
-/** Is a background sync of this profile running in this process? */
 export const isBackfilling = (store: SqliteStore, profile: string): boolean => running.has(runKey(store, profile));
 
 export interface BackfillOptions {
@@ -245,21 +189,13 @@ export interface BackfillOptions {
   now?: number;
   gapMs?: number;
   sleep?: (ms: number) => Promise<void>;
-  /** Run fn after ms; the default is a timer that does not keep the process alive. */
   schedule?: (fn: () => void, ms: number) => void;
-  /** How many times in a row the job has been started again after a rate limit. */
   attempt?: number;
 }
 
-/** After a rate limit, the job starts again by itself this many times at most. */
 export const MAX_RATE_LIMIT_RETRIES = 12;
 const unrefTimer = (fn: () => void, ms: number) => void setTimeout(fn, ms).unref();
 
-/**
- * Store the whole history and every activity's details in the background. Returns at once; `done` settles when
- * the job ends. started is false when there is nothing to do, a sync is running (here or in another process), or
- * the last one stopped on an error less than COOL_OFF_MS ago. After a rate limit it starts again by itself.
- */
 export function startBackfill(store: SqliteStore, profile: string, source: ActivitySource, options: BackfillOptions): { started: boolean; reason?: string; done: Promise<void> } {
   const table = store.activities, key = runKey(store, profile), now = options.now ?? Date.now(), attempt = options.attempt ?? 0;
   const no = (reason: string) => ({ started: false, reason, done: running.get(key) ?? Promise.resolve() });
@@ -293,7 +229,6 @@ export function startBackfill(store: SqliteStore, profile: string, source: Activ
         try {
           startBackfill(store, profile, source, { ...options, now: undefined, attempt: attempt + 1 });
         } catch {
-          // the database is closed (the process is shutting down)
         }
       }, COOL_OFF_MS + 1000);
     }
@@ -305,16 +240,11 @@ export function startBackfill(store: SqliteStore, profile: string, source: Activ
 export interface SyncStatus {
   activities: number;
   withDetails: number;
-  /** Activities with their chart data (time series, route, laps, zones) stored. */
   withCharts: number;
-  /** Activities whose details are missing or may still change. */
   pendingDetails: number;
-  /** Activities whose chart data is not stored yet. */
   pendingCharts: number;
-  /** Is the whole history listed? */
   historyComplete: boolean;
   syncing: boolean;
-  /** Why the last sync stopped early. */
   error: string | null;
   newest: string | null;
   oldest: string | null;

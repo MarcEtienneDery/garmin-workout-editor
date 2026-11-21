@@ -1,11 +1,3 @@
-/*
- * planModel.js — the logic of the Plans view: the plan laid out day by day, which workouts a Garmin action should take, and what the
- * button that confirms it says.
- *
- * Pure functions on a plan's workout list ([{ workoutName, workoutType, scheduledDate, workoutId, sendToDevice, ... }]) and the checks
- * against Garmin (the state of workout i: "synced", "modified", "not-uploaded", "missing", "error", or none while it is still being checked).
- * The page loads this as a plain script; the tests require() it.
- */
 (function (root, factory) {
   const api = factory();
   if (typeof module === "object" && module.exports) module.exports = api;
@@ -17,34 +9,24 @@
   const ms = (iso) => Date.parse(iso + "T00:00:00Z");
   const iso = (t) => new Date(t).toISOString().slice(0, 10);
   const addDays = (d, n) => iso(ms(d) + n * DAY);
-  /** A real day written YYYY-MM-DD (2026-02-30 is not one). */
   const isDay = (v) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(ms(v)) && iso(ms(v)) === v;
-  /** The Monday of the week a day is in. */
   const mondayOf = (d) => addDays(d, -((new Date(ms(d)).getUTCDay() + 6) % 7));
   const num = (v) => (typeof v === "number" && Number.isFinite(v) ? v : 0);
   const plural = (n, one, many) => `${n} ${n === 1 ? one : many || one + "s"}`;
 
-  /** The days a workout is scheduled on: the valid ones, once each, in order. */
   function datesOf(w) {
     const raw = w && w.scheduledDate !== undefined && w.scheduledDate !== null ? [].concat(w.scheduledDate) : [];
     return [...new Set(raw.filter(isDay))].sort();
   }
-  /** The scheduledDate values that are not days (they are skipped when scheduling). */
   const badDatesOf = (w) => ((w && w.scheduledDate !== undefined && w.scheduledDate !== null ? [].concat(w.scheduledDate) : []).filter((d) => !isDay(d)));
 
   const hasId = (w) => !!w && w.workoutId !== undefined && w.workoutId !== null && w.workoutId !== "";
 
-  /** The kind a workout is drawn as in the grid: its type colour group. */
   const kindOf = (w) => (w && w.workoutType === "running" ? "run" : w && w.workoutType === "strength_training" ? "strength" : "other");
 
-  /**
-   * The plan day by day: one row per week (Monday to Sunday) from the week of the first scheduled day to the week of the last, with what is on
-   * each day and what each week and the plan add up to. `measure(w)` gives a workout's { seconds, meters, sets } (the page's analysis of its
-   * steps). Workouts with no valid day are listed apart, as are the scheduledDate values that are not days.
-   */
   function scheduleGrid(list, { measure, today } = {}) {
     const dated = [], undated = [], bad = [];
-    const items = new Map(); // day -> [{ index, kind }]
+    const items = new Map();
     (list || []).forEach((w, index) => {
       const days = datesOf(w);
       for (const value of badDatesOf(w)) bad.push({ index, value });
@@ -77,18 +59,13 @@
     return { weeks, totals, undated, bad, first: all[0] || null, last: all[all.length - 1] || null, dated };
   }
 
-  /** "12.3 km", "850 m". */
   const kmText = (meters) => (meters >= 1000 ? `${Math.round(meters / 100) / 10} km` : `${Math.round(meters)} m`);
-  /** "1 h 25", "40 min". */
   const timeText = (seconds) => { const m = Math.round(seconds / 60); return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${String(m % 60).padStart(2, "0")}`; };
 
-  // ── Which workouts an action takes ──
 
-  /** Whether a workout needs uploading: it is not on Garmin, differs from the copy there, is gone from there, or cannot be told. */
   const needsUpload = (w, state) => !hasId(w) || state !== "synced";
 
   const UPLOADS = ["upload", "upload_schedule"];
-  /** The workouts an action starts with: for an upload "only what needs it", for the others all those they can use. */
   function defaultPick(action, list, stateOf) {
     const places = (list || []).map((_, i) => i);
     if (UPLOADS.includes(action)) return places.filter((i) => needsUpload(list[i], stateOf(i)));
@@ -104,7 +81,6 @@
     send: { label: "Send to watch", about: "The workouts flagged ‘send to watch’, else all that are on Garmin" },
   };
 
-  /** What the page says about workout i for an action when it is `on` (chosen): a line, and whether it is a warning. */
   function rowNote(action, w, state, on) {
     const id = hasId(w) ? String(w.workoutId) : null, days = datesOf(w).length;
     if (UPLOADS.includes(action)) {
@@ -125,10 +101,6 @@
     return { note: w.sendToDevice ? "Flagged ‘send to watch’" : "Not flagged ‘send to watch’", warn: false };
   }
 
-  /**
-   * An action on the workouts `picked` (places in the list): how many it takes, what the confirming button says, whether it can run, and a
-   * line for every workout.
-   */
   function describe(action, list, picked, stateOf) {
     const chosen = new Set(picked);
     const rows = (list || []).map((w, index) => {
@@ -149,16 +121,13 @@
     return { rows, count: taken.length, days, withId, usable, verb, disabled: !taken.length || !usable, warnings };
   }
 
-  /** The words the drawer's "only what needs it" chip shows, with the number of workouts. */
   const onlyLabel = (n) => `Only what needs it (${n})`;
 
-  /** Whether `picked` is exactly the workouts an upload starts with (so the chip shows pressed). */
   function samePick(a, b) {
     const x = [...new Set(a)].sort((p, q) => p - q), y = [...new Set(b)].sort((p, q) => p - q);
     return x.length === y.length && x.every((v, i) => v === y[i]);
   }
 
-  /** The `indexes` an action is sent with: none when it takes every workout (the whole plan), else the places chosen in order. */
   const indexesFor = (picked, count) => (new Set(picked).size === count ? undefined : [...new Set(picked)].sort((a, b) => a - b));
 
   return { isDay, mondayOf, addDays, datesOf, badDatesOf, hasId, kindOf, scheduleGrid, kmText, timeText, needsUpload, defaultPick, ACTIONS, rowNote, describe, onlyLabel, samePick, indexesFor };

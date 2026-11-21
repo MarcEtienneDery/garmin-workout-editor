@@ -1,11 +1,8 @@
 import { MAX_SAMPLES, PACE_FASTEST, PACE_SLOWEST, activityStats, buildChart, decimate, kmSplits, lapIntervals, pruneChart } from "../shared/activityChart";
 
-// Garmin-shaped answers with made-up values and made-up coordinates (nowhere near anyone's home).
 const KEYS = ["directTimestamp", "sumDistance", "directHeartRate", "directSpeed", "directElevation", "directDoubleCadence", "sumDuration", "directGradeAdjustedSpeed", "directAirTemperature"];
-// the columns are not in the order the code reads them, so that a lookup by position would fail
 const ORDER = [3, 0, 6, 1, 8, 2, 4, 7, 5];
 
-/** A run of `n` samples a second apart at 3 m/s: 10 km in about 56 minutes when n is 3334. */
 function details(n: number, over: { speed?: (i: number) => number; withPolyline?: boolean; withLatLon?: boolean } = {}) {
   const speed = over.speed ?? (() => 3);
   const rows: any[] = [];
@@ -48,7 +45,7 @@ describe("pruning what Garmin sent", () => {
     expect(kept.details.metricDescriptors.map((m) => m.key)).toEqual(KEYS);
     expect(kept.details.geoPolylineDTO!.polyline).toHaveLength(MAX_SAMPLES);
     expect(Object.keys(kept.details.geoPolylineDTO!.polyline[0]).sort()).toEqual(["altitude", "cumulativeAscent", "distanceInMeters", "extendedCoordinate", "lat", "lon", "speed", "time", "valid"]);
-    expect(kept.splits!.lapDTOs[0]).toHaveProperty("ignored"); // a plain field is kept whatever it is called
+    expect(kept.splits!.lapDTOs[0]).toHaveProperty("ignored");
     expect(kept.splits!.lapDTOs[0]).toHaveProperty("averageHR");
     expect(JSON.stringify(kept).length).toBeLessThan(150_000);
   });
@@ -63,7 +60,6 @@ describe("pruning what Garmin sent", () => {
     expect(kept.details.geoPolylineDTO!.polyline[0]).toEqual({ latitude: 10.5, longitude: 20.5, elevationM: 30, timeMs: 5 });
     expect(kept.splits!.lapDTOs).toEqual([{ index: 1, lengthMeters: 1000, kind: "WARMUP" }]);
     expect(kept.zones).toEqual([{ zone: 1, seconds: 30, floor: 100 }]);
-    // reading those fields is a parser change; until then the chart simply has no route, rather than failing
     const chart = buildChart(kept)!;
     expect(chart.route).toBeNull();
     expect(chart.laps).toHaveLength(1);
@@ -97,14 +93,14 @@ describe("reading the charts", () => {
     expect(chart.hr[0]).toBe(140);
     expect(chart.cadence[0]).toBe(172);
     expect(chart.elevation[0]).toBeCloseTo(40, 0);
-    expect(chart.pace[0]).toBeCloseTo(333.3, 0); // 3 m/s
+    expect(chart.pace[0]).toBeCloseTo(333.3, 0);
   });
 
   it("leaves a pace out where the speed is too low to be one, or absurd", () => {
     const slow = buildChart(pruneChart({ details: details(20, { speed: (i) => (i < 5 ? 0 : i < 10 ? 0.3 : i < 15 ? 20 : 3) }) }))!;
     expect(slow.pace.slice(0, 5)).toEqual([null, null, null, null, null]);
     expect(slow.pace.slice(5, 10)).toEqual([null, null, null, null, null]);
-    expect(slow.pace.slice(10, 15)).toEqual([null, null, null, null, null]); // 20 m/s is 0:50/km
+    expect(slow.pace.slice(10, 15)).toEqual([null, null, null, null, null]);
     expect(slow.pace[19]).toBeCloseTo(333, 0);
     for (const p of chart.pace) if (p !== null) expect(p).toBeGreaterThanOrEqual(PACE_FASTEST), expect(p).toBeLessThanOrEqual(PACE_SLOWEST);
   });
@@ -119,11 +115,11 @@ describe("reading the charts", () => {
     const d = details(100);
     d.geoPolylineDTO!.polyline.forEach((p: any) => (p.distanceInMeters = null));
     d.geoPolylineDTO!.polyline[99].time = 1_700_000_000_000 + 99_000;
-    d.geoPolylineDTO!.polyline[98].time = 1_700_000_000_000 + 500; // half way between the first two samples
-    d.geoPolylineDTO!.polyline[97].time = 1_700_000_000_000 + 999_000_000; // after the series ended
+    d.geoPolylineDTO!.polyline[98].time = 1_700_000_000_000 + 500;
+    d.geoPolylineDTO!.polyline[97].time = 1_700_000_000_000 + 999_000_000;
     const r = buildChart(pruneChart({ details: d }))!.route!;
-    expect(r.distance[0]).toBeCloseTo(3, 5); // the first sample, 3 m in
-    expect(r.distance[1]).toBeCloseTo(3 + 3 * 3.997, 0); // 4 s in, at 3 m/s
+    expect(r.distance[0]).toBeCloseTo(3, 5);
+    expect(r.distance[1]).toBeCloseTo(3 + 3 * 3.997, 0);
     expect(r.distance[99]).toBeCloseTo(300, 5);
     expect(r.distance[98]).toBeCloseTo(4.5, 5);
     expect(r.distance[97]).toBeNull();
@@ -133,7 +129,7 @@ describe("reading the charts", () => {
     const withCols = details(30, { withPolyline: false });
     const keys = [...withCols.metricDescriptors, { metricsIndex: 9, key: "directLatitude" }, { metricsIndex: 10, key: "directLongitude" }];
     const rows = withCols.activityDetailMetrics.map((r: any, i: number) => ({ metrics: [...r.metrics, 10 + i * 0.001, i === 3 ? 0 : 20 + i * 0.001] }));
-    rows[3].metrics[9] = 0; // a (0, 0) glitch
+    rows[3].metrics[9] = 0;
     const r = buildChart(pruneChart({ details: { ...withCols, metricDescriptors: keys, activityDetailMetrics: rows } }))!.route!;
     expect(r.lat).toHaveLength(29);
     expect(buildChart(pruneChart({ details: details(30, { withPolyline: false }) }))!.route).toBeNull();
@@ -143,7 +139,7 @@ describe("reading the charts", () => {
     expect(chart.laps).toHaveLength(3);
     expect(chart.laps[0]).toEqual({ index: 1, meters: 1000, seconds: 330, paceSec: 330, avgHr: 140, maxHr: 150, gain: 4, cadence: 170, kind: "WARMUP" });
     expect(chart.laps[1]).toEqual(expect.objectContaining({ index: 2, paceSec: 293, avgHr: 166, kind: "INTERVAL" }));
-    expect(chart.laps[2].paceSec).toBeNull(); // 10 m
+    expect(chart.laps[2].paceSec).toBeNull();
   });
 
   it("reads the zones in order, each with the next one's lower bound as its upper", () => {
@@ -181,7 +177,7 @@ describe("km splits", () => {
   });
 
   it("interpolates the time at each kilometer between samples", () => {
-    const distance = [0, 600, 1200, 1800, 2400], time = [0, 200, 400, 600, 800]; // 3 m/s
+    const distance = [0, 600, 1200, 1800, 2400], time = [0, 200, 400, 600, 800];
     const [a, b, c] = kmSplits(distance, time, [null, null, null, null, null], [null, null, null, null, null]);
     expect([a.seconds, b.seconds]).toEqual([333, 333]);
     expect(c.meters).toBe(400);
@@ -223,7 +219,6 @@ describe("the numbers beside the charts", () => {
 
 describe("the laps of a run, as intervals", () => {
   const lap = (lapIndex: number, intensityType: string, wktStepIndex: number, over: Record<string, unknown> = {}) => ({ lapIndex, intensityType, wktStepIndex, distance: 1000, duration: 297.189, averageHR: 164, maxHR: 175, ...over });
-  // 2 x 3 km at a pace: a warmup, rep 1 (step 1), a recovery, rep 2 (step 3), a cooldown with a few meters left over
   const session = () =>
     pruneChart({
       splits: {
@@ -246,8 +241,8 @@ describe("the laps of a run, as intervals", () => {
       ["Lap 6", "ACTIVE", 4], ["Lap 7", "ACTIVE", 4], ["Lap 8", "ACTIVE", 4], ["Lap 9", "COOLDOWN", 5], ["Lap 10", "COOLDOWN", 5],
     ]);
     const reps = (step: number) => sets.filter((s) => s.step === step).map((s) => s.avgHR);
-    expect(reps(2)).toEqual([166, 169, 172]); // the heart rate inside the first rep ...
-    expect(reps(4)).toEqual([178, 181, 184]); // ... and inside the second
+    expect(reps(2)).toEqual([166, 169, 172]);
+    expect(reps(4)).toEqual([178, 181, 184]);
   });
 
   it("gives the distance in km, the pace in min/km and the time in seconds", () => {

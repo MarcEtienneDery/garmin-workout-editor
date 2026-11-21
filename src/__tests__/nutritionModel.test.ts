@@ -82,7 +82,7 @@ describe("the table and the charts", () => {
   });
 
   it("lists only fields the server sends", () => {
-    const sent = [...Object.keys(day()), ...NUTRIENTS.map((n) => n.key)]; // the nutrients come as `nutrients.<key>`
+    const sent = [...Object.keys(day()), ...NUTRIENTS.map((n) => n.key)];
     expect(all.map((f: any) => f.key).filter((k: string) => !sent.includes(k))).toEqual([]);
   });
 
@@ -170,7 +170,7 @@ describe("the form", () => {
     const noNutrients = Object.fromEntries(NUTRIENTS.map((n) => [n.key, ""]));
     expect(NM.draftOf(entry)).toEqual({ name: "Rice", kcal: "200", proteinG: "4", carbsG: "45", fatG: "0.5", ...noNutrients });
     expect(NM.EMPTY_DRAFT()).toEqual({ name: "", kcal: "", proteinG: "", carbsG: "", fatG: "", ...noNutrients });
-    expect(NM.draftOf({ ...entry, nutrients: { fiberG: 3.5, sodiumMg: 0 } })).toMatchObject({ fiberG: "3.5", sodiumMg: "0", ironMg: "" }); // a stated zero is filled in as 0
+    expect(NM.draftOf({ ...entry, nutrients: { fiberG: 3.5, sodiumMg: 0 } })).toMatchObject({ fiberG: "3.5", sodiumMg: "0", ironMg: "" });
     expect(NM.recentMatch([entry], " rice ")).toBe(entry);
     expect(NM.recentMatch([entry], "pasta")).toBeNull();
     expect(NM.recentMatch([entry], "")).toBeNull();
@@ -179,7 +179,6 @@ describe("the form", () => {
 });
 
 describe("the foods used lately", () => {
-  // newest first, as the server gives them
   const recent = [
     { name: "Maple syrup · 10 ml", meal: "snack", kcal: 37, proteinG: 0, carbsG: 9.2, fatG: 0, nutrients: {} },
     { name: "OIKOS · 150 g", meal: "breakfast", kcal: 78, proteinG: 14.4, carbsG: 5.3, fatG: 0, nutrients: { calciumMg: 163 } },
@@ -190,14 +189,14 @@ describe("the foods used lately", () => {
 
   it("offers first the ones last logged in the meal, then the others, newest first in each", () => {
     expect(names(NM.recentFor(recent, "breakfast", ""))).toEqual(["OIKOS · 150 g", "Blueberries · 50 g", "Maple syrup · 10 ml", "Crème brûlée"]);
-    expect(names(NM.recentFor(recent, "lunch", "  "))).toEqual(names(recent)); // none in this meal: plain newest first
+    expect(names(NM.recentFor(recent, "lunch", "  "))).toEqual(names(recent));
     expect(NM.recentFor(undefined, "lunch", "")).toEqual([]);
   });
 
   it("keeps, with a query, the ones whose name holds every word of it, in any case and without accents", () => {
     expect(names(NM.recentFor(recent, "dinner", "oik"))).toEqual(["OIKOS · 150 g"]);
     expect(names(NM.recentFor(recent, "dinner", "creme BRULEE"))).toEqual(["Crème brûlée"]);
-    expect(names(NM.recentFor(recent, "breakfast", "50 g"))).toEqual(["OIKOS · 150 g", "Blueberries · 50 g"]); // "150" holds "50"
+    expect(names(NM.recentFor(recent, "breakfast", "50 g"))).toEqual(["OIKOS · 150 g", "Blueberries · 50 g"]);
     expect(names(NM.recentFor(recent, "breakfast", "50 blue"))).toEqual(["Blueberries · 50 g"]);
     expect(NM.recentFor(recent, "breakfast", "pizza")).toEqual([]);
   });
@@ -206,7 +205,7 @@ describe("the foods used lately", () => {
     const item = NM.again(recent[1]);
     expect(item).toEqual({ name: "OIKOS · 150 g", kcal: 78, proteinG: 14.4, carbsG: 5.3, fatG: 0, nutrients: { calciumMg: 163 }, product: null });
     expect(item.nutrients).not.toBe(recent[1].nutrients);
-    expect(NM.again({ name: "Old", kcal: 1, proteinG: 0, carbsG: 0, fatG: 0 }).nutrients).toEqual({}); // a food from before the nutrients
+    expect(NM.again({ name: "Old", kcal: 1, proteinG: 0, carbsG: 0, fatG: 0 }).nutrients).toEqual({});
   });
 
   it("counts foods in words", () => {
@@ -221,9 +220,9 @@ describe("barcodes", () => {
   });
 
   it("expands a UPC-E to the UPC-A it stands for", () => {
-    expect(NM.expandUpcE("04252614")).toBe("042100005264"); // the Wikipedia example
+    expect(NM.expandUpcE("04252614")).toBe("042100005264");
     expect(NM.expandUpcE("04252615")).toBeNull();
-    expect(NM.expandUpcE("23456789")).toBeNull(); // number system must be 0 or 1
+    expect(NM.expandUpcE("23456789")).toBeNull();
     expect(NM.expandUpcE("0425261")).toBeNull();
   });
 
@@ -231,7 +230,7 @@ describe("barcodes", () => {
     expect(NM.normalizeBarcode("3017620422003")).toBe("3017620422003");
     expect(NM.normalizeBarcode(" 3017 6204 22003 ")).toBe("3017620422003");
     expect(NM.normalizeBarcode("3017-6204-22003")).toBe("3017620422003");
-    expect(NM.normalizeBarcode("04252614")).toBe("042100005264"); // UPC-E, looked up as the UPC-A
+    expect(NM.normalizeBarcode("04252614")).toBe("042100005264");
     expect(NM.normalizeBarcode("96385074")).toBe("96385074");
     for (const no of ["3017620422004", "1234567", "greek yogurt", "", null, undefined, "123456789012345"]) expect(NM.normalizeBarcode(no)).toBeNull();
   });
@@ -256,7 +255,6 @@ describe("a food by quantity", () => {
   it("says what the quantity comes to, and the name to log it under", () => {
     expect(NM.portion(yogurt, "1", "portion")).toEqual({
       amount: 1, grams: 170, nutrition: { kcal: 90, proteinG: 16.2, carbsG: 6.8, fatG: 0 }, nutrients: {}, name: "Greek Yogurt (chobani) · 1 × 170 g",
-      // what is kept with the food, so it can be changed by quantity later
       product: { code: null, name: "Greek Yogurt", brand: "chobani", unit: "g", per100: yogurt.per100, nutrients: {}, servingG: 170, servingText: null, amount: 1, per: "portion" },
     });
     expect(NM.portion(yogurt, "1,5", "portion")).toMatchObject({ grams: 255, name: "Greek Yogurt (chobani) · 1.5 × 170 g" });
@@ -269,7 +267,7 @@ describe("a food by quantity", () => {
     const entry = { name: logged.name, ...logged.nutrition, nutrients: logged.nutrients, product: logged.product };
     const back = NM.pickOf(NM.productOf(entry));
     expect(back).toMatchObject({ amount: "1.5", unit: "portion", food: { code: "0056800202458", name: "Greek Yogurt", servingG: 170 } });
-    expect(NM.portion(back.food, back.amount, back.unit)).toEqual(logged); // as it was
+    expect(NM.portion(back.food, back.amount, back.unit)).toEqual(logged);
     expect(NM.portion(back.food, "200", "g")).toMatchObject({ name: "Greek Yogurt (chobani) · 200 g", nutrition: { kcal: 106, proteinG: 19 }, nutrients: { calciumMg: 220 }, product: { amount: 200, per: "g" } });
   });
 
@@ -278,10 +276,9 @@ describe("a food by quantity", () => {
     const p = NM.productOf(chia);
     expect(p).toEqual({ code: null, name: "Black Chia Seeds (Yupik)", brand: null, unit: "g", per100: { kcal: 466.67, proteinG: 13.33, carbsG: 40, fatG: 30 }, nutrients: { fiberG: 34 }, servingG: 15, servingText: null, amount: 1, per: "portion" });
     const back = NM.pickOf(p);
-    expect(NM.portion(back.food, back.amount, back.unit)).toMatchObject({ name: chia.name, nutrition: { kcal: 70, proteinG: 2, carbsG: 6, fatG: 4.5 }, nutrients: { fiberG: 5.1 } }); // exact at the quantity logged
+    expect(NM.portion(back.food, back.amount, back.unit)).toMatchObject({ name: chia.name, nutrition: { kcal: 70, proteinG: 2, carbsG: 6, fatG: 4.5 }, nutrients: { fiberG: 5.1 } });
     expect(NM.portion(back.food, "30", "g")).toMatchObject({ name: "Black Chia Seeds (Yupik) · 30 g", nutrition: { kcal: 140, fatG: 9 } });
     expect(NM.productOf({ name: "Milk · 75 ml", kcal: 48, proteinG: 5.4, carbsG: 2.7, fatG: 1.5 })).toMatchObject({ name: "Milk", unit: "ml", amount: 75, per: "g", per100: { kcal: 64 }, nutrients: {} });
-    // a food typed in or estimated has no quantity to change
     for (const name of ["Banana", "Rice 150 g", " · 50 g", "Rice · 0 g"]) expect(NM.productOf({ name, kcal: 100, proteinG: 1, carbsG: 2, fatG: 3 })).toBeNull();
   });
 
@@ -294,7 +291,7 @@ describe("a food by quantity", () => {
   it("refuses a quantity that is not a number, is not above 0 or is more than a person eats", () => {
     for (const bad of ["", "abc", "0", "-5", "2001", null]) expect(NM.portion(yogurt, bad, "g")).toBeNull();
     expect(NM.portion(yogurt, "2000", "g")).not.toBeNull();
-    expect(NM.portion(yogurt, "12", "portion")).toBeNull(); // 2040 g
+    expect(NM.portion(yogurt, "12", "portion")).toBeNull();
     expect(NM.parseAmount("1e2")).toBe(100);
   });
 
@@ -334,8 +331,8 @@ describe("the nutrients beyond the macros", () => {
     const r = NM.portion(food, "85", "g");
     expect(r.nutrients).toEqual({ fiberG: 2, sodiumMg: 561, ironMg: 2.6 });
     expect(r.nutrients).not.toHaveProperty("calciumMg");
-    expect(NM.portion({ ...food, nutrients: undefined }, "100", "g").nutrients).toEqual({}); // a food kept before they were read
-    expect(NM.scaleNutrients({ fiberG: 0 }, 50)).toEqual({ fiberG: 0 }); // a stated zero stays a value
+    expect(NM.portion({ ...food, nutrients: undefined }, "100", "g").nutrients).toEqual({});
+    expect(NM.scaleNutrients({ fiberG: 0 }, 50)).toEqual({ fiberG: 0 });
   });
 
   it("read as a line for an entry: the stated ones, in the list's order", () => {
@@ -343,7 +340,7 @@ describe("the nutrients beyond the macros", () => {
     expect(NM.nutrientLine({})).toBe("");
     expect(NM.nutrientLine(undefined)).toBe("");
     expect(NM.nutrientLine({ transFatG: 0 })).toBe("Trans fat 0 g");
-    expect(NM.nutrientLine({ calciumMg: 212.5, ironMg: 5.1, sodiumMg: 1122.4, fiberG: 12.5 })).toBe(`Fiber 12.5 g · Sodium ${(1122).toLocaleString()} mg · Calcium 213 mg · Iron 5.1 mg`); // grams keep their decimal, milligrams from 10 up are whole
+    expect(NM.nutrientLine({ calciumMg: 212.5, ironMg: 5.1, sodiumMg: 1122.4, fiberG: 12.5 })).toBe(`Fiber 12.5 g · Sodium ${(1122).toLocaleString()} mg · Calcium 213 mg · Iron 5.1 mg`);
   });
 
   it("make a tile each for a day: a dash for one no food states, and a lower bound when some foods leave it out", () => {
@@ -369,7 +366,7 @@ describe("the nutrients beyond the macros", () => {
     expect(NM.cell(sodium, d)).toBe(`${(2100).toLocaleString()} mg`);
     expect(NM.cell(group.fields[8], d)).toBe("–");
     expect(NM.cell(fiber, day({ entries: 0, nutrients: {} }))).toBe("–");
-    expect(NM.cell(fiber, day())).toBe("–"); // a day from a server that sends none
+    expect(NM.cell(fiber, day())).toBe("–");
   });
 
   it("tell the form whether the person has typed any number, and whether any is a nutrient", () => {
@@ -405,7 +402,7 @@ describe("foods estimated by AI", () => {
     expect(NM.canEstimate(null, 0)).toBe(false);
     expect(NM.canEstimate("", 1)).toBe(true);
     expect(NM.canEstimate("   ", 2)).toBe(true);
-    expect(NM.canEstimate("ab", 1)).toBe(false); // the server refuses it
+    expect(NM.canEstimate("ab", 1)).toBe(false);
     expect(NM.canEstimate("x".repeat(MAX_TEXT), 0)).toBe(true);
     expect(NM.canEstimate("x".repeat(MAX_TEXT + 1), 1)).toBe(false);
   });
@@ -445,9 +442,9 @@ describe("foods estimated by AI", () => {
   });
 
   it("keeps the numbers as estimated, with no product, for a food that cannot be per 100 g", () => {
-    expect(NM.aiFood(salt)).toBeNull(); // 600 mg in 1 g is more sodium than salt holds per 100 g (at most 40 %)
+    expect(NM.aiFood(salt)).toBeNull();
     expect(NM.aiFood({ ...salt, nutrients: { sodiumMg: 390 } })).not.toBeNull();
-    expect(NM.aiFood({ ...eggs, kcal: 2000 })).toBeNull(); // 2000 kcal in 100 g
+    expect(NM.aiFood({ ...eggs, kcal: 2000 })).toBeNull();
     expect(NM.aiFood({ ...eggs, amount: 0 })).toBeNull();
     expect(NM.aiFood({ ...eggs, kcal: undefined })).toBeNull();
     const v = NM.aiRowValue(NM.aiRows([salt])[0]);
@@ -458,7 +455,7 @@ describe("foods estimated by AI", () => {
     const row = NM.aiRows([eggs])[0];
     for (const amount of ["", "0", "-1", "lots", "2001"]) expect(NM.aiRowValue({ ...row, amount })).toBeNull();
     expect(NM.aiRowValue({ ...row, amount: "2000" })).not.toBeNull();
-    expect(NM.aiRowValue({ ...row, amount: "1,5" })).not.toBeNull(); // a comma is read as the decimal point
+    expect(NM.aiRowValue({ ...row, amount: "1,5" })).not.toBeNull();
   });
 
   it("groups the rows by meal in the day's order, and sums the kept ones", () => {
@@ -468,7 +465,7 @@ describe("foods estimated by AI", () => {
     expect(NM.aiGroups(rows).map((g: any) => g.meal)).toEqual(["breakfast", "lunch", "snack"]);
     expect(NM.aiTotals(rows)).toEqual({ kcal: 445, proteinG: 30.5, carbsG: 13.9, fatG: 29 });
     expect(NM.aiTotals(rows.slice(0, 1))).toEqual({ kcal: 125, proteinG: 8.5, carbsG: 12, fatG: 5 });
-    expect(NM.aiTotals([{ ...rows[0], amount: "0" }, rows[1]])).toMatchObject({ kcal: 190 }); // a row with no good amount adds nothing
+    expect(NM.aiTotals([{ ...rows[0], amount: "0" }, rows[1]])).toMatchObject({ kcal: 190 });
     expect(NM.aiTotals([])).toEqual({ kcal: 0, proteinG: 0, carbsG: 0, fatG: 0 });
   });
 
@@ -481,7 +478,7 @@ describe("foods estimated by AI", () => {
     expect(NM.aiConfidence("high", "")).toEqual({ level: "high", label: "Confidence: High", tip: "" });
     expect(NM.aiConfidence(null, " Weigh the rice ")).toEqual({ level: null, label: "", tip: "Weigh the rice" });
     expect(NM.aiConfidence("certain", undefined)).toBeNull();
-    expect(NM.aiConfidence("toString", null)).toBeNull(); // an inherited property is no level
+    expect(NM.aiConfidence("toString", null)).toBeNull();
     expect(NM.aiConfidence(undefined, undefined)).toBeNull();
   });
 
@@ -497,9 +494,7 @@ describe("foods estimated by AI", () => {
   });
 });
 
-// ── The daily goals ──────────────────────────────────────────────────────
 
-/** A view as the server sends it: the day with its meals, the goals and where the day stands against them (the real goalProgress). */
 function goalView(foods: Record<string, any>[], goals: Record<string, number>, extra: Record<string, unknown> = {}) {
   const entry = (f: Record<string, any>) => ({ meal: "lunch", name: "x", kcal: 0, proteinG: 0, carbsG: 0, fatG: 0, nutrients: {}, ...f });
   const entries = foods.map(entry);
@@ -527,7 +522,7 @@ describe("saying where a goal stands", () => {
 
   it("says a ceiling that was passed as over, with a mark that is not only colour", () => {
     expect(by("sodiumMg")).toMatchObject({ state: "over", partial: true });
-    expect(NM.goalNote(by("sodiumMg"), 2)).toBe("▲ over by at least 100 mg"); // from some of the foods: at least
+    expect(NM.goalNote(by("sodiumMg"), 2)).toBe("▲ over by at least 100 mg");
     expect(NM.goalValue(by("sodiumMg"))).toBe("≥ 800 / 700 mg");
   });
 
@@ -575,11 +570,11 @@ describe("the summary of the day", () => {
   it("splits the calorie bar into protein, carbs and fat, as long as the day is of the goal", () => {
     const bar = NM.calorieBar(goalView(foods, { kcal: 2000 }).day, 2000);
     expect(bar.segments.map((x: any) => x.cls)).toEqual(["protein", "carbs", "fat"]);
-    expect(bar.segments.reduce((t: number, x: any) => t + x.width, 0)).toBeCloseTo(50, 5); // 1000 of 2000 kcal
+    expect(bar.segments.reduce((t: number, x: any) => t + x.width, 0)).toBeCloseTo(50, 5);
     expect(bar.tick).toBeNull();
     const over = NM.calorieBar(goalView(foods, { kcal: 800 }).day, 800);
     expect(over.segments.reduce((t: number, x: any) => t + x.width, 0)).toBeCloseTo(100, 5);
-    expect(over.tick).toBeCloseTo(80, 5); // the goal is 800 of the 1000 eaten
+    expect(over.tick).toBeCloseTo(80, 5);
     expect(NM.calorieBar(goalView(foods, {}).day, undefined).segments.reduce((t: number, x: any) => t + x.width, 0)).toBeCloseTo(100, 5);
     expect(NM.calorieBar(goalView([], { kcal: 2000 }).day, 2000)).toBeNull();
   });
@@ -675,13 +670,13 @@ describe("a calorie goal that follows the burn", () => {
     const v = follow(620);
     expect(NM.calorieGoal(v)).toBe(2510);
     expect(NM.ring(v)).toMatchObject({ big: (1510).toLocaleString(), small: "kcal left", line: `${(1000).toLocaleString()} kcal eaten · goal ${(2510).toLocaleString()} kcal`, state: "short" });
-    expect(NM.mealBars(v)[1]).toMatchObject({ share: 40, shareOf: "of the goal" }); // 1000 of 2510
+    expect(NM.mealBars(v)[1]).toMatchObject({ share: 40, shareOf: "of the goal" });
     expect(NM.figures(v)[0].note).toBe(`of ${(2510).toLocaleString()} (+310 burned) · ${(1510).toLocaleString()} kcal to go`);
   });
 
   it("says how the goal came about, and when the day has no burn to add", () => {
     expect(NM.goalLine(follow(620))).toBe(`Goal ${(2510).toLocaleString()} kcal = ${(2200).toLocaleString()} set + 310 (50 % of 620 active kcal burned so far)`);
-    expect(NM.goalLine({ ...follow(620), today: "2026-10-19" })).toMatch(/active kcal burned\)$/); // a day that is over: not "so far"
+    expect(NM.goalLine({ ...follow(620), today: "2026-10-19" })).toMatch(/active kcal burned\)$/);
     expect(NM.goalLine(follow(null))).toBe(`Goal ${(2200).toLocaleString()} kcal as set: no burn from Garmin for this day to add to it`);
     expect(NM.calorieGoal(follow(null))).toBe(2200);
   });
@@ -691,7 +686,7 @@ describe("a calorie goal that follows the burn", () => {
     expect(NM.goalLine(follow(620, { proteinG: 100 }))).toBe("");
     expect(NM.calorieGoal(follow(620, { kcal: 2200 }))).toBe(2200);
     expect(NM.calorieGoal(follow(620, { proteinG: 100 }))).toBeUndefined();
-    expect(NM.calorieGoal({ day: day(), goals: { kcal: 1800 } })).toBe(1800); // a view without the server's progress: the set goal
+    expect(NM.calorieGoal({ day: day(), goals: { kcal: 1800 } })).toBe(1800);
   });
 
   it("draws a goal of its own for each day on the calories chart, and names it in the reading", () => {
@@ -701,8 +696,8 @@ describe("a calorie goal that follows the burn", () => {
     expect(eaten.goal.values(day({ kcalGoal: 2510 }))).toBe(2510);
     expect(eaten.read(day({ kcalGoal: 2510 }))).toBe(`${(2000).toLocaleString()} kcal · burned ${(2500).toLocaleString()} · goal ${(2510).toLocaleString()}`);
     expect(eaten.read(day())).toBe(`${(2000).toLocaleString()} kcal · burned ${(2500).toLocaleString()}`);
-    expect(NM.charts({ burn: true, goals: { kcal: 2200 } })[0].goal).toEqual({ label: `Goal ${(2200).toLocaleString()} kcal`, value: 2200 }); // fixed: one level
-    expect(NM.charts({ burn: true, goals: { kcalBurnPct: 50 } })[0].goal).toBeUndefined(); // a share of nothing
+    expect(NM.charts({ burn: true, goals: { kcal: 2200 } })[0].goal).toEqual({ label: `Goal ${(2200).toLocaleString()} kcal`, value: 2200 });
+    expect(NM.charts({ burn: true, goals: { kcalBurnPct: 50 } })[0].goal).toBeUndefined();
   });
 });
 
@@ -731,12 +726,12 @@ describe("the calorie chart's colours, summary and words", () => {
   const [eaten, , protein] = NM.charts({ burn: true, today: TODAY, goals: { ...goals, proteinG: 100 } });
 
   it("colours a day over the goal beyond the tolerance, and no other", () => {
-    expect(days.map((d) => eaten.color(d))).toEqual(["", "", "", "over", "", ""]); // 2,150 is within 10 % of 2,000, 2,300 is over
+    expect(days.map((d) => eaten.color(d))).toEqual(["", "", "", "over", "", ""]);
     expect(eaten.colorKeys).toEqual({ over: "Over the goal" });
   });
 
   it("counts the finished days on target (under the goal counts) and over, leaving out a day with nothing logged and today, which is not over", () => {
-    expect(eaten.summary(days)).toBe("3 of 4 finished days on target · 1 over"); // 1,500 is under the goal, which counts as on target
+    expect(eaten.summary(days)).toBe("3 of 4 finished days on target · 1 over");
   });
 
   it("leaves out the part that is none, and says nothing when there is no finished day", () => {
@@ -758,7 +753,7 @@ describe("the calorie chart's colours, summary and words", () => {
 
   it("follows the day's own goal when the goal follows the burn", () => {
     const [follow] = NM.charts({ burn: true, today: TODAY, goals: { kcal: 2000, kcalBurnPct: 50 } });
-    expect(follow.color(day({ kcal: 2300, kcalGoal: 2600 }))).toBe(""); // 2,300 against 2,600: under
+    expect(follow.color(day({ kcal: 2300, kcalGoal: 2600 }))).toBe("");
     expect(follow.color(day({ kcal: 2300, kcalGoal: 2000 }))).toBe("over");
   });
 
@@ -769,7 +764,6 @@ describe("the calorie chart's colours, summary and words", () => {
 });
 
 describe("the week strip", () => {
-  // 2026-10-12 is a Monday; TODAY (the 18th) is the Sunday that ends the week.
   const week = (over: Record<string, any> = {}) => ["12", "13", "14", "15", "16", "17", "18"].map((d) => ({ day: `2026-10-${d}`, kcal: 0, entries: 0, kcalGoal: 2000, ...(over[d] || {}) }));
   const view = (extra: Record<string, unknown> = {}) => ({ today: TODAY, date: TODAY, goals: { kcal: 2000 }, week: week({ 12: { kcal: 1500, entries: 3 }, 13: { kcal: 2300, entries: 4 }, 14: { kcal: 2100, entries: 2 }, 18: { kcal: 700, entries: 1 } }), ...extra });
 
@@ -785,12 +779,12 @@ describe("the week strip", () => {
 
   it("tells a day over the goal from one on target, with 10 % to spare, and a day under the goal is on target", () => {
     const states = NM.weekStrip(view()).map((d: any) => d.state);
-    expect(states.slice(0, 3)).toEqual(["ok", "over", "ok"]); // 1,500 under, 2,300 over, 2,100 within the 10 %
+    expect(states.slice(0, 3)).toEqual(["ok", "over", "ok"]);
   });
 
   it("marks a day with nothing logged, a day not yet come, today and the day shown", () => {
     const strip = NM.weekStrip(view({ today: "2026-10-15", date: "2026-10-13" }));
-    expect(strip[3].state).toBe("none"); // Thursday the 15th is today and nothing is logged
+    expect(strip[3].state).toBe("none");
     expect(strip[4].state).toBe("future");
     expect(strip[3].today).toBe(true);
     expect(strip[1].selected).toBe(true);
@@ -845,13 +839,13 @@ describe("the insights of a range", () => {
   it("averages the finished days, leaving out today and a day with nothing logged", () => {
     const [average] = NM.insightTiles(view());
     expect(average.label).toBe("Average · 3 days");
-    expect(average.value).toBe((2067).toLocaleString()); // (1,800 + 2,400 + 2,000) / 3
+    expect(average.value).toBe((2067).toLocaleString());
     expect(average.note).toBe(`kcal a day · goal ${(2000).toLocaleString()}`);
   });
 
   it("counts the days on target (under the goal counts) and over it", () => {
     const tile = NM.insightTiles(view()).find((t: any) => t.label === "On target");
-    expect(tile).toEqual({ label: "On target", value: "2 of 3", note: "days · 1 over the goal" }); // 2,400 is over, 1,800 and 2,000 are not
+    expect(tile).toEqual({ label: "On target", value: "2 of 3", note: "days · 1 over the goal" });
     expect(NM.insightTiles(view({ days: [finished[0]] })).find((t: any) => t.label === "On target").note).toBe("days · none over the goal");
   });
 
@@ -864,7 +858,7 @@ describe("the insights of a range", () => {
 
   it("compares what was eaten with what Garmin counted as burned, from three days of it", () => {
     const tile = NM.insightTiles(view()).find((t: any) => t.label === "Eaten vs burned");
-    expect(tile.value).toBe(NM.signed(-333)); // (−600 + 0 + −400) / 3
+    expect(tile.value).toBe(NM.signed(-333));
     expect(tile.note).toBe("kcal a day, on average");
     expect(NM.insightTiles(view({ days: finished.slice(0, 2) })).some((t: any) => t.label === "Eaten vs burned")).toBe(false);
   });
@@ -876,7 +870,6 @@ describe("the insights of a range", () => {
 });
 
 describe("the pattern of the weekdays", () => {
-  // Two Mondays (1,500, 1,700), two Tuesdays (2,000, 2,200), two Wednesdays (1,900, 2,100), two Saturdays (2,800, 3,000), Sunday once.
   const days = [
     day({ day: "2026-10-05", kcal: 1500, proteinG: 120 }), day({ day: "2026-10-06", kcal: 2000, proteinG: 120 }), day({ day: "2026-10-07", kcal: 1900, proteinG: 120 }),
     day({ day: "2026-10-10", kcal: 2800, proteinG: 60 }), day({ day: "2026-10-11", kcal: 2000, proteinG: 120 }),
@@ -893,7 +886,7 @@ describe("the pattern of the weekdays", () => {
   it("averages each weekday, Monday first, with null for a weekday that has a single day", () => {
     const { rows } = NM.weekdayPattern({ today: TODAY, days });
     expect(rows.map((r: any) => r.short)).toEqual(["M", "T", "W", "T", "F", "S", "S"]);
-    expect(rows.map((r: any) => r.kcal)).toEqual([1600, 2100, 2000, null, null, 2900, null]); // Sunday has only the 11th: today is not finished
+    expect(rows.map((r: any) => r.kcal)).toEqual([1600, 2100, 2000, null, null, 2900, null]);
   });
 
   it("says which weekday runs highest and which is lowest in protein", () => {

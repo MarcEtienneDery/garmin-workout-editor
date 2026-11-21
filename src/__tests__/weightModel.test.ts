@@ -58,9 +58,7 @@ describe("the table", () => {
 });
 
 
-// ── The line ────────────────────────────────────────────────────────────
 
-/** Weigh-ins on every second day from the 1st, falling a tenth of a kilogram a day exactly (so −0.7 kg a week and no noise), and what the page gets of them. */
 const falling = (extra: Record<string, unknown> = {}) => Array.from({ length: 21 }, (_, i) => metricsFor(day(i), { weightKg: i % 2 === 0 && i <= 18 ? Math.round((82 - 0.1 * i) * 100) / 100 : null, totalKcal: 2500 + i, activeKcal: 500, bmrKcal: 2000, ...extra }));
 const view = (days: any[], over: Record<string, unknown> = {}) => ({ today: TODAY, date: day(18), days, body: bodyTrend(days), goalKg: null, intake: null, ...over });
 
@@ -80,9 +78,9 @@ describe("the line through the weigh-ins", () => {
   it("asks for what bodyTrend asks: three weigh-ins over at least a week, and calls under a tenth of a kilo a week steady", () => {
     expect(WM.LIMITS).toEqual({ STEADY_PER_WEEK_KG, MIN_WEIGH_INS, MIN_SPAN_DAYS });
     const three = (gap: number) => [0, gap, gap * 2].map((n) => ({ day: day(n), v: 80 + n * 0.01 }));
-    expect(WM.fitLine(three(4))).not.toBeNull(); // 8 days
-    expect(WM.fitLine(three(3))).toBeNull(); // 6 days: too short
-    expect(WM.fitLine(three(4).slice(0, 2))).toBeNull(); // two weigh-ins
+    expect(WM.fitLine(three(4))).not.toBeNull();
+    expect(WM.fitLine(three(3))).toBeNull();
+    expect(WM.fitLine(three(4).slice(0, 2))).toBeNull();
     expect(WM.fitLine([])).toBeNull();
   });
 
@@ -90,7 +88,7 @@ describe("the line through the weigh-ins", () => {
     const fit = WM.fitLine(WM.weightPoints(falling()));
     expect(fit.perWeek).toBeCloseTo(-0.7, 6);
     expect(fit.at(day(0))).toBeCloseTo(82, 6);
-    expect(fit.at(day(30))).toBeCloseTo(79, 6); // past the last weigh-in too
+    expect(fit.at(day(30))).toBeCloseTo(79, 6);
     expect(fit.sigma).toBeCloseTo(0, 6);
     const noisy = WM.fitLine([[0, 80], [4, 81], [8, 79.4], [12, 80.6], [16, 79.2]].map(([n, v]) => ({ day: day(n), v })));
     expect(noisy.sigma).toBeGreaterThan(0.3);
@@ -117,7 +115,7 @@ describe("where the weight is going", () => {
       { label: "From your line", value: "0.0 kg", note: "inside the usual swing" },
       { label: "Weigh-ins", value: "10", of: "of 21 days", note: "usual swing ±0.0 kg" },
     ]);
-    expect(h.projection.value).toBe("77.2 kg"); // the line four weeks from today
+    expect(h.projection.value).toBe("77.2 kg");
     expect(h.goal).toBeNull();
   });
 
@@ -160,7 +158,7 @@ describe("the goal against the line", () => {
     expect(hero(80.2 - 0.7 * 0.5)).toMatchObject({ state: "toward", line: expect.stringMatching(/about a week away\.$/) });
     expect(hero(60).line).toBe("At this rate, 60.0 kg is about 29 weeks away.");
     const slow = Array.from({ length: 21 }, (_, i) => metricsFor(day(i), { weightKg: i % 2 === 0 && i <= 18 ? Math.round((82 - 0.015 * i) * 1000) / 1000 : null }));
-    expect(hero(60, slow)).toMatchObject({ state: "toward", line: "At this rate, 60.0 kg is more than two years away." }); // 0.1 kg a week is still a rate, and 22 kg is a long way
+    expect(hero(60, slow)).toMatchObject({ state: "toward", line: "At this rate, 60.0 kg is more than two years away." });
   });
 
   it("says away when the line moves from it, and claims no time", () => {
@@ -185,7 +183,7 @@ describe("the goal against the line", () => {
 
 describe("the week of the day shown", () => {
   it("is the seven days from the Monday, each with its weigh-in and how far it sat from the line", () => {
-    const strip = WM.weekStrip(view(falling()), "kg"); // the 19th is a Monday, today (the 21st) a Wednesday
+    const strip = WM.weekStrip(view(falling()), "kg");
     expect(strip.map((s: any) => `${s.weekday} ${s.number}`)).toEqual(["Mon 19", "Tue 20", "Wed 21", "Thu 22", "Fri 23", "Sat 24", "Sun 25"]);
     expect(strip.map((s: any) => s.state)).toEqual(["weighed", "none", "none", "future", "future", "future", "future"]);
     expect(strip[0]).toMatchObject({ kg: 80.2, text: "80.2", delta: "0.0", selected: true, today: false, label: "Mon 19 Jan, 80.2 kg, 0.0 kg from the line" });
@@ -207,7 +205,7 @@ describe("the week of the day shown", () => {
   });
 
   it("steps back to the first day of the range and forward to today", () => {
-    expect(WM.canStep(view([], { date: day(0) }), 21, -1)).toBe(false); // the range starts on the 1st
+    expect(WM.canStep(view([], { date: day(0) }), 21, -1)).toBe(false);
     expect(WM.canStep(view([], { date: day(1) }), 21, -1)).toBe(true);
     expect(WM.canStep(view([], { date: TODAY }), 21, 1)).toBe(false);
     expect(WM.canStep(view([], { date: day(19) }), 21, 1)).toBe(true);
@@ -251,7 +249,7 @@ describe("the weeks one by one", () => {
 describe("the calories", () => {
   it("averages what Garmin counted as burned on the finished days, and splits it, with the last 14 days as bars", () => {
     const b = WM.burned(view(falling()));
-    expect(b).toMatchObject({ total: 2510, active: 500, rest: 2010, days: 20, max: 2519 }); // today is not over
+    expect(b).toMatchObject({ total: 2510, active: 500, rest: 2010, days: 20, max: 2519 });
     expect(b.bars).toHaveLength(14);
     expect(b.bars[13]).toMatchObject({ day: day(19), total: 2519, active: 500, rest: 2019 });
     expect(b.foot).toBe("20 full days · Garmin's estimate from the watch · the last 14 days above");
@@ -292,7 +290,6 @@ describe("the calories", () => {
 });
 
 describe("what the scale measured", () => {
-  /** Weight falling a tenth a day on every second day, with the body fat given by `fat(i)`. */
   const withFat = (fat: (i: number) => number, kg = (i: number) => 82 - 0.1 * i) =>
     Array.from({ length: 21 }, (_, i) => metricsFor(day(i), { weightKg: i % 2 === 0 && i <= 18 ? Math.round(kg(i) * 100) / 100 : null, bodyFatPercent: i % 2 === 0 && i <= 18 ? Math.round(fat(i) * 10) / 10 : null, muscleKg: i % 2 === 0 && i <= 18 ? 36 - 0.02 * i : null, bmi: i % 2 === 0 && i <= 18 ? 24.5 - 0.03 * i : null }));
 
@@ -322,7 +319,7 @@ describe("what the scale measured", () => {
   });
 
   it("splits a loss into fat and lean, and says what part of it was fat when both fell", () => {
-    const c = WM.came(view(withFat(() => 20)), "kg"); // 20 % of every weigh-in is fat: a fifth of the loss
+    const c = WM.came(view(withFat(() => 20)), "kg");
     expect(c.rows.map((r: any) => r.label)).toEqual(["Fat mass", "Lean mass", "Weight"]);
     expect(c.rows[0].kg).toBeCloseTo(-1.8 * 0.2, 1);
     expect(c.rows[1].kg).toBeCloseTo(-1.8 * 0.8, 1);
@@ -360,10 +357,10 @@ describe("the charts", () => {
     const spec = WM.weightSpec(goalView, "lb"), full = WM.fullDays(goalView, 21), at = (n: number) => full[n];
     expect(spec).toMatchObject({ id: "weight", kind: "dots", unit: "lb" });
     expect(spec.value(at(4))).toBeCloseTo(81.6 * 2.2046226, 3);
-    expect(spec.value(at(5))).toBeNull(); // a day with no weigh-in has no dot
+    expect(spec.value(at(5))).toBeNull();
     expect(spec.ref.label).toBe("trend line");
-    expect(spec.ref.value(at(4))).toBeCloseTo(81.6 * 2.2046226, 3); // the line through the weigh-ins
-    expect(spec.ref.value(at(5))).toBeCloseTo(81.5 * 2.2046226, 3); // and through the days between
+    expect(spec.ref.value(at(4))).toBeCloseTo(81.6 * 2.2046226, 3);
+    expect(spec.ref.value(at(5))).toBeCloseTo(81.5 * 2.2046226, 3);
     const [lo, hi] = spec.band(at(4));
     expect(hi).toBeGreaterThanOrEqual(lo);
     expect(spec.goal).toEqual({ value: expect.closeTo(76 * 2.2046226, 3), label: "goal 167.6 lb" });
@@ -389,7 +386,7 @@ describe("the charts", () => {
     expect(specs.map((s: any) => s.id)).toEqual(["compare", "fat", "muscle"]);
     const compare = specs[0];
     expect(compare.second.label).toBe("lean mass");
-    expect(compare.value(full[0])).toBeCloseTo(0, 1); // both start at nothing on the first weigh-in
+    expect(compare.value(full[0])).toBeCloseTo(0, 1);
     expect(compare.second.value(full[0])).toBeCloseTo(0, 1);
     expect(compare.value(full[1])).toBeNull();
     expect(compare.value(full[18])).toBeLessThan(0);

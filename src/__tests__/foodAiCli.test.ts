@@ -24,14 +24,14 @@ describe("what claude is started with", () => {
     expect(args[0]).toBe("-p");
     expect(after("--input-format")).toBe("stream-json");
     expect(after("--output-format")).toBe("stream-json");
-    expect(args).toContain("--verbose"); // stream-json output needs it
+    expect(args).toContain("--verbose");
     expect(after("--json-schema")).toBe(JSON.stringify(schema));
     expect(after("--system-prompt")).toBe("You estimate food.");
-    expect(after("--tools")).toBe(""); // no tools at all: a prompt cannot make it run anything
+    expect(after("--tools")).toBe("");
     expect(after("--model")).toBe("claude-sonnet-5-5");
     expect(after("--effort")).toBe("low");
     for (const flag of ["--no-session-persistence", "--disable-slash-commands", "--strict-mcp-config", "--restricted"]) expect(args).toContain(flag);
-    expect(args).not.toContain("--bare"); // bare mode ignores the plan login
+    expect(args).not.toContain("--bare");
   });
 
   it("writes the message as one line of stream-json, with the blocks as given", () => {
@@ -49,7 +49,7 @@ describe("what claude is started with", () => {
     } as NodeJS.ProcessEnv);
     expect(env).toMatchObject({ PATH: "/usr/bin", HOME: "/home/node", LANG: "C.UTF-8", HTTPS_PROXY: "http://proxy:3128", CLAUDE_CODE_OAUTH_TOKEN: "sk-ant-oat01-x", CLAUDE_CONFIG_DIR: "/tmp/claude" });
     expect(Object.keys(env).sort()).toEqual(["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", "CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_CONFIG_DIR", "DISABLE_AUTOUPDATER", "HOME", "HTTPS_PROXY", "LANG", "NO_COLOR", "PATH"]);
-    expect(cliEnv({ PATH: "/bin", HOME: "" } as NodeJS.ProcessEnv)).not.toHaveProperty("HOME"); // an empty one is none
+    expect(cliEnv({ PATH: "/bin", HOME: "" } as NodeJS.ProcessEnv)).not.toHaveProperty("HOME");
   });
 });
 
@@ -103,7 +103,7 @@ describe("what a run came to", () => {
     expect(fails({ api_error_status: 429 }, [event("rejected", at(120))]).message).toMatch(/It resets in about 2 h\.$/);
     expect(fails({ api_error_status: 429 }, [event("rejected", at(25))]).message).toMatch(/It resets in about 25 min\.$/);
     expect(fails({ api_error_status: 429 }, [event("rejected", at(0))]).message).toMatch(/about 1 min\.$/);
-    expect(fails({ api_error_status: 429 }, [event("allowed", at(130))]).message).toMatch(/Try again later\.$/); // an allowed window is not the one that refused
+    expect(fails({ api_error_status: 429 }, [event("allowed", at(130))]).message).toMatch(/Try again later\.$/);
     expect(fails({ api_error_status: 429 }, [line({ type: "rate_limit_event" })]).message).toMatch(/Try again later\.$/);
   });
 
@@ -191,7 +191,6 @@ describe("starting the program", () => {
   });
   afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
 
-  /** A program of its own that behaves as `body` says (a node script). */
   const program = (body: string) => {
     const file = path.join(dir, "claude");
     fs.writeFileSync(file, `#!/usr/bin/env node\n${body}\n`, { mode: 0o755 });
@@ -204,7 +203,7 @@ describe("starting the program", () => {
     const res = await runClaude(call(bin, { env: { PATH: process.env.PATH ?? "", CLAUDE_CODE_OAUTH_TOKEN: "tok" } }));
     expect([res.code, res.timedOut, res.error]).toEqual([0, false, undefined]);
     const seen = JSON.parse(res.stdout);
-    expect(seen).toMatchObject({ args: ["-p", "--flag", ""], got: "one line\n", cwd: fs.realpathSync(dir), key: null, token: "tok" }); // an empty argument arrives as an empty argument
+    expect(seen).toMatchObject({ args: ["-p", "--flag", ""], got: "one line\n", cwd: fs.realpathSync(dir), key: null, token: "tok" });
   });
 
   it("reports an exit code and what it said on stderr", async () => {

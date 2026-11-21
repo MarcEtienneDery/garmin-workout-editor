@@ -1,10 +1,3 @@
-/**
- * tokens.ts — the Garmin login tokens of each profile, kept in the database next to everything else.
- *
- * One row per profile: the OAuth tokens the Garmin library hands out (as JSON text), the account they belong to and when
- * they were saved. The MCP server and the web editor, two processes, share the row, so a login by one serves the other.
- * They are not documents: they never appear in the document list, its history or an export.
- */
 import type { Database } from "./sqliteStore";
 
 export const TOKEN_SCHEMA = `
@@ -16,7 +9,6 @@ CREATE TABLE IF NOT EXISTS garmin_tokens (
 ) WITHOUT ROWID;
 `;
 
-/** A 429 (Too Many Requests) from Garmin is remembered per profile, so the page can say so, whichever process met it. */
 export const LIMIT_SCHEMA = `
 CREATE TABLE IF NOT EXISTS garmin_limits (
   profile TEXT PRIMARY KEY,
@@ -28,9 +20,7 @@ CREATE TABLE IF NOT EXISTS garmin_limits (
 
 export interface StoredToken {
   email: string;
-  /** The tokens as the Garmin library exported them. */
   data: unknown;
-  /** Milliseconds since the epoch. */
   savedAt: number;
 }
 
@@ -43,7 +33,7 @@ export class TokenTable {
     try {
       return { email: r.email, data: JSON.parse(r.data), savedAt: r.saved_at };
     } catch {
-      return null; // a row that is not JSON is as good as none
+      return null;
     }
   }
 
@@ -59,18 +49,11 @@ export class TokenTable {
 }
 
 export interface GarminLimit {
-  /** When Garmin first answered 429 in this run of refusals (ms since the epoch). */
   since: number;
-  /** When it last did. */
   lastAt: number;
-  /** How many requests it has turned away since. */
   count: number;
 }
 
-/**
- * Whether Garmin is turning a profile's requests away with HTTP 429. Set by whichever process meets the 429 (the MCP server or the web
- * editor, which share the database) and cleared by the first login or request that works again, so the page shows it until it is over.
- */
 export class LimitTable {
   constructor(private readonly db: Database) {}
 
@@ -79,7 +62,6 @@ export class LimitTable {
     return r ? { since: r.since, lastAt: r.last_at, count: r.count } : null;
   }
 
-  /** Garmin answered 429 now: starts a run of refusals, or adds to the one under way. */
   record(profile: string, now = Date.now()): void {
     this.db
       .prepare("INSERT INTO garmin_limits (profile, since, last_at, count) VALUES (?, ?, ?, 1) ON CONFLICT (profile) DO UPDATE SET last_at = excluded.last_at, count = count + 1")

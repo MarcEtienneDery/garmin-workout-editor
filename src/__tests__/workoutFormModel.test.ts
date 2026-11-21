@@ -1,7 +1,3 @@
-/**
- * workoutFormModel.js is the logic of the workout form: the flat steps of a plan read as blocks (exercises and their sets,
- * supersets, steps and repeats), the edits the form makes on them, the units of its fields and its checks.
- */
 import exerciseCategoryMap from "../exercise-category-map.json";
 import { WorkoutEditor } from "../workoutEditor";
 import { compareWorkouts } from "../shared/workoutSync";
@@ -10,7 +6,6 @@ const M = require("../web/public/workoutFormModel.js");
 
 const EXERCISES = exerciseCategoryMap as Record<string, string>;
 const known = (name: string) => Object.prototype.hasOwnProperty.call(EXERCISES, name);
-// the validation and the Garmin conversion use no client
 const editor = new WorkoutEditor(null as never);
 
 type Step = Record<string, any>;
@@ -24,7 +19,6 @@ const hr = (lo: number, hi: number) => ({ targetType: "heart.rate.zone", targetV
 const km = (meters: number) => ({ endCondition: "distance", endConditionValue: meters, distanceMeters: meters });
 const secs = (seconds: number) => ({ endCondition: "time", endConditionValue: seconds, durationSeconds: seconds });
 
-// The shapes the plans hold: one exercise per repeat, supersets with the rest after the round, strides, repeats of a rep and its recovery.
 const UPPER = {
   workoutName: "Upper", workoutType: "strength_training",
   steps: ordered([
@@ -87,7 +81,6 @@ const RIDE = {
 };
 const SHAPES = [UPPER, SUPERSETS, STRIDES, REHEARSAL, SHARPENER, RIDE];
 
-/** What Garmin keeps of a workout the plan holds, compared with the plan itself: nothing may differ for what the form writes. */
 const garminDiff = (w: Step) => compareWorkouts(w as never, editor.toGarminCanonical(w as never));
 const write = (w: Step, edit: (blocks: any[]) => any[]) => ({ ...w, steps: M.fromBlocks(edit(M.toBlocks(w.steps))) });
 
@@ -123,11 +116,10 @@ describe("reading the steps as blocks", () => {
   it("shows a strength workout as exercises with their lines of sets, and supersets", () => {
     const blocks = M.toBlocks(UPPER.steps);
     expect(M.strengthCards(blocks).map((c: any) => [c.kind, c.k, c.count])).toEqual([["step", 0, 1], ["exercise", 1, 1], ["exercise", 2, 1], ["exercise", 3, 1], ["superset", 4, 1]]);
-    // a top set after the work sets is a second line of the same exercise
     const pyramid = M.toBlocks(ordered([lift("BARBELL_BACK_SQUAT", 5, 3, 0, { weight: 225 }), { ...lift("BARBELL_BACK_SQUAT", 3, 1, 1, { weight: 245 }) }, lift("BARBELL_BENCH_PRESS", 8, 3, 2)]));
     const cards = M.strengthCards(pyramid);
     expect(cards.map((c: any) => [c.kind, c.name, c.count])).toEqual([["exercise", "BARBELL_BACK_SQUAT", 2], ["exercise", "BARBELL_BENCH_PRESS", 1]]);
-    expect(pyramid.slice(0, 2).reduce((t: number, b: any) => t + b.times, 0)).toBe(4); // its sets
+    expect(pyramid.slice(0, 2).reduce((t: number, b: any) => t + b.times, 0)).toBe(4);
   });
 });
 
@@ -157,7 +149,6 @@ describe("edits", () => {
     expect([card.kind, card.count]).toEqual(["exercise", 3]);
     const joined = M.sameSets(M.toBlocks(each.steps), 1, 3);
     expect(joined.map((b: any) => b.times)).toEqual([1, 3, 3, 3, 2]);
-    // sets that differ stay apart
     const varied = M.updateStep(M.toBlocks(each.steps), 2, 0, (st: Step) => M.withEnd(st, "reps", 6));
     expect(M.sameSets(varied, 1, 3)).toBeNull();
   });
@@ -204,7 +195,6 @@ describe("edits", () => {
     expect(out[2].times).toBe(2);
     const taken = M.takeOut(blocks, 1, 1, { keep: true });
     expect(taken.map((b: any) => [b.steps.map((s: Step) => s.stepType), b.times])).toEqual([[["warmup"], 1], [["interval"], 2], [["recovery"], 1], [["cooldown"], 1]]);
-    // an exercise taken out of a superset keeps the superset's sets
     const lifts = M.takeOut(M.toBlocks(SUPERSETS.steps), 1, 0, { keep: true, times: 3 });
     expect(lifts.slice(1, 3).map((b: any) => [b.steps.map((s: Step) => s.exerciseName), b.times])).toEqual([[["INCLINE_DUMBBELL_BENCH_PRESS"], 3], [["WEIGHTED_CHIN_UP"], 3]]);
   });
@@ -287,8 +277,7 @@ describe("nested repeats", () => {
     const flat = M.flatten(nested.steps);
     expect(M.toBlocks(flat).map((b: any) => [b.steps.map((s: Step) => s.stepType), b.times])).toEqual([[["warmup"], 1], [["interval", "recovery"], 4], [["cooldown"], 1]]);
     expect(flat[1]).toEqual({ ...nested.steps[1].repeatSteps[0], numberOfRepeats: 4, repeatGroupIndex: 0 });
-    expect(M.fromBlocks(M.toBlocks(flat)).map((st: Step) => st.stepOrder)).toEqual([1, 2, 3, 4]); // written in order, as the upload reads it
-    // the demo's steps leave out the fields that mirror endConditionValue, which Garmin's copy has: an edit adds them (withEnd)
+    expect(M.fromBlocks(M.toBlocks(flat)).map((st: Step) => st.stepOrder)).toEqual([1, 2, 3, 4]);
     const mirrored = flat.map((st: Step) => M.withEnd(st, M.endOf(st).by, M.endOf(st).value));
     expect(garminDiff({ ...nested, steps: M.fromBlocks(M.toBlocks(mirrored)) })).toEqual([]);
   });
@@ -352,7 +341,6 @@ describe("units", () => {
     expect(M.parseWeight("100", "kg")).toBe(220.46);
     expect(M.parseWeight("135.5")).toBe(135.5);
     expect(M.parseWeight("x")).toBeNull();
-    // every half kilo typed is shown back as typed
     for (let kg = 0.5; kg <= 300; kg += 0.5) expect(M.weightText(M.parseWeight(String(kg), "kg"), "kg")).toBe(String(kg));
   });
 });
