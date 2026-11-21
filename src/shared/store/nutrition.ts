@@ -187,12 +187,25 @@ export class NutritionTable {
     return this.db.prepare(`SELECT * FROM nutrition WHERE profile = ? AND day BETWEEN ? AND ? ORDER BY day, ${slot}, id`).all(profile, from, to).map(toEntry);
   }
 
-  /** The newest item of each food name (ignoring case), newest first: what the entry form offers to fill in again. */
+  /**
+   * The newest item of each food (ignoring case and the quantity its name ends with, " · 150 g"), newest first: what the entry form
+   * offers to fill in again. The same food at another quantity is one food, so it is offered once, as it was last logged.
+   */
   recentFoods(profile: string, limit: number): FoodEntry[] {
-    return this.db
-      .prepare("SELECT * FROM nutrition WHERE id IN (SELECT MAX(id) FROM nutrition WHERE profile = ? GROUP BY lower(name)) ORDER BY id DESC LIMIT ?")
-      .all(profile, limit)
+    const rows = this.db
+      .prepare("SELECT * FROM nutrition WHERE id IN (SELECT MAX(id) FROM nutrition WHERE profile = ? GROUP BY lower(name)) ORDER BY id DESC")
+      .all(profile)
       .map(toEntry);
+    const seen = new Set<string>();
+    const found: FoodEntry[] = [];
+    for (const row of rows) {
+      const key = row.name.replace(/ · (?:\d+(?:\.\d+)? × )?\d+(?:\.\d+)? (?:g|ml)$/, "").trim().toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      found.push(row);
+      if (found.length >= limit) break;
+    }
+    return found;
   }
 }
 

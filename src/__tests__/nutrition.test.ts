@@ -266,4 +266,11 @@ describe("the foods used lately", () => {
     log({ day: "2026-10-12", meal: "lunch", items: [{ name: "Theirs", kcal: 1 }] }, "SAM");
     expect(recentFoods(store, "MED").map((f) => [f.name, f.kcal, f.meal])).toEqual([["rice", 260, "lunch"], ["Chicken", 300, "dinner"]]);
   });
+
+  it("lists a food once when it was logged at different quantities, as it was last logged", () => {
+    log({ day: "2026-10-10", meal: "breakfast", items: [{ name: "Oats · 40 g", kcal: 150 }] });
+    log({ day: "2026-10-11", meal: "dinner", items: [{ name: "Chicken", kcal: 300 }] });
+    log({ day: "2026-10-12", meal: "breakfast", items: [{ name: "oats · 60 g", kcal: 225 }] });
+    expect(recentFoods(store, "MED").map((f) => [f.name, f.kcal])).toEqual([["oats · 60 g", 225], ["Chicken", 300]]);
+  });
 });
