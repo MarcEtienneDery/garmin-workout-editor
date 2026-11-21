@@ -216,6 +216,28 @@
   }
 
   /**
+   * The calories eaten against the calories Garmin counted as burned, for the Insights chart: per finished day that has both (`daily`, oldest
+   * first), and per Monday-to-Sunday week (`weekly`) the average of those days with how many there were and the week's totals. Null with no day
+   * that has both, or for a view without a burn. Each row has `eaten`, `burned` and `net` (eaten − burned); `peak` is the tallest bar.
+   */
+  function burnCompare(view) {
+    if (!hasBurn(view)) return null;
+    const days = finishedDays(view).filter((d) => valid(d.burnedKcal) && !d.burnedSoFar);
+    if (!days.length) return null;
+    const dayName = (day) => `${Number(day.slice(8))} ${MONTH_SHORT[Number(day.slice(5, 7)) - 1]}`;
+    const daily = days.map((d) => ({ day: d.day, short: String(Number(d.day.slice(8))), name: `${WEEKDAY_NAMES[weekdayOf(d.day)].slice(0, 3)} ${dayName(d.day)}`, eaten: Math.round(d.kcal), burned: Math.round(d.burnedKcal), net: Math.round(d.kcal - d.burnedKcal) }));
+    const mondayOf = (day) => new Date(Date.parse(`${day}T00:00:00Z`) - ((weekdayOf(day) + 6) % 7) * 86_400_000).toISOString().slice(0, 10);
+    const weeks = new Map();
+    for (const r of daily) { const key = mondayOf(r.day); weeks.set(key, [...(weeks.get(key) || []), r]); }
+    const weekly = [...weeks].map(([monday, rows]) => {
+      const eaten = Math.round(meanOf(rows.map((r) => r.eaten))), burned = Math.round(meanOf(rows.map((r) => r.burned)));
+      return { day: monday, short: dayName(monday), name: `Week of ${dayName(monday)}`, days: rows.length, eaten, burned, net: eaten - burned, totalEaten: rows.reduce((t, r) => t + r.eaten, 0), totalBurned: rows.reduce((t, r) => t + r.burned, 0) };
+    });
+    const peak = (rows) => Math.max(1, ...rows.flatMap((r) => [r.eaten, r.burned]));
+    return { daily, weekly, peakDaily: peak(daily), peakWeekly: peak(weekly) };
+  }
+
+  /**
    * The finished days by weekday, Monday first: the average calories of each (null with fewer than two days of it), and a sentence on which
    * weekday runs highest and which is lowest in protein. Null when fewer than three weekdays have two days.
    */
@@ -695,5 +717,5 @@
     return { items };
   }
 
-  return { TARGET_TOLERANCE, standing, weekStrip, insightTiles, weekdayPattern, AI_LIMITS, mealForHour, canEstimate, aiFood, aiRows, aiRowValue, aiGroups, aiTotals, approx, aiConfidence, aiItems, gtinOk, expandUpcE, normalizeBarcode, MAX_AMOUNT, parseAmount, amountGrams, scale, brandOf, entryName, portion, productOf, pickOf, allNutrients, per100Line, foodTitle, MEAL_LABELS, mealLabel, kcal, grams, signed, macros, shares, hasBurn, figures, averageNote, bare, qty, goalValue, goalNote, goalMeter, calorieBar, ring, calorieGoal, goalLine, burnLine, macroRows, sharesLine, mealBars, nutrientRows, kindLabel, GROUPS, groupsFor, cell, chartDays, charts, kcalOf, followMacros, parseDraft, draftOf, EMPTY_DRAFT, hasNumbers, hasNutrients, recentMatch, recentFor, again, foods, NUTRIENTS, nutrientLine, nutrientTiles, scaleNutrients };
+  return { TARGET_TOLERANCE, standing, weekStrip, insightTiles, burnCompare, weekdayPattern, AI_LIMITS, mealForHour, canEstimate, aiFood, aiRows, aiRowValue, aiGroups, aiTotals, approx, aiConfidence, aiItems, gtinOk, expandUpcE, normalizeBarcode, MAX_AMOUNT, parseAmount, amountGrams, scale, brandOf, entryName, portion, productOf, pickOf, allNutrients, per100Line, foodTitle, MEAL_LABELS, mealLabel, kcal, grams, signed, macros, shares, hasBurn, figures, averageNote, bare, qty, goalValue, goalNote, goalMeter, calorieBar, ring, calorieGoal, goalLine, burnLine, macroRows, sharesLine, mealBars, nutrientRows, kindLabel, GROUPS, groupsFor, cell, chartDays, charts, kcalOf, followMacros, parseDraft, draftOf, EMPTY_DRAFT, hasNumbers, hasNutrients, recentMatch, recentFor, again, foods, NUTRIENTS, nutrientLine, nutrientTiles, scaleNutrients };
 });

@@ -1507,6 +1507,12 @@
   .fwdlabels { display:grid; grid-template-columns:repeat(7, minmax(0,1fr)); gap:10px; padding-top:6px; text-align:center; }
   .fwdlabels small { font:500 12px "Fira Code",ui-monospace,monospace; color:var(--dim); }
   .fwdgoal { position:absolute; left:0; right:0; z-index:1; height:0; border-top:1.5px dashed var(--dim); pointer-events:none; }
+  .fbcplot { position:relative; display:grid; grid-auto-flow:column; grid-auto-columns:minmax(0,1fr); align-items:end; gap:6px; height:170px; margin-top:12px; border-bottom:1px solid var(--line); }
+  .fbcgrp { display:flex; align-items:flex-end; justify-content:center; gap:2px; height:100%; min-width:0; }
+  .fbcbar { display:block; flex:1 1 0; max-width:16px; min-height:2px; border-radius:4px 4px 1px 1px; } .fbcbar.eaten { background:var(--accent); } .fbcbar.burned { background:var(--t-teal); }
+  .fbclabels { display:grid; grid-auto-flow:column; grid-auto-columns:minmax(0,1fr); gap:6px; padding-top:6px; text-align:center; } .fbclabels small { font:500 11px "Fira Code",ui-monospace,monospace; color:var(--dim); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .fbchead { display:flex; align-items:center; justify-content:space-between; gap:12px; } .fbchead h4 { margin:0 !important; }
+  .fbckey i.sw-eaten, .fbckey i.sw-burned { height:10px !important; border:0 !important; border-radius:2px; } .fbckey i.sw-eaten { background:var(--accent); } .fbckey i.sw-burned { background:var(--t-teal); }
   .fwdkey { display:flex; flex-wrap:wrap; gap:4px 16px; margin-top:10px; font-size:12px; color:var(--fg); }
   .fwdkey span { display:inline-flex; align-items:center; gap:6px; }
   .fwdkey i { display:inline-block; width:12px; height:0; border-top:2px dashed var(--dim); } .fwdkey i.sw-over { height:10px; border:0; border-radius:2px; background:var(--t-rose); }
@@ -7304,7 +7310,7 @@ const NM = NutritionModel;
 // the foods of past days this page copied to today; editing: the food changed by hand (the form), pick.editing: by quantity (the picker), replacing:
 // by another food (the search); fresh: the foods just written, which flash once where they land; nutrients: the summary shows every nutrient; startAi: #food/ai was the address, the sheet opens on the AI once loaded
 // ai: text and photos ({ id, url, mediaType, data }) to be estimated; result: { rows, note } of the last estimate, the rows being checked before they are logged; busy: what is under way ("Estimating…"); error: why it failed
-const F = { profile: null, date: startFood.day, range: 30, data: null, error: "", run: 0, loaded: false, busy: false, meal: null, sheet: { open: false, mode: "find", focus: false, note: "" }, find: null, draft: NM.EMPTY_DRAFT(), editing: null, pick: null, open: new Set(), copied: new Set(), fresh: new Set(), freshTimer: 0, replacing: null, nutrients: false, tab: "log", all: false, startAi: startFood.ai, ai: { text: "", photos: [], result: null, busy: "", error: "", run: 0 } };
+const F = { profile: null, date: startFood.day, range: 30, data: null, error: "", run: 0, loaded: false, busy: false, meal: null, sheet: { open: false, mode: "find", focus: false, note: "" }, find: null, draft: NM.EMPTY_DRAFT(), editing: null, pick: null, open: new Set(), copied: new Set(), fresh: new Set(), freshTimer: 0, replacing: null, nutrients: false, tab: "log", all: false, burnWeekly: false, startAi: startFood.ai, ai: { text: "", photos: [], result: null, busy: "", error: "", run: 0 } };
 const RECENT_SHOWN = 8, QUICK_SHOWN = 10;
 const foodQuery = () => `${F.profile ? `profile=${encodeURIComponent(F.profile)}&` : ""}${F.date ? `date=${F.date}&` : ""}days=${F.range}`;
 /** The meal a food goes in: the one chosen, else the one the hour suggests. */
@@ -7702,6 +7708,33 @@ function weekdayCard(pattern, goal) {
   return card;
 }
 
+/** Calories eaten next to calories burned (Garmin), a pair of bars per day or per week, with a switch between the two. */
+function burnCompareCard(cmp) {
+  const card = mk("section", "fcard fwdcard fbc"), head = mk("div", "fbchead"), seg = mk("div", "seg");
+  const weekly = F.burnWeekly && cmp.weekly.length > 0, rows = weekly ? cmp.weekly : cmp.daily.slice(-21), top = weekly ? cmp.peakWeekly : Math.max(1, ...rows.flatMap((r) => [r.eaten, r.burned]));
+  for (const [id, text] of [["daily", "Daily"], ["weekly", "Weekly"]]) {
+    const b = mk("button", "", text); b.type = "button"; b.setAttribute("aria-pressed", String((id === "weekly") === weekly));
+    b.onclick = () => { F.burnWeekly = id === "weekly"; renderFood(); };
+    seg.append(b);
+  }
+  head.append(mk("h4", "", "Eaten vs burned"), seg);
+  const plot = mk("div", "fbcplot"), labels = mk("div", "fbclabels");
+  plot.setAttribute("role", "img");
+  plot.setAttribute("aria-label", `Calories eaten against burned, ${weekly ? "weekly average a day" : "daily"}: ` + rows.map((r) => `${r.name} ${r.eaten.toLocaleString()} eaten, ${r.burned.toLocaleString()} burned`).join("; "));
+  for (const r of rows) {
+    const grp = mk("div", "fbcgrp"), a = mk("i", "fbcbar eaten"), b = mk("i", "fbcbar burned");
+    a.style.height = `${(r.eaten / top) * 100}%`; b.style.height = `${(r.burned / top) * 100}%`;
+    grp.title = `${r.name}: ate ${r.eaten.toLocaleString()}, burned ${r.burned.toLocaleString()} kcal${weekly ? " a day" : ""} (${NM.signed(r.net)})` + (weekly ? ` · ${r.days} day${r.days === 1 ? "" : "s"}, ${r.totalEaten.toLocaleString()} eaten, ${r.totalBurned.toLocaleString()} burned in all` : "");
+    grp.append(a, b); plot.append(grp);
+    labels.append(mk("small", "", r.short));
+  }
+  const key = mk("div", "fwdkey fbckey"), e = mk("span"), bu = mk("span");
+  e.append(mk("i", "sw-eaten"), "Eaten"); bu.append(mk("i", "sw-burned"), "Burned by Garmin"); key.append(e, bu);
+  const last = rows[rows.length - 1], total = rows.reduce((t, r) => t + r.net * (weekly ? r.days : 1), 0), n = rows.reduce((t, r) => t + (weekly ? r.days : 1), 0);
+  card.append(head, plot, labels, key, mk("p", "fwdsay", `${weekly ? "Averages a day, by week" : `The last ${rows.length} finished day${rows.length === 1 ? "" : "s"}`}: ${NM.signed(Math.round(total / n))} a day against what was burned. ${last ? `Latest ${weekly ? "week" : "day"}: ${NM.signed(last.net)}.` : ""}`));
+  return card;
+}
+
 /** The Insights: what the days of the range add up to, how the weekdays differ, the trends, and under them the table of every day. */
 function foodInsights(box, d) {
   const head = mk("div", "fth"), tiles = NM.insightTiles(d);
@@ -7715,6 +7748,8 @@ function foodInsights(box, d) {
   if (d.average) box.append(mk("div", "fnote", NM.averageNote(d.average)));
   const pattern = NM.weekdayPattern(d), wide = innerWidth > 1100;
   const charts = TrendCharts.trends(NM.chartDays(d.days), NM.charts(d), { selected: d.date, onPick: goFoodDay, width: wide ? 560 : 480, height: wide ? 180 : 168, left: 46 });
+  const cmp = NM.burnCompare(d);
+  if (cmp) charts.prepend(burnCompareCard(cmp));
   if (pattern) charts.prepend(weekdayCard(pattern, d.goals && d.goals.kcal && !d.goals.kcalBurnPct ? d.goals.kcal : null)); // the weekdays and the charts are one grid, two across
   box.append(charts);
   const every = mk("details", "fevery"), sum = mk("summary");
