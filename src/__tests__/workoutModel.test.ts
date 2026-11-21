@@ -1,7 +1,3 @@
-/**
- * workoutModel.js is the plain script the plan editor loads to draw a workout: the step tree, the
- * profile bar's segments, the text on each card and the estimated totals.
- */
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const M = require("../web/public/workoutModel.js");
 
@@ -62,7 +58,7 @@ describe("the step tree", () => {
     expect(tree.map((n: any) => [n.kind, n.name])).toEqual([["sets", "BARBELL_BACK_SQUAT"], ["sets", "BARBELL_BENCH_PRESS"]]);
     expect(tree[0].lines.map((l: any) => [l.times, l.st.reps])).toEqual([[1, 8], [4, 6]]);
     expect(M.describeSet(tree[0].lines[1].st, 4)).toEqual({ times: 4, reps: "6", load: "235 lb", rest: "3:00" });
-    expect(M.describeSet(tree[0].lines[1].st, 4, "kg").load).toBe("106.6 kg"); // kept in lb, shown in the profile's unit
+    expect(M.describeSet(tree[0].lines[1].st, 4, "kg").load).toBe("106.6 kg");
     expect([M.weight(195), M.weight(195, "kg")]).toEqual(["195 lb", "88.5 kg"]);
   });
 
@@ -89,11 +85,10 @@ describe("the step tree", () => {
 describe("estimates", () => {
   it("totals a running workout, counting an unpaced distance at the assumed pace", () => {
     const a = M.analyze(THRESHOLD);
-    // warm-up 1.5 km at 6:00/km = 540 s; five of 1 km at the middle of 4:45-5:00 (3.42 m/s) and 300 m recovery at 6:00/km (108 s)
     expect(a.seconds).toBeCloseTo(540 + 5 * (1000 / 3.4205) + 5 * 108, 0);
     expect(a.meters).toBe(1500 + 5 * 1000 + 5 * 300);
     expect(a.assumed).toBe(true);
-    expect(a.open).toBe(1); // the cool-down ends on the lap button and is not counted
+    expect(a.open).toBe(1);
     expect(a.steps).toBe(4);
   });
 
@@ -139,7 +134,6 @@ describe("estimates", () => {
 
 describe("pace learned from runs", () => {
   const run = (hr: number, pace: number) => ({ hr, pace, date: "2026-08-01", km: 10 });
-  // easy runs at 6:00 and a heart rate of 140, harder ones faster: 5:30 at 155, 5:00 at 165
   const RUNS = [run(138, 365), run(140, 360), run(142, 355), run(150, 335), run(155, 330), run(158, 320), run(165, 300), run(168, 295)];
   const hrRun = (extra: object = {}) => ({ workoutType: "running", steps: [step({ targetType: "heart.rate.zone", targetValueOne: 135, targetValueTwo: 145, endCondition: "distance", endConditionValue: 10000, ...extra })] });
 
@@ -152,9 +146,9 @@ describe("pace learned from runs", () => {
 
   it("takes the pace of the runs nearest a heart rate, and the easier half's median for the easy pace", () => {
     const p = M.pacerFrom(RUNS);
-    expect(p.forHr(140)).toBe(355); // the five nearest are 138, 140, 142, 150, 155: median of 365, 360, 355, 335, 330
-    expect(p.forHr(166)).toBe(320); // 168, 165, 158, 155, 150: median of 295, 300, 320, 330, 335
-    expect(p.easy).toBe((360 + 355) / 2); // the four easier runs: 365, 360, 355, 335
+    expect(p.forHr(140)).toBe(355);
+    expect(p.forHr(166)).toBe(320);
+    expect(p.easy).toBe((360 + 355) / 2);
   });
 
   it("times a heart-rate step at the learned pace instead of 6:00/km", () => {
@@ -165,7 +159,7 @@ describe("pace learned from runs", () => {
     const learned = M.analyze(hrRun(), { pacer });
     expect(learned.seconds).toBeCloseTo((pacer.forHr(140) / 1000) * 10000, 5);
     expect(learned.seconds).toBeLessThan(3600);
-    expect(learned.assumed).toBe(true); // still an estimate
+    expect(learned.assumed).toBe(true);
     expect(learned.pace).toEqual({ from: "runs", runs: 8, easy: pacer.easy });
   });
 

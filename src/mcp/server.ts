@@ -1,14 +1,4 @@
-/**
- * server.ts — MCP server entry point
- *
- *   node dist/mcp/server.js --http [--port 8787] [--host 0.0.0.0] [--profile MED] [--mock]
- *   npm run mcp            (stdio, for local development / MCP Inspector)
- *
- * HTTP mode requires MCP_AUTH_TOKEN (>= 32 chars). Configuration also comes from
- * MCP_PORT, MCP_HOST, GARMIN_PROFILE, MOCK_MODE and the directory overrides
- * GARMIN_DATA_DIR / GARMIN_STORE_PATH.
- */
-import "./consoleRedirect"; // must stay first: keeps stdout clean
+import "./consoleRedirect";
 
 import * as dotenv from "dotenv";
 import * as path from "path";
@@ -32,7 +22,6 @@ async function main(): Promise<void> {
     defaultProfile: argValue("--profile") ?? (process.env.GARMIN_PROFILE || undefined),
   });
 
-  // A stray rejection from the Garmin client shouldn't take the service down.
   process.on("unhandledRejection", (reason) => {
     console.error("[mcp] unhandled rejection:", reason);
   });

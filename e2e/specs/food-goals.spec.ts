@@ -1,19 +1,7 @@
-/**
- * The Food view against the day's goals: the calorie ring and what is left in its middle, the macro bars, the nutrient bars under the
- * summary, a calorie goal that follows the burn, the trend charts with their goal lines, and the goals of the profiles. The goals are set
- * through the API (`POST /api/settings/goals`); the log itself is food-log.spec.ts.
- *
- * alice's goals (2,200 kcal, 130 g protein, 250 g carbs, 70 g fat) are read on her past days; every test that sets a goal or
- * logs food makes a profile of its own.
- */
 import { type APIRequestContext, type Locator, type Page } from "@playwright/test";
 import { type Profile, test as base, expect as baseExpect, openView, today, daysAgo, loginAs, ADMIN_TOKEN, PASSWORD } from "../support/fixtures";
 import { dayLine, enterByHand, labelOf, macro, mealMacros, meal, nutrientRow, nutrients, openFood, openInsights, ring, ringBig, ringSmall, summary } from "../support/food";
 
-/**
- * The fixtures send the sign-ins and the profile's creation again when the connection was reset; the API calls a test makes itself are
- * sent again here, for the same reason: the server had closed an idle connection and did not read the request, so it writes nothing twice.
- */
 async function sent<T>(call: () => Promise<T>): Promise<T> {
   for (let attempt = 1; ; attempt++) {
     try {
@@ -24,7 +12,6 @@ async function sent<T>(call: () => Promise<T>): Promise<T> {
   }
 }
 
-/** An API client whose GET and POST are sent again when the connection was reset (see `sent`). */
 function reliable<A extends APIRequestContext>(api: A): A {
   return new Proxy(api, {
     get(target, prop) {
@@ -35,18 +22,16 @@ function reliable<A extends APIRequestContext>(api: A): A {
   });
 }
 
-/** The page's assertions wait this long: the server is shared by every spec of the run and answers slowly when it is busy. */
 const expect = baseExpect.configure({ timeout: 20_000 });
 
 const test = base.extend<{ admin: APIRequestContext; profile: Profile }>({
   admin: async ({ admin }, use) => use(reliable(admin)),
   profile: async ({ profile }, use) => use({ ...profile, api: reliable(profile.api) }),
 });
-test.describe.configure({ timeout: 120_000 }); // a busy server can take a minute to answer a page of the log
+test.describe.configure({ timeout: 120_000 });
 
 type Goals = Partial<Record<"kcal" | "kcalBurnPct" | "proteinG" | "carbsG" | "fatG" | "fiberG" | "sugarsG" | "satFatG" | "sodiumMg" | "potassiumMg", number | null>>;
 
-/** Sets goals through the API as the profile (a number sets, null removes, a key left out stays). */
 async function setGoals(api: APIRequestContext, goals: Goals): Promise<void> {
   const r = await api.post("/api/settings/goals", { data: { action: "save", goals } });
   if (!r.ok()) throw new Error(`Could not set goals: ${r.status()} ${await r.text()}`);
@@ -61,37 +46,30 @@ interface Food {
   nutrients?: Record<string, number>;
 }
 
-/** Logs foods through the API as the profile, to a day and a meal; they are all written or none. */
 async function addFoods(api: APIRequestContext, day: string, meal: string, items: Food[]): Promise<void> {
   const r = await api.post("/api/nutrition", { data: { action: "add", day, meal, items } });
   if (!r.ok()) throw new Error(`Could not log foods: ${r.status()} ${await r.text()}`);
 }
 
-/** The trend chart whose title starts with `title`. */
 const chart = (page: Page, title: string): Locator => page.locator(".rcharts .rc").filter({ hasText: title }).first();
-/** The widths (in percent of the track) of the segments of a bar, as the page set them. */
 async function widthsOf(locator: Locator): Promise<number[]> {
   return locator.evaluateAll((els) => els.map((el) => parseFloat((el as HTMLElement).style.width)));
 }
 
-/** The position (in percent of the track) of a bar's tick, when it has one. */
 async function tickOf(locator: Locator): Promise<number | null> {
   const ticks = await locator.locator(".ftick").evaluateAll((els) => els.map((el) => parseFloat((el as HTMLElement).style.left)));
   return ticks.length ? ticks[0] : null;
 }
 
-/** A nutrient's line under the summary, by its label: its class says the state and the kind of goal. */
 const nutrient = (page: Page, label: string): Locator => nutrientRow(page, label).locator(".fmr");
 
-const RING = 2 * Math.PI * 42, GAP = 1.6; // the ring's radius in its 100-unit box, and the gap the page leaves between two arcs
+const RING = 2 * Math.PI * 42, GAP = 1.6;
 
-/** The share of the ring (in percent) each macro's arc covers, as the page set it: { protein: 10, carbs: 20, fat: 9 }. */
 async function arcsOf(page: Page): Promise<Record<string, number>> {
   const arcs = await ring(page).locator("circle.arc").evaluateAll((els) => els.map((el) => [el.getAttribute("class")!.replace("arc ", ""), parseFloat((el as SVGElement).style.strokeDasharray)] as [string, number]));
   return Object.fromEntries(arcs.map(([cls, dash]) => [cls, ((dash + GAP) / RING) * 100]));
 }
 
-/** Where round the ring (in percent, from the top) its tick for the goal is, when it has one. */
 async function goalTickOf(page: Page): Promise<number | null> {
   const ticks = await ring(page).locator(".gtick").evaluateAll((els) => els.map((el) => [Number(el.getAttribute("x1")), Number(el.getAttribute("y1"))]));
   if (!ticks.length) return null;
@@ -99,7 +77,6 @@ async function goalTickOf(page: Page): Promise<number | null> {
   return ((a < 0 ? a + 2 * Math.PI : a) / (2 * Math.PI)) * 100;
 }
 
-/** Shows the day again after the log or the goals changed through the API: the page does not follow the API by itself. */
 async function reopenFood(page: Page): Promise<void> {
   await page.reload({ waitUntil: "domcontentloaded" });
   await expect(page.locator("#fbody .fsum")).toBeVisible();
@@ -110,7 +87,6 @@ test.describe("Food goals: the day's calorie ring", () => {
     await setGoals(profile.api, { kcal: 2000 });
     await addFoods(profile.api, today(), "lunch", [{ name: "Bowl", proteinG: 50, carbsG: 100, fatG: 20 }]);
     await openFood(me);
-    // 780 kcal: protein 200, carbs 400, fat 180, on a ring of 2,000 kcal
     await expect.poll(() => arcsOf(me)).toEqual({ protein: expect.closeTo(10, 0), carbs: expect.closeTo(20, 0), fat: expect.closeTo(9, 0) });
     await expect(ringBig(me)).toHaveText("1,220");
     await expect(ringSmall(me)).toHaveText("kcal left");
@@ -125,7 +101,7 @@ test.describe("Food goals: the day's calorie ring", () => {
     await setGoals(profile.api, { kcal: 2000 });
     await addFoods(profile.api, today(), "lunch", [{ name: "Bowl", proteinG: 50, carbsG: 100, fatG: 20 }]);
     await openFood(me);
-    await expect.poll(async () => Object.values(await arcsOf(me)).reduce((a, b) => a + b, 0)).toBeCloseTo(39, 0); // 780 / 2,000 = 39 %
+    await expect.poll(async () => Object.values(await arcsOf(me)).reduce((a, b) => a + b, 0)).toBeCloseTo(39, 0);
   });
 
   test("over the calorie goal the ring says by how much, and ticks where the goal was passed", async ({ me, profile }) => {
@@ -136,7 +112,6 @@ test.describe("Food goals: the day's calorie ring", () => {
     await expect(ringBig(me)).toHaveText("400");
     await expect(ringSmall(me)).toHaveText("kcal over");
     await expect(dayLine(me)).toHaveText("2,400 kcal eaten · goal 2,000 kcal");
-    // the goal is at 2,000 of the 2,400 eaten: 83.33 % round the ring
     expect(await goalTickOf(me)).toBeCloseTo(83.33, 1);
   });
 
@@ -184,7 +159,7 @@ test.describe("Food goals: the day's calorie ring", () => {
     await alice.locator("#fPrev").click();
     await expect(alice.locator("#fDate")).toHaveValue(daysAgo(1));
     await expect(ringBig(alice)).toHaveText("505");
-    await expect.poll(async () => Object.values(await arcsOf(alice)).reduce((a, b) => a + b, 0)).toBeCloseTo(77.05, 0); // 1,695 / 2,200
+    await expect.poll(async () => Object.values(await arcsOf(alice)).reduce((a, b) => a + b, 0)).toBeCloseTo(77.05, 0);
     await expect(dayLine(alice)).toHaveText("1,695 kcal eaten · goal 2,200 kcal");
     await openInsights(alice);
     await expect(chart(alice, "Calories eaten").locator(".rcl")).toContainText("Goal 2,200 kcal");
@@ -234,7 +209,7 @@ test.describe("Food goals: the macros", () => {
     await expect(macro(me, "protein").locator(".fv")).toHaveText("113 / 100 g");
     await expect(macro(me, "protein").locator(".fmn")).toHaveText("✓ reached");
     await expect(macro(me, "protein")).toHaveClass(/st-ok/);
-    expect(await tickOf(macro(me, "protein").locator(".fmeter"))).toBeCloseTo(88.5, 1); // the goal of 100 within 113
+    expect(await tickOf(macro(me, "protein").locator(".fmeter"))).toBeCloseTo(88.5, 1);
   });
 
   test("carbs and fat are aims within a tenth: short below, on target within, over above, with the amount over", async ({ me, profile }) => {
@@ -255,7 +230,7 @@ test.describe("Food goals: the macros", () => {
     await expect(macro(me, "carbs")).toHaveClass(/st-over/);
     await expect(macro(me, "fat").locator(".fmn")).toHaveText("▲ over by 20 g");
     await expect(macro(me, "fat")).toHaveClass(/st-over/);
-    expect(await tickOf(macro(me, "carbs").locator(".fmeter"))).toBeCloseTo(80.65, 1); // 250 of the 310 eaten
+    expect(await tickOf(macro(me, "carbs").locator(".fmeter"))).toBeCloseTo(80.65, 1);
   });
 
   test("the macros' rows without a goal show the grams only, with no bar", async ({ me, profile }) => {
@@ -264,7 +239,7 @@ test.describe("Food goals: the macros", () => {
     await openFood(me);
     await expect(macro(me, "carbs").locator(".fv")).toHaveText("30 g");
     await expect(macro(me, "carbs").locator(".fmeter")).toHaveCount(0);
-    await expect(macro(me, "protein").locator(".fv")).toHaveText("0 g"); // a day's macros are sums: a food with none adds 0
+    await expect(macro(me, "protein").locator(".fv")).toHaveText("0 g");
   });
 });
 
@@ -276,20 +251,17 @@ test.describe("Food goals: the nutrients", () => {
     await openFood(me);
     await nutrients(me);
     await expect(summary(me).locator(".fnuts .fnrow .fmr > b")).toHaveText(["Fiber", "Sugars", "Saturated fat", "Sodium", "Trans fat", "Cholesterol", "Potassium", "Calcium", "Iron"]);
-    // fiber: a floor, from one of the two foods only, so it is "at least" and "up to" what is left
     const fiber = nutrient(me, "Fiber");
     await expect(fiber).toHaveClass(/k-min/);
     await expect(fiber).toHaveClass(/st-short/);
     await expect(fiber.locator(".fv")).toHaveText("≥ 8 / 25 g");
     await expect(fiber.locator(".fmn")).toHaveText("up to 17 g to go");
     await expect(fiber.locator(".fmeter")).toHaveCount(1);
-    // sugars: a ceiling, passed by the one food that states it
     const sugars = nutrient(me, "Sugars");
     await expect(sugars).toHaveClass(/k-max/);
     await expect(sugars).toHaveClass(/st-over/);
     await expect(sugars.locator(".fv")).toHaveText("≥ 60 / 50 g");
     await expect(sugars.locator(".fmn")).toHaveText("▲ over by at least 10 g");
-    // sodium: a ceiling both foods state, at it exactly: on it, nothing left
     const sodium = nutrient(me, "Sodium");
     await expect(sodium).toHaveClass(/k-max/);
     await expect(sodium).toHaveClass(/st-ok/);
@@ -331,7 +303,7 @@ test.describe("Food goals: the nutrients", () => {
     await nutrients(me);
     await expect(summary(me).locator(".fnuts .fnrow")).toHaveCount(9);
     const sugars = nutrient(me, "Sugars");
-    await expect(sugars).toHaveClass(/st-none/); // no goal: no state, the amount as it is
+    await expect(sugars).toHaveClass(/st-none/);
     await expect(sugars.locator(".fv")).toHaveText("58 g");
     await expect(sugars.locator(".fmn")).toHaveText("from all 2 foods");
     const calcium = nutrient(me, "Calcium");
@@ -380,7 +352,7 @@ test.describe("Food goals: the calorie goal that follows the burn", () => {
 
   test("turning the share off again removes the note and the + from the goal line", async ({ me, profile }) => {
     await setGoals(profile.api, { kcal: 2000, kcalBurnPct: 50 });
-    await addFoods(profile.api, today(), "lunch", [{ name: "Lunch", kcal: 500 }]); // the chart draws a legend for a day with food
+    await addFoods(profile.api, today(), "lunch", [{ name: "Lunch", kcal: 500 }]);
     await openFood(me);
     await openInsights(me);
     await expect(chart(me, "Calories eaten").locator(".rcl")).toContainText("+ 50 % of active");

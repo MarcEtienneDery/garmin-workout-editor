@@ -1,23 +1,13 @@
-/**
- * The Plans view's files: the list and its order, New, Duplicate, Rename, Delete, History, the unsaved-changes guard when
- * switching files or leaving the page, and Archive / Unarchive (with the Calendar), for a profile without a Garmin login.
- *
- * Files written by a test carry the profile's name: workout-plans/ is one namespace for every profile, so a bare name would
- * collide with another test's file. alice's plans are read only; bob sees only the shared plan.
- */
 import { test, expect as baseExpect, openView, loginAs, PASSWORD, daysAgo, daysAhead, mondayOf, today } from "../support/fixtures";
 import type { APIRequestContext, Page } from "@playwright/test";
 
-// The Monaco editor of the page: the top-level `editor` of the page's own script (window.editor is the #editor element).
 declare const editor: any;
 
-// The suite's server is shared, and can be slow when several suites run at once: give each step more time than the default.
 const expect = baseExpect.configure({ timeout: 20_000 });
 test.describe.configure({ timeout: 120_000 });
 
 const enc = (path: string) => `/api/file?path=${encodeURIComponent(path)}`;
 
-/** A small valid plan with one workout (and, optionally, workoutIds for the Garmin copies). */
 const planJson = (extra: Record<string, unknown> = {}) =>
   JSON.stringify(
     { weekStart: "2026-11-02", weekEnd: "2026-11-08", workouts: [{ workoutName: "Easy run", workoutType: "running", distanceMeters: 5000, scheduledDate: "2026-11-03" }], ...extra },
@@ -48,16 +38,11 @@ async function fileGone(api: APIRequestContext, path: string): Promise<boolean> 
   return (await api.get(enc(path))).status() === 404;
 }
 
-/** Open a file from the list by its name, and wait until the page says it is the open file. */
 async function openPlan(page: Page, name: string): Promise<void> {
   await page.locator("#filelist .file").filter({ hasText: name }).click();
   await expect(page.locator("#current")).toContainText(name);
 }
 
-/**
- * Open the Plans view and wait until the editor can act: the toolbar's buttons get their handlers only once Monaco and the
- * workout schema have loaded, which openView does not wait for.
- */
 async function openPlans(page: Page): Promise<void> {
   await openView(page, "plans");
   await expect.poll(() => page.evaluate(() => typeof editor !== "undefined" && !!editor && document.getElementById("new")!.onclick !== null)).toBe(true);
@@ -71,7 +56,6 @@ async function typeAtEnd(page: Page, text: string): Promise<void> {
   await page.keyboard.press("Control+End");
   await page.keyboard.type(text);
 }
-/** The File menu's item, opened from its button (the menu closes when an item is chosen). */
 async function fileMenu(page: Page, id: string): Promise<void> {
   await page.locator("#fileBtn").click();
   await page.locator(`#${id}`).click();
@@ -80,12 +64,9 @@ async function fileMenu(page: Page, id: string): Promise<void> {
 const GARMIN_REASON = "This profile has no Garmin login: add one in Settings.";
 const SHARED = "shared-base.json";
 
-// The edits these specs make are typed into the JSON editor, so the Plans view is shown with JSON chosen (the choice is kept in the
-// browser); the form has workout-form.spec.ts.
 test.use({ editMode: "json" });
 const ALICE_FILES = ["alice-run-block.json", "alice-someday.json", SHARED];
 
-/** The names of alice's list rows that belong to the seeded plans, in the order the page shows them. */
 async function seededOrder(page: Page): Promise<string[]> {
   const names = await page.locator("#filelist .file > span:first-child").allTextContents();
   return names.filter((n) => ALICE_FILES.includes(n));
@@ -104,7 +85,7 @@ test.describe("Plans: the file list", () => {
   test("each plan's row shows its workout count and its plan week", async ({ alice }) => {
     await openPlans(alice);
     await expect(rowOf(alice, "alice-run-block.json").locator("small")).toContainText("4 workouts");
-    await expect(rowOf(alice, "alice-run-block.json").locator("small")).toContainText(mondayOf(today())); // the seed's plan starts this week
+    await expect(rowOf(alice, "alice-run-block.json").locator("small")).toContainText(mondayOf(today()));
     await expect(rowOf(alice, "alice-someday.json").locator("small")).toContainText("1 workouts");
     await expect(rowOf(alice, "alice-someday.json").locator("small")).toContainText("2026-01-05");
     await expect(rowOf(alice, SHARED).locator("small")).toContainText("1 workouts");
@@ -200,7 +181,7 @@ test.describe("Plans: the file list", () => {
     await openPlans(me);
     await expect(rowOf(me, "notes.json")).toHaveCount(1);
     await expect(me.locator("#filelist h2", { hasText: `data/${profile.name}` })).toHaveCount(1);
-    await expect(rowOf(me, "notes.json").locator("button")).toHaveCount(1); // the ⋯
+    await expect(rowOf(me, "notes.json").locator("button")).toHaveCount(1);
     await rowOf(me, "notes.json").locator("button.more").click();
     const items = me.locator("#pmenu").getByRole("menuitem");
     await expect(items).toHaveCount(3);
@@ -407,7 +388,6 @@ test.describe("Plans: Duplicate", () => {
     await fileMenu(me, "dup");
     await me.locator("#dlgInput").fill(`workout-plans/${profile.name}-unsaved-copy.json`);
     await me.locator("#dlgOk").click();
-    // the copy opens; the editor's unsaved edits are in the copy, so the discard question is answered yes
     await expect(me.locator("#dlgTitle")).toHaveText("Discard unsaved changes?");
     await me.locator("#dlgOk").click();
     await expect(me.locator("#current")).toContainText(`${profile.name}-unsaved-copy.json`);
@@ -639,7 +619,7 @@ test.describe("Plans: History", () => {
     await expect(me.locator("#save")).toBeDisabled();
     expect((await readFile(profile.api, path)).text).toBe(v1);
     await fileMenu(me, "history");
-    await expect(me.locator("#hdlgList .hrow")).toHaveCount(3); // now, and the two versions saved before it
+    await expect(me.locator("#hdlgList .hrow")).toHaveCount(3);
     await me.locator("#hdlgClose").click();
   });
 
@@ -749,7 +729,7 @@ test.describe("Plans: Archive", () => {
     await me.locator("#fileBtn").click();
     await expect(me.locator("#archive")).toHaveText("Unarchive");
     await expect(me.locator("#archive")).toBeEnabled();
-    await me.locator("#fileBtn").click(); // close the menu again
+    await me.locator("#fileBtn").click();
     await rowOf(me, `${profile.name}-arbtn.json`).locator("button.more").click();
     const items = me.locator("#pmenu").getByRole("menuitem");
     await expect(items).toHaveCount(3);
@@ -792,13 +772,12 @@ test.describe("Plans: Archive", () => {
     await expect(me.locator("#cLegend")).not.toContainText(name);
     await openPlans(me);
     await openPlan(me, `${name}.json`);
-    await fileMenu(me, "archive"); // for an archived plan the File menu's Archive is Unarchive
+    await fileMenu(me, "archive");
     await expect(me.locator("#toast")).toContainText("Unarchived");
     await me.locator("#vCalendar").click();
     await expect(me.locator("#cLegend")).toContainText(name);
   });
 
-  // The group opens itself when the open file is archived; that is not the person's choice, so it closes again once the open file is out of it.
   test("the Archived group is closed unless the open file is in it", async ({ me, profile }) => {
     await makeFile(profile.api, `workout-plans/${profile.name}-grp-a.json`, planJson({ notes: "a" }));
     await makeFile(profile.api, `workout-plans/${profile.name}-grp-b.json`, planJson({ notes: "b" }));

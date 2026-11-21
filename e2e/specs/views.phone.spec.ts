@@ -1,13 +1,7 @@
-/**
- * The views on a phone: Activities (list, detail pane, calendar), the Calendar, Recovery, Weight, Today and Settings. Each one fits
- * the 412 px width, its charts scale to it, and its panes move the way a phone expects. alice's data, read only.
- */
 import { test, expect, openView, monthView, type Page, type Profile, chooseTheme, toggleTheme } from "../support/fixtures";
 
-// The suite shares this machine with other runs, so a step can take longer than the default 30 s on a loaded box.
 test.setTimeout(60_000);
 
-/** What sticks out past the phone's width, as shown: an element is cut at the edge of any box above it that clips its content. */
 async function stickingOut(page: Page): Promise<string[]> {
   return page.evaluate(() => {
     const width = document.documentElement.clientWidth;
@@ -30,7 +24,6 @@ async function stickingOut(page: Page): Promise<string[]> {
   });
 }
 
-/** The number of columns a grid's track list makes ("12px 380px" is two). */
 const columnsOf = (page: Page, selector: string) =>
   page.locator(selector).first().evaluate((el) => getComputedStyle(el).gridTemplateColumns.split(" ").filter(Boolean).length);
 
@@ -53,7 +46,6 @@ test.describe("Activities on a phone", () => {
   });
 
   test("the detail's graphs and map fit the width", async ({ alice }) => {
-    // the map's tiles come from OpenStreetMap, which the suite never reaches
     await alice.route("**/tile.openstreetmap.org/**", (route) => route.abort());
     await openView(alice, "activities");
     await alice.locator("#alist .arow", { hasText: "Easy run" }).first().tap();
@@ -118,7 +110,6 @@ test.describe("the Calendar on a phone", () => {
   test("a day with nothing planned says so", async ({ alice }) => {
     await monthView(alice);
     await openView(alice, "calendar");
-    // two months ahead, where no plan reaches
     await alice.locator("#cNext").tap();
     await alice.locator("#cNext").tap();
     await alice.locator("#cgrid .cday:not(.out)").first().tap();
@@ -222,7 +213,7 @@ test.describe("Today on a phone", () => {
     expect(await columnsOf(alice, "#tbody .thero")).toBe(1);
     expect(await columnsOf(alice, "#tbody .trow")).toBe(1);
     const tops = await alice.locator("#tbody .trow > *").evaluateAll((els) => els.map((el) => Math.round(el.getBoundingClientRect().top)));
-    expect(new Set(tops).size).toBe(tops.length); // one under the other, not side by side
+    expect(new Set(tops).size).toBe(tops.length);
   });
 
   test("everything that is tapped on Today is at least 44 px high, in both themes", async ({ alice }) => {
@@ -260,7 +251,7 @@ test.describe("Today on a phone", () => {
 test.describe("Settings on a phone", () => {
   test("the form is one column, and its fields are 40 px tall with 16 px text", async ({ alice }) => {
     await openView(alice, "settings");
-    await alice.locator("#sbody .snav [data-section='goals']").tap(); // a section opens over the whole screen
+    await alice.locator("#sbody .snav [data-section='goals']").tap();
     await expect(alice.locator("#sbody h2").first()).toBeVisible();
     expect(await columnsOf(alice, "#sbody .sform")).toBe(1);
     const fields = await alice.locator("#sbody input:not([type=checkbox]), #sbody select").evaluateAll((els) =>
@@ -284,7 +275,7 @@ test.describe("Settings on a phone", () => {
 
   test("the sections scroll: the password form at the bottom is reachable", async ({ alice }) => {
     await openView(alice, "settings");
-    await alice.locator("#sbody .snav [data-section='connections']").tap(); // the longest section: Garmin and the Renpho scale with its log
+    await alice.locator("#sbody .snav [data-section='connections']").tap();
     const scroller = alice.locator("#sscroll");
     await expect(alice.locator("#sbody h2").first()).toBeVisible();
     const overflows = await scroller.evaluate((el) => el.scrollHeight > el.clientHeight);

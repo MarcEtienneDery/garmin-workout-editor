@@ -1,22 +1,10 @@
-/*
- * workoutForm.js — the workout form: a workout's name, type, days and notes, and its steps edited in place, as exercises with their
- * sets (strength) or as steps and repeats that each aim for one target (run, ride, cardio).
- *
- * The form keeps no copy of the workout. It reads the workout from its host each time it draws (the plan open in the Plans view, or
- * the workout in the Workouts view's dialog), and every change goes back through the host, whose JSON editor holds it: the JSON is one
- * tap away and already shows the change, Undo is the editor's, and Save, the checks and the comparison with Garmin work as before.
- * What the steps mean (blocks, edits, units, checks) is workoutFormModel.js; this file draws it and turns taps into its edits.
- *
- * A plain script: the page loads it after workoutModel.js, workoutFormModel.js, exerciseMuscles.js and muscleMap.js.
- */
 (function (root) {
   "use strict";
   const M = root.WorkoutFormModel, WM = root.WorkoutModel;
   const REST_CHOICES = [0, 30, 45, 60, 75, 90, 120, 150, 180, 240, 300];
-  const DRAG_SLOP = 4; // pixels a grip moves before it drags
+  const DRAG_SLOP = 4;
   let seq = 0;
 
-  /** An element: h("div", { class, text, value, on…: handler, other attributes }, ...children). */
   function h(tag, attrs, ...kids) {
     const el = document.createElement(tag);
     for (const [k, v] of Object.entries(attrs || {})) {
@@ -36,10 +24,8 @@
     const m = root.MuscleMap ? root.MuscleMap.musclesOf(name) : null;
     return m ? m.primary.map(muscleLabel).join(" · ") : "";
   };
-  /** Whether a name is one of Garmin's exercises: exerciseMuscles.js lists every one (a test keeps it so), so no request is needed. */
   const known = root.MuscleMap ? (name) => Object.prototype.hasOwnProperty.call(root.MuscleMap.EXERCISES, name) : null;
 
-  /** The box that scrolls: `node` itself, or the nearest box around it. */
   function scroller(node) {
     for (let n = node; n; n = n.parentElement) {
       const s = getComputedStyle(n).overflowY;
@@ -48,11 +34,6 @@
     return document.scrollingElement;
   }
 
-  /**
-   * Put `nodes` in `box` in place of what it holds, as the person had it: the box it scrolls in stays where it was (Chrome scrolls it to
-   * its top when the focused element goes), and the field that had the focus has it again (the one with the same data-fk), with its
-   * selection. The page's plan view draws with it too.
-   */
   function redraw(box, nodes) {
     const active = document.activeElement, inside = !!active && box.contains(active);
     const key = inside ? active.getAttribute("data-fk") : null;
@@ -63,30 +44,15 @@
     const again = key && box.querySelector(`[data-fk="${CSS.escape(key)}"]`);
     if (!again || again.disabled) return;
     again.focus({ preventScroll: true });
-    if (sel && again.setSelectionRange && again.type === "text") try { again.setSelectionRange(sel[0], sel[1]); } catch { /* not a text field */ }
+    if (sel && again.setSelectionRange && again.type === "text") try { again.setSelectionRange(sel[0], sel[1]); } catch { }
   }
 
-  /**
-   * A form for one workout. opts:
-   *   read()          → { workout, problem }: the workout as the host holds it now, or why there is none to show
-   *   write(workout)  the workout changed: the host keeps it (in its JSON, with an Undo step)
-   *   unit()          "lb" or "kg": how weights are shown and typed (they are kept in lb)
-   *   pacer()         the pacer of workoutModel.js for the estimates (or null)
-   *   picture(w, a)   an element that draws the workout (its profile, or the muscles it works); `a` is WM.analyze's answer
-   *   about(a)        [ⓘ button, note] saying how the estimate was timed, or null (the page's help())
-   *   exercises()     a promise of { exercises: [{ name, category }], used: [names] }, asked when the picker first opens
-   *   isDay(v), today()  the page's: a real day of the calendar written YYYY-MM-DD, and today's
-   *   phone()         whether the screen is a phone's; place(menu, anchor) puts a menu by its button (a phone shows it as a sheet)
-   *   toast(text), toastUndo(text, undo), undo(), ask(dialog options) → answer or null, toJson(stepIndex), modal(dialog)
-   * Returns { el, render, schedule, retime }: render draws it again from read(); schedule does so once the current event is over; retime
-   * draws its overview again and nothing else (the estimate, once the runs it is timed from are known), so no field is replaced.
-   */
   function create(opts) {
     const el = h("div", { class: "wf" });
-    const units = new Map(); // the unit (km or m) a distance field was switched to, by field
+    const units = new Map();
     const listId = `wf-rests-${++seq}`;
-    let renderTimer = 0, catalog = null, drag = null, follow = null; // follow: the card a keyboard move took, which keeps the focus
-    let overviewNodes = []; // what the last draw's overview() put in the form, for retime()
+    let renderTimer = 0, catalog = null, drag = null, follow = null;
+    let overviewNodes = [];
 
     function render() {
       clearTimeout(renderTimer);
@@ -96,10 +62,8 @@
       follow = null;
       card?.querySelector("input, select, button")?.focus({ preventScroll: true });
     }
-    /** Draw again once the event that changed the workout is over: a field left by Tab has given the focus to the next one by then. */
     const schedule = () => { clearTimeout(renderTimer); renderTimer = setTimeout(render, 0); };
 
-    /** Garmin's exercises and their categories, asked once, when the picker first opens; worked out once for the picker's lists. */
     function loadCatalog() {
       catalog = catalog || Promise.resolve(opts.exercises()).then((r) => ({
         all: r.exercises,
@@ -110,7 +74,6 @@
       return catalog;
     }
 
-    // ── Drawing ──
 
     function draw() {
       overviewNodes = [];
@@ -128,7 +91,6 @@
       return [head(ctx), overviewNodes, stepsOf(ctx), adder(ctx), restList()];
     }
 
-    /** The overview drawn again in its place, from the workout as it is now: a field being typed in or picked from is left alone. */
     function retime() {
       if (!overviewNodes.length || !overviewNodes[0].isConnected || overviewNodes.some((n) => n.contains(document.activeElement))) return;
       const { workout: w, problem } = opts.read();
@@ -143,7 +105,6 @@
     const writeBlocks = (ctx, blocks) => write({ ...ctx.w, steps: M.fromBlocks(blocks) });
     const writeStep = (ctx, k, j, fn) => writeBlocks(ctx, M.updateStep(ctx.blocks, k, j, fn));
 
-    /** A field that was typed wrong: it says so, and keeps what was typed so it can be put right. */
     function bad(input, text) {
       input.setAttribute("aria-invalid", "true");
       opts.toast(text);
@@ -153,15 +114,9 @@
       return h("datalist", { id: listId }, REST_CHOICES.map((s) => h("option", { value: M.clock(s) })));
     }
 
-    // ── Small fields ──
 
-    /** A field with its label above it. */
     const field = (label, ...controls) => h("div", { class: "wf-f" }, h("span", { class: "wf-fl", text: label }), h("div", { class: "wf-fc" }, controls));
 
-    /**
-     * A text field that keeps what `parse` makes of what is typed (trimmed): `set` gets it; null is text that is not one (said as
-     * `what: …`, and kept to be put right).
-     */
     function entry({ value, label, fk, mode = "decimal", placeholder, list }, parse, what, set) {
       const input = h("input", { type: "text", inputmode: mode, class: "wf-num", value, placeholder, list, "aria-label": label, "data-fk": fk });
       input.onchange = () => {
@@ -173,7 +128,6 @@
     }
     const positive = (n) => (n !== null && n > 0 ? n : null);
 
-    /** A number with − and + beside it (a phone's thumb), between min and max. */
     function stepper(value, min, max, set, fk, label) {
       const now = Math.round(Number(value) || 0);
       const input = h("input", { type: "text", inputmode: "numeric", class: "wf-num wf-int", value: now ? String(now) : "", "aria-label": label, "data-fk": fk });
@@ -185,7 +139,6 @@
         h("button", { type: "button", class: "wf-sb", "aria-label": `${label}: one more`, disabled: now >= max, "data-fk": fk + ":+", onclick: () => go(now + 1) }, "+"));
     }
 
-    /** The field of how a step ends: its reps (a stepper), its time (a bare number counts as `bare`), or the number another of Garmin's ends counts; null on the lap button. */
     function endInput(ctx, k, j, end, bare) {
       const key = `${k}:${j}`;
       if (end.by === "reps") return stepper(end.value, 1, 999, (n) => writeStep(ctx, k, j, (s) => M.withEnd(s, "reps", n)), `reps:${key}`, "Reps");
@@ -194,11 +147,9 @@
       return null;
     }
 
-    /** The rest after a set or a step: typed as 1:30 or in seconds, emptied for none. */
     const restInput = (ctx, k, j, st, label) => entry({ value: st.restTimeSeconds ? M.clock(st.restTimeSeconds) : "", label, fk: `rest:${k}:${j}`, mode: "numeric", placeholder: "—", list: listId },
       (t) => (t ? M.parseClock(t, "s") : 0), "Not a time", (sec) => writeStep(ctx, k, j, (s) => M.withRest(s, sec)));
 
-    // ── The head: name, type, days, notes ──
 
     function head(ctx) {
       const { w } = ctx;
@@ -225,7 +176,6 @@
         input.onchange = () => { const v = input.value.trim(); setDays(v ? days.map((x, j) => (j === i ? v : x)) : days.filter((_, j) => j !== i)); };
         dayBox.append(h("span", { class: "wf-day" }, input, h("button", { type: "button", class: "wf-x", title: "Not on this day", "aria-label": `Not on ${d}`, "data-fk": `dayx:${i}`, onclick: () => setDays(days.filter((_, j) => j !== i)) }, "×")));
       });
-      // a day added is a week after the last one (else today)
       const nextDay = () => {
         const last = [...days].reverse().find(opts.isDay);
         return last ? new Date(Date.parse(last + "T00:00:00Z") + 7 * 864e5).toISOString().slice(0, 10) : opts.today();
@@ -263,14 +213,12 @@
         if (!answer) return render();
         if (answer.fresh) steps = M.starterSteps(type);
       } else if (from === "endurance" && to === "endurance") {
-        // a pace and a speed are both kept in m/s: a pace on a ride becomes a speed, and a speed on a run a pace
         const swap = { cycling: ["pace.zone", "speed.zone"], running: ["speed.zone", "pace.zone"] }[type];
         if (swap && flat.some((st) => st.targetType === swap[0])) steps = flat.map((st) => (st.targetType === swap[0] ? { ...st, targetType: swap[1] } : st));
       }
       write({ ...w, workoutType: type, ...(steps !== undefined ? { steps } : {}) });
     }
 
-    // ── The overview: the estimate in a line, and the picture ──
 
     function overview(ctx) {
       const w = { ...ctx.w, steps: ctx.flat };
@@ -283,18 +231,16 @@
       else if (a.steps) parts.push(`${a.steps} step${a.steps === 1 ? "" : "s"}`);
       const summary = h("summary", { text: parts.join(" · ") || "Overview" });
       const box = h("details", { class: "wf-pic" }, summary);
-      if (overviewOpen === null) overviewOpen = !opts.phone(); // open on a desktop, shut on a phone until opened
+      if (overviewOpen === null) overviewOpen = !opts.phone();
       box.open = overviewOpen;
       box.ontoggle = () => { overviewOpen = box.open; if (box.open && !box.querySelector(".wvbox")) box.append(opts.picture(w, a)); };
       if (box.open) box.append(opts.picture(w, a));
-      // how the steps with no pace were timed: behind an ⓘ in the line, the note under it (outside the box, so it shows when shut)
       const about = opts.about ? opts.about(a) : null;
       if (!about) return box;
       summary.append(about[0]);
       return [box, about[1]];
     }
 
-    // ── The steps ──
 
     function stepsOf(ctx) {
       if (ctx.mode !== "strength" && !ctx.flat.length && ctx.w.distanceMeters) return distanceOnly(ctx);
@@ -323,7 +269,6 @@
       return h("li", { class: `wf-card k-${WM.kindOf(st)}`, "data-c": c }, stepRow(ctx, card.k, 0, c));
     }
 
-    /** Where card c lands one place up (by -1) or down (1), as the block index moveBlocks takes; null at either end. */
     function moveTo(ctx, c, by) {
       const other = ctx.cards[c + by];
       if (!other) return null;
@@ -333,7 +278,6 @@
     const grip = () => h("span", { class: "wf-grip", title: "Drag to move (or Alt+↑ / Alt+↓)", "aria-hidden": "true" }, "⠿");
     const link = (label, fk, onclick, aria) => h("button", { type: "button", class: "wf-link", "data-fk": fk, "aria-label": aria, title: aria, onclick }, label);
 
-    /** The menu of a card: move it, duplicate it, its own items, its JSON, delete it (with Undo). */
     function cardMenu(ctx, c, what, extra) {
       const card = ctx.cards[c], up = moveTo(ctx, c, -1), down = moveTo(ctx, c, 1);
       return [
@@ -346,7 +290,6 @@
       ];
     }
 
-    /** The menu of step j of repeat (or superset) k: move it inside, its own items, its JSON, delete it (with Undo). */
     function insideMenu(ctx, k, j, what, extra) {
       const b = ctx.blocks[k];
       return [
@@ -358,13 +301,11 @@
       ];
     }
 
-    /** The head of a repeat or a superset: its title, how many times, its menu. */
     const groupHead = (ctx, k, title, word, items) => h("div", { class: "wf-ch" }, grip(),
       h("div", { class: "wf-t" }, h("span", { class: "wf-title", text: title })),
       h("div", { class: "wf-times" }, stepper(ctx.blocks[k].times, 2, 99, (n) => writeBlocks(ctx, M.setTimes(ctx.blocks, k, n)), `times:${k}`, word === "rounds" ? "Rounds" : "Times"), h("span", { class: "wf-dim", text: word })),
       menu(items, `More for the ${title.toLowerCase()}`, `menu:${k}`));
 
-    /** An exercise's name, which opens the picker (`rename(to)` gets the one picked), and the muscles it works. */
     function exerciseTitle(name, fk, rename) {
       const pick = h("button", { type: "button", class: "wf-exname", title: "Pick another exercise", "data-fk": fk }, M.prettyName(name), h("span", { class: "wf-caret", "aria-hidden": "true" }, " ▾"));
       pick.onclick = () => pickExercise(name).then((to) => { if (to && to !== name) rename(to); });
@@ -372,13 +313,11 @@
       return h("div", { class: "wf-t" }, pick, worked ? h("small", { class: "wf-dim", text: worked }) : null);
     }
 
-    /** The problems of the step at flat position i, under the part of the form that edits it. */
     function messages(ctx, i) {
       const list = ctx.problems.get(i) || [];
       return list.length ? h("div", { class: "wf-msgs" }, list.map((p) => h("div", { class: "msg " + p.level, text: p.text }))) : null;
     }
 
-    // ── Strength: an exercise and its lines of sets ──
 
     function exerciseCard(ctx, card, c) {
       const { blocks } = ctx, first = blocks[card.k].steps[0], name = first.exerciseName, title = M.prettyName(name);
@@ -400,7 +339,6 @@
       return li;
     }
 
-    /** One line of an exercise's sets: how many, the reps (or a time), the load, the rest after each. */
     function setLine(ctx, k, removable) {
       const b = ctx.blocks[k], st = b.steps[0];
       const line = h("div", { class: "wf-line" },
@@ -412,14 +350,12 @@
       return h("div", {}, line, messages(ctx, ctx.offsets[k]));
     }
 
-    /** How an exercise's set ends: reps (most), a time (a plank), or the lap button (as many as you can); the menu switches it. */
     function liftEnd(ctx, k, j, st) {
       const end = M.endOf(st);
       const label = { reps: "Reps", time: "Time", lap: "Until done" }[end.by] || M.prettyName(end.by || "value");
       return field(label, endInput(ctx, k, j, end, "s") || h("span", { class: "wf-dim", text: "lap press" }));
     }
 
-    /** The menu items that switch how the sets at `refs` ([block, step] pairs) are counted and loaded, as `st` is now. */
     function countItems(ctx, refs, st) {
       const each = (fn) => () => { let blocks = ctx.blocks; for (const [k, j] of refs) blocks = M.updateStep(blocks, k, j, fn); writeBlocks(ctx, blocks); };
       const by = M.endOf(st).by, pct = st.weightPercentage !== undefined;
@@ -432,7 +368,6 @@
       ];
     }
 
-    /** The load: a weight in the profile's unit (kept in lb), or a percentage of a one-rep max (the menu switches). Empty is none: body weight. */
     function load(ctx, k, j, st) {
       const unit = ctx.unit, key = `${k}:${j}`;
       if (st.weightPercentage !== undefined) {
@@ -444,19 +379,16 @@
         (t) => (t ? M.parseWeight(t, unit) : 0), "Not a weight", (lb) => writeStep(ctx, k, j, (s) => M.patched(s, { weight: lb > 0 ? lb : undefined }))));
     }
 
-    /** An exercise card joined with the next card (an exercise, or a superset it goes first in). */
     function joinNext(ctx, card, next) {
       if (next.kind === "exercise") return M.joinBlocks(ctx.blocks, card.k, 2, { superset: true });
       const st = M.withRest(ctx.blocks[card.k].steps[0], 0);
       return M.removeBlocks(M.insertInto(ctx.blocks, next.k, 0, [st]), card.k);
     }
 
-    /** The exercise `from` renamed `to` in the steps at `refs` ([block, step] pairs); a 1RM it was a percentage of follows. */
     function renamed(blocks, refs, from, to) {
       return refs.reduce((out, [k, j]) => M.updateStep(out, k, j, (s) => M.patched(s, { exerciseName: to, benchmarkKey: s.benchmarkKey === from ? to : s.benchmarkKey })), blocks);
     }
 
-    // ── Strength: a superset ──
 
     function supersetCard(ctx, card, c) {
       const { blocks } = ctx, k = card.k, b = blocks[k];
@@ -465,7 +397,6 @@
       b.steps.forEach((st, j) => li.append(member(ctx, k, j, st, j === b.steps.length - 1)));
       li.append(h("div", { class: "wf-cfoot" }, link("+ Exercise", `ssadd:${k}`, () => pickExercise().then((name) => {
         if (!name) return;
-        // the new exercise goes last, so the rest after the round moves to it
         const last = b.steps[b.steps.length - 1], added = M.withRest(M.newSet(name, { reps: M.endOf(last).value || 10 }), last.restTimeSeconds || 0);
         writeBlocks(ctx, M.insertInto(M.updateStep(blocks, k, b.steps.length - 1, (s) => M.withRest(s, 0)), k, undefined, [added]));
       }), "Add an exercise to the superset")));
@@ -484,7 +415,6 @@
         messages(ctx, ctx.offsets[k] + j));
     }
 
-    // ── A step, and a repeat of steps (run, ride; and the warm-up of a lifting day) ──
 
     function repeatCard(ctx, card, c) {
       const k = card.k, b = ctx.blocks[k];
@@ -498,7 +428,6 @@
         h("div", { class: "wf-cfoot" }, link("+ Step", `rstep:${k}`, add(ctx.mode === "strength" ? "other" : "interval")), link("+ Recovery", `rrec:${k}`, add("recovery"))));
     }
 
-    /** One step: its kind, how it ends, what it aims for, and a rest after it. `c` is its card when it is a card of its own (null in a repeat). */
     function stepRow(ctx, k, j, c) {
       const st = ctx.blocks[k].steps[j], key = `${k}:${j}`, strength = ctx.mode === "strength";
       const kinds = strength ? ["warmup", "rest", "recovery", "cooldown", "other"] : ["warmup", "interval", "recovery", "rest", "cooldown", "other"];
@@ -527,7 +456,6 @@
       return row;
     }
 
-    /** How a step ends: a distance (km or m), a time, the lap button; another of Garmin's ends shows as a number. */
     function endField(ctx, k, j, st) {
       const end = M.endOf(st), key = `${k}:${j}`, dist = end.by === "distance";
       const unit = dist ? units.get(key) || M.distanceUnit(end.value) : null;
@@ -551,7 +479,6 @@
       return h("span", { class: "wf-end" }, input, by);
     }
 
-    /** What a step aims for, as a range typed in the target's unit: a pace fast end first, as runners say it. */
     function target(ctx, k, j, st) {
       const key = `${k}:${j}`, type = st.targetType || "no.target", info = M.TARGETS[type] || {}, t = M.targetOf(st);
       const pick = h("select", { "aria-label": "Target", "data-fk": `tt:${key}` });
@@ -569,7 +496,7 @@
       const ends = info.field === "pace" ? [t.hi, t.lo] : [t.lo, t.hi];
       const unit = M.targetUnit(type, ctx.w), what = info.label.toLowerCase();
       const fields = ends.map((v, n) => h("input", { type: "text", inputmode: info.field === "pace" ? "text" : "decimal", class: "wf-num", value: show(v), placeholder: info.field === "pace" ? "m:ss" : "", "aria-label": `${info.label} ${n === 0 ? "from" : "to"}`, "data-fk": `tv${n}:${key}` }));
-      const put = () => { // the two ends are written together, so a range is never half new
+      const put = () => {
         const values = fields.map((f) => (f.value.trim() ? parse(f.value) : null));
         const wrong = fields.find((f, n) => f.value.trim() && (values[n] === null || values[n] <= 0));
         if (wrong) return bad(wrong, `Not a ${what}: ${wrong.value.trim()}`);
@@ -580,7 +507,6 @@
       return row;
     }
 
-    /** A distance-only run: Garmin makes its steps from the distance. */
     function distanceOnly(ctx) {
       const { w } = ctx, unit = M.distanceUnit(w.distanceMeters);
       const input = entry({ value: M.distanceIn(w.distanceMeters, unit), label: `Distance in ${unit}`, fk: "dist" }, (t) => M.parseDistance(t, unit), "Not a distance", (m) => write({ ...w, distanceMeters: m }));
@@ -591,14 +517,13 @@
           h("button", { type: "button", "data-fk": "addsteps", onclick: steps }, "Plan the steps")));
     }
 
-    // ── Adding ──
 
     function adder(ctx) {
       const { w, blocks } = ctx, bar = h("div", { class: "wf-add" });
       if (ctx.mode !== "strength" && !ctx.flat.length && w.distanceMeters) return null;
       const one = (b, type) => b && b.times === 1 && b.steps[0].stepType === type;
       const warm = one(blocks[0], "warmup"), cool = one(blocks[blocks.length - 1], "cooldown");
-      const at = cool ? blocks.length - 1 : blocks.length; // what is added goes before the cool-down
+      const at = cool ? blocks.length - 1 : blocks.length;
       const add = (label, fk, run, title) => bar.append(h("button", { type: "button", "data-fk": fk, title, onclick: run }, label));
       const insert = (added) => writeBlocks(ctx, M.insertBlocks(blocks, at, added));
       if (ctx.mode === "strength") {
@@ -621,7 +546,6 @@
       return bar;
     }
 
-    /** The reps and the rest of the workout's last exercise, for the next one added. */
     function lastSet(ctx) {
       const st = [...ctx.flat].reverse().find(M.isExercise);
       if (!st) return { reps: 10, rest: 90 };
@@ -629,10 +553,8 @@
       return { reps: end.by === "reps" && end.value ? end.value : 10, rest: st.restTimeSeconds ?? 90 };
     }
 
-    // ── Menus ──
 
     let menuEl = null;
-    /** A ⋯ button whose menu lists `items` ({ label, run, danger }; falsy ones are left out). */
     function menu(items, label, fk) {
       const b = h("button", { type: "button", class: "wf-more", title: label, "aria-label": label, "aria-haspopup": "menu", "data-fk": fk }, "⋯");
       b.onclick = (e) => { e.stopPropagation(); openMenu(b, items.filter(Boolean)); };
@@ -647,7 +569,6 @@
           if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); all[(at + (e.key === "ArrowDown" ? 1 : all.length - 1)) % all.length].focus(); }
         });
       }
-      // a page under a modal dialog cannot be tapped: inside the Workouts view's dialog, the menu lives in it
       const host = anchor.closest("dialog") || document.body;
       if (menuEl.parentElement !== host) host.append(menuEl);
       if (menuEl.matches(":popover-open")) menuEl.hidePopover();
@@ -655,7 +576,7 @@
       menuEl.ontoggle = (e) => {
         if (e.newState !== "closed") return;
         if (anchor.isConnected && !el.contains(document.activeElement)) anchor.focus({ preventScroll: true });
-        menuEl.ontoggle = null; // its items and its button belong to a drawing that is gone once the form changes
+        menuEl.ontoggle = null;
         menuEl.replaceChildren();
       };
       menuEl.showPopover();
@@ -663,10 +584,8 @@
       menuEl.querySelector("button")?.focus();
     }
 
-    // ── The exercise picker ──
 
     let picker = null;
-    /** Pick one of Garmin's exercises: resolves to its name, or null when the picker is closed. */
     function pickExercise(current) {
       return loadCatalog().then((cat) => new Promise((resolve) => {
         const p = picker || (picker = makePicker());
@@ -674,7 +593,6 @@
         p.search.value = "";
         fillChips(p);
         fillList(p);
-        // the exercise tapped is the answer at once, not when the close event comes a task later; closed any other way, there is none
         p.dlg.onclose = () => { p.dlg.onclose = null; resolve(null); };
         p.choose = (name) => { resolve(name); p.dlg.close(); };
         opts.modal(p.dlg);
@@ -687,7 +605,6 @@
       const cats = h("div", { class: "wf-pk-cats", role: "group", "aria-label": "Category" });
       const list = h("div", { class: "wf-pk-list" });
       const close = h("button", { type: "button", "aria-label": "Close" }, "✕");
-      // the id is what the page's history entry for an open dialog names (Back closes it)
       const dlg = h("dialog", { class: "wf-pick", "aria-label": "Pick an exercise", id: `wfpick${++seq}` },
         h("div", { class: "dhead" }, h("b", { text: "Pick an exercise" }), close),
         h("div", { class: "wf-pk-bar" }, search), cats, list);
@@ -707,7 +624,6 @@
       return p;
     }
 
-    /** The categories, once each time the picker opens; a tap narrows the list to one (another tap on it, to all). */
     function fillChips(p) {
       const chips = ["", ...p.state.cat.categories].map((cat) => {
         const chip = h("button", { type: "button", class: "tchip", "aria-pressed": String(cat === ""), "data-cat": cat }, cat ? M.prettyName(cat) : "All");
@@ -737,9 +653,6 @@
       p.list.replaceChildren(...out);
     }
 
-    // ── Dragging a card to another place ──
-    // The grip (⠿) of a card picks it up once moved a few pixels (it does not scroll the page, so a finger drags it at once); the gap it
-    // would land in is marked, and letting go there moves it. Escape, or letting go where it was, puts it back.
 
     function startDrag(e, ctx, list) {
       const handle = e.target.closest(".wf-grip");
@@ -771,7 +684,6 @@
       }
       drag.gap = gap;
       cards.forEach((x, i) => { x.classList.toggle("wf-drop-before", i === gap); x.classList.toggle("wf-drop-after", gap === cards.length && i === cards.length - 1); });
-      // near the top or the bottom of what scrolls, it scrolls
       const box = scroller(drag.list), r = box.getBoundingClientRect();
       if (e.clientY < r.top + 40) box.scrollBy(0, -12); else if (e.clientY > r.bottom - 40) box.scrollBy(0, 12);
     }
@@ -795,7 +707,6 @@
     return { el, render, schedule, retime };
   }
 
-  // whether the overview is open, for every form: open on a desktop, shut on a phone until opened (decided when the first one is drawn)
   let overviewOpen = null;
 
   root.WorkoutForm = { create, redraw };

@@ -1,13 +1,6 @@
-/**
- * The Food view's AI: "Describe or photograph what you ate", the AI way into the add sheet (✨ in the bar at the bottom, the sheet's AI
- * tab, the address #food/ai). The words and photos go to POST /api/foods/ai, which is answered here by stubAi (Claude is never
- * reached). The server of the suite has no Claude key, so the page's own answers from /api/nutrition are made to say the AI is set up
- * (enableAi); logging goes to the real server, and the log is read back.
- */
 import { test, expect, openView, today, daysAgo, type Page, type APIRequestContext } from "../support/fixtures";
 import { labelOf, sheet, sheetClose, sheetMeal, sheetTab } from "../support/food";
 
-// Estimates as the server answers them: each food for the amount eaten, with that amount, the meal and the nutrients it can give.
 const EGGS = { name: "Scrambled eggs", portion: "2 large eggs", meal: "breakfast", amount: 120, unit: "g", kcal: 180, proteinG: 13, carbsG: 2, fatG: 13, nutrients: { sodiumMg: 300 } };
 const TOAST = { name: "Whole wheat toast", portion: "1 slice", meal: "breakfast", amount: 35, unit: "g", kcal: 90, proteinG: 4, carbsG: 15, fatG: 1, nutrients: {} };
 const SALMON = { name: "Salmon", portion: "100 g", meal: "dinner", amount: 100, unit: "g", kcal: 200, proteinG: 22, carbsG: 0, fatG: 12, nutrients: {} };
@@ -16,9 +9,6 @@ const ESTIMATE = { items: [EGGS, TOAST, SALMON], note: "Assumed 1 cup of cooked 
 interface Answer { status?: number; json: any }
 type Handler = (body: any) => Answer | Promise<Answer>;
 
-/**
- * Answers POST /api/foods/ai. Every question asked is recorded, in order (its JSON body: text, images, profile, defaultMeal).
- */
 async function stubAi(page: Page, handler: Handler = () => ({ json: ESTIMATE })): Promise<any[]> {
   const asked: any[] = [];
   await page.route("**/api/foods/ai", async (route) => {
@@ -30,17 +20,11 @@ async function stubAi(page: Page, handler: Handler = () => ({ json: ESTIMATE }))
   return asked;
 }
 
-/**
- * The page is told that Claude is set up here: the status it reads from /api/nutrition (ai.enabled) is set on, every answer of the
- * log. The server itself is not changed: the estimate is stubAi's, and what is logged goes to the real server.
- * Every POST to the log is recorded, to see that logging is one request.
- */
 async function enableAi(page: Page, remaining?: number): Promise<any[]> {
   const posts: any[] = [];
   await page.route("**/api/nutrition*", async (route) => {
     const request = route.request();
     if (request.method() === "POST") posts.push(request.postDataJSON());
-    // the answer is the server's own: a connection the server reset under load is asked again, not failed
     let response;
     for (let attempt = 1; ; attempt++) {
       try { response = await route.fetch(); break; } catch (error) { if (attempt === 3) throw error; }
@@ -57,7 +41,6 @@ async function enableAi(page: Page, remaining?: number): Promise<any[]> {
 
 interface Logged { id: number; meal: string; name: string; kcal: number; proteinG: number; carbsG: number; fatG: number; nutrients: Record<string, number> }
 
-/** The foods of the log on a day, each with its meal. */
 async function logged(api: APIRequestContext, day = today()): Promise<Logged[]> {
   const res = await api.get(`/api/nutrition?date=${day}`);
   expect(res.ok()).toBeTruthy();
@@ -65,7 +48,6 @@ async function logged(api: APIRequestContext, day = today()): Promise<Logged[]> 
   return body.day.meals.flatMap((m: any) => m.entries.map((e: any) => ({ ...e, meal: m.meal })));
 }
 
-/** A small JPEG, made by the browser: the photo the box is given. */
 async function jpeg(page: Page): Promise<{ name: string; mimeType: string; buffer: Buffer }> {
   const base64 = await page.evaluate(() => {
     const canvas = document.createElement("canvas");
@@ -78,7 +60,6 @@ async function jpeg(page: Page): Promise<{ name: string; mimeType: string; buffe
   return { name: "meal.jpg", mimeType: "image/jpeg", buffer: Buffer.from(base64, "base64") };
 }
 
-/** The sheet's AI: the photo buttons, the words, Estimate, then the estimate's rows to check and Log. */
 const box = (page: Page) => page.locator("#fsh .faibody");
 const words = (page: Page) => page.locator("#fsh .faitext");
 const estimateButton = (page: Page) => box(page).getByRole("button", { name: "Estimate", exact: true });
@@ -89,14 +70,12 @@ const totals = (page: Page) => page.locator("#fsh .faires .fpv");
 const fileInput = (page: Page) => box(page).locator('input[type="file"]:not([capture])');
 const section = (page: Page, meal: string) => page.locator(`#fbody section.fmeal[data-meal="${meal}"]`);
 
-/** Opens the Food view, then the sheet on the AI with ✨ in the bar at the bottom. */
 async function openAi(page: Page) {
   await openView(page, "food");
   await page.locator("#fdAi").click();
   await expect(sheetTab(page, "AI")).toHaveAttribute("aria-selected", "true");
 }
 
-/** Types the words and presses Estimate, and returns once the server has answered (with rows or with an error). */
 async function ask(page: Page, text: string) {
   await words(page).fill(text);
   await Promise.all([page.waitForResponse((r) => r.url().endsWith("/api/foods/ai")), estimateButton(page).click()]);
@@ -155,7 +134,7 @@ test.describe("opening the AI", () => {
     await expect(me.locator("body")).toHaveAttribute("data-view", "food");
     await expect(me).toHaveURL(/#food$/);
     await expect(me.locator("#fbody .fsum")).toBeVisible();
-    await expect(sheet(me)).toBeHidden(); // still shut once the view has settled
+    await expect(sheet(me)).toBeHidden();
   });
 
   test("with no Claude set up on the server, the box says so and offers no words to estimate", async ({ me }) => {
@@ -582,7 +561,7 @@ test.describe("errors, and the estimate under way", () => {
     release();
     await expect(rows(me)).toHaveCount(3);
     await expect(box(me).locator(".fnote", { hasText: "Estimating…" })).toHaveCount(0);
-    expect(asked).toHaveLength(1); // Control+Enter while it was under way asked nothing more
+    expect(asked).toHaveLength(1);
   });
 });
 
@@ -601,7 +580,6 @@ test.describe("photos", () => {
     expect(asked[0].text).toBe("");
     expect(asked[0].images).toHaveLength(1);
     expect(asked[0].images[0].mediaType).toBe("image/jpeg");
-    // the page sends a JPEG it made (base64 that starts with the JPEG marker), not the file it was given
     expect(asked[0].images[0].data.startsWith("/9j/")).toBe(true);
   });
 
@@ -610,13 +588,12 @@ test.describe("photos", () => {
     const asked = await stubAi(me);
     await openAi(me);
     await fileInput(me).setInputFiles(await jpeg(me));
-    await expect(box(me).locator('img[alt="Photo 1"]')).toBeVisible(); // the photo is ready before the words are typed
+    await expect(box(me).locator('img[alt="Photo 1"]')).toBeVisible();
     await ask(me, "half of this, and the sauce on the side");
     expect(asked[0].text).toBe("half of this, and the sauce on the side");
     expect(asked[0].images).toHaveLength(1);
   });
 
-  // The box is drawn again when the photo is ready: the words box keeps the focus and the caret, so nothing typed meanwhile is lost.
   test("words typed while a photo is being prepared are all kept", async ({ me }) => {
     await enableAi(me);
     await stubAi(me);

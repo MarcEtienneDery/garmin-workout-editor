@@ -1,11 +1,3 @@
-/**
- * renpho.ts — the Renpho scale sync of each profile: its settings, every weigh-in as Renpho sent it, who is syncing and
- * how the last run went, and a short log of what happened for the Settings view to show.
- *
- * `renpho_measurements` is a ledger: one row per weigh-in, the JSON exactly as Renpho gave it (`data`), when it was
- * uploaded to Garmin (`pushed_at`; null until then) and why an upload failed. A weigh-in is uploaded once and never again.
- * The login is in `credentials` (service "renpho"), not here.
- */
 import type { Database } from "./sqliteStore";
 
 export const RENPHO_SCHEMA = `
@@ -50,16 +42,13 @@ CREATE TABLE IF NOT EXISTS renpho_log (
 CREATE INDEX IF NOT EXISTS renpho_log_by_profile ON renpho_log (profile, id);
 `;
 
-/** Log lines kept per profile. */
 export const KEEP_LOG = 200;
-/** The hours between two runs the Settings view offers. */
 export const INTERVAL_HOURS = [1, 3, 6, 12, 24] as const;
 
 export interface RenphoSettings {
   areaCode: string;
   fetchEnabled: boolean;
   pushEnabled: boolean;
-  /** Weigh-ins before this day (YYYY-MM-DD) are never uploaded. */
   pushSince: string | null;
   intervalHours: number;
 }
@@ -73,7 +62,6 @@ export interface RenphoState {
   lastOkAt: number | null;
   nextRunAt: number | null;
   error: string | null;
-  /** "login" when Renpho refused the login (never retried until the login is saved or tested again), "other" for anything else. */
   errorKind: "login" | "other" | null;
 }
 
@@ -81,7 +69,6 @@ export interface Measurement {
   id: string;
   measuredAt: number;
   day: string;
-  /** Renpho's weigh-in as it came. */
   data: Record<string, unknown>;
   pushedAt: number | null;
   pushError: string | null;
@@ -111,7 +98,6 @@ export class RenphoTable {
     private readonly tx: <T>(fn: () => T) => T
   ) {}
 
-  // ── Settings ──
 
   settings(profile: string): RenphoSettings {
     const r = this.db.prepare("SELECT * FROM renpho_settings WHERE profile = ?").get(profile);
@@ -128,20 +114,16 @@ export class RenphoTable {
     });
   }
 
-  /** The profiles whose fetch is switched on. */
   enabledProfiles(): string[] {
     return this.db.prepare("SELECT profile FROM renpho_settings WHERE fetch_enabled = 1 ORDER BY profile").all().map((r) => r.profile as string);
   }
 
-  // ── Weigh-ins ──
 
-  /** Keep a weigh-in the ledger does not have yet; false when it is there already (what is there is left as it is). */
   addMeasurement(profile: string, m: { id: string; measuredAt: number; day: string; data: unknown }): boolean {
     const r = this.db.prepare("INSERT OR IGNORE INTO renpho_measurements (profile, measure_id, measured_at, day, data) VALUES (?, ?, ?, ?, ?)").run(profile, m.id, m.measuredAt, m.day, JSON.stringify(m.data)) as { changes: number | bigint };
     return Number(r.changes) > 0;
   }
 
-  /** The weigh-ins newest first (`limit`), optionally only those of the days `sinceDay` to `untilDay` or only those not uploaded (oldest first). */
   measurements(profile: string, options: { limit?: number; pending?: boolean; sinceDay?: string; untilDay?: string } = {}): Measurement[] {
     const where = ["profile = ?"], params: unknown[] = [profile];
     if (options.pending) where.push("pushed_at IS NULL");
@@ -173,7 +155,6 @@ export class RenphoTable {
     });
   }
 
-  /** The days of weigh-ins uploaded before `before` whose Garmin weigh-in has not been read again since: Garmin has had the time to take the file in. */
   daysToReread(profile: string, before: number): { days: string[]; ids: string[] } {
     const rows = this.db.prepare("SELECT measure_id, day FROM renpho_measurements WHERE profile = ? AND pushed_at IS NOT NULL AND pushed_at <= ? AND reread_at IS NULL").all(profile, before);
     return { days: [...new Set(rows.map((r) => r.day as string))].sort(), ids: rows.map((r) => r.measure_id as string) };
@@ -186,12 +167,10 @@ export class RenphoTable {
     });
   }
 
-  /** Forget every weigh-in of the profile (the ledger only; nothing on Garmin changes). */
   clearMeasurements(profile: string): void {
     this.db.prepare("DELETE FROM renpho_measurements WHERE profile = ?").run(profile);
   }
 
-  // ── The sync's state and lease ──
 
   state(profile: string): RenphoState {
     const r = this.db.prepare("SELECT * FROM renpho_sync WHERE profile = ?").get(profile);
@@ -211,7 +190,6 @@ export class RenphoTable {
     });
   }
 
-  /** Become the one that syncs this profile. False while another holder's lease runs; a lease that ran out is taken over. */
   claim(profile: string, holder: string, leaseMs: number, now = Date.now()): boolean {
     return this.tx(() => {
       this.db.prepare("INSERT OR IGNORE INTO renpho_sync (profile) VALUES (?)").run(profile);
@@ -226,7 +204,6 @@ export class RenphoTable {
     this.tx(() => this.db.prepare("UPDATE renpho_sync SET holder = NULL, lease_until = NULL, updated_at = ? WHERE profile = ? AND holder = ?").run(now, profile, holder));
   }
 
-  // ── The log ──
 
   log(profile: string, level: LogLine["level"], message: string, now = Date.now()): void {
     this.tx(() => {
@@ -235,12 +212,10 @@ export class RenphoTable {
     });
   }
 
-  /** The log, newest first. */
   logLines(profile: string, limit = 50): LogLine[] {
     return this.db.prepare("SELECT id, at, level, message FROM renpho_log WHERE profile = ? ORDER BY id DESC LIMIT ?").all(profile, limit).map((r) => ({ id: r.id, at: r.at, level: r.level, message: r.message }));
   }
 
-  /** Forget the profile's log. */
   clearLog(profile: string): void {
     this.db.prepare("DELETE FROM renpho_log WHERE profile = ?").run(profile);
   }

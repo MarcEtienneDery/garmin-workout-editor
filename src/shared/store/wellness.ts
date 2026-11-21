@@ -1,18 +1,5 @@
 import type { Database } from "./sqliteStore";
 
-/**
- * The daily health data Garmin keeps for each profile: sleep, HRV, the day's summary (resting heart rate, Body Battery,
- * stress, steps, intensity minutes), the heart-rate, stress and Body Battery series, respiration and SpO2.
- *
- * One row per profile, day and kind, holding the response exactly as Garmin sent it (`data`; JSON `null` when Garmin has
- * nothing of that kind for the day). Nothing derived is stored: what a view needs is read out of the responses with SQL
- * (see `metrics`), so a better reading of them never needs Garmin again. A day's sleep and HRV are the night that ended
- * that morning; the other kinds are the day itself. The last days still change (the watch syncs late), so the sync
- * fetches them again for a while; older rows are final.
- *
- * Next to the rows, one `wellness_sync` row per profile remembers why a sync stopped and who is syncing (a lease), as the
- * activities do: the MCP server and the web editor are two processes with two Garmin sessions.
- */
 export const WELLNESS_SCHEMA = `
 CREATE TABLE IF NOT EXISTS wellness (
   profile    TEXT NOT NULL,
@@ -32,7 +19,6 @@ CREATE TABLE IF NOT EXISTS wellness_sync (
 );
 `;
 
-/** What is kept, most useful for a daily readiness first: the sync fetches the kinds in this order. */
 export const WELLNESS_KINDS = ["summary", "sleep", "hrv", "heart_rate", "stress", "body_battery", "respiration", "spo2", "weight"] as const;
 export type WellnessKind = (typeof WELLNESS_KINDS)[number];
 
@@ -50,13 +36,10 @@ export interface WellnessState {
   retryAfter: number | null;
 }
 
-/** A number, or null. */
 export type NumOrNull = number | null;
 
-/** What a day's responses say, the fields a daily check reads. Seconds, minutes, bpm, ms and 0-100 scores as Garmin gives them. */
 export interface DayMetrics {
   day: string;
-  // the night that ended that morning
   sleepSeconds: NumOrNull;
   sleepScore: NumOrNull;
   deepSeconds: NumOrNull;
@@ -65,18 +48,14 @@ export interface DayMetrics {
   awakeSeconds: NumOrNull;
   awakeCount: NumOrNull;
   sleepStress: NumOrNull;
-  /** What Garmin says the night should have been, in minutes. */
   sleepNeedMinutes: NumOrNull;
   overnightHrv: NumOrNull;
-  // HRV: last night against Garmin's own baseline band
   hrvLastNight: NumOrNull;
   hrvWeeklyAvg: NumOrNull;
-  /** The top of Garmin's "low" HRV range: below it, last night was low. */
   hrvLowUpper: NumOrNull;
   hrvBalancedLow: NumOrNull;
   hrvBalancedHigh: NumOrNull;
   hrvStatus: string | null;
-  // the day
   restingHr: NumOrNull;
   restingHr7d: NumOrNull;
   avgStress: NumOrNull;
@@ -89,40 +68,32 @@ export interface DayMetrics {
   steps: NumOrNull;
   moderateMinutes: NumOrNull;
   vigorousMinutes: NumOrNull;
-  /** Breaths per minute: asleep, awake and the day's extremes. */
   avgSleepRespiration: NumOrNull;
   avgWakingRespiration: NumOrNull;
   highRespiration: NumOrNull;
   lowRespiration: NumOrNull;
   avgSleepSpo2: NumOrNull;
   lowestSpo2: NumOrNull;
-  /** Calories the day burned: all of it, what the activity and movement added, and what the body burns at rest. */
   totalKcal: NumOrNull;
   activeKcal: NumOrNull;
   bmrKcal: NumOrNull;
-  /** The day's weigh-in (the average when there are several) and what the scale measured with it; null on a day nobody weighed. */
   weightKg: NumOrNull;
   bodyFatPercent: NumOrNull;
   muscleKg: NumOrNull;
   bmi: NumOrNull;
 }
 
-/** What a day's summary holds for a page that shows the day's progress (see `WellnessTable.progress`). Times are epoch milliseconds. */
 export interface DayProgress {
-  /** When we fetched the summary from Garmin. */
   fetchedAt: number;
   stepGoal: NumOrNull;
-  /** The goal is for the week. */
   intensityGoal: NumOrNull;
   distanceMeters: NumOrNull;
   bodyBatteryNow: NumOrNull;
-  /** When the watch last synced with Garmin: the steps are as of then, not as of the fetch. */
   watchSyncedAt: NumOrNull;
 }
 
 type Field = keyof Omit<DayMetrics, "day">;
 
-/** Where each field lives in the stored responses: its kind and its JSON path. A field with several places takes the first one that has it. */
 const SOURCES: Record<Field, [WellnessKind, string][]> = {
   sleepSeconds: [["sleep", "$.dailySleepDTO.sleepTimeSeconds"]],
   sleepScore: [["sleep", "$.dailySleepDTO.sleepScores.overall.value"]],
@@ -167,18 +138,15 @@ const SOURCES: Record<Field, [WellnessKind, string][]> = {
   bmi: [["weight", "$.totalAverage.bmi"], ["weight", "$.dateWeightList[0].bmi"]],
 };
 
-/** Garmin gives weights in grams: these fields are read in kilograms. */
 const DIVISOR: Partial<Record<Field, number>> = { weightKg: 1000, muscleKg: 1000 };
 
 const FIELDS = Object.keys(SOURCES) as Field[];
 const TEXT_FIELDS = new Set<Field>(["hrvStatus"]);
 
-/** A day nothing is stored for: every number null. */
 export function emptyDayMetrics(day: string): DayMetrics {
   return Object.fromEntries([["day", day], ...FIELDS.map((f) => [f, null])]) as unknown as DayMetrics;
 }
 
-/** One column per field: the first of its places that holds a value. Paths and kinds are constants above, never input. */
 const column = (f: Field): string => {
   const places = SOURCES[f].map(([kind, path]) => `MAX(CASE WHEN kind = '${kind}' THEN json_extract(data, '${path}') END)`);
   const value = places.length > 1 ? `COALESCE(${places.join(", ")})` : places[0];
@@ -195,18 +163,15 @@ export class WellnessTable {
     private readonly tx: <T>(fn: () => T) => T
   ) {}
 
-  /** Whether any response is kept for the profile. */
   hasRows(profile: string): boolean {
     return !!this.db.prepare("SELECT 1 FROM wellness WHERE profile = ? LIMIT 1").get(profile);
   }
 
-  /** Whether any stored weigh-in has a weight. */
   hasWeighIn(profile: string): boolean {
     const paths = SOURCES.weightKg.map(([, path]) => `json_extract(data, '${path}') IS NOT NULL`).join(" OR ");
     return !!this.db.prepare(`SELECT 1 FROM wellness WHERE profile = ? AND kind = 'weight' AND (${paths}) LIMIT 1`).get(profile);
   }
 
-  /** Keep one response as Garmin sent it; `undefined` is kept as JSON null, an answer of "nothing for that day". */
   put(profile: string, day: string, kind: WellnessKind, data: unknown, now = Date.now()): void {
     this.tx(() =>
       this.db
@@ -220,12 +185,10 @@ export class WellnessTable {
     return r ? { data: JSON.parse(r.data), fetchedAt: r.fetched_at } : null;
   }
 
-  /** Forget a stored response, so the sync fetches it again (as when a weigh-in has been added on Garmin for a day already stored empty). */
   forget(profile: string, day: string, kind: WellnessKind): void {
     this.db.prepare("DELETE FROM wellness WHERE profile = ? AND day = ? AND kind = ?").run(profile, day, kind);
   }
 
-  /** Forget the stored weigh-in answers that held no weigh-in, from `from` to `to`: Garmin may have been given one since (typed in, imported), and an empty answer would otherwise stand for good. Returns how many were forgotten. */
   forgetEmptyWeighIns(profile: string, from: string, to: string): number {
     const r = this.db
       .prepare("DELETE FROM wellness WHERE profile = ? AND kind = 'weight' AND day BETWEEN ? AND ? AND (data = 'null' OR COALESCE(json_array_length(json_extract(data, '$.dateWeightList')), 0) = 0)")
@@ -233,13 +196,11 @@ export class WellnessTable {
     return Number(r.changes);
   }
 
-  /** What is stored for a day, without the responses: each kind, when it was fetched and how many bytes it holds. */
   rowsOfDay(profile: string, day: string): { kind: WellnessKind; fetchedAt: number; bytes: number }[] {
     const rows = this.db.prepare("SELECT kind, fetched_at, length(data) AS bytes FROM wellness WHERE profile = ? AND day = ?").all(profile, day);
     return WELLNESS_KINDS.flatMap((kind) => rows.filter((r) => r.kind === kind).map((r) => ({ kind, fetchedAt: r.fetched_at as number, bytes: r.bytes as number })));
   }
 
-  /** When each stored response was fetched, keyed "day|kind", for the days from `from` to `to` inclusive. */
   fetchedAt(profile: string, from: string, to: string): Map<string, number> {
     const rows = this.db.prepare("SELECT day, kind, fetched_at FROM wellness WHERE profile = ? AND day BETWEEN ? AND ?").all(profile, from, to);
     return new Map(rows.map((r) => [`${r.day}|${r.kind}`, r.fetched_at as number]));
@@ -250,10 +211,6 @@ export class WellnessTable {
     return { rows: r.rows, days: r.days, oldest: r.oldest ?? null, newest: r.newest ?? null };
   }
 
-  /**
-   * What a day's summary says that a progress page needs and `metrics` does not carry: Garmin's goals, the distance, the Body
-   * Battery now, when the watch last synced, and when this response was fetched. null when no summary is stored for the day.
-   */
   progress(profile: string, day: string): DayProgress | null {
     const r = this.db
       .prepare(
@@ -264,7 +221,7 @@ export class WellnessTable {
       )
       .get(profile, day);
     if (!r) return null;
-    const gmt = typeof r.watch_sync === "string" ? Date.parse(`${r.watch_sync}Z`) : NaN; // Garmin gives GMT without a zone mark
+    const gmt = typeof r.watch_sync === "string" ? Date.parse(`${r.watch_sync}Z`) : NaN;
     return {
       fetchedAt: r.fetched_at as number,
       stepGoal: num(r.step_goal),
@@ -275,7 +232,6 @@ export class WellnessTable {
     };
   }
 
-  /** The fields of every stored day from `from` to `to` inclusive, oldest first; a field no response has is null. Read in SQL: the responses are never parsed here. */
   metrics(profile: string, from: string, to: string): DayMetrics[] {
     return this.db
       .prepare(METRICS_SQL)
@@ -287,7 +243,6 @@ export class WellnessTable {
       });
   }
 
-  // ── Who is syncing, and why the last sync stopped ──
 
   state(profile: string): WellnessState {
     const r = this.db.prepare("SELECT * FROM wellness_sync WHERE profile = ?").get(profile);
@@ -304,7 +259,6 @@ export class WellnessTable {
     });
   }
 
-  /** Become the one that syncs this profile. False while another holder's lease runs; a lease that ran out is taken over. */
   claim(profile: string, holder: string, leaseMs: number, now = Date.now()): boolean {
     return this.tx(() => {
       this.db.prepare("INSERT OR IGNORE INTO wellness_sync (profile) VALUES (?)").run(profile);
@@ -315,7 +269,6 @@ export class WellnessTable {
     });
   }
 
-  /** Extend the lease; false when it was lost (it ran out and another holder took over). */
   renew(profile: string, holder: string, leaseMs: number, now = Date.now()): boolean {
     return this.tx(() => {
       const r = this.db.prepare("SELECT holder FROM wellness_sync WHERE profile = ?").get(profile);

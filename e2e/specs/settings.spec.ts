@@ -1,15 +1,6 @@
-/**
- * The Settings view: the nutrition goals, the Garmin and Renpho logins, the web sign-in password, and (for the admin) adding a profile
- * and choosing which profile Settings shows. Every test that saves changes its own fresh profile; alice is only read. The Garmin and
- * Renpho requests that would reach those services (test, sync, sign-in) are answered by page.route, so nothing leaves the server.
- */
 import { request as pwRequest, type APIRequestContext, type Locator, type Page, type Request } from "@playwright/test";
 import { test as base, expect, loginAs, ADMIN_TOKEN, CSRF, PASSWORD } from "../support/fixtures";
 
-/**
- * The server closes an idle connection after a few seconds, and a client that sends on it meets a reset (and a loaded machine answers
- * slowly): a request that failed that way is sent again, on a new connection. Only for what is safe to send twice.
- */
 async function retried<T>(run: () => Promise<T>): Promise<T> {
   for (let attempt = 1; ; attempt++) {
     try {
@@ -21,19 +12,13 @@ async function retried<T>(run: () => Promise<T>): Promise<T> {
 }
 
 
-/** The app is slow on a shared server (every page load asks for the profiles' views and the settings), so these waits are longer than the suite's default. */
 const slow = expect.configure({ timeout: 30_000 });
 
-/** Wait for the first view to be drawn: the sign-in form is gone and the header is up. */
 async function ready(page: Page): Promise<void> {
   await slow(page.locator("#login")).toBeHidden();
   await slow(page.locator("#views")).toBeVisible();
 }
 
-/**
- * Open the page on a view, signed in already, and wait until it is drawn. On a loaded server a script of the page can fail to arrive;
- * the page then keeps its placeholder (the Today view, "Loading…") for good, so a view that is not drawn within 15 seconds is loaded again, once.
- */
 async function openView(page: Page, view: string): Promise<void> {
   const address = view === "today" ? "/" : `/#${view}`;
   for (let attempt = 1; ; attempt++) {
@@ -50,7 +35,6 @@ async function openView(page: Page, view: string): Promise<void> {
   }
 }
 
-/** The admin login (the access token, any name) on a page of its own. */
 const test = base.extend<{ adminPage: Page }>({
   adminPage: async ({ browser, baseURL }, use) => {
     const context = await browser.newContext({ baseURL, viewport: { width: 1280, height: 860 }, timezoneId: "UTC", locale: "en-CA" });
@@ -65,25 +49,19 @@ test.describe.configure({ timeout: 90_000 });
 const NEW_PASSWORD = "a brand new passphrase";
 const PROFILE_PASSWORD = "profile pass one";
 
-// ── helpers ──
 
-/** One of the six cards, by its heading. */
 const card = (page: Page, heading: string) => page.locator(".scard").filter({ has: page.locator("h2", { hasText: heading }) });
 const goalsCard = (page: Page) => card(page, "Nutrition goals");
 const garminCard = (page: Page) => card(page, "Garmin account");
 const renphoCard = (page: Page) => card(page, "Renpho scale");
 const webCard = (page: Page) => card(page, "Web sign-in");
 
-/** The goal field of a key (`kcal`, `proteinG`, ...), the way the page names it. */
 const goalField = (page: Page, key: string) => page.locator(`#s-goal_${key}`);
 
-/** The message a card shows after an action: a green or a red line (the notes are not messages). */
 const okLine = (c: Locator) => c.locator(".sline.ok:visible");
 const errLine = (c: Locator) => c.locator(".sline.err:visible");
 
-/** Open Settings (signed in already) and wait until its sections are drawn; loaded again once if they are not (see openView). */
 type SettingsSection = "overview" | "connections" | "goals" | "display" | "signin" | "profiles";
-/** Opens Settings and the section asked for (the list of sections is on the left; Overview first). */
 async function openSettings(page: Page, section: SettingsSection = "overview"): Promise<void> {
   for (let attempt = 1; ; attempt++) {
     if (attempt === 1) await page.goto("/#settings");
@@ -101,18 +79,15 @@ async function openSettings(page: Page, section: SettingsSection = "overview"): 
   }
 }
 
-/** Another section of the Settings already open. */
 async function goSection(page: Page, section: SettingsSection): Promise<void> {
   await page.locator(`#sbody .snav [data-section="${section}"]`).click();
   await slow(page.locator(`#sbody .spane[data-section="${section}"]`)).toBeVisible();
 }
 
-/** Every goal field as the page shows it now (the ones with a value). */
 const shownGoals = (page: Page) => page.evaluate(() => Object.fromEntries([...document.querySelectorAll<HTMLInputElement>("#sbody input[id^=s-goal_]")].filter((i) => i.value !== "").map((i) => [i.id.replace("s-goal_", ""), i.value])));
 
 const basic = (user: string, secret: string) => ({ Authorization: `Basic ${Buffer.from(`${user}:${secret}`).toString("base64")}` });
 
-/** Whether a name and password sign in (the API answers 200 for the right ones, 401 for the others). */
 async function signsIn(baseURL: string | undefined, user: string, secret: string): Promise<number> {
   const api: APIRequestContext = await pwRequest.newContext({ baseURL, extraHTTPHeaders: { ...CSRF, ...basic(user, secret) } });
   try {
@@ -122,17 +97,13 @@ async function signsIn(baseURL: string | undefined, user: string, secret: string
   }
 }
 
-/** The settings a profile holds, as the API gives them (the same shape the page draws). */
 const settingsOf = (api: APIRequestContext, query = "") => retried(async () => (await api.get(`/api/settings${query}`)).json());
 
-/** A Renpho login saved for a profile through the API (stored only: Renpho is never reached by a save). */
 const seedRenpho = (profile: { name: string; api: APIRequestContext }) =>
   retried(() => profile.api.post("/api/settings/renpho", { data: { profile: profile.name, action: "save", email: "scale@example.com", password: "scale-pass-123", areaCode: "US" } }));
 
-/** A name for a profile the admin makes in a test: unique, and within the rules (letters, digits, hyphens, underscores). */
 const freshName = (prefix: string) => `${prefix}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
-/** The requests of the page that change something (anything but a GET to the app). */
 function writesOf(page: Page): string[] {
   const writes: string[] = [];
   page.on("request", (request: Request) => {
@@ -141,7 +112,6 @@ function writesOf(page: Page): string[] {
   return writes;
 }
 
-// ── nutrition goals ──
 
 test.describe("nutrition goals", () => {
   test("a fresh profile has no goals: 'none set', every field empty, and 'Clear all goals' disabled", async ({ me, profile }) => {
@@ -207,7 +177,7 @@ test.describe("nutrition goals", () => {
     await openSettings(me, "goals");
     await slow(goalsCard(me).locator(".chip")).toHaveText("3 set");
     await goalsCard(me).getByRole("button", { name: "Clear all goals" }).click();
-    await me.getByRole("dialog").getByRole("button", { name: "Clear all" }).click(); // it asks first
+    await me.getByRole("dialog").getByRole("button", { name: "Clear all" }).click();
     await slow(okLine(goalsCard(me))).toHaveText("Goals cleared.");
     await slow(goalsCard(me).locator(".chip")).toHaveText("none set");
     await slow(goalsCard(me).getByRole("button", { name: "Clear all goals" })).toBeDisabled();
@@ -288,7 +258,7 @@ test.describe("nutrition goals", () => {
     const note = () => goalsCard(me).locator(".sline.dim:visible");
     await goalField(me, "proteinG").fill("130");
     await goalField(me, "carbsG").fill("250");
-    await slow(note()).toBeHidden(); // fat is not typed yet
+    await slow(note()).toBeHidden();
     await goalField(me, "fatG").fill("70");
     await slow(note()).toHaveText("Protein, carbs and fat add up to 2,150 kcal.");
     await goalField(me, "kcal").fill("2000");
@@ -365,7 +335,6 @@ test.describe("nutrition goals", () => {
     slow((await settingsOf(profile.api)).goals.values).toEqual({ kcal: 2100 });
   });
 
-  // Read only: what the page shows is what alice's own settings hold (whatever goals the suite's data has), with the count of them.
   test("alice's goals are shown to her as her settings hold them (read only): the page and the server agree", async ({ alice }) => {
     const stored = await (await alice.context().request.get("/api/settings")).json();
     const goals = Object.fromEntries(Object.entries(stored.goals.values as Record<string, number>).filter(([key]) => key !== "kcalBurnPct"));
@@ -376,7 +345,6 @@ test.describe("nutrition goals", () => {
   });
 });
 
-// ── Garmin ──
 
 test.describe("the Garmin account card, for a profile without a login", () => {
   test("the form is there: email, password, 'Connect Garmin', and 'Test login' disabled, as an optional connection", async ({ me }) => {
@@ -513,7 +481,6 @@ test.describe("the Garmin account card, for a profile without a login", () => {
   });
 });
 
-// ── Renpho ──
 
 test.describe("the Renpho scale card, for a profile without a login", () => {
   test("the form is there: email, password, the area code (US), 'Connect Renpho'; no sync controls until a login is saved", async ({ me }) => {
@@ -647,7 +614,6 @@ test.describe("the Renpho scale card, for a profile without a login", () => {
   });
 });
 
-// ── web sign-in password ──
 
 test.describe("the web sign-in password card", () => {
   test("a profile's card says its password is set, and asks for a new one typed twice", async ({ me }) => {
@@ -721,7 +687,7 @@ test.describe("the web sign-in password card", () => {
       await ready(me);
       await goSection(me, "signin");
       await slow(me.locator("#login")).toBeHidden();
-      await slow(me.locator("#sbody .spane .scard")).toHaveCount(3); // the password, the token for Claude (MCP) and how the saved passwords are kept
+      await slow(me.locator("#sbody .spane .scard")).toHaveCount(3);
     } finally {
       await other.close();
     }
@@ -744,7 +710,6 @@ test.describe("the web sign-in password card", () => {
   });
 });
 
-// ── the admin: adding a profile and choosing which one Settings shows ──
 
 test.describe("the admin's profile controls", () => {
   test("the admin sees '+ Add profile' and the profile selector", async ({ adminPage }) => {
@@ -931,7 +896,6 @@ test.describe("the admin's profile controls", () => {
   });
 });
 
-// ── a profile's own Settings ──
 
 test.describe("a profile's own Settings", () => {
   test("a profile sees no profile selector and no '+ Add profile', and its only profile is itself", async ({ me, profile }) => {
@@ -972,7 +936,6 @@ test.describe("a profile's own Settings", () => {
   });
 });
 
-// ── the Settings view as a whole ──
 
 test.describe("the Settings view", () => {
   test("the sections hold the cards in order: Overview, Connections (Garmin, Renpho, Food AI), Goals (preview, nutrition goals), Display (appearance, units), Sign-in (web, Claude (MCP), saved passwords); the note is never shown", async ({ me }) => {
@@ -992,7 +955,6 @@ test.describe("the Settings view", () => {
     if (settings.encryption.enabled && settings.encryption.plain === 0) await slow(note).toHaveText("Saved passwords are encrypted.");
     else if (!settings.encryption.enabled) await slow(note).toContainText("Saved passwords are stored as plain text in the database");
     else await slow(note).toContainText("is still plain text");
-    // and the overview says so as a thing to look at
     if (!(settings.encryption.enabled && settings.encryption.plain === 0)) { await goSection(me, "overview"); await slow(me.locator(".sattn").first()).toContainText("plain text"); }
   });
 

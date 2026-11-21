@@ -1,10 +1,3 @@
-/**
- * Starts the plan editor for the suite on a database made for the occasion: `tsx e2e/support/server.ts [mock]`.
- *
- * Without `mock` it is the app as a person without a Garmin login meets it, with the data of seed.ts already stored. With
- * `mock` it is mock mode (MOCK_MODE=true): Garmin looks connected, answers with generated workouts and activities, and refuses
- * every write. Neither ever reaches Garmin, Renpho, Open Food Facts or Claude.
- */
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";

@@ -1,17 +1,6 @@
 import { defineConfig, devices } from "@playwright/test";
 import { MAIN, MOCK } from "./e2e/support/ports";
 
-/**
- * The browser suite (`npm run e2e`). Two servers are started on databases made for the run (e2e/support/server.ts), on this
- * checkout's ports (e2e/support/ports.ts): the app as a person without Garmin meets it, with data stored, and the app in mock
- * mode, where Garmin looks connected and refuses every write.
- * Open Food Facts, Claude and the camera are never reached: the specs that need them answer the page's requests themselves.
- *
- *   npm run e2e                     the whole suite
- *   npm run e2e -- e2e/specs/food   one area
- *   npm run e2e -- --project=phone  one project
- *   npm run e2e:ui                  the Playwright UI
- */
 export default defineConfig({
   testDir: "e2e/specs",
   outputDir: "e2e/results",

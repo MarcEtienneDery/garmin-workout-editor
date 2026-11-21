@@ -22,7 +22,6 @@ afterEach(() => {
   if (saved === undefined) delete process.env.GARMIN_STORE_PATH; else process.env.GARMIN_STORE_PATH = saved;
 });
 
-/** `n` days stored, the last one the 31st: a steady week-in week-out, with the HRV of the newest days dropping. */
 function fill(n: number, hrvOf: (back: number) => number = () => 50): void {
   for (let back = 0; back < n; back++) {
     const d = day(back), hrv = hrvOf(back);
@@ -41,7 +40,7 @@ describe("readinessDays", () => {
   });
 
   it("says of each day what readinessAt says of it: a day reads only the days before it", () => {
-    fill(60, (back) => (back < 3 ? 38 : 50 + (back % 4))); // the last three nights are poor
+    fill(60, (back) => (back < 3 ? 38 : 50 + (back % 4)));
     for (const d of readinessDays(getStore(), PROFILE, day(9), day(0))) {
       const one = readinessAt(getStore(), PROFILE, d.day).readiness;
       expect({ band: d.band, score: d.score }).toEqual({ band: one.band, score: one.score });
@@ -52,7 +51,7 @@ describe("readinessDays", () => {
     fill(60, (back) => (back === 0 ? 30 : 50));
     const [before, last] = readinessDays(getStore(), PROFILE, day(1), day(0));
     expect(before.band).not.toBe("back-off");
-    expect(last.band).toBe("back-off"); // an HRV far under the range sets Back off by itself
+    expect(last.band).toBe("back-off");
     expect(last.score!).toBeLessThan(before.score!);
   });
 

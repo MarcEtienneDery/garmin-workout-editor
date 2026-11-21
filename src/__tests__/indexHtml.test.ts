@@ -1,11 +1,6 @@
 import { readFileSync } from "fs";
 import { join } from "path";
 
-/**
- * The page is one plain script, where a second `function name` or `const name` at the top level replaces the first without a word: a view
- * that was drawn before is drawn by the other. This is the guard against a name used twice (a "renderWeek" for the Food week took the
- * Calendar's, and the Calendar stayed blank).
- */
 const html = readFileSync(join(__dirname, "..", "web", "public", "index.html"), "utf8");
 
 const declared = (pattern: RegExp): string[] => {

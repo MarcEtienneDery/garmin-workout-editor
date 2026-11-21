@@ -78,9 +78,9 @@ describe("documents", () => {
 
     const archived = store.setArchived("workout-plans/a.json", true);
     expect(archived.archivedAt).toEqual(expect.any(Number));
-    expect(archived.version).toBe(first.version); // a mark on the row, not a save
+    expect(archived.version).toBe(first.version);
     expect(store.history("workout-plans/a.json")).toEqual([]);
-    expect(store.setArchived("workout-plans/a.json", true).archivedAt).toBe(archived.archivedAt); // the first date stays
+    expect(store.setArchived("workout-plans/a.json", true).archivedAt).toBe(archived.archivedAt);
 
     expect(store.put("workout-plans/a.json", plan("B")).archivedAt).toBe(archived.archivedAt);
     expect(store.rename("workout-plans/a.json", "workout-plans/b.json").archivedAt).toBe(archived.archivedAt);
@@ -89,7 +89,7 @@ describe("documents", () => {
     expect(store.setArchived("workout-plans/b.json", false).archivedAt).toBeNull();
     store.setArchived("workout-plans/b.json", true);
     store.remove("workout-plans/b.json");
-    expect(store.put("workout-plans/b.json", plan("C")).archivedAt).toBeNull(); // made again, it is a new plan
+    expect(store.put("workout-plans/b.json", plan("C")).archivedAt).toBeNull();
   });
 
   it("gives a database made before archiving the column", () => {
@@ -184,7 +184,7 @@ describe("history, ownership and sharing", () => {
     expect(store.put("workout-plans/shared.json", "[]").owner).toBeNull();
     expect(store.put("workout-plans/mine.json", "[]", { owner: "MED" }).owner).toBe("MED");
     expect(store.put("data/SAM/w.json", "[]", { owner: "MED" }).owner).toBe("SAM");
-    expect(store.put("workout-plans/mine.json", "{}", { owner: "SAM" }).owner).toBe("MED"); // only a new document takes an owner
+    expect(store.put("workout-plans/mine.json", "{}", { owner: "SAM" }).owner).toBe("MED");
 
     expect(store.setOwner("workout-plans/shared.json", "SAM").owner).toBe("SAM");
     expect(store.setOwner("workout-plans/shared.json", null).owner).toBeNull();
@@ -215,7 +215,7 @@ describe("history, ownership and sharing", () => {
       })
     ).toThrow("boom");
     expect(store.get("workout-plans/a.json")?.text).toBe(plan("one"));
-    expect(store.put("workout-plans/a.json", plan("two")).version).toBe(2); // and the store is still usable
+    expect(store.put("workout-plans/a.json", plan("two")).version).toBe(2);
   });
 });
 

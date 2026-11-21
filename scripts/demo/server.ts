@@ -1,9 +1,3 @@
-/**
- * The plan editor on a throwaway demo database: `npm run demo`, then sign in as Sam / demo-password.
- *
- * The database is made in a temporary directory and deleted when the server stops; nothing reaches Garmin, Renpho or an AI.
- * Searching a food asks Open Food Facts and an activity's map asks OpenStreetMap for its tiles, as the real editor does.
- */
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
@@ -13,7 +7,6 @@ export interface Demo {
   stop: () => void;
 }
 
-/** Start the editor on a fresh demo database. Sets the environment first: the store reads it when it is first imported. */
 export async function startDemo(port: number): Promise<Demo> {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "garmin-demo-"));
   process.env.GARMIN_DATA_DIR = dir;

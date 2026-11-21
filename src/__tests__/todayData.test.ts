@@ -42,7 +42,7 @@ describe("the intensity minutes of the week", () => {
   const put = (day: string, moderate: number, vigorous: number) => store.wellness.put("MED", day, "summary", { ...summaryResponse(), moderateIntensityMinutes: moderate, vigorousIntensityMinutes: vigorous });
 
   it("adds a vigorous minute twice, from the Monday of the week", () => {
-    put("2026-10-11", 99, 99); // the Sunday before: another week
+    put("2026-10-11", 99, 99);
     put(MONDAY, 10, 5);
     put(WEDNESDAY, 30, 0);
     put(SUNDAY, 0, 20);
@@ -85,13 +85,13 @@ describe("the trend lines of the Today view", () => {
     put(SUNDAY, { totalSteps: 4491, moderateIntensityMinutes: 0, vigorousIntensityMinutes: 0 });
     const trend = dayTrend(store, "MED", SUNDAY);
     expect(trend[0]).toMatchObject({ day: MONDAY, steps: 7200, minutes: 20 });
-    expect(trend[1]).toMatchObject({ steps: null, minutes: null }); // a day not stored is not a day of zero
-    expect(trend[6]).toMatchObject({ steps: 4491, minutes: 0 }); // a stored zero is a zero
+    expect(trend[1]).toMatchObject({ steps: null, minutes: null });
+    expect(trend[6]).toMatchObject({ steps: 4491, minutes: 0 });
   });
 
   it("does not look past today or back more than a week, and keeps one profile's days from another's", () => {
-    put("2026-10-11", { totalSteps: 999 }); // the day before the window
-    put("2026-10-19", { totalSteps: 888 }); // tomorrow
+    put("2026-10-11", { totalSteps: 999 });
+    put("2026-10-19", { totalSteps: 888 });
     expect(dayTrend(store, "MED", SUNDAY).map((d) => d.steps)).toEqual([null, null, null, null, null, null, null]);
     put(MONDAY, { totalSteps: 7200 });
     expect(dayTrend(store, "SAM", SUNDAY)[0].steps).toBeNull();

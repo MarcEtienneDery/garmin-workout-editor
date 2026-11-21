@@ -1,12 +1,3 @@
-/*
- * weightModel.js — the logic of the Weight view: a weight in kg or lb, the straight line through the weigh-ins and what it says (where the
- * weight is going, how fast, where it will be, how far the goal is), the week of the day shown, the weeks one by one, the calories burned and
- * eaten, what the scale measured (body fat, muscle, the split of the change into fat and lean), the fields of the daily table and the charts.
- *
- * Pure functions on what GET /api/weight returns ({ today, date, body, days: [{ day, weightKg, ... }], goalKg, intake, stored, sync }).
- * Weights arrive in kilograms and are shown in the unit the person picks. Loaded by the page as a plain script after
- * recoveryModel.js (the numbers and dates are said the same way); the tests require() it.
- */
 (function (root, factory) {
   const api = factory(typeof module === "object" && module.exports ? require("./recoveryModel.js") : root.RecoveryModel);
   if (typeof module === "object" && module.exports) module.exports = api;
@@ -21,19 +12,15 @@
   const MINUS = "−";
   const mean = (xs) => xs.reduce((a, b) => a + b, 0) / xs.length;
 
-  /** A weight given in kg, said in the unit: "181.0 lb". */
   const weight = (kg, unit, digits = 1) => (valid(kg) ? `${num(unitOf(unit).of(kg), digits)} ${unitOf(unit).label}` : "–");
-  /** A change given in kg, signed, in the unit: "+0.5 lb", "−0.7 lb"; no sign when it rounds to nothing. */
   function change(kg, unit, digits = 1) {
     if (!valid(kg)) return "–";
     const v = unitOf(unit).of(kg), rounds = Math.round(Math.abs(v) * 10 ** digits) === 0;
     return `${rounds ? "" : v > 0 ? "+" : MINUS}${num(Math.abs(v), digits)} ${unitOf(unit).label}`;
   }
 
-  // ── The daily table ─────────────────────────────────────────────────────
 
   const kcal = (key, label) => ({ key, label, unit: " kcal" });
-  /** The stored numbers of a day, in the groups the table shows; weights are said in the picked unit. */
   const GROUPS = [
     { name: "Weigh-in", fields: [
       { key: "weightKg", label: "Weight", weight: true }, { key: "bodyFatPercent", label: "Body fat", unit: " %", digits: 1 },
@@ -42,20 +29,14 @@
     { name: "Calories burned", fields: [kcal("totalKcal", "All day"), kcal("activeKcal", "Active"), kcal("bmrKcal", "At rest")] },
   ];
 
-  /** How one field of a day reads, in the unit. */
   const cell = (field, day, unit) => (field.weight ? weight(day[field.key], unit) : num(day[field.key], field.digits || 0, field.unit || ""));
 
-  /** What is stored for a day that this view lists with its raw responses. */
   const KINDS = [{ kind: "weight", label: "Weigh-in" }, { kind: "summary", label: "Daily summary (calories)" }];
 
-  // ── The line through the weigh-ins ──────────────────────────────────────
 
   const DAY_MS = 86_400_000;
-  /** What src/shared/bodyTrend.ts decides, copied here (a test holds them together): under STEADY_PER_WEEK_KG a week the weight is steady, and a trend needs this many weigh-ins over this many days. */
   const STEADY_PER_WEEK_KG = 0.1, MIN_WEIGH_INS = 3, MIN_SPAN_DAYS = 7;
-  /** The calories of a kilogram of body weight, the rule of thumb the eaten against burned card uses. */
   const KCAL_PER_KG = 7700;
-  /** The usual swing is this many standard deviations of the weigh-ins around their line. */
   const SWING_SIGMAS = 1.5;
 
   const dayNumber = (iso) => Date.parse(`${iso}T00:00:00Z`) / DAY_MS;
@@ -64,18 +45,12 @@
   const kgIn = (value, unit) => (unit === "kg" ? value : value / LB_PER_KG);
   const inUnit = (kg, unit) => unitOf(unit).of(kg);
 
-  /** A change in kg as a number in the unit with its sign and no unit: "+0.5", "−0.7", "0.0". */
   function signed(kg, unit, digits = 1) {
     if (!valid(kg)) return "–";
     const v = inUnit(kg, unit), rounds = Math.round(Math.abs(v) * 10 ** digits) === 0;
     return `${rounds ? "" : v > 0 ? "+" : MINUS}${num(Math.abs(v), digits)}`;
   }
 
-  /**
-   * The straight line (least squares) through points `{ day, v }`, as bodyTrend.ts fits it, or null with too few points or days between the
-   * first and the last. `slope` is a value a day, `at(day)` the line's value on a day, `sigma` how far the points are from it (their root mean
-   * square), `swing` what the view calls the usual day-to-day swing.
-   */
   function fitLine(points) {
     const pts = points.filter((p) => valid(p.v)).sort((a, b) => (a.day < b.day ? -1 : 1));
     if (pts.length < MIN_WEIGH_INS) return null;
@@ -90,7 +65,6 @@
 
   const weightPoints = (days) => days.filter((d) => valid(d.weightKg)).map((d) => ({ day: d.day, v: d.weightKg }));
 
-  /** What bodyTrend answers (`weighIns`, `perWeekKg`, `changeKg`, `direction`), worked out in the page, with the line itself (`fit`). */
   function trendOf(days) {
     const points = weightPoints(days), fit = fitLine(points);
     const base = { weighIns: points.length, perWeekKg: null, changeKg: null, direction: null, fit };
@@ -99,7 +73,6 @@
     return { ...base, perWeekKg, changeKg: roundTo(fit.slope * fit.span, 1), direction: Math.abs(perWeekKg) < STEADY_PER_WEEK_KG ? "steady" : perWeekKg > 0 ? "gaining" : "losing" };
   }
 
-  /** Every day of the range, oldest first, the ones nothing is stored for empty: the charts draw days, so a line through the weigh-ins stays straight. */
   function fullDays(d, range) {
     const have = new Map((d.days || []).map((x) => [x.day, x]));
     const from = RM.addDays(d.today, -(range - 1)), out = [];
@@ -107,21 +80,15 @@
     return out;
   }
 
-  // ── Where the weight is going ───────────────────────────────────────────
 
   const WORD = { losing: "Losing", steady: "Steady", gaining: "Gaining" };
 
-  /** How long the line takes to reach the goal, in words. */
   function weeksWords(weeks) {
     if (weeks < 1.5) return "about a week";
     if (weeks > 104) return "more than two years";
     return `about ${Math.round(weeks)} weeks`;
   }
 
-  /**
-   * The goal against the line: how far the line is from it and which way it moves. It says only what the line says: it is toward, away or
-   * steady, with a time to go only when the line moves toward the goal, and nothing at all of the way there without a line.
-   */
   function goalOf(goalKg, fit, lastKg, today, unit) {
     if (!valid(goalKg)) return null;
     const out = { kg: goalKg, value: weight(goalKg, unit), togo: valid(lastKg) ? `${num(Math.abs(inUnit(lastKg - goalKg, unit)), 1)} ${unitOf(unit).label} ${lastKg > goalKg ? "above" : lastKg < goalKg ? "below" : "from"}` : null, state: "none", chip: null, line: null, weeks: null };
@@ -137,11 +104,6 @@
     return { ...out, state: "away", chip: "Away from the goal", line: `The line is ${side} your goal of ${out.value}, and moving away from it.` };
   }
 
-  /**
-   * The verdict at the top of the Weight tab: Losing, Steady or Gaining with the rate a week (no good or bad: there is no way to know what the
-   * person wants without a goal, and with one it says toward or away), what the line says in a sentence, three small figures, where the line
-   * will be in four weeks, and the goal against the line. With too few weigh-ins it says what a trend needs.
-   */
   function hero(d, unit, range) {
     const t = trendOf(d.days), pts = weightPoints(d.days), n = pts.length, last = pts[n - 1], fit = t.fit;
     const out = { n, dir: t.direction, title: fit ? WORD[t.direction] : "Too early", rate: { kind: "none", text: "needs 3 weigh-ins over a week or more" }, summary: `${n} weigh-in${n === 1 ? "" : "s"} so far. A trend needs ${MIN_WEIGH_INS}, spread over at least a week.`, tiles: [], projection: null, goal: null };
@@ -160,9 +122,7 @@
     return out;
   }
 
-  // ── The week of the day shown ───────────────────────────────────────────
 
-  /** The seven days of the week the day shown is in, Monday first: the weigh-in of each and how far it sat from the line, for the strip. */
   function weekStrip(d, unit) {
     if (!d || !d.date) return [];
     const fit = fitLine(weightPoints(d.days || [])), by = new Map((d.days || []).map((x) => [x.day, x])), monday = mondayOf(d.date);
@@ -177,18 +137,11 @@
     });
   }
 
-  /** Whether ◀ (-1) or ▶ (1) can step from the day shown: the days of the range are the only ones with anything to show. */
   const canStep = (d, range, dir) => !!d && !!d.date && (dir < 0 ? d.date > RM.addDays(d.today, -(range - 1)) : d.date < d.today);
 
-  // ── The weeks one by one ────────────────────────────────────────────────
 
-  /** A change of this many kg between two weeks fills half a bar. */
   const WEEK_BAR_KG = 1.2;
 
-  /**
-   * The Monday weeks of the range, the newest first: the average weigh-in of each, how many there were, and the change from the week before
-   * (null when either has none). `fill` is the change's share of a half bar, -1 to 1.
-   */
   function byWeek(d, unit, range, limit = 8) {
     const weeks = new Map();
     for (const p of weightPoints(d.days || [])) { const m = mondayOf(p.day); weeks.set(m, [...(weeks.get(m) || []), p.v]); }
@@ -205,9 +158,7 @@
     return rows.slice(0, limit);
   }
 
-  // ── Calories ────────────────────────────────────────────────────────────
 
-  /** What Garmin counts as burned a day on the finished days, split into at rest and active, with the last 14 as bars; null with no finished day. */
   function burned(d) {
     const done = (d.days || []).filter((x) => x.day < d.today && valid(x.totalKcal));
     if (!done.length) return null;
@@ -216,11 +167,6 @@
     return { total, active, rest: active === null ? null : total - active, days: done.length, bars, max: Math.max(...bars.map((b) => b.total)), foot: `${done.length} full day${done.length === 1 ? "" : "s"} · Garmin's estimate from the watch · the last ${bars.length} days above` };
   }
 
-  /**
-   * What the food log says was eaten against what Garmin says was burned, as segments of a sentence ({ t, strong }), or null when no finished
-   * day has both. Under three such days it says they are too few to set against the scale. A day without a log is unknown, not zero, so a
-   * gap between the numbers and the scale usually means food that was not logged.
-   */
   function intakeCard(d, unit) {
     const i = d.intake;
     if (!i || !i.days || i.eatenKcal === null || i.burnedKcal === null) return null;
@@ -235,16 +181,12 @@
     return { eaten: i.eatenKcal, burned: i.burnedKcal, days: i.days, loggedDays: i.loggedDays, perWeekKg: i.days >= 3 ? perWeekKg : null, parts };
   }
 
-  // ── What the scale measured ─────────────────────────────────────────────
 
   const hasBody = (d) => (d.days || []).some((x) => valid(x.bodyFatPercent));
-  /** The Weight tab, the Body tab (only with a body composition) and the Data tab. */
   const tabs = (d) => (hasBody(d) ? ["weight", "body", "data"] : ["weight", "data"]);
 
-  /** A moving average over a few days either side, for the small pictures. */
   const smooth = (values) => values.map((_, k) => mean(values.slice(Math.max(0, k - 3), k + 4)));
 
-  /** Fat %, muscle and BMI as the Weight tab shows them: the last value, how much the line through them changed over the range, and a small picture. */
   function bodySnapshot(d, unit) {
     if (!hasBody(d)) return null;
     const row = (key, label, say, change) => {
@@ -260,10 +202,8 @@
     ].filter(Boolean);
   }
 
-  /** Fat mass and lean mass of each day with the weight and the body fat: weight times the fat share, and the rest. */
   const compositionPoints = (days) => days.filter((x) => valid(x.weightKg) && valid(x.bodyFatPercent)).map((x) => ({ day: x.day, fat: (x.weightKg * x.bodyFatPercent) / 100, lean: x.weightKg * (1 - x.bodyFatPercent / 100) }));
 
-  /** The three figures of the Body tab, as { label, value, note }. */
   function bodyTiles(d, unit) {
     const snap = bodySnapshot(d, unit) || [], by = Object.fromEntries(snap.map((r) => [r.key, r]));
     const note = (r, tail) => (r ? `${r.day}${r.change ? ` · ${r.change} over the range` : ""}${tail || ""}` : "");
@@ -274,11 +214,6 @@
     ].filter(Boolean);
   }
 
-  /**
-   * Where the change came from: the change of the fitted line through fat mass, through lean mass and through the weight, over the days the
-   * scale measured both; null without a line for both. `share` (the part of a loss that was fat) is given only when the weight fell and both fat
-   * and lean mass fell with it; when one fell and the other rose it says so in the note instead of putting a number to it.
-   */
   function came(d, unit) {
     const pts = compositionPoints(d.days || []), fat = fitLine(pts.map((p) => ({ day: p.day, v: p.fat }))), lean = fitLine(pts.map((p) => ({ day: p.day, v: p.lean })));
     if (!fat || !lean) return null;
@@ -293,9 +228,7 @@
     return { rows: [row("Fat mass", "weight × body fat", df), row("Lean mass", "the rest", dl), row("Weight", "fat + lean", tot)], share, line, fat, lean, firstDay: pts[0].day };
   }
 
-  // ── The charts ──────────────────────────────────────────────────────────
 
-  /** The weigh-ins as dots, the line through them, the usual swing as a band, and the goal; for TrendCharts, over `fullDays`. */
   function weightSpec(d, unit) {
     const u = unitOf(unit), fit = fitLine(weightPoints(d.days || []));
     return {
@@ -309,7 +242,6 @@
     };
   }
 
-  /** The Body tab's pictures: fat mass and lean mass since the first weigh-in that has both (two series), body fat, and muscle. */
   function bodySpecs(d, unit) {
     const u = unitOf(unit), days = d.days || [], specs = [], c = came(d, unit), pts = compositionPoints(days), byDay = new Map(pts.map((p) => [p.day, p]));
     if (c) {
@@ -339,14 +271,11 @@
     return specs;
   }
 
-  // ── The goal, typed in the unit ─────────────────────────────────────────
 
-  /** A weight typed in the unit (a comma may be the decimal point) as kilograms, NaN when it is not a number above 0. */
   function parseWeight(text, unit) {
     const n = Number(String(text == null ? "" : text).trim().replace(",", "."));
     return String(text == null ? "" : text).trim() && Number.isFinite(n) && n > 0 ? kgIn(n, unit) : NaN;
   }
-  /** A weight in kg as it is typed in a box in the unit: "176.4", "" when there is none. */
   const weightInput = (kg, unit) => (valid(kg) ? String(roundTo(inUnit(kg, unit), 1)) : "");
 
   return {

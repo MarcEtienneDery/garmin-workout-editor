@@ -16,7 +16,7 @@ describe("the header status", () => {
   it("names what is syncing, in the order of the views", () => {
     const pill = SA.summary({ now: AT, profiles: { MED: { syncing: ["renpho", "activities"], limit: null } } });
     expect(pill).toEqual(expect.objectContaining({ kind: "syncing", long: "Syncing activities and weight…", short: "Syncing" }));
-    expect(pill.title).not.toMatch(/ for MED/); // one profile: no need to name it
+    expect(pill.title).not.toMatch(/ for MED/);
     expect(SA.busy({ now: AT, profiles: { MED: { syncing: ["wellness"], limit: null } } })).toBe(true);
   });
 

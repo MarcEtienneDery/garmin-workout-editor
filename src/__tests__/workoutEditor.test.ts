@@ -172,7 +172,6 @@ describe("WorkoutEditor", () => {
 
       const steps = transform(rawSteps);
 
-      // Should merge rest into previous step
       expect(steps.length).toBe(1);
       expect(steps[0].exerciseName).toBe("Bench Press");
       expect(steps[0].targetValueOne).toBe(4);
@@ -191,12 +190,11 @@ describe("WorkoutEditor", () => {
     it("should convert Garmin weight format", () => {
       const transform = (editor as any).transformWorkoutSteps.bind(editor);
 
-      // Test 1: Weight already in pounds
       const stepsInPounds = [
         {
           type: "ExecutableStepDTO",
           stepType: { stepTypeKey: "interval" },
-          weightValue: 99.99947750443862, // Already in pounds
+          weightValue: 99.99947750443862,
           weightUnit: { unitKey: "pound", factor: 453.59237 },
           stepOrder: 0,
           endCondition: { conditionTypeKey: "reps" },
@@ -205,15 +203,13 @@ describe("WorkoutEditor", () => {
       ];
 
       let steps = transform(stepsInPounds);
-      // Weight already in pounds, should round to 100
       expect(steps[0].weight).toBe(100);
 
-      // Test 2: Weight in grams (needs conversion)
       const stepsInGrams = [
         {
           type: "ExecutableStepDTO",
           stepType: { stepTypeKey: "interval" },
-          weightValue: 102261, // Garmin weight value in grams
+          weightValue: 102261,
           stepOrder: 0,
           endCondition: { conditionTypeKey: "reps" },
           endConditionValue: 5,
@@ -221,7 +217,6 @@ describe("WorkoutEditor", () => {
       ];
 
       steps = transform(stepsInGrams);
-      // Weight should be converted from grams to lbs (~225)
       expect(steps[0].weight).toBeCloseTo(225, 0);
     });
   });
@@ -238,16 +233,12 @@ describe("WorkoutEditor", () => {
     it("should convert Garmin weight to lbs", () => {
       const convert = (editor as any).convertGarminWeight.bind(editor);
 
-      // Test zero weight
       expect(convert(0)).toBe(0);
       
-      // Test weight already in pounds
       expect(convert(100, { unitKey: "pound", factor: 453.59237 })).toBe(100);
       expect(convert(99.99947750443862, { unitKey: "pound" })).toBe(100);
-      // 100 kg typed is 220.46 lb in the plan, which Garmin keeps as 99 999 g: it reads back as itself, not as 220 lb (99.8 kg)
       expect(convert(99999 / 453.59237, { unitKey: "pound" })).toBe(220.46);
 
-      // Test weight in grams (needs conversion)
       expect(convert(453.59237)).toBe(1);
       expect(convert(102058)).toBe(225);
       expect(convert(100000)).toBe(220.46);
@@ -290,7 +281,6 @@ describe("WorkoutEditor", () => {
 
       const transformed = (editor as any).transformWorkoutSteps(mockSteps);
 
-      // Should have 2 steps: warmup + interval (rest merged)
       expect(transformed).toHaveLength(2);
       expect(transformed[0].stepType).toBe("warmup");
       expect(transformed[0].stepOrder).toBe(1);
@@ -328,7 +318,6 @@ describe("WorkoutEditor", () => {
 
       const transformed = (editor as any).transformWorkoutSteps(mockSteps);
 
-      // Should have 2 steps: interval with merged rest + separate rest
       expect(transformed).toHaveLength(2);
       expect(transformed[0].restTimeSeconds).toBe(90);
       expect(transformed[1].stepType).toBe("rest");
@@ -342,7 +331,7 @@ describe("WorkoutEditor", () => {
           stepOrder: 1,
           stepType: { stepTypeKey: "interval" },
           exerciseName: "BARBELL_DEADLIFT",
-          weightValue: 102261, // ~225 lbs in tenths of grams
+          weightValue: 102261,
           endCondition: { conditionTypeKey: "reps" },
           endConditionValue: 5,
         },
@@ -440,7 +429,6 @@ describe("WorkoutEditor", () => {
 
       const transformed = (editor as any).transformWorkoutSteps(mockSteps);
 
-      // Should be renumbered 1, 2 (rest merged into interval)
       expect(transformed[0].stepOrder).toBe(1);
       expect(transformed[1].stepOrder).toBe(2);
     });
@@ -482,7 +470,6 @@ describe("WorkoutEditor", () => {
 
       const transformed = (editor as any).transformWorkoutSteps(mockSteps);
 
-      // Should have 3 steps: warmup + interval + recovery (both with numberOfRepeats=4)
       expect(transformed).toHaveLength(3);
       expect(transformed[1].numberOfRepeats).toBe(4);
       expect(transformed[1].distanceMeters).toBe(1000);

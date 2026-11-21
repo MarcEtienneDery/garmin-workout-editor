@@ -1,17 +1,9 @@
-/**
- * Signing up with an invite, and the welcome flow a new profile sees once.
- *
- * The admin makes invites in Settings (here mostly through the API, once through the page); a person opens the link or types the code, makes a
- * profile and is signed in as it. Wrong or dead codes are counted per client address by the server (ten in a minute and it waits), and every
- * test here comes from the same address, so each one makes at most a wrong code or a dead link, never a run of them.
- */
 import type { APIRequestContext, Page } from "@playwright/test";
 import { test, expect, loginAs, ready, ADMIN_TOKEN, PASSWORD } from "../support/fixtures";
 
 let counter = 0;
 const newName = () => `s${Date.now().toString(36)}${(counter++).toString(36)}${Math.random().toString(36).slice(2, 5)}`;
 
-/** An invite made through the API: its code, as XXXX-XXXX-XXXX. */
 async function makeInvite(admin: APIRequestContext, body: Record<string, unknown> = {}): Promise<string> {
   const res = await admin.post("/api/invites", { data: { action: "create", ...body } });
   expect(res.status()).toBe(201);
@@ -19,7 +11,6 @@ async function makeInvite(admin: APIRequestContext, body: Record<string, unknown
   return code.replace(/(.{4})(?=.)/g, "$1-");
 }
 
-/** Fill in the sign-up form (the code is filled in already when the page was opened from a link). */
 async function fillSignup(page: Page, name: string, password = PASSWORD, code?: string): Promise<void> {
   if (code !== undefined) await page.locator("#signupCode").fill(code);
   await page.locator("#signupName").fill(name);
@@ -27,7 +18,6 @@ async function fillSignup(page: Page, name: string, password = PASSWORD, code?: 
   await page.locator("#signupPass2").fill(password);
 }
 
-/** The welcome dialog is up on its first step. */
 async function welcomeOpen(page: Page, name: string): Promise<void> {
   await expect(page.locator("#ftue")).toBeVisible({ timeout: 20_000 });
   await expect(page.locator("#ftueTitle")).toHaveText(`Welcome, ${name}`);
@@ -42,14 +32,14 @@ test.describe("the sign-up form", () => {
     await expect(page.locator("#loginForm")).toBeHidden();
     await expect(page.locator("#signupCode")).toHaveValue(code);
     await expect(page.locator("#signupNote")).toHaveText("Your invite is ready. Choose a profile name and a password.");
-    expect(page.url()).toContain("invite="); // kept while the form is open: a reload does not lose it
+    expect(page.url()).toContain("invite=");
 
     await fillSignup(page, name);
     await page.locator("#signupSubmit").click();
     await ready(page);
     await expect(page.locator("#signupForm")).toBeHidden();
     await expect(page.locator("#accountName")).toHaveText(name);
-    expect(page.url()).not.toContain("invite="); // the code leaves the address once it is used
+    expect(page.url()).not.toContain("invite=");
     await welcomeOpen(page, name);
   });
 
@@ -93,7 +83,7 @@ test.describe("the sign-up form", () => {
     await page.locator("#signupSubmit").click();
     await expect(problem).toHaveText("The two passwords are not the same.");
     await expect(page.locator("#signupCode")).toHaveValue(code);
-    await page.locator("#signupName").fill("alice"); // taken, whatever the case: the server says so and the code is still good
+    await page.locator("#signupName").fill("alice");
     await page.locator("#signupPass2").fill("long enough");
     await page.locator("#signupSubmit").click();
     await expect(problem).toHaveText("The name alice is taken. Choose another.");
@@ -126,7 +116,6 @@ test.describe("the sign-up form", () => {
 });
 
 test.describe("the welcome flow", () => {
-  /** Sign a new profile up through the API and open the page as it, on its welcome. */
   async function newcomer(page: Page, admin: APIRequestContext): Promise<string> {
     const code = await makeInvite(admin);
     const name = newName();
@@ -153,7 +142,7 @@ test.describe("the welcome flow", () => {
     await expect(page.locator("#ftueNext")).toHaveText("Skip for now");
     await page.locator("#ftueBack").click();
     await expect(page.locator("#ftueTitle")).toHaveText("Daily food goals");
-    await expect(page.locator("#ftueBody input").nth(0)).toHaveValue("2100"); // what was saved is what shows when coming back
+    await expect(page.locator("#ftueBody input").nth(0)).toHaveValue("2100");
     await page.locator("#ftueNext").click();
     await page.locator("#ftueNext").click();
 
@@ -181,7 +170,7 @@ test.describe("the welcome flow", () => {
     await page.locator("#accountBtn").click();
     await page.locator("#welcomeBtn").click();
     await welcomeOpen(page, name);
-    await page.keyboard.press("Escape"); // closing it any way is a skip
+    await page.keyboard.press("Escape");
     await expect(page.locator("#ftue")).toBeHidden();
   });
 
@@ -200,7 +189,7 @@ test.describe("the welcome flow", () => {
     await ready(page);
     await expect(page.locator("#ftue")).toBeHidden();
     await page.locator("#accountBtn").click();
-    await expect(page.locator("#welcomeBtn")).toBeVisible(); // a profile can still take the tour
+    await expect(page.locator("#welcomeBtn")).toBeVisible();
   });
 });
 
@@ -213,7 +202,7 @@ test.describe("the admin's invites", () => {
       await ready(adminPage);
       await adminPage.locator("#accountBtn").click();
       await adminPage.locator("#openSettings").click();
-      await adminPage.locator('#sbody .snav [data-section="profiles"]').click(); // the invites are kept with the profiles (admin only)
+      await adminPage.locator('#sbody .snav [data-section="profiles"]').click();
       const card = adminPage.locator(".scard", { has: adminPage.getByRole("heading", { name: /^Invites/ }) });
       await expect(card).toBeVisible({ timeout: 20_000 });
 
@@ -228,12 +217,10 @@ test.describe("the admin's invites", () => {
       const link = (await row.locator(".ilink").textContent()) ?? "";
       expect(link).toMatch(/\/\?invite=[A-Z2-9]{4}-[A-Z2-9]{4}-[A-Z2-9]{4}$/);
 
-      // the link opens the sign-up form of a visitor who is signed out
       await page.goto(new URL(link).pathname + new URL(link).search);
       await expect(page.locator("#signupForm")).toBeVisible();
       await expect(page.locator("#signupNote")).toContainText("Your invite is ready");
 
-      // cancelling it stops it
       await row.getByRole("button", { name: "Cancel" }).click();
       await adminPage.locator("#dlgOk").click();
       await expect(row).toContainText("Cancelled");

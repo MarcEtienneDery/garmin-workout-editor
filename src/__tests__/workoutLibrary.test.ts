@@ -1,4 +1,3 @@
-// A tiny in-memory Garmin: createWorkout stores what it is sent, the way Garmin does.
 const mockGarmin = {
   library: new Map<number, any>(),
   nextId: 1000,
@@ -10,10 +9,8 @@ const mockGarmin = {
   failUnschedule: false,
   failDeleteId: null as number | null,
   calls: { getWorkouts: 0, getWorkoutDetail: 0 },
-  /** The months whose calendar was read, as YYYY-MM. */
   calendarMonths: [] as string[],
 };
-/** Garmin's id of a calendar entry: kept off the entries' own fields, so the tests compare them by workout and day. */
 const scheduleIds = new WeakMap<object, number>();
 
 jest.mock("@flow-js/garmin-connect", () => ({
@@ -54,7 +51,6 @@ jest.mock("@flow-js/garmin-connect", () => ({
         scheduleIds.set(entry, mockGarmin.nextScheduleId++);
         mockGarmin.scheduled.push(entry);
       }),
-      // the calendar of a month (counted from 0, as Garmin does): its scheduled workouts next to something else on the same days
       getMonthCalendarEvents: jest.fn(async (year: number, month: number) => {
         const prefix = `${year}-${String(month + 1).padStart(2, "0")}-`;
         mockGarmin.calendarMonths.push(prefix.slice(0, 7));
@@ -202,7 +198,7 @@ describe("workouts on Garmin", () => {
     await checkWorkoutSync("TEST", plan);
     expect(mockGarmin.calls).toEqual({ getWorkouts: 1, getWorkoutDetail: 1 });
 
-    await checkWorkoutSync("TEST", plan, true); // refresh re-lists, but the workout itself is unchanged
+    await checkWorkoutSync("TEST", plan, true);
     expect(mockGarmin.calls).toEqual({ getWorkouts: 2, getWorkoutDetail: 1 });
 
     mockGarmin.library.get(Number(a)).updatedDate = "edited in the Garmin app";
@@ -243,7 +239,6 @@ describe("workouts on Garmin", () => {
 
   describe("deleting or replacing one workout of many", () => {
     const named = (i: number) => ({ ...squat(), workoutName: `Workout ${i}` });
-    /** Save `n` workouts and check them once, so the listing and every workout's steps are cached; the counters then start from zero. */
     const checked = async (n: number) => {
       const plan: any[] = [];
       for (let i = 0; i < n; i++) plan.push({ ...named(i), workoutId: (await saveWorkout("TEST", named(i))).workoutId });
@@ -260,13 +255,13 @@ describe("workouts on Garmin", () => {
       const rest = plan.slice(1);
       expect((await checkWorkoutSync("TEST", rest)).map((s) => s.state)).toEqual(["synced", "synced", "synced", "synced"]);
       expect((await listLibraryWorkouts("TEST")).map((w) => w.workoutName)).toEqual(["Workout 1", "Workout 2", "Workout 3", "Workout 4"]);
-      expect((await checkWorkoutSync("TEST", [plan[0]]))[0].state).toBe("missing"); // the deleted one is gone, not served from the cache
+      expect((await checkWorkoutSync("TEST", [plan[0]]))[0].state).toBe("missing");
       expect(mockGarmin.calls.getWorkouts).toBe(0);
     });
 
     it("lists again after a replace, but fetches only the replaced workout's steps", async () => {
       const plan = await checked(5);
-      const { workoutId } = await saveWorkout("TEST", plan[0]); // deleted and recreated under a new id
+      const { workoutId } = await saveWorkout("TEST", plan[0]);
       plan[0].workoutId = workoutId;
       mockGarmin.calls = { getWorkouts: 0, getWorkoutDetail: 0 };
 
@@ -276,7 +271,7 @@ describe("workouts on Garmin", () => {
 
     it("looks at Garmin again when a delete fails, since the workout may be gone already", async () => {
       const plan = await checked(2);
-      mockGarmin.library.delete(Number(plan[0].workoutId)); // removed in the Garmin app
+      mockGarmin.library.delete(Number(plan[0].workoutId));
       await expect(deleteLibraryWorkout("TEST", plan[0].workoutId)).rejects.toThrow(/404/);
       expect((await listLibraryWorkouts("TEST")).map((w) => w.workoutName)).toEqual(["Workout 1"]);
       expect(mockGarmin.calls.getWorkouts).toBe(1);
@@ -344,7 +339,7 @@ describe("workouts on Garmin", () => {
         expect(mockGarmin.library.size).toBe(1);
         const data = JSON.parse(getStore().get("workout-plans/part.json")!.text);
         expect(data.workouts.map((w: any) => w.workoutName)).toEqual([squat().workoutName, "Second"]);
-        expect(data.weekStart).toBe("2026-10-12"); // the rest of the file is kept
+        expect(data.weekStart).toBe("2026-10-12");
       });
 
       it("schedules, and uploads and schedules, only those asked for", async () => {
@@ -381,7 +376,6 @@ describe("workouts on Garmin", () => {
   describe("archiving a plan", () => {
     const planDoc = (workouts: any[]) => JSON.stringify({ generatedAt: "2026-10-11T00:00:00Z", weekStart: "2026-10-12", weekEnd: "2026-10-18", notes: "base block", workouts }, null, 2);
     const idsIn = (logical: string) => JSON.parse(getStore().get(logical)!.text).workouts.map((w: any) => w.workoutId);
-    /** Put a plan of `n` uploaded workouts in the store; the ids are the ones Garmin gave them. */
     const uploaded = async (logical: string, n: number, names = (i: number) => `Workout ${i}`) => {
       const workouts: any[] = [];
       for (let i = 0; i < n; i++) workouts.push({ ...squat(), workoutName: names(i), workoutId: (await saveWorkout("TEST", { ...squat(), workoutName: names(i) })).workoutId });
@@ -409,7 +403,7 @@ describe("workouts on Garmin", () => {
       const doc = JSON.parse(getStore().get("workout-plans/arch1.json")!.text);
       expect(doc).toMatchObject({ notes: "base block", weekStart: "2026-10-12" });
       expect(doc.workouts.map((w: any) => w.workoutName)).toEqual(["Workout 0", "Workout 1", "Workout 2"]);
-      expect(doc.workouts[0].steps).toHaveLength(2); // the workouts themselves are untouched
+      expect(doc.workouts[0].steps).toHaveLength(2);
     });
 
     it("needs no Garmin for a plan with nothing on it, and is the same when asked twice", async () => {
@@ -424,7 +418,7 @@ describe("workouts on Garmin", () => {
 
     it("lets go of a workout Garmin no longer has, and says so", async () => {
       const [a, b] = await uploaded("workout-plans/arch3.json", 2);
-      mockGarmin.library.delete(a); // removed in the Garmin app
+      mockGarmin.library.delete(a);
       const result = await archivePlan("TEST", "workout-plans/arch3.json");
       expect(result.alreadyGone.map((w) => w.workoutId)).toEqual([a]);
       expect(result.removedFromGarmin.map((w) => w.workoutId)).toEqual([b]);
@@ -439,7 +433,7 @@ describe("workouts on Garmin", () => {
       expect(result.keptOnGarmin).toEqual([expect.objectContaining({ workoutId: shared, usedBy: ["workout-plans/other.json"] })]);
       expect(result.removedFromGarmin.map((w) => w.workoutId)).toEqual([own]);
       expect([...mockGarmin.library.keys()]).toEqual([shared]);
-      expect(idsIn("workout-plans/other.json")).toEqual([shared]); // the other plan still points at a workout that exists
+      expect(idsIn("workout-plans/other.json")).toEqual([shared]);
       expect(idsIn("workout-plans/arch4.json")).toEqual([undefined, undefined]);
     });
 
@@ -471,14 +465,14 @@ describe("workouts on Garmin", () => {
     it("keeps the plan archived when it is overwritten, and refuses to put an archived plan's workouts on Garmin", async () => {
       await uploaded("workout-plans/arch7.json", 1);
       await archivePlan("TEST", "workout-plans/arch7.json");
-      getStore().put("workout-plans/arch7.json", planDoc([squat()]), { source: "mcp" }); // write_plan, say
+      getStore().put("workout-plans/arch7.json", planDoc([squat()]), { source: "mcp" });
       expect(getStore().head("workout-plans/arch7.json")!.archivedAt).not.toBeNull();
 
       await expect(uploadPlan("TEST", "workout-plans/arch7.json")).rejects.toThrow(/archived/);
       await expect(schedulePlan("TEST", "workout-plans/arch7.json")).rejects.toThrow(/archived/);
       await expect(uploadAndSchedulePlan("TEST", "workout-plans/arch7.json")).rejects.toThrow(/archived/);
       await expect(sendPlanToDevice("TEST", "workout-plans/arch7.json")).rejects.toThrow(/archived/);
-      expect((await uploadPlan("TEST", "workout-plans/arch7.json", true)).dryRun).toBe(true); // checking it sends nothing
+      expect((await uploadPlan("TEST", "workout-plans/arch7.json", true)).dryRun).toBe(true);
       expect(mockGarmin.library.size).toBe(0);
 
       expect(unarchivePlan("workout-plans/arch7.json")).toMatchObject({ archived: false });
@@ -624,7 +618,7 @@ describe("workouts on Garmin", () => {
         await scheduleWorkout("TEST", workoutId!, "2026-11-04");
         await scheduleWorkout("TEST", workoutId!, "2026-11-11");
         expect(await moveScheduledWorkout("TEST", workoutId!, "2026-11-04", "2026-11-06")).toEqual({ moved: true });
-        expect(mockGarmin.scheduled).toEqual([{ workoutId, date: "2026-11-11" }, { workoutId, date: "2026-11-06" }]); // the other day stays
+        expect(mockGarmin.scheduled).toEqual([{ workoutId, date: "2026-11-11" }, { workoutId, date: "2026-11-06" }]);
         expect(mockGarmin.calendarMonths).toEqual(["2026-11"]);
       });
 
@@ -639,7 +633,7 @@ describe("workouts on Garmin", () => {
       it("leaves Garmin alone when its calendar does not have the workout on the old day", async () => {
         const { workoutId } = await createWorkout("TEST", run());
         const other = await createWorkout("TEST", { ...run(), workoutName: "Other" });
-        await scheduleWorkout("TEST", other.workoutId!, "2026-11-04"); // another workout on that day is not this one
+        await scheduleWorkout("TEST", other.workoutId!, "2026-11-04");
         await scheduleWorkout("TEST", workoutId!, "2026-11-05");
         expect(await moveScheduledWorkout("TEST", workoutId!, "2026-11-04", "2026-11-06")).toEqual({ moved: false });
         expect(mockGarmin.scheduled).toEqual([{ workoutId: other.workoutId, date: "2026-11-04" }, { workoutId, date: "2026-11-05" }]);

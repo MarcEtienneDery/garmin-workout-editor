@@ -1,15 +1,9 @@
-/**
- * The edges of every view on a desktop: the bar, the week, the notes and the page of a view share one column that is centred on a wide
- * screen (up to 1280 px), nothing runs to the edge of the window, and nothing makes the page scroll sideways. alice's data is read only;
- * the Workouts view has no Garmin login to show it, so its library is made up here (see withGarmin).
- */
 import { test, expect, openView, type Page } from "../support/fixtures";
 import { withGarmin } from "../support/garmin";
 
 test.describe.configure({ timeout: 90_000 });
 
 const WIDTHS = [1920, 1440, 1280, 1024];
-/** The parts of a view that stack in one column: they must start and end where the others do. */
 const COLUMN: Record<string, string[]> = {
   today: ["#tbar", "#tbody"],
   recovery: ["#rbar", "#rweek", "#rbody"],
@@ -46,7 +40,6 @@ for (const [view, parts] of Object.entries(COLUMN)) {
           expect(Math.abs(box.right - first.right), `${box.selector} ends with ${first.selector}`).toBeLessThanOrEqual(2);
         }
         if (width >= 1440) {
-          // the rail is 80 px wide: the column is centred in what is left of the window
           const space = width - 80;
           expect(first.right - first.left, "a column of at most 1280 px").toBeLessThanOrEqual(1281);
           expect(Math.abs(first.left - 80 - (width - first.right)), "the same space on both sides").toBeLessThanOrEqual(2);
@@ -65,7 +58,6 @@ test.describe("the Calendar bar", () => {
       await openView(alice, "calendar");
       const [refresh, grid] = await boxes(alice, ["#cRefresh", "#cscroll"]);
       expect(width - refresh.right).toBeGreaterThanOrEqual(8);
-      // on the narrow screen the week is a column of its own with a 16 px margin; on the wide one the button ends where the grid under it does
       if (width <= 1180) expect(width - refresh.right).toBeGreaterThanOrEqual(16);
       else expect(Math.abs(refresh.right - grid.right)).toBeLessThanOrEqual(2);
       expect(await noSidewaysScroll(alice)).toBe(true);
@@ -87,7 +79,6 @@ test.describe("the sign-in card", () => {
   });
 });
 
-/** Six workouts in the library, as a profile with a Garmin login would see them. */
 const library = (profile: string) =>
   [
     { key: "g:101", workoutId: 101, workoutName: "Intervals", workoutType: "running", updatedDate: "2026-11-01", plans: [], dates: [], state: "garmin-only" },

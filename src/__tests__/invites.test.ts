@@ -98,7 +98,6 @@ describe("signing up", () => {
     expect(store.profiles.checkWebPassword("sam", "long enough")).toBe(true);
     expect(store.profiles.welcomePending("sam")).toBe(true);
     expect(store.invites.list(NOW)[0]).toMatchObject({ uses: 1, joined: ["sam"] });
-    // not the same rule as a profile the admin adds: that one has nothing pending
     store.profiles.create("added", "long enough");
     expect(store.profiles.welcomePending("added")).toBe(false);
   });
@@ -150,7 +149,6 @@ describe("signing up", () => {
     const store = getStore();
     const code = createInvite(store, {}, NOW);
     join(code, "first");
-    // a second sign-up that passed the check before the first one finished: the use is refused and the profile goes with it
     jest.spyOn(store.invites, "check").mockReturnValueOnce("active");
     expect(() => join(code, "second")).toThrow(InviteError);
     expect(store.profiles.has("second")).toBe(false);

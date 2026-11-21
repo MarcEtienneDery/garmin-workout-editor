@@ -1,11 +1,3 @@
-/*
- * workoutListModel.js — how the Workouts view orders and narrows its list: sort keys, filters, and the counts the
- * filter controls show.
- *
- * Pure functions on the rows GET /api/workouts returns ({ key, workoutName, workoutType, updatedDate, plans, dates,
- * state }). The row's sync state comes from the page (the checks against Garmin arrive one plan at a time), so the
- * functions take it as `stateOf`. The page loads this as a plain script before its own code and the tests require() it.
- */
 (function (root, factory) {
   const api = factory();
   if (typeof module === "object" && module.exports) module.exports = api;
@@ -13,15 +5,12 @@
 })(typeof self !== "undefined" ? self : this, function () {
   "use strict";
 
-  const compare = (a, b) => String(a).localeCompare(String(b), undefined, { sensitivity: "base", numeric: true }); // "W2" before "W10"
+  const compare = (a, b) => String(a).localeCompare(String(b), undefined, { sensitivity: "base", numeric: true });
   const typeOf = (r) => r.workoutType || "other";
 
-  /** What the status filter and the status sort make of a row's state. */
   const GROUP = { modified: "attention", missing: "attention", error: "attention", synced: "ok", "not-uploaded": "notuploaded", "garmin-only": "garminonly", checking: "checking" };
-  /** Needing a look first: workouts that are gone from Garmin or cannot be checked, then those that differ, then those never uploaded. */
   const RANK = { missing: 0, error: 1, modified: 2, "not-uploaded": 3, checking: 4, "garmin-only": 5, synced: 6 };
 
-  /** The first day from today on that the plans schedule the workout, or null. */
   function nextDate(row, today) {
     return (row.dates || []).filter((d) => d >= today).sort()[0] || null;
   }
@@ -34,7 +23,6 @@
     scheduled: "Next scheduled",
   };
 
-  /** A sorted copy. `updated` keeps Garmin's own order (the most recently updated first) for rows that carry no date. */
   function sortRows(rows, key, { stateOf, today }) {
     const byName = (a, b) => compare(a.workoutName, b.workoutName);
     const order = {
@@ -50,11 +38,6 @@
     return [...rows].sort(order);
   }
 
-  /**
-   * The rows that pass every filter that is set.
-   * query: words of the name, type and plan files | status: all, attention, ok, notuploaded, garminonly
-   * plan: all, none or a plan path | types: a Set of types (empty: any) | upcoming: scheduled today or later
-   */
   function filterRows(rows, { query, status, plan, types, upcoming } = {}, { stateOf, today }) {
     const words = (query || "").trim().toLowerCase().split(/\s+/).filter(Boolean);
     return rows.filter((r) => {
@@ -70,28 +53,24 @@
     });
   }
 
-  /** [type, count] by count. */
   function typeCounts(rows) {
     const counts = new Map();
     for (const r of rows) counts.set(typeOf(r), (counts.get(typeOf(r)) || 0) + 1);
     return [...counts].sort((a, b) => b[1] - a[1] || compare(a[0], b[0]));
   }
 
-  /** The plan files the rows come from, with how many workouts each holds, by path. */
   function planCounts(rows) {
     const counts = new Map();
     for (const r of rows) for (const p of new Set(r.plans.map((x) => x.path))) counts.set(p, (counts.get(p) || 0) + 1);
     return [...counts].sort((a, b) => compare(a[0], b[0])).map(([path, count]) => ({ path, count }));
   }
 
-  /** How many rows each status of the strip above the list holds: all, attention, ok, notuploaded, garminonly, and checking while Garmin has not answered. */
   function statusCounts(rows, stateOf) {
     const counts = { all: rows.length, attention: 0, ok: 0, notuploaded: 0, garminonly: 0, checking: 0 };
     for (const r of rows) counts[GROUP[stateOf(r)] || "checking"]++;
     return counts;
   }
 
-  /** Is any filter set (the search included)? */
   const isFiltered = ({ query, status, plan, types, upcoming } = {}) =>
     !!((query || "").trim() || (status && status !== "all") || (plan && plan !== "all") || (types && types.size) || upcoming);
 

@@ -26,7 +26,6 @@ const item = (n: number, daysAgo: number, typeKey = n % 2 ? "running" : "strengt
   averageHR: 140 + n,
 });
 
-/** Garmin: a list of activities, newest first, with details that carry the RPE. */
 function fakeGarmin(items: any[], splits: (id: string) => Promise<unknown> = async () => ({ lapDTOs: [] })) {
   const calls = { list: [] as number[], detail: [] as string[], chart: [] as string[] };
   let listError: Error | null = null;
@@ -77,27 +76,27 @@ afterEach(async () => {
 });
 
 describe("get_activities", () => {
-  const five = () => [item(5, 1), item(4, 2), item(3, 3), item(2, 4), item(1, 5)]; // newest first
+  const five = () => [item(5, 1), item(4, 2), item(3, 3), item(2, 4), item(1, 5)];
 
   it("stores the history on the first call and answers from it in the slim format, with the details of what it returns", async () => {
     const garmin = fakeGarmin(five());
     const out = await ask();
-    expect(garmin.calls.list).toEqual([0, 5]); // the newest end, then the rest, up to the end of the history
+    expect(garmin.calls.list).toEqual([0, 5]);
     expect(garmin.calls.detail.sort()).toEqual(["5001", "5002", "5003", "5004", "5005"]);
-    expect(out.activities.map((a: any) => a.id)).toEqual([5005, 5004, 5003, 5002, 5001]); // newest first
+    expect(out.activities.map((a: any) => a.id)).toEqual([5005, 5004, 5003, 5002, 5001]);
     expect(out.activities[0]).toEqual(expect.objectContaining({ activityType: "running", directWorkoutFeel: 70, directWorkoutRpe: 40, distance: 10 }));
     expect(out).toEqual(expect.objectContaining({ totalActivities: 5, total: 5, truncated: false }));
     expect(out.sync).toEqual(expect.objectContaining({ activities: 5, withDetails: 5, historyComplete: true, pendingDetails: 0, added: 5 }));
     expect(getStore().activities.counts(PROFILE).total).toBe(5);
-    expect(getStore().head(`data/${PROFILE}/activities.json`)).toBeUndefined(); // no document is written any more
+    expect(getStore().head(`data/${PROFILE}/activities.json`)).toBeUndefined();
   });
 
   it("asks Garmin only for what is new on the next call, and for no details it has", async () => {
     const items = five();
     const garmin = fakeGarmin(items);
     await ask();
-    await settled(); // the background job fetches the charts too
-    expect(garmin.calls.chart).toHaveLength(5); // every activity's charts came with the history
+    await settled();
+    expect(garmin.calls.chart).toHaveLength(5);
     garmin.calls.list.length = 0;
     garmin.calls.detail.length = 0;
     garmin.calls.chart.length = 0;
@@ -112,7 +111,7 @@ describe("get_activities", () => {
     expect(out.activities[0].id).toBe(5006);
     expect(garmin.calls.detail).toEqual(["5006"]);
     await settled();
-    expect(garmin.calls.chart).toEqual(["5006"]); // the background job takes the new activity's charts
+    expect(garmin.calls.chart).toEqual(["5006"]);
   });
 
   it("returns what is stored at once and fills the details in the background when asked for none", async () => {
@@ -140,7 +139,7 @@ describe("get_activities", () => {
     expect((await ask({ type: "running" })).activities.map((a: any) => a.activityType)).toEqual(["running", "running", "running"]);
     const day = (n: number) => when(n).slice(0, 10);
     const out = await ask({ weekStart: day(4), weekEnd: day(2) });
-    expect(out.activities.map((a: any) => a.id)).toEqual([5004, 5003, 5002]); // 2, 3 and 4 days ago: the end day counts
+    expect(out.activities.map((a: any) => a.id)).toEqual([5004, 5003, 5002]);
   });
 
   it("answers from what is stored when Garmin refuses, and says so", async () => {
@@ -152,7 +151,7 @@ describe("get_activities", () => {
     expect(out.activities).toHaveLength(5);
     expect(out.sync.error).toMatch(/429/);
 
-    garmin.failList(null); // Garmin answers again: the stale error must not stay on every later answer
+    garmin.failList(null);
     const later = await ask();
     expect(later.sync.error).toBeNull();
     expect(later.sync.note).toBeUndefined();
@@ -161,7 +160,7 @@ describe("get_activities", () => {
   it("copes with two calls at once: they do not release each other's lease", async () => {
     fakeGarmin(five());
     const [a, b] = await Promise.all([ask({ includeDetails: false }), ask({ includeDetails: false })]);
-    expect(a.activities.length + b.activities.length).toBeGreaterThanOrEqual(5); // one may answer while the other is still listing
+    expect(a.activities.length + b.activities.length).toBeGreaterThanOrEqual(5);
     await settled();
     const status = (await ask({ includeDetails: false })).sync;
     expect(status).toEqual(expect.objectContaining({ activities: 5, withDetails: 5, historyComplete: true, error: null, syncing: false }));
@@ -185,13 +184,11 @@ describe("get_activities", () => {
     await ask({ includeDetails: false });
     await settled();
     const table = getStore().activities;
-    // 5001: the splits call failed with a 500, so no chart was stored and the activity is still waiting
     expect(table.getChart(PROFILE, "5001")).toBeNull();
     expect(table.needingChart(PROFILE).map((a) => a.id)).toEqual(["5001"]);
-    // 5002: Garmin has no laps for it, which is an answer: the chart is stored without them
     expect(table.getChart(PROFILE, "5002")).toEqual(expect.objectContaining({ splits: null }));
 
-    expect((await fetchChartNow(PROFILE, "5001")).fetched).toBe(1); // tried again, and this time it answers
+    expect((await fetchChartNow(PROFILE, "5001")).fetched).toBe(1);
     expect(table.getChart(PROFILE, "5001").splits.lapDTOs).toEqual([{ lapIndex: 1, distance: 1000, duration: 300 }]);
     expect(table.needingChart(PROFILE)).toEqual([]);
   });
@@ -202,14 +199,14 @@ describe("get_activities", () => {
       { lapIndex: 2, intensityType: "ACTIVE", wktStepIndex: 3, distance: 3000, duration: 890, averageHR: 171, maxHR: 180 },
       { lapIndex: 3, intensityType: "COOLDOWN", wktStepIndex: 4, distance: 12, duration: 5, averageHR: id.length },
     ] });
-    const runs = (n: number) => Array.from({ length: n }, (_, i) => item(n - i, i + 1, "running")); // newest first
+    const runs = (n: number) => Array.from({ length: n }, (_, i) => item(n - i, i + 1, "running"));
 
     it("replace a run's summary: each lap on its own, with its step, so the reps can be told apart", async () => {
       fakeGarmin([item(2, 1, "strength_training"), item(1, 2, "running")], async (id) => lapsOf(id));
       const out = await ask();
       const [strength, run] = out.activities;
       expect(strength.activityType).toBe("strength_training");
-      expect(strength.exerciseSets).toEqual([]); // a strength workout has its sets, not laps
+      expect(strength.exerciseSets).toEqual([]);
       expect(run.exerciseSets.map((s: any) => [s.exerciseName, s.splitType, s.step, s.distance, s.avgHR])).toEqual([
         ["Lap 1", "ACTIVE", 2, 3, 160], ["Lap 2", "ACTIVE", 4, 3, 171], ["Lap 3", "COOLDOWN", 5, 0.012, 4],
       ]);
@@ -218,9 +215,9 @@ describe("get_activities", () => {
     it("are fetched by the call itself for the newest runs, three at most, and the background job takes the rest", async () => {
       const garmin = fakeGarmin(runs(5), async (id) => lapsOf(id));
       const first = await ask();
-      expect(first.activities.map((a: any) => a.exerciseSets?.length)).toEqual([3, 3, 3, undefined, undefined]); // 5005, 5004, 5003 have theirs
+      expect(first.activities.map((a: any) => a.exerciseSets?.length)).toEqual([3, 3, 3, undefined, undefined]);
       await settled();
-      expect(garmin.calls.chart.sort()).toEqual(["5001", "5002", "5003", "5004", "5005"]); // none twice
+      expect(garmin.calls.chart.sort()).toEqual(["5001", "5002", "5003", "5004", "5005"]);
       expect((await ask()).activities.map((a: any) => a.exerciseSets.length)).toEqual([3, 3, 3, 3, 3]);
     });
 
@@ -229,7 +226,7 @@ describe("get_activities", () => {
       const first = await ask({ includeDetails: false });
       expect(first.activities[0].exerciseSets).toBeUndefined();
       await settled();
-      expect(garmin.calls.chart).toEqual(["5001"]); // the background job did
+      expect(garmin.calls.chart).toEqual(["5001"]);
       expect((await ask({ includeDetails: false })).activities[0].exerciseSets).toHaveLength(3);
     });
 

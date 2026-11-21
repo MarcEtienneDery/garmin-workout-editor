@@ -22,7 +22,7 @@ describe("LoginThrottle", () => {
     const t = new LoginThrottle(1, 60_000, 2);
     t.fail("a", 0);
     t.fail("b", 0);
-    t.fail("c", 0); // the oldest ("a") makes room
+    t.fail("c", 0);
     expect(t.waitMs("a", 1)).toBe(0);
     expect(t.waitMs("b", 1)).toBeGreaterThan(0);
     expect(t.waitMs("c", 1)).toBeGreaterThan(0);

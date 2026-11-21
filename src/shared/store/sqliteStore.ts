@@ -14,8 +14,6 @@ import { WELLNESS_SCHEMA, WellnessTable } from "./wellness";
 import { profileOfPath, summarizeText } from "./paths";
 import { StoreError, type DocMeta, type PutOptions, type RevisionMeta, type StoredDoc } from "./types";
 
-// node:sqlite ships with Node (22.13+), so the image needs no native module. The small interfaces
-// below and the typed require in open() keep the store to the few calls it uses.
 export interface Row {
   [column: string]: any;
 }
@@ -30,7 +28,6 @@ export interface Database {
   close(): void;
 }
 
-/** Superseded versions kept per document. */
 export const KEEP_REVISIONS = 100;
 
 const SCHEMA = `
@@ -82,7 +79,6 @@ const toMeta = (r: Row): DocMeta => ({
   archivedAt: r.archived_at ?? null,
 });
 
-/** A database made before plans could be archived gets the column when it is opened. */
 function migrateDocuments(db: Database): void {
   const columns = new Set(db.prepare("PRAGMA table_info(documents)").all().map((column) => column.name));
   if (!columns.has("archived_at")) db.exec("ALTER TABLE documents ADD COLUMN archived_at INTEGER");
@@ -90,45 +86,25 @@ function migrateDocuments(db: Database): void {
 
 const toRevision = (r: Row): RevisionMeta => ({ id: r.id, version: r.version, savedAt: r.saved_at, source: r.source, size: r.size });
 
-/**
- * One SQLite file shared by the MCP server and the web editor (two processes). Every write runs in an
- * IMMEDIATE transaction, so concurrent writers queue instead of overwriting each other, and the
- * rollback journal keeps the database a single, copy-safe file between writes.
- */
 export class SqliteStore {
   private depth = 0;
-  /** The Garmin activities of every profile (see activities.ts). */
   readonly activities: ActivityTable;
-  /** The Garmin login tokens of every profile (see tokens.ts). */
   readonly tokens: TokenTable;
-  /** Whether Garmin is answering a profile with 429, Too Many Requests (see tokens.ts). */
   readonly limits: LimitTable;
-  /** The daily health data (sleep, HRV, resting heart rate, Body Battery, stress) of every profile (see wellness.ts). */
   readonly wellness: WellnessTable;
-  /** The profiles that exist, and the hash of each one's web sign-in password (see profiles.ts). */
   readonly profiles: ProfileTable;
-  /** How each profile likes things shown, such as its unit of weight (see profiles.ts). */
   readonly prefs: PrefsTable;
-  /** The web editor's sign-in sessions, which outlive a restart (see sessions.ts). */
   readonly sessions: SessionTable;
-  /** The invite codes that let a person make a profile from the sign-in page (see invites.ts). */
   readonly invites: InviteTable;
-  /** The tokens that let an assistant use the MCP server as one profile only (see mcpTokens.ts). */
   readonly mcpTokens: McpTokenTable;
-  /** The logins of every profile for Garmin and Renpho (see credentials.ts). */
   readonly credentials: CredentialTable;
-  /** The Renpho scale sync of every profile: settings, weigh-ins, state and log (see renpho.ts). */
   readonly renpho: RenphoTable;
-  /** The food each profile ate: one row per item, with its meal, calories and macros (see nutrition.ts). */
   readonly nutrition: NutritionTable;
-  /** The daily calorie, macro and nutrient goals of each profile (see nutrition.ts). */
   readonly goals: GoalTable;
-  /** Products looked up by barcode on Open Food Facts, kept so a rescan needs no call (see foods.ts). */
   readonly foods: FoodCacheTable;
 
   private constructor(
     private readonly db: Database,
-    /** Where it lives, for logs. */
     readonly location: string
   ) {
     this.activities = new ActivityTable(db, (fn) => this.tx(fn));
@@ -164,7 +140,6 @@ export class SqliteStore {
     return store;
   }
 
-  /** Run several writes as one: all of them happen or none (a profile and the invite use that made it). */
   transaction<T>(fn: () => T): T {
     return this.tx(fn);
   }
@@ -181,7 +156,6 @@ export class SqliteStore {
       try {
         this.db.exec("ROLLBACK");
       } catch {
-        /* the transaction is already gone */
       }
       throw error;
     } finally {
@@ -193,7 +167,6 @@ export class SqliteStore {
     return this.db.prepare("SELECT * FROM documents WHERE path = ?").get(documentPath);
   }
 
-  /** Metadata of the documents whose path starts with `prefix` (all by default), ordered by path. */
   list(prefix = ""): DocMeta[] {
     return this.db
       .prepare(`SELECT ${META_COLUMNS} FROM documents WHERE substr(path, 1, ?) = ? ORDER BY path`)
@@ -211,12 +184,10 @@ export class SqliteStore {
     return r && { ...toMeta(r), text: r.text };
   }
 
-  /** Create or replace. Saving the text that is already there changes nothing. */
   put(documentPath: string, text: string, options: PutOptions = {}): DocMeta {
     return this.tx(() => this.write(documentPath, text, options));
   }
 
-  /** Read-modify-write that no other writer can interleave with. `change` must be synchronous. */
   update(documentPath: string, change: (text: string) => string, options: { source?: string } = {}): DocMeta {
     return this.tx(() => {
       const current = this.row(documentPath);
@@ -236,7 +207,6 @@ export class SqliteStore {
       if (options.replace || options.expectedVersion !== undefined) {
         throw new StoreError("not_found", `File not found: ${documentPath}`);
       }
-      // A path that was deleted and made again must not reuse a version an old editor may still hold.
       const last = this.db.prepare("SELECT MAX(version) AS v FROM revisions WHERE path = ?").get(documentPath);
       const owner = profileOfPath(documentPath) ?? options.owner ?? null;
       this.db
@@ -258,7 +228,6 @@ export class SqliteStore {
     return this.head(documentPath)!;
   }
 
-  /** Keep the version that is about to be replaced or removed. */
   private archive(r: Row): void {
     this.db
       .prepare("INSERT INTO revisions (path, version, text, size, saved_at, source) VALUES (?, ?, ?, ?, ?, ?)")
@@ -292,10 +261,6 @@ export class SqliteStore {
     });
   }
 
-  /**
-   * Archive a document or bring it back. The text, its version and its history stay as they are: archiving is a mark on the row,
-   * not a save, so a write_plan that overwrites the plan keeps it archived. Marking an archived one again keeps the first date.
-   */
   setArchived(documentPath: string, archived: boolean): DocMeta {
     return this.tx(() => {
       const current = this.row(documentPath);
@@ -316,7 +281,6 @@ export class SqliteStore {
     });
   }
 
-  /** Earlier versions, newest first. */
   history(documentPath: string, limit = 50): RevisionMeta[] {
     return this.db
       .prepare("SELECT id, version, saved_at, source, size FROM revisions WHERE path = ? ORDER BY id DESC LIMIT ?")
@@ -329,7 +293,6 @@ export class SqliteStore {
     return r && { ...toRevision(r), text: r.text };
   }
 
-  /** Documents that were deleted and can still be restored from their last revision. */
   deleted(): (RevisionMeta & { path: string })[] {
     return this.db
       .prepare(

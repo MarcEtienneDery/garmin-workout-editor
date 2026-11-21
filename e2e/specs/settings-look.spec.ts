@@ -1,8 +1,3 @@
-/**
- * The Settings view's layout: a list of sections (a dot on the ones that need a look) beside the section shown, the overview's verdict with a
- * fix for each problem and its four tiles, the goals with a preview that follows what is typed and an unsaved bar, Clear all goals asking
- * first and offering Undo, the Display section, the profiles of the admin, both themes, and the sizes of what is touched.
- */
 import { test, expect, loginAs, openView, ADMIN_TOKEN, type Page } from "../support/fixtures";
 
 test.describe.configure({ timeout: 60_000 });
@@ -13,7 +8,6 @@ const open = async (page: Page, section = "overview") => {
   await page.locator(`#sbody .snav [data-section="${section}"]`).click();
   await expect(page.locator(`#sbody .spane[data-section="${section}"]`)).toBeVisible();
 };
-/** The answer of GET /api/settings with `patch` applied, for the states a seeded profile cannot be in. */
 const answering = (page: Page, patch: (json: any) => void) =>
   page.route("**/api/settings?*", async (route) => {
     const response = await route.fetch();
@@ -45,7 +39,7 @@ test.describe("the sections", () => {
 
 test.describe("the overview", () => {
   test("says everything is set up, with four tiles, for a profile with nothing wrong", async ({ me }) => {
-    await answering(me, (json) => { json.encryption = { enabled: true, plain: 0 }; }); // the saved passwords of the whole server count: this one has none to look at
+    await answering(me, (json) => { json.encryption = { enabled: true, plain: 0 }; });
     await open(me);
     await expect(me.locator(".sverdict h2")).toHaveText("Everything is set up");
     await expect(me.locator(".stile .sth b")).toHaveText(["Garmin", "Renpho scale", "Food AI", "Sign-in & storage"]);
@@ -106,7 +100,7 @@ test.describe("the goals", () => {
     await open(me, "goals");
     await me.getByRole("button", { name: "Clear all goals" }).click();
     await me.getByRole("dialog").getByRole("button", { name: "Cancel" }).click();
-    expect((await (await profile.api.get("/api/settings")).json()).goals.values.kcal).toBe(2200); // cancelled: nothing changed
+    expect((await (await profile.api.get("/api/settings")).json()).goals.values.kcal).toBe(2200);
     await me.getByRole("button", { name: "Clear all goals" }).click();
     await me.getByRole("dialog").getByRole("button", { name: "Clear all" }).click();
     await expect.poll(async () => (await (await profile.api.get("/api/settings")).json()).goals.values).toEqual({});
@@ -161,15 +155,14 @@ test.describe("the look", () => {
 
 test.describe("the theme is chosen in Settings only", () => {
   test("no view has a theme button, and every view takes the choice made in Display", async ({ alice }) => {
-    await open(alice, "display"); // alice has a Garmin login, so every view is in the header
+    await open(alice, "display");
     await alice.locator(".seg button", { hasText: "Light" }).click();
     for (const [view, button] of [["today", "vToday"], ["plans", "vPlans"], ["calendar", "vCalendar"], ["activities", "vActivities"], ["recovery", "vRecovery"], ["weight", "vWeight"], ["food", "vFood"]] as const) {
-      await alice.locator(`#${button}`).click(); // the header's own buttons, as a person moves between the views
+      await alice.locator(`#${button}`).click();
       await expect(alice.locator("body")).toHaveAttribute("data-view", view);
       await expect(alice.locator("body")).toHaveAttribute("data-theme", "light");
       await expect(alice.locator(".themebtn")).toHaveCount(0);
     }
-    // the Workouts view is not in the header for this profile: the count above covers every button in the page, hidden ones too
     await expect(alice.locator(".themebtn")).toHaveCount(0);
   });
 });

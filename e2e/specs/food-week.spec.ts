@@ -1,9 +1,3 @@
-/**
- * The Food view's reworked layout: the week of the day shown, Monday to Sunday, to pick a day from (its calories against its goal as a ring,
- * a day over the goal told apart, a day to come out of reach); the Log and the Insights it is split in (the day to add to and eat from, what
- * the days add up to); the card to add a food (the bar, the meal to add to as pills, the foods used lately); the meals as cards, one with
- * nothing in it a single line. alice's food is read only; anything that logs a food uses a profile of its own (`me`).
- */
 import { test, expect, openView, daysAgo, today, mondayOf, type APIRequestContext, type Page, chooseTheme } from "../support/fixtures";
 import { MEAL_LABEL, meal, openFood, type Meal } from "../support/food";
 
@@ -168,7 +162,7 @@ test.describe("the Log and the Insights", () => {
     await openFood(alice);
     await tab(alice, "Insights").click();
     const over = alice.locator("#fbody .rcharts .rc").first().locator(".rc-over"), box = (await over.boundingBox())!;
-    await over.click({ position: { x: box.width * 0.95, y: box.height / 2 } }); // the second bar from the right: yesterday, of 30 days
+    await over.click({ position: { x: box.width * 0.95, y: box.height / 2 } });
     await expect(alice.locator("#fDate")).toHaveValue(daysAgo(1));
     await expect(tab(alice, "Insights")).toHaveAttribute("aria-pressed", "true");
   });
@@ -295,7 +289,7 @@ test.describe("the meals as cards", () => {
     await me.locator("#fscroll").evaluate((el) => el.scrollTo(0, 400));
     const after = (await me.locator("#fbody .fsum").boundingBox())!.y;
     expect(after).toBeGreaterThanOrEqual(0);
-    expect(before - after).toBeLessThan(400); // it did not scroll away with the meals
+    expect(before - after).toBeLessThan(400);
   });
 });
 
@@ -304,10 +298,10 @@ test.describe("on a wide screen, in both themes", () => {
     await openFood(alice);
     for (const theme of ["dark", "light"]) {
       if (theme === "light") await chooseTheme(alice, "light");
-      await alice.evaluate(() => Promise.all(document.getAnimations().map((a) => a.finished.catch(() => null)))); // the colours have settled
+      await alice.evaluate(() => Promise.all(document.getAnimations().map((a) => a.finished.catch(() => null))));
       const low = await alice.evaluate(() => {
         const lum = (css: string) => {
-          const unit = css.startsWith("color(srgb") ? 1 : 255; // a mix of colours is given as 0 to 1
+          const unit = css.startsWith("color(srgb") ? 1 : 255;
           const [r, g, b] = (css.match(/[\d.]+/g) ?? []).slice(0, 3).map(Number).map((v) => { const c = v / unit; return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; });
           return 0.2126 * r + 0.7152 * g + 0.0722 * b;
         };
@@ -337,9 +331,9 @@ test("the part of the view chosen stays while the page is open, on another view 
   await openView(me, "food");
   await expect(me.locator("#fbody .fmeal").first()).toBeVisible();
   await tab(me, "Insights").click();
-  await me.locator("#vToday").click(); // in the page: another address would load it again
+  await me.locator("#vToday").click();
   await expect(me.locator("body")).toHaveAttribute("data-view", "today");
   await me.locator("#vFood").click();
   await expect(me.locator("body")).toHaveAttribute("data-view", "food");
-  await expect(tab(me, "Insights")).toHaveAttribute("aria-pressed", "true"); // the part chosen stays while the page is open
+  await expect(tab(me, "Insights")).toHaveAttribute("aria-pressed", "true");
 });

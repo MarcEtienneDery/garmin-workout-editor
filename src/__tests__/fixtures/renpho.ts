@@ -1,10 +1,5 @@
-/**
- * A fake Renpho for the tests: each path answered by a handler, in the encrypted envelope the real one uses
- * (nothing here is anyone's data).
- */
 import { decrypt, encrypt } from "../../shared/renphoClient";
 
-/** A fake Renpho: answers each path with what the handler gives, in the encrypted envelope the real one uses. */
 export function fakeRenpho(handlers: Record<string, (body: any, headers: Record<string, string>) => unknown>) {
   const calls: { path: string; body: any; headers: Record<string, string> }[] = [];
   const fetchFn = (async (url: string, init: any) => {
@@ -21,12 +16,10 @@ export function fakeRenpho(handlers: Record<string, (body: any, headers: Record<
 export const loginHandler = { "renpho-aggregation/user/login": () => ({ login: { token: "tok", id: 4242 } }) };
 
 
-/** One weigh-in the way Renpho lists it. */
 export const renphoRow = (id: number, over: Record<string, unknown> = {}) => ({
   id: String(id), bUserId: "4242", subUserId: "7", timeStamp: 1_760_000_000 + id * 86_400, weight: 81.7, bodyfat: 17.8, water: 56.1, muscle: 44.5, bone: 3.8, bmi: 24.9, visfat: 7, bodyage: 34, bmr: 1850, weightUnit: 1, ...over,
 });
 
-/** A Renpho with the account's scale and these weigh-ins. */
 export const renphoWith = (rows: Record<string, unknown>[], extra: Record<string, (b: any, h: Record<string, string>) => unknown> = {}) =>
   fakeRenpho({
     ...loginHandler,

@@ -1,17 +1,3 @@
-/**
- * storeCli.ts — look after the document store from the command line.
- *
- *   npm run store -- list [prefix]
- *   npm run store -- history <path>
- *   npm run store -- show <path> [revisionId]
- *   npm run store -- restore <path> [revisionId]     # last revision by default; also brings back a deleted document
- *   npm run store -- trash                           # deleted documents that can be restored
- *   npm run store -- owner <path> <profile|shared>   # who sees a plan under workout-plans/
- *   npm run store -- export <dir>                    # write every document back out as a file
- *   npm run store -- import-env <dir>                # take the profiles of old .env.<name> files into the database, once
- *
- * In the container: docker exec garmin-mcp node dist/storeCli.js <command>
- */
 import { importEnvProfiles } from "./shared/profileImport";
 import { StoreError, closeStore, exportFiles, getStore, normalizeLogicalPath } from "./shared/store";
 

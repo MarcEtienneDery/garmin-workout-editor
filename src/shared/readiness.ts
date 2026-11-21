@@ -1,34 +1,11 @@
-/**
- * readiness.ts — how recovered a person is on a day, from what the stored health data says, as a band for the day's
- * workout: go harder, as planned, or back off.
- *
- * Garmin computes no readiness for every watch (the vívoactive 5 has none), so this reads the signals that exist:
- * last night's HRV against Garmin's own baseline band, the resting heart rate against the person's own recent normal,
- * the night's length and score against the sleep Garmin says is needed, the Body Battery on waking, yesterday's stress,
- * and the load of the last days (session RPE × minutes, else heart rate, and Garmin's intensity minutes for the effort no session holds). Each signal scores -2 to +2 for the day with
- * the reason; the weighted mean is the score and the band. A signal Garmin has no data for is left out, and it lowers the
- * confidence: it never counts as fine. The thresholds are constants below, meant to be tuned; this is a heuristic for
- * adjusting training, not a medical measure.
- *
- * A day D is read as: sleep and HRV of the night that ended on the morning of D, the resting heart rate and Body Battery
- * of D, yesterday's (D-1) stress, and the sessions that started before D began. The answer therefore depends on D and the
- * stored data only, never on the clock.
- */
 import type { LoadRow } from "./store/activities";
 import type { DayMetrics, NumOrNull } from "./store/wellness";
 
-/** Days of history the person's own normal is taken from, and the fewest that make a normal. */
 export const BASELINE_DAYS = 28;
 export const MIN_BASELINE_DAYS = 14;
-/**
- * The weighted mean of the signals (each -1 to +1) from which the day is a push or a back-off. Pushing asks for more
- * than backing off: it takes most signals clearly good, while a few mildly poor ones are enough to ease off.
- */
 export const GO_HARDER_AT = 0.4;
 export const BACK_OFF_AT = -0.25;
-/** A session rated this hard or harder (RPE out of 100) counts as a hard one. */
 export const HARD_RPE = 70;
-/** What the sleep needs is when Garmin does not say. */
 const DEFAULT_SLEEP_NEED_HOURS = 7.5;
 
 const DAY_MS = 86_400_000, HOUR_MS = 3_600_000;
@@ -37,28 +14,23 @@ export type Band = "go-harder" | "as-planned" | "back-off" | "unknown";
 
 export interface Signal {
   name: "hrv" | "restingHr" | "sleep" | "bodyBattery" | "stress" | "load";
-  /** What was measured, and what it is compared with. */
   value: string;
   baseline: string | null;
-  /** -2 (well below normal for training) to +2 (well above). */
   score: number;
   weight: number;
   reason: string;
 }
 
 export interface LoadSummary {
-  /** Load units (RPE-like intensity 1-10 × minutes) of the 3 days before, and the usual for 3 days over the 28 before that. */
   acute: number;
   usual: number | null;
   ratio: number | null;
   sessions: number;
   hoursSinceHard: number | null;
-  /** The day's intensity minutes Garmin counts all day, recorded or not (a walk the watch noticed itself), the same way; null when too few days are stored. */
   intensity: IntensitySummary | null;
 }
 
 export interface IntensitySummary {
-  /** Moderate minutes plus twice the vigorous ones over the 3 days before, and the usual for 3 days over the 28 before that. */
   acute: number;
   usual: number | null;
   ratio: number | null;
@@ -67,11 +39,9 @@ export interface IntensitySummary {
 export interface Readiness {
   date: string;
   band: Band;
-  /** 0-100, 50 is a normal day; null when the band is unknown. */
   score: number | null;
   confidence: "high" | "medium" | "low";
   signals: Signal[];
-  /** Signals the stored data cannot say, with why. */
   missing: string[];
   load: LoadSummary | null;
   suggestion: string;
@@ -159,15 +129,9 @@ function stressSignal(prev: DayMetrics | undefined): Scored {
   return { value: fix(s), baseline: null, score: s >= 60 ? -2 : s >= 45 ? -1 : s <= 25 ? 1 : 0, reason: "yesterday's average stress (0-100)" };
 }
 
-/** The intensity minutes of a stored day as Garmin counts them toward its goal: moderate plus twice the vigorous. Null when the day has none stored. */
 export const dayIntensityMinutes = (m: Pick<DayMetrics, "moderateMinutes" | "vigorousMinutes">): number | null =>
   m.moderateMinutes === null && m.vigorousMinutes === null ? null : (m.moderateMinutes ?? 0) + 2 * (m.vigorousMinutes ?? 0);
 
-/**
- * Garmin's intensity minutes of the 3 days before a day against the usual for 3 days over the 28 before them. They count all
- * day, whatever recorded the effort, so they carry what no session holds. A day with nothing stored is unknown, not zero: the
- * 3 days are scaled up from the days stored (at least 2 of them) and the usual is the average of the stored days (at least 14).
- */
 function intensitySummary(metrics: DayMetrics[], date: string): IntensitySummary | null {
   const minutes = (from: string, to: string) => metrics.filter((m) => m.day >= from && m.day < to).map(dayIntensityMinutes).filter(present);
   const recent = minutes(addDays(date, -3), date), earlier = minutes(addDays(date, -31), addDays(date, -3));
@@ -177,18 +141,12 @@ function intensitySummary(metrics: DayMetrics[], date: string): IntensitySummary
   return { acute: Math.round(acute), usual: usual === null ? null : Math.round(usual), ratio: usual !== null && usual > 0 ? Math.round((acute / usual) * 100) / 100 : null };
 }
 
-/**
- * The load before a day began: the sessions of the 31 days before (the effort times the minutes) and Garmin's intensity minutes
- * of the same days. The score is read from the higher of the two ratios against the usual, so a heavy few days show whichever
- * way they were heavy. Null when there are no sessions in the 31 days and no intensity minutes to go by.
- */
 export function loadSummary(rows: LoadRow[], date: string, metrics: DayMetrics[] = []): (LoadSummary & { score: number }) | null {
   const start = dayStart(date), acuteFrom = start - 3 * DAY_MS, from = start - 31 * DAY_MS;
   const sessions = rows.filter((r) => r.seconds !== null && r.seconds > 0 && naive(r.startLocal) >= from && naive(r.startLocal) < start);
   const intensity = intensitySummary(metrics, date);
   if (!sessions.length && !intensity) return null;
   const refMax = Math.max(0, ...sessions.map((r) => r.maxHr ?? 0)) || 190;
-  /** RPE-like intensity, 1-10: the rated effort, else the average heart rate against the highest seen, else a plain 4. */
   const effort = (r: LoadRow) => (r.rpe !== null ? clamp(r.rpe / 10, 1, 10) : r.avgHr !== null ? clamp(((r.avgHr / refMax - 0.5) / 0.5) * 10, 1, 10) : 4);
   const units = (r: LoadRow) => ((r.seconds ?? 0) / 60) * effort(r);
   const recent = sessions.filter((r) => naive(r.startLocal) >= acuteFrom);
@@ -225,10 +183,6 @@ function loadSignal(load: ReturnType<typeof loadSummary>): Scored {
   };
 }
 
-/**
- * How ready the person is on `date`. `metrics` are the stored days (any order, ideally the 28 before `date` and `date`);
- * `load` the activities of the 31 days before.
- */
 export function computeReadiness(metrics: DayMetrics[], load: LoadRow[], date: string): Readiness {
   const byDay = new Map(metrics.map((m) => [m.day, m]));
   const from = addDays(date, -BASELINE_DAYS);
@@ -274,7 +228,6 @@ export function computeReadiness(metrics: DayMetrics[], load: LoadRow[], date: s
   };
 }
 
-/** The person's own normal over the days before `date`: medians of the signals that have enough days. */
 export function baselines(metrics: DayMetrics[], date: string): { days: number; hrv: NumOrNull; restingHr: NumOrNull; sleepHours: NumOrNull; bodyBatteryWake: NumOrNull; sleepRespiration: NumOrNull } {
   const from = addDays(date, -BASELINE_DAYS), history = metrics.filter((m) => m.day >= from && m.day < date);
   const med = (values: NumOrNull[], scale = 1): NumOrNull => {

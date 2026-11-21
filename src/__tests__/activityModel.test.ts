@@ -1,8 +1,4 @@
-export {}; // a module of its own: the helpers below must not clash with those of the other model tests
-/**
- * activityModel.js is the plain script behind the Activities view: weeks, totals, filters, formats and the
- * planned-against-done matching.
- */
+export {};
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const A = require("../web/public/activityModel.js");
 
@@ -15,11 +11,11 @@ const plan = (path: string, workouts: { name: string; type?: string; id?: number
 
 describe("weeks", () => {
   it("puts each day in its Monday-first week, across a month and a year end", () => {
-    expect(A.weekOf("2026-10-12")).toBe("2026-10-12"); // a Monday
-    expect(A.weekOf("2026-10-18")).toBe("2026-10-12"); // the Sunday
+    expect(A.weekOf("2026-10-12")).toBe("2026-10-12");
+    expect(A.weekOf("2026-10-18")).toBe("2026-10-12");
     expect(A.weekOf("2026-10-19")).toBe("2026-10-19");
     expect(A.weekOf("2026-01-01")).toBe("2025-12-29");
-    expect(A.weekOf("2024-03-01")).toBe("2024-02-26"); // across a leap day
+    expect(A.weekOf("2024-03-01")).toBe("2024-02-26");
   });
 
   it("groups rows into weeks, newest first, each week newest first, with its totals", () => {
@@ -31,7 +27,7 @@ describe("weeks", () => {
     ];
     const weeks = A.groupWeeks(rows);
     expect(weeks.map((w: any) => w.week)).toEqual(["2026-10-19", "2026-10-12"]);
-    expect(weeks[1].rows.map((r: any) => r.id)).toEqual(["4", "3", "1"]); // the Sunday, then the evening run, then the morning run
+    expect(weeks[1].rows.map((r: any) => r.id)).toEqual(["4", "3", "1"]);
     expect(weeks[1].totals).toEqual({
       count: 3, km: 45, seconds: 8100,
       bySport: { running: { count: 2, km: 15, seconds: 4500 }, cycling: { count: 1, km: 30, seconds: 3600 } },
@@ -94,7 +90,7 @@ describe("planned against done", () => {
 
   it("falls back on the same sport on the same day, because an upload makes a new workoutId", () => {
     const plans = [plan("a", [{ name: "Squat", type: "strength_training", id: 99, dates: ["2026-10-12"] }])];
-    const rows = [row("1", "2026-10-12", "strength_training", { workoutId: "5" })]; // done before the workout was re-uploaded
+    const rows = [row("1", "2026-10-12", "strength_training", { workoutId: "5" })];
     expect(A.planned(plans, rows, today)[0]).toEqual(expect.objectContaining({ status: "done", activityId: "1" }));
   });
 
@@ -107,7 +103,7 @@ describe("planned against done", () => {
     const plans = [plan("a", [{ name: "Run A", type: "running", id: 1, dates: ["2026-10-12"] }, { name: "Run B", type: "running", id: 2, dates: ["2026-10-12"] }])];
     const rows = [row("x", "2026-10-12", "running", { workoutId: "2" })];
     const [a, b] = A.planned(plans, rows, today);
-    expect([a.name, a.status]).toEqual(["Run A", "missed"]); // the one activity answers B, which carries its id
+    expect([a.name, a.status]).toEqual(["Run A", "missed"]);
     expect([b.name, b.status, b.activityId]).toEqual(["Run B", "done", "x"]);
     const two = A.planned(plans, [...rows, row("y", "2026-10-12", "running")], today);
     expect(two.map((s: any) => s.status)).toEqual(["done", "done"]);
@@ -124,7 +120,7 @@ describe("planned against done", () => {
     expect(sessions).toHaveLength(2);
     expect(sessions[0]).toEqual(expect.objectContaining({ status: "done", activityId: "1" }));
     expect(sessions[0].plans.map((p: any) => p.path)).toEqual(["hm.json", "july.json"]);
-    expect(sessions[1].plans).toHaveLength(2); // the same name on the same day, with no id
+    expect(sessions[1].plans).toHaveLength(2);
   });
 
   it("treats cardio and unnamed types as 'other', and limits the days looked at", () => {
@@ -140,7 +136,7 @@ describe("chart helpers", () => {
   it("rounds an axis to bounds and ticks a person would write", () => {
     expect(A.niceRange(0, 10, 2)).toEqual({ lo: 0, hi: 10, ticks: [0, 5, 10] });
     expect(A.niceRange(128, 187, 3)).toEqual({ lo: 120, hi: 200, ticks: [120, 140, 160, 180, 200] });
-    expect(A.niceRange(3, 3).ticks.length).toBeGreaterThan(1); // a flat series still gets an axis
+    expect(A.niceRange(3, 3).ticks.length).toBeGreaterThan(1);
     expect(A.niceRange(0.12, 0.31, 3).ticks).toEqual([0.1, 0.2, 0.3, 0.4]);
   });
 
@@ -179,13 +175,11 @@ describe("chart helpers", () => {
     const text = (x: any) => A.setRuns(x).map((r: any) => A.runText(r));
     expect(text({ sets: 3, reps: 6, weight: 40 })).toEqual(["3 × 6 @ 40 lb"]);
     expect(text({ sets: 1, reps: 12, weight: 135 })).toEqual(["12 @ 135 lb"]);
-    // reps Garmin did not count are 0: the set still shows, by its weight
     expect(text({ sets: 4, repsList: [0, 0, 6, 0], weightList: [135, 175, 200, 200] })).toEqual(["135 lb", "175 lb", "6 @ 200 lb", "200 lb"]);
     expect(text({ sets: 3, repsList: [12, 12, 11], weight: 60 })).toEqual(["2 × 12 @ 60 lb", "11 @ 60 lb"]);
     expect(text({ sets: 3, repsList: [30, 30, 30] })).toEqual(["3 × 30"]);
-    expect(text({ sets: 1 })).toEqual([""]); // cardio: nothing counted
+    expect(text({ sets: 1 })).toEqual([""]);
     expect(text({ sets: 2, reps: 8, weight: 22.5 })).toEqual(["2 × 8 @ 22.5 lb"]);
-    // in the profile's unit when the page says how (the weights are kept in lb)
     expect(A.runText({ count: 3, reps: 6, weight: 40 }, (lb: number) => `${(lb / 2.20462262).toFixed(1)} kg`)).toBe("3 × 6 @ 18.1 kg");
     expect(A.setRuns(undefined)).toEqual([{ count: 1, reps: 0, weight: 0 }]);
     expect(A.setRuns({ sets: 4, repsList: [0, 0, 6, 0], weightList: [135, 175, 200, 200] }).reduce((a: number, r: any) => a + r.count, 0)).toBe(4);
@@ -195,15 +189,15 @@ describe("chart helpers", () => {
     const lifts = [
       { exerciseName: "Barbell Bench Press", category: "BENCH_PRESS", sets: 4, repsList: [0, 0, 6, 0], weightList: [135, 175, 200, 200] },
       { exerciseName: "Weighted Chin Up", category: "PULL_UP", sets: 3, reps: 6, weight: 40 },
-      { exerciseName: "Plank", category: "CORE", sets: 3, repsList: [30, 30, 30] }, // no weight
+      { exerciseName: "Plank", category: "CORE", sets: 3, repsList: [30, 30, 30] },
       { exerciseName: "Cardio", category: "CARDIO", sets: 1 },
       { exerciseName: "Interval 1", category: "INTERVAL", sets: 1, reps: 0, weight: 50 },
-      { exerciseName: "Face Pull", category: "ROW", sets: 2, repsList: [0, 0], weight: 50 }, // loaded, but the server has no max for it
+      { exerciseName: "Face Pull", category: "ROW", sets: 2, repsList: [0, 0], weight: 50 },
     ];
     const maxes = {
       "Barbell Bench Press": { oneRm: 266.4, weight: 225, reps: 3, date: "2026-09-08" },
       "Weighted Chin Up": { oneRm: 48, weight: 40, reps: 6, date: "2026-10-12" },
-      Plank: { oneRm: 100, weight: 1, reps: 1, date: "2026-10-12" }, // a max, but no loaded set
+      Plank: { oneRm: 100, weight: 1, reps: 1, date: "2026-10-12" },
     };
     const out = A.intensity(lifts, maxes);
     expect(out.map((e: any) => e.name)).toEqual(["Barbell Bench Press", "Weighted Chin Up"]);
@@ -213,7 +207,7 @@ describe("chart helpers", () => {
     });
     expect(out[1]).toEqual({ name: "Weighted Chin Up", oneRm: 48, from: { weight: 40, reps: 6, date: "2026-10-12" }, runs: [{ count: 3, weight: 40, pct: 83, band: 2 }] });
     expect(A.intensity(undefined, undefined)).toEqual([]);
-    expect(A.intensity(lifts, {})).toEqual([]); // nothing to go by
+    expect(A.intensity(lifts, {})).toEqual([]);
   });
 
   it("combines an exercise that appears twice, and shows a set above its max as over 100%", () => {
@@ -252,15 +246,15 @@ describe("route and series", () => {
 
   it("finds the point of the route for a sample by distance, and the sample for a point", () => {
     expect(A.routeIndexFor(chart, 0)).toBe(0);
-    expect(A.routeIndexFor(chart, 1)).toBe(1); // 100 m is nearest the 130 m point
+    expect(A.routeIndexFor(chart, 1)).toBe(1);
     expect(A.routeIndexFor(chart, 4)).toBe(3);
-    expect(A.chartIndexFor(chart, 2)).toBe(3); // 270 m is nearest the 300 m sample
+    expect(A.chartIndexFor(chart, 2)).toBe(3);
     expect(A.chartIndexFor(chart, 0)).toBe(0);
   });
 
   it("goes by proportion when either side has no distances, and says -1 when there is no route or no series", () => {
     const noDist = { ...chart, route: { ...chart.route, distance: [null, null, null, null] } };
-    expect(A.routeIndexFor(noDist, 2)).toBe(2); // half way along
+    expect(A.routeIndexFor(noDist, 2)).toBe(2);
     expect(A.chartIndexFor(noDist, 3)).toBe(4);
     expect(A.routeIndexFor({ ...chart, route: null }, 1)).toBe(-1);
     expect(A.chartIndexFor({ ...chart, time: [] }, 1)).toBe(-1);
@@ -286,9 +280,9 @@ describe("the ribbon of the last weeks", () => {
     const { weeks, peak } = A.ribbon(rows, "2026-11-15", 12);
     expect(weeks[11]).toEqual({ week: "2026-11-09", count: 2, seconds: 6600, bySport: { run: 3000, str: 3600, ride: 0, other: 0 } });
     expect(weeks[10].bySport.ride).toBe(1800);
-    expect(weeks[9].bySport.other).toBe(1200); // swimming
+    expect(weeks[9].bySport.other).toBe(1200);
     expect(peak).toBe(6600);
-    expect(weeks.reduce((a: number, w: any) => a + w.count, 0)).toBe(4); // the 2025 run is outside
+    expect(weeks.reduce((a: number, w: any) => a + w.count, 0)).toBe(4);
   });
 
   it("has a zero peak, and empty weeks, with no activity", () => {
@@ -304,7 +298,7 @@ describe("the ribbon of the last weeks", () => {
 
 describe("the consistency map", () => {
   const rows = [
-    { date: "2026-11-15", type: "running", seconds: 3000 }, { date: "2026-11-15", type: "strength_training", seconds: 1000 }, // two sessions on a day
+    { date: "2026-11-15", type: "running", seconds: 3000 }, { date: "2026-11-15", type: "strength_training", seconds: 1000 },
     { date: "2026-11-14", type: "running", seconds: 600 }, { date: "2026-11-13", type: "cycling", seconds: 6000 }, { date: "2026-11-10", type: "running", seconds: 3000 },
   ];
 
@@ -321,8 +315,8 @@ describe("the consistency map", () => {
     const { weeks } = A.heatmap(rows, "2026-11-15", 4);
     const day = (d: string) => weeks.flat().find((x: any) => x.date === d);
     expect(day("2026-11-15")).toEqual({ date: "2026-11-15", future: false, count: 2, seconds: 4000, level: 3 });
-    expect(day("2026-11-14").level).toBe(1); // 10 minutes
-    expect(day("2026-11-13").level).toBe(4); // 100 minutes
+    expect(day("2026-11-14").level).toBe(1);
+    expect(day("2026-11-13").level).toBe(4);
     expect(day("2026-11-12").level).toBe(0);
     expect([0, 1, 1799, 1800, 3599, 3600, 5399, 5400].map(A.heatLevel)).toEqual([0, 1, 1, 2, 2, 3, 3, 4]);
   });
@@ -337,13 +331,13 @@ describe("the consistency map", () => {
   it("counts the active days, the longest run of them and the run that ends today", () => {
     const h = A.heatmap(rows, "2026-11-15", 26);
     expect(h.activeDays).toBe(4);
-    expect(h.longestStreak).toBe(3); // the 13th to the 15th
+    expect(h.longestStreak).toBe(3);
     expect(h.currentStreak).toBe(3);
   });
 
   it("counts the run back from yesterday when today has nothing yet", () => {
     expect(A.heatmap(rows, "2026-11-16", 26).currentStreak).toBe(3);
-    expect(A.heatmap(rows, "2026-11-17", 26).currentStreak).toBe(0); // two days with nothing
+    expect(A.heatmap(rows, "2026-11-17", 26).currentStreak).toBe(0);
     expect(A.heatmap([], "2026-11-15", 4)).toEqual(expect.objectContaining({ activeDays: 0, longestStreak: 0, currentStreak: 0 }));
   });
 });
@@ -351,9 +345,9 @@ describe("the consistency map", () => {
 describe("the small helpers of the detail and of Progress", () => {
   it("tells a recent record from an old one", () => {
     expect(A.isRecent("2026-11-01", "2026-11-15")).toBe(true);
-    expect(A.isRecent("2026-10-16", "2026-11-15")).toBe(true); // exactly 30 days
+    expect(A.isRecent("2026-10-16", "2026-11-15")).toBe(true);
     expect(A.isRecent("2026-10-15", "2026-11-15")).toBe(false);
-    expect(A.isRecent("2026-11-20", "2026-11-15")).toBe(false); // not yet
+    expect(A.isRecent("2026-11-20", "2026-11-15")).toBe(false);
     expect(A.isRecent(undefined, "2026-11-15")).toBe(false);
   });
 
@@ -369,14 +363,14 @@ describe("the small helpers of the detail and of Progress", () => {
     expect(distance.fill).toBeCloseTo((10.4 / 13) * 100, 0);
     expect(distance.tick).toBeCloseTo((10 / 13) * 100, 0);
     expect(distance.fill).toBeGreaterThan(distance.tick);
-    expect(A.plannedBars({ seconds: 0, km: 0 }, { seconds: 100, km: 1 })).toEqual([]); // nothing planned to compare with
+    expect(A.plannedBars({ seconds: 0, km: 0 }, { seconds: 100, km: 1 })).toEqual([]);
   });
 
   it("puts a series on a box, the largest value at the top, and says what changed", () => {
     const s = A.seriesPoints([{ date: "2026-01-01", value: 50 }, { date: "2026-02-01", value: 54 }, { date: "2026-03-01", value: 52 }], 100, 30);
     expect(s.points[0].x).toBe(0);
     expect(s.points[2].x).toBe(100);
-    expect(s.points[1].y).toBeLessThan(s.points[0].y); // the larger value is higher (a smaller y)
+    expect(s.points[1].y).toBeLessThan(s.points[0].y);
     expect(s).toEqual(expect.objectContaining({ min: 50, max: 54, change: 2 }));
     expect(s.points.every((p: any) => p.y >= 0 && p.y <= 30)).toBe(true);
   });

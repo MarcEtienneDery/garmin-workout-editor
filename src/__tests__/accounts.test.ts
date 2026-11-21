@@ -50,19 +50,19 @@ describe("the Garmin login", () => {
     expect(() => saveGarminLogin(getStore(), "MED", { email: "not an email", password: "x" })).toThrow(SettingsError);
     saveGarminLogin(getStore(), "MED", { email: "new@x.y", password: "newpw" });
     expect(loadProfile("MED").login).toEqual({ email: "new@x.y", password: "newpw" });
-    expect(() => saveGarminLogin(getStore(), "SAM", { email: "sam@x.y", password: "" })).toThrow("Enter the password."); // the first save needs one
+    expect(() => saveGarminLogin(getStore(), "SAM", { email: "sam@x.y", password: "" })).toThrow("Enter the password.");
   });
 
   it("ends the open session when the login changes, so the next sign-in tries the new one, and keeps it when nothing changed", () => {
     const store = getStore();
     seedProfile("MED", { garmin: { email: "file@x.y", password: "filepw" } });
     store.tokens.put("MED", "file@x.y", { oauth1Token: {}, oauth2Token: {} });
-    saveGarminLogin(store, "MED", { email: "file@x.y", password: "filepw" }); // the same login
+    saveGarminLogin(store, "MED", { email: "file@x.y", password: "filepw" });
     expect(store.tokens.get("MED")).not.toBeNull();
-    saveGarminLogin(store, "MED", { email: "file@x.y", password: "newpw" }); // same email, another password
+    saveGarminLogin(store, "MED", { email: "file@x.y", password: "newpw" });
     expect(store.tokens.get("MED")).toBeNull();
     store.tokens.put("MED", "file@x.y", { oauth1Token: {}, oauth2Token: {} });
-    saveGarminLogin(store, "MED", { email: "file@x.y", password: "" }); // kept as it is
+    saveGarminLogin(store, "MED", { email: "file@x.y", password: "" });
     expect(store.tokens.get("MED")).not.toBeNull();
   });
 
@@ -77,7 +77,7 @@ describe("the Garmin login", () => {
     expect(store.tokens.get("SAM")).toBeNull();
     expect(getAvailableProfiles()).toEqual(["SAM"]);
     expect(store.wellness.hasRows("SAM")).toBe(true);
-    removeGarminLogin(store, "SAM"); // nothing to remove is not an error
+    removeGarminLogin(store, "SAM");
   });
 
   it("switches the Renpho upload off when the login is removed, as there is nothing to upload to", () => {
@@ -92,7 +92,7 @@ describe("the Garmin login", () => {
   it("is not what makes a profile: a profile exists because it was added, and a login is saved for one that exists", () => {
     expect(getAvailableProfiles()).toEqual([]);
     saveGarminLogin(getStore(), "SAM", { email: "sam@x.y", password: "sampw" });
-    expect(getAvailableProfiles()).toEqual([]); // the login of a name nobody added makes no profile
+    expect(getAvailableProfiles()).toEqual([]);
     seedProfile("SAM");
     seedProfile("MED");
     expect(getAvailableProfiles()).toEqual(["MED", "SAM"]);
@@ -133,7 +133,7 @@ describe("the web sign-in password", () => {
     const store = getStore();
     seedProfile("MED", { webPassword: "the first one" });
     expect(() => saveWebPassword(store, "MED", { password: "long enough", confirm: "long enougH" })).toThrow("The two passwords are not the same.");
-    expect(() => saveWebPassword(store, "MED", { password: "long enough" })).toThrow("The two passwords are not the same."); // no second field at all
+    expect(() => saveWebPassword(store, "MED", { password: "long enough" })).toThrow("The two passwords are not the same.");
     expect(() => saveWebPassword(store, "MED", typed(""))).toThrow("Enter a password.");
     expect(() => saveWebPassword(store, "MED", {})).toThrow("Enter a password.");
     expect(() => saveWebPassword(store, "MED", typed("short"))).toThrow(/at least 8 characters/);
@@ -156,7 +156,7 @@ describe("the web sign-in password", () => {
     expect(() => createProfile(store, { name: "NEW", password: "long enough", confirm: "different" })).toThrow("The two passwords are not the same.");
     expect(() => createProfile(store, { name: "NEW", ...typed("short") })).toThrow(/at least 8/);
     expect(store.profiles.has("NEW")).toBe(false);
-    expect(() => createProfile(store, { name: "SAM", ...typed("long enough") })).toThrow(); // the name is taken: nothing is replaced
+    expect(() => createProfile(store, { name: "SAM", ...typed("long enough") })).toThrow();
     expect(store.profiles.checkWebPassword("SAM", "long enough")).toBe(true);
   });
 });
@@ -202,7 +202,7 @@ describe("the Renpho login and settings", () => {
     expect(view.intervals).toEqual([1, 3, 6, 12, 24]);
     expect(store.renpho.logLines("MED").map((l) => l.message)).toEqual(["Fetching from Renpho switched on.", "Renpho login saved."]);
     saveRenpho(store, "MED", { email: "me@x.y", password: "" }, T);
-    expect(store.credentials.get("MED", "renpho")!.password).toBe("rpw"); // empty keeps it
+    expect(store.credentials.get("MED", "renpho")!.password).toBe("rpw");
   });
 
   it("wants the login before the sync is switched on, a password with a changed email, and sensible values", () => {
@@ -216,7 +216,7 @@ describe("the Renpho login and settings", () => {
     expect(() => saveRenpho(store, "MED", { areaCode: "United States" })).toThrow(/two or three letters/);
     expect(() => saveRenpho(store, "MED", { intervalHours: 5 })).toThrow(/hours/);
     expect(() => saveRenpho(store, "MED", { pushSince: "yesterday" })).toThrow(/date/);
-    expect(store.renpho.settings("MED")).toEqual(expect.objectContaining({ areaCode: "US", intervalHours: 3 })); // nothing half saved
+    expect(store.renpho.settings("MED")).toEqual(expect.objectContaining({ areaCode: "US", intervalHours: 3 }));
   });
 
   it("works without Garmin, and the upload to Garmin needs a Garmin login", () => {
@@ -239,7 +239,7 @@ describe("the Renpho login and settings", () => {
     expect(store.renpho.settings("MED")).toEqual(expect.objectContaining({ pushEnabled: true, pushSince: "2026-10-18" }));
     saveRenpho(store, "MED", { pushEnabled: false, pushSince: "2026-01-01" }, T);
     saveRenpho(store, "MED", { pushEnabled: true }, T);
-    expect(store.renpho.settings("MED").pushSince).toBe("2026-01-01"); // a chosen day is kept
+    expect(store.renpho.settings("MED").pushSince).toBe("2026-01-01");
     saveRenpho(store, "MED", { pushSince: "" }, T);
     expect(store.renpho.settings("MED").pushSince).toBeNull();
   });
@@ -269,6 +269,6 @@ describe("the Renpho login and settings", () => {
     saveGarminLogin(store, "SAM", { email: "s@b.c", password: "plain" });
     expect(settingsView(store, "MED").encryption).toEqual({ enabled: false, plain: 2 });
     process.env.CREDENTIALS_KEY = "k".repeat(32);
-    expect(settingsView(store, "MED").encryption).toEqual({ enabled: true, plain: 1 }); // MED's was encrypted as it was read; SAM's waits for its turn
+    expect(settingsView(store, "MED").encryption).toEqual({ enabled: true, plain: 1 });
   });
 });

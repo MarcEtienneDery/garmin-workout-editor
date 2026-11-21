@@ -11,9 +11,8 @@ import { hrvResponse, sleepResponse, summaryResponse } from "./fixtures/wellness
 import { seedProfile } from "./fixtures/profiles";
 
 const PROFILE = "MED";
-const TODAY = new Date().toISOString().slice(0, 10); // GARMIN_TZ is UTC below
+const TODAY = new Date().toISOString().slice(0, 10);
 
-/** Garmin: answers by the path it is asked for, and records the paths. */
 function fakeGarmin(fail?: (url: string) => Error | null) {
   const calls: string[] = [];
   const client = {
@@ -46,7 +45,7 @@ const settled = async () => {
 
 let dir: string;
 const saved = { path: process.env.GARMIN_STORE_PATH, gap: process.env.GARMIN_DETAIL_GAP_MS, tz: process.env.GARMIN_TZ, days: process.env.WELLNESS_DAYS };
-const KEPT = 30; // a month: enough for the baselines, quick to fill
+const KEPT = 30;
 beforeEach(() => {
   dir = fs.mkdtempSync(path.join(os.tmpdir(), "readiness-"));
   process.env.GARMIN_STORE_PATH = path.join(dir, "garmin.db");
@@ -73,8 +72,8 @@ describe("get_readiness", () => {
     expect(out.band).toMatch(/go-harder|as-planned|back-off/);
     expect(out.signals.map((s: any) => s.name)).toEqual(expect.arrayContaining(["hrv", "sleep", "restingHr"]));
     expect(out.daysStored).toBeGreaterThanOrEqual(3);
-    expect(calls.slice(0, 9).every((c) => /dailySleepData|hrv-service|usersummary/.test(c))).toBe(true); // the 3 kinds, 3 days
-    expect(calls.some((c) => c.includes("abc-123"))).toBe(true); // the user's display name, where Garmin files by it
+    expect(calls.slice(0, 9).every((c) => /dailySleepData|hrv-service|usersummary/.test(c))).toBe(true);
+    expect(calls.some((c) => c.includes("abc-123"))).toBe(true);
 
     await settled();
     expect(getStore().wellness.counts(PROFILE).days).toBe(KEPT);
@@ -96,7 +95,7 @@ describe("get_readiness", () => {
     fakeGarmin();
     const out = await readiness({ date: addDays(TODAY, -20) });
     expect(out.date).toBe(addDays(TODAY, -20));
-    expect(out.daysStored).toBe(0); // nothing was fetched for it first: only the background sync, which has stored nothing yet
+    expect(out.daysStored).toBe(0);
     await settled();
     expect((await readiness({ date: addDays(TODAY, -20) })).daysStored).toBeGreaterThan(0);
   });
@@ -185,7 +184,7 @@ describe("refreshWellness for a page's Sync button", () => {
 
     const before = calls.length;
     const out = await refreshWellness(PROFILE, { manual: true });
-    expect(out).toEqual({ fetched: 3 * 5, busy: false, error: null }); // the five kinds not fetched yet, for each of the three days
+    expect(out).toEqual({ fetched: 3 * 5, busy: false, error: null });
     const day = (d: string) => calls.slice(before).filter((c) => c.includes(d));
     expect(day(TODAY).sort()).toEqual(nine(TODAY).filter((c) => !/usersummary|dailySleepData|hrv-service|weight-service/.test(c)).sort());
   });
@@ -195,17 +194,17 @@ describe("refreshWellness for a page's Sync button", () => {
     await refreshWellness(PROFILE, { manual: true });
     const before = calls.length;
 
-    await refreshWellness(PROFILE, { manual: true }); // a moment later: all of it is kept
+    await refreshWellness(PROFILE, { manual: true });
     expect(calls.length).toBe(before);
 
-    agoToday(2 * 60_000); // two minutes ago: old for a Sync button, not for a view opening
+    agoToday(2 * 60_000);
     await refreshWellness(PROFILE);
     expect(calls.length).toBe(before);
     const out = await refreshWellness(PROFILE, { manual: true });
     expect(out).toEqual({ fetched: 9, busy: false, error: null });
-    expect(calls.slice(before).sort()).toEqual(nine(TODAY).sort()); // today's nine, and nothing of the days before (fetched a moment ago)
+    expect(calls.slice(before).sort()).toEqual(nine(TODAY).sort());
 
-    agoToday(6 * 60_000); // six minutes ago: a view opening asks again, for the kinds it fetches
+    agoToday(6 * 60_000);
     const opened = await refreshWellness(PROFILE);
     expect(opened.fetched).toBe(4);
   });

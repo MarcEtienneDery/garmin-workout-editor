@@ -1,83 +1,3 @@
-/**
- * web/server.ts — small web UI to manage plans (CRUD + Monaco JSON editor).
- *
- *   npm run web                      # http://127.0.0.1:8788
- *   WEB_PORT=8788 WEB_HOST=0.0.0.0 WEB_AUTH_TOKEN=... npm run web
- *
- * Reaches the same documents as the MCP plan tools ("workout-plans/*.json" and
- * "data/<profile>/*.json") through the same store, which keeps the earlier versions
- * of every document (GET /api/history). Non-loopback binds
- * require WEB_AUTH_TOKEN or a profile with a web sign-in password (below).
- *
- * Profiles live in the database (POST /api/profiles adds one; the Settings view shows them). Garmin and Renpho are optional
- * for each: GET /api/garmin says which profile has what (profileInfo), the Garmin parts of the page show for the profiles that
- * have a Garmin login, and a request that needs Garmin for a profile without one is answered 409.
- *
- * The Garmin actions (upload / schedule / send to device) reuse the MCP tool
- * bodies, so they need the profile's Garmin login and are disabled for a profile
- * without one and in mock mode.
- *
- * The Workouts view lists the Garmin library next to the workouts of the plan files
- * (GET /api/workouts), compares plan workouts with their Garmin copy (POST /api/garmin/status)
- * and creates / replaces / deletes workouts in the plan files and on Garmin together
- * (POST, PUT, DELETE /api/garmin/workout). Each write that touches Garmin needs confirm: true.
- *
- * A plan can be archived (POST /api/plans/archive, POST /api/plans/unarchive): its workouts are deleted from Garmin (confirm: true when it has
- * any), their workoutIds leave the plan, and the plan stays in the database, listed apart (archivedAt in GET /api/files) and left out of the
- * Today, Calendar and Workouts views. An archived plan is refused by the Garmin actions until it is unarchived.
- *
- * The Food view logs what was eaten per meal (GET /api/nutrition: a day's meals with their totals, the totals of a range next to
- * the calories Garmin says were burned, and the foods used lately; POST /api/nutrition adds, copies to today, changes or deletes entries). The log
- * is in the database only, Garmin has nowhere to keep food, so it needs no Garmin login and works with Garmin disabled.
- *
- * Food search and the barcode scan look foods up on Open Food Facts from the server (GET /api/foods/search?q=, GET
- * /api/foods/barcode?code=): the page scales what they return to the quantity eaten and logs it with POST /api/nutrition.
- *
- * The daily food goals (calories, protein, carbs, fat and the nutrients) are set in Settings (POST /api/settings/goals; GET /api/settings has them) and
- * come back with the Food view (`goals` and `progress`, where the day shown stands against each) and the Today view (`goals`, `foodProgress`).
- *
- * The Food view's AI box estimates a meal from the person's words and photos with Claude or Gemini (POST /api/foods/ai; set up by FOOD_AI_BACKEND):
- * it writes nothing, the page shows the estimate and logs what is kept with POST /api/nutrition.
- *
- * The Calendar view shows where the plan files put their workouts (GET /api/calendar): each plan's span
- * and the dates of its workouts. It reads the stored plans only, not Garmin's own calendar.
- *
- * A workout is moved to another day (POST /api/plans/move: the Calendar's drag and drop, the Move menu of a workout's dates) in its plan
- * files, and on Garmin's calendar too when the page asks (garmin: true, confirm: true) and Garmin has the workout on the day it leaves.
- *
- * The Activities view lists and draws the profile's activities from the database (GET /api/activities,
- * GET /api/activity, GET /api/activities/stats for the lifetime totals and records); it never calls Garmin on a read. POST /api/activities/sync asks Garmin for what is new
- * (and, with history: true, starts the background fill of the whole history and the details), and POST
- * /api/activities/detail and /chart fetch one activity's details or chart data now.
- *
- * The Recovery view shows the daily health data the database keeps (GET /api/wellness: the readiness for a day, the days
- * of a range with the person's own normal, and what is stored for the day; GET /api/wellness/raw: Garmin's complete stored
- * response of one kind for a day); it never calls Garmin on a read. POST /api/wellness/sync fetches the last days now
- * (a Sync button, with manual: true, every kind; what was fetched lately is kept: see refreshMs) and starts the background fill of the
- * rest, as far back as the page shows. The Weight view (GET /api/weight: the weight, body composition and calories burned of the last
- * days, with the weight trend) reads the same table and syncs through that POST.
- *
- * The Today view (GET /api/today) is the landing page: the day's steps, intensity minutes of the week, Body Battery, sleep and food
- * next to the workouts the plans put on the coming days and the activities done today. It reads the database and the plan files
- * only; the page's Sync button asks Garmin (POST /api/wellness/sync, then POST /api/activities/sync).
- *
- * The workout picture times steps that name no pace from the profile's recent runs (GET /api/runs),
- * read from the activities table that the Garmin sync fills.
- *
- * Logins: the page shows a sign-in form (POST /api/login, GET /api/session, POST /api/logout)
- * and keeps the login in an HttpOnly session cookie; the session is kept in the database, so it survives a restart, and lasts
- * SESSION_IDLE_MS from its last use (at most SESSION_MAX_MS from the sign-in). user = a profile name (any case),
- * password = the web sign-in password set for that profile in Settings (kept as a hash) -> sees only data/<profile>/ and
- * the plans in workout-plans/ that are shared or its own, and its Garmin actions run as that
- * profile. WEB_AUTH_TOKEN as the password (any user name) is the admin login with full access.
- * Scripts can send the same credentials as HTTP Basic instead of using a session.
- *
- * Sign-up: a person makes their own profile with an invite code the admin made (GET/POST /api/invites in Settings; a code can be used by
- * a number of people until it expires or is revoked). The sign-in page takes the code, or a link that carries it (/?invite=XXXX-XXXX-XXXX),
- * and a name and password (GET /api/invite?code= says whether a code works, POST /api/signup makes the profile and signs it in). Both
- * answer without a login, and wrong codes are counted per client address like wrong passwords. A profile made this way is shown the welcome
- * flow once (`welcome: true` on its user until POST /api/welcome ends it).
- */
 import * as fs from "fs";
 import * as http from "http";
 import * as path from "path";
@@ -135,21 +55,15 @@ import {
 } from "../workoutEditor";
 
 const PUBLIC_DIR = path.join(__dirname, "public");
-// Monaco is served from node_modules so the editor works offline (e.g. on the NAS).
 const MONACO_DIR = path.join(PROJECT_ROOT, "node_modules", "monaco-editor", "min", "vs");
 const LEAFLET_DIR = path.join(PROJECT_ROOT, "node_modules", "leaflet", "dist");
-// ZXing reads barcodes in browsers that have no BarcodeDetector (Safari on iPhone); the page loads it only then.
 const ZXING_DIR = path.join(PROJECT_ROOT, "node_modules", "@zxing", "library", "umd");
 const MAX_BODY_BYTES = 10 * 1024 * 1024;
 const SESSION_COOKIE = "plan_editor_session";
-/** Set by sign out: a browser that cached Basic credentials (earlier versions asked for them) keeps sending them, so they are ignored while this is set. */
 const SIGNED_OUT_COOKIE = "plan_editor_signed_out";
 const DAY_MS = 24 * 60 * 60 * 1000;
-/** A session ends after this long without use ... */
 const SESSION_IDLE_MS = 30 * DAY_MS;
-/** ... and this long after the sign-in however much it is used. */
 const SESSION_MAX_MS = 90 * DAY_MS;
-/** A session in use is renewed (a write, and a new cookie) at most this often. */
 const SESSION_RENEW_AFTER_MS = DAY_MS;
 const SIGNED_OUT_TTL_MS = 365 * 24 * 60 * 60 * 1000;
 const STORE_STATUS: Record<StoreErrorCode, number> = { not_found: 404, exists: 409, conflict: 409, invalid_path: 400 };
@@ -158,9 +72,7 @@ const store = () => getStore();
 export interface WebServerOptions {
   host: string;
   port: number;
-  /** Optional shared secret (HTTP Basic password). Required unless host is loopback. */
   token?: string;
-  /** Which forwarding header names the client behind a proxy or tunnel (default: TRUST_PROXY, else none: the socket's address). */
   trustProxy?: TrustProxy;
 }
 
@@ -168,9 +80,7 @@ class HttpError extends Error {
   constructor(
     readonly status: number,
     message: string,
-    /** Extra fields for the JSON error body (e.g. the Garmin log). */
     readonly extra: Record<string, unknown> = {},
-    /** Extra response headers (Retry-After). */
     readonly headers: http.OutgoingHttpHeaders = {}
   ) {
     super(message);
@@ -183,14 +93,11 @@ export const isLoopback = (host: string): boolean =>
 const sha256 = (v: string) => createHash("sha256").update(v).digest();
 const sameSecret = (a: string, b: string) => timingSafeEqual(sha256(a), sha256(b));
 
-/** Who is calling: the admin (token, or no auth configured) or a single profile. */
 export type Principal = { admin: true; profile?: undefined } | { admin: false; profile: string };
 const ADMIN: Principal = { admin: true };
 
-/** The profiles that sign in with a password of their own; read per request so one set in Settings applies at once. */
 const profilesWithWebPassword = (): string[] => store().profiles.withWebPassword();
 
-/** A profile login reaches its own data/<profile>/ and the plans in workout-plans/ that are shared or its own. */
 function canReach(who: Principal, logical: string, owner: string | null): boolean {
   return who.admin || profileReaches(who.profile, logical, owner);
 }
@@ -222,7 +129,6 @@ async function readBody(req: http.IncomingMessage): Promise<any> {
   } catch {
     throw new HttpError(400, "Request body is not valid JSON");
   }
-  // every route reads fields off the body: null, a number or a list would be a crash, not a bad request
   if (body === null || typeof body !== "object" || Array.isArray(body)) throw new HttpError(400, "Request body must be a JSON object");
   return body;
 }
@@ -236,7 +142,6 @@ function logicalOr400(logicalPath: unknown): string {
   }
 }
 
-/** The logical path of a request, checked against what this login may reach. */
 function scopedPath(who: Principal, logicalPath: unknown): string {
   const logical = logicalOr400(logicalPath);
   assertScope(who, logical);
@@ -252,7 +157,6 @@ function parseOr400(text: unknown): unknown {
   }
 }
 
-/** Validation for workout-shaped JSON; other documents (e.g. training-plan.json) just need to parse. */
 function validateText(text: string): unknown {
   const data = parseOr400(text);
   const isWorkouts =
@@ -264,13 +168,10 @@ function validateText(text: string): unknown {
 interface FileInfo {
   path: string;
   size: number;
-  /** Changes with every save: send it back with a save to find out whether someone else saved first. */
   version: number;
   updatedAt: number;
   owner: string | null;
-  /** Who saved this version: web, mcp, cli, import. */
   source: string;
-  /** When the plan was archived; null for an active one. */
   archivedAt: number | null;
   workoutCount?: number;
   weekStart?: string;
@@ -295,7 +196,6 @@ function listFiles(who: Principal): FileInfo[] {
     .map(fileInfo);
 }
 
-/** JSON Schema for the Monaco editor: autocompletion and hover docs for plan files. */
 function workoutSchema() {
   const step = {
     type: "object",
@@ -353,31 +253,26 @@ function workoutSchema() {
   };
 }
 
-// ── Garmin actions ──────────────────────────────────────────────────────────
 
 const GARMIN_ACTIONS = ["upload", "schedule", "upload_schedule", "send"] as const;
 type GarminAction = (typeof GARMIN_ACTIONS)[number];
 
-/** What the page shows about the login: the profile name, or admin. A profile that has yet to see the welcome flow says so (`welcome`). */
 const userInfo = (who: Principal) =>
   who.admin ? { admin: true } : { admin: false, name: who.profile, ...(store().profiles.welcomePending(who.profile) ? { welcome: true } : {}) };
 
-/** Whether the profile has Garmin health data to show: a Garmin login, or rows stored from one that was disconnected. */
 const hasHealth = (profile: string): boolean => garminConnected(profile) || store().wellness.hasRows(profile);
 
-/** What one profile has: the connections it made and whether the views that depend on them have anything stored. */
 function profileSources(profile: string) {
   const renpho = store().renpho.counts(profile);
   let renphoLogin = false;
   try {
     renphoLogin = store().credentials.get(profile, "renpho") !== null;
   } catch {
-    renphoLogin = true; // saved, but encrypted with a key this process lacks
+    renphoLogin = true;
   }
   return {
     garmin: garminConnected(profile),
     renpho: renphoLogin,
-    // every profile needs a web sign-in password; one made before that was a rule, or imported without one, is asked to set it
     webPassword: store().profiles.webPasswordHash(profile) !== null,
     hasActivities: store().activities.counts(profile).total > 0,
     hasWellness: store().wellness.hasRows(profile),
@@ -385,19 +280,13 @@ function profileSources(profile: string) {
   };
 }
 
-/** The profiles a login sees: all of them for the admin, its own for a profile. */
 const visibleProfiles = (who: Principal): string[] => {
   const all = getAvailableProfiles();
   return who.admin ? all : all.filter((p) => p === who.profile);
 };
 
-/** How long after the last 429 the page goes on saying so, when nothing has worked or failed since. */
 const LIMIT_SHOWN_MS = 24 * 3_600_000;
 
-/**
- * What the header shows at a glance: per profile, which syncs hold a lease now (the activities, the health data, the Renpho scale: the
- * MCP server's runs count, as the lease is in the database) and whether Garmin is answering with 429. Cheap reads only: the page asks every few seconds.
- */
 function syncActivity(who: Principal, now = Date.now()) {
   const running = (state: { holder: string | null; leaseUntil: number | null }) => !!state.holder && (state.leaseUntil ?? 0) > now;
   const profiles = Object.fromEntries(
@@ -420,13 +309,11 @@ function garminInfo(who: Principal) {
   const profileInfo = Object.fromEntries(profiles.map((p) => [p, profileSources(p)]));
   const connected = profiles.filter((p) => profileInfo[p].garmin);
   return {
-    // some profile can reach Garmin; the page asks per profile (profileInfo) before it shows a Garmin button
     enabled: connected.length > 0 && !mock,
     mock,
     profiles,
     connected,
     profileInfo,
-    // how each profile likes things shown (its unit of weight), so every view knows before Settings is opened
     prefs: Object.fromEntries(profiles.map((p) => [p, store().prefs.get(p)])),
     user: userInfo(who),
     defaultProfile: who.admin
@@ -440,11 +327,10 @@ function garminInfo(who: Principal) {
   };
 }
 
-/** data/<PROFILE>/... files and owned plans belong to that profile; other plans need an explicit or default one. */
 function profileFor(who: Principal, logical: string, requested: unknown): string {
   if (!who.admin) {
     if (!getAvailableProfiles().includes(who.profile)) throw new HttpError(400, `Unknown profile "${who.profile}".`);
-    return who.profile; // a profile login always acts as itself
+    return who.profile;
   }
   const owner = profileOfPath(logical) ?? (logical ? (store().head(logical)?.owner ?? undefined) : undefined);
   const name = owner ?? (typeof requested === "string" && requested ? requested : undefined);
@@ -462,7 +348,6 @@ async function garminAction(body: any, who: Principal): Promise<{ status: number
   const info = garminInfo(who);
   if (!info.enabled) throw new HttpError(409, info.reason ?? "Garmin actions are disabled.");
   if (!GARMIN_ACTIONS.includes(body.action)) throw new HttpError(400, `Unknown action "${body.action}".`);
-  // The UI shows what will happen and asks first; the API insists on it so a stray request can't change the account.
   if (body.confirm !== true) throw new HttpError(400, "Confirmation required (confirm: true).");
   const action = body.action as GarminAction;
 
@@ -480,7 +365,6 @@ async function garminAction(body: any, who: Principal): Promise<{ status: number
     }
   }
   const deviceId = Number.isInteger(body.deviceId) ? (body.deviceId as number) : undefined;
-  // `indexes`: the workouts of the plan the action is limited to (the page's "only what needs it"), by place in its list; without it, all of them
   let only: number[] | undefined;
   if (body.indexes !== undefined) {
     const count = readPlan(logical)?.list.length ?? 0;
@@ -509,7 +393,6 @@ async function garminAction(body: any, who: Principal): Promise<{ status: number
   return { status: 200, payload: { action, profile, result: outcome.value, log: outcome.log, version } };
 }
 
-// ── Workouts view: the Garmin library next to the plan entries that carry the same workouts ──
 
 interface PlanEntry {
   path: string;
@@ -520,7 +403,6 @@ interface PlanEntry {
 
 const isWorkout = (w: any): boolean => !!w && typeof w === "object" && typeof w.workoutName === "string";
 
-/** A stored document as plan data: the parsed JSON and its workout list. null when it is not JSON or holds no list (the editor flags those). */
 function readPlan(logical: string): { data: any; list: any[] } | null {
   try {
     const data: any = JSON.parse(store().get(logical)?.text ?? "");
@@ -531,7 +413,6 @@ function readPlan(logical: string): { data: any; list: any[] } | null {
   }
 }
 
-/** Every workout in the plans a profile works with (see activePlanDocs: archived plans are not among them). */
 function planEntriesFor(profile: string): PlanEntry[] {
   const entries: PlanEntry[] = [];
   for (const meta of activePlanDocs(store(), profile)) {
@@ -542,13 +423,10 @@ function planEntriesFor(profile: string): PlanEntry[] {
   return entries;
 }
 
-// ── The workout form's exercise picker ──
 
-/** Garmin's exercises with their category, as the plans may name them (the list the uploads check names against). */
 const EXERCISES = Object.entries(exerciseCategoryMap as Record<string, string>).map(([name, category]) => ({ name, category }));
 const MAX_USED = 40;
 
-/** The exercises the profile's plans name, most used first (nested repeats counted too): the picker lists them first. */
 function usedExercises(profile: string): string[] {
   const counts = new Map<string, number>();
   const visit = (steps: unknown): void => {
@@ -564,19 +442,15 @@ function usedExercises(profile: string): string[] {
   return [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, MAX_USED).map(([name]) => name);
 }
 
-// ── Calendar view: where the plan files put their workouts (this is the files, not Garmin's own calendar) ──
 
-/** A real calendar date written YYYY-MM-DD. */
 const isoDate = (v: unknown): v is string => {
   if (typeof v !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return false;
   const ms = Date.parse(`${v}T00:00:00Z`);
   return !Number.isNaN(ms) && new Date(ms).toISOString().slice(0, 10) === v;
 };
 
-/** The valid dates of a workout's scheduledDate (one date or a list), sorted and without repeats. */
 const scheduledDates = (w: any): string[] => [...new Set([w.scheduledDate].flat().filter(isoDate))].sort();
 
-/** A workout's scheduledDate once its day `from` is moved to `to`: one date stays one date, a list keeps its other days, in order, with `to` once. */
 const movedDates = (scheduledDate: unknown, from: string, to: string): string | unknown[] => {
   if (!Array.isArray(scheduledDate)) return to;
   const dates = [...new Set(scheduledDate.map((d) => (d === from ? to : d)))];
@@ -588,17 +462,11 @@ interface CalendarPlan {
   owner: string | null;
   weekStart?: string;
   weekEnd?: string;
-  /**
-   * The span the plan covers: weekStart / weekEnd widened by every scheduledDate. The week range alone is not
-   * reliable (a plan keeps its first week after it grows), and a plan may have no scheduledDate at all. null: no dates.
-   */
   start: string | null;
   end: string | null;
-  /** `workout` is the whole workout, for the page to draw its profile and total its steps (the week view of the Calendar). */
   workouts: { index: number; workoutName: string; workoutType?: string; workoutId?: number | string; dates: string[]; workout: Record<string, unknown> }[];
 }
 
-/** Every plan this login can reach with its dates: workout-plans/ and data/<profile>/ (export snapshots are copies of Garmin's list, not plans; archived plans are put away). */
 function calendarPlans(who: Principal): CalendarPlan[] {
   const plans: CalendarPlan[] = [];
   for (const meta of store().list()) {
@@ -617,14 +485,9 @@ function calendarPlans(who: Principal): CalendarPlan[] {
     const days = [weekStart, weekEnd, ...workouts.flatMap((w) => w.dates)].filter(isoDate).sort();
     plans.push({ path: meta.path, owner: meta.owner, weekStart, weekEnd, start: days[0] ?? null, end: days[days.length - 1] ?? null, workouts });
   }
-  // dated plans in calendar order, the undated ones last
   return plans.sort((a, b) => Number(a.start === null) - Number(b.start === null) || (a.start ?? "").localeCompare(b.start ?? "") || a.path.localeCompare(b.path));
 }
 
-/**
- * "<workoutId>|<date>" for each stored activity of the profile that was started from a Garmin workout (the same workout id): the plans'
- * workouts that were done, and on what day. A login that resolves to no profile has none. Reads the database only.
- */
 function doneWorkouts(who: Principal, requested: unknown): string[] {
   let profile: string;
   try {
@@ -635,9 +498,7 @@ function doneWorkouts(who: Principal, requested: unknown): string[] {
   return store().activities.summaries(profile, 600).map(activityRow).flatMap((a) => (hasId(a.workoutId) ? [`${a.workoutId}|${a.date}`] : []));
 }
 
-// ── Pace from your runs: what the workout picture times steps with when the workout names no pace ──
 
-/** One run from the activities table; pace is seconds per km. */
 interface RunSample {
   date: string;
   km: number;
@@ -645,16 +506,14 @@ interface RunSample {
   hr: number;
 }
 
-const RUN_WINDOW_DAYS = 120; // counted back from the newest run, so stale files still give an answer
+const RUN_WINDOW_DAYS = 120;
 const RUN_LIMIT = 60;
 
-/** The profile's recent runs, newest first, from the activities table. Reads the database only, so it needs no Garmin login. */
 function recentRuns(profile: string): RunSample[] {
   const runs: RunSample[] = [];
   for (const a of store().activities.between(profile, { type: "running", limit: 400 })) {
-    const pace = a.raw?.averageSpeed > 0 ? 1000 / a.raw.averageSpeed : NaN; // seconds per km, from the speed in m/s
+    const pace = a.raw?.averageSpeed > 0 ? 1000 / a.raw.averageSpeed : NaN;
     const km = (a.distance ?? 0) / 1000, hr = a.avgHr ?? 0;
-    // short runs, treadmill readings and watch glitches would skew the pace
     if (!(km >= 2) || !(pace >= 180 && pace <= 540) || !(hr >= 90 && hr <= 210)) continue;
     runs.push({ date: a.startLocal.slice(0, 10), km: +km.toFixed(1), pace: Math.round(pace), hr: Math.round(hr) });
   }
@@ -663,10 +522,7 @@ function recentRuns(profile: string): RunSample[] {
   return runs.filter((r) => r.date >= cutoff).slice(0, RUN_LIMIT);
 }
 
-// ── Activities view: what the activities table holds, never a call to Garmin on a read ──
 
-/** The profile a read is about, or null when none is configured (nothing is stored then). */
-/** What GET /api/settings and the writes to it answer: the profile's settings, with the Food AI status the Food view gets (which AI, the daily limit, the estimates left today). */
 function settingsAnswer(profile: string) {
   return { ...settingsView(store(), profile), ai: foodAiStatus(profile, localToday(store(), profile)) };
 }
@@ -679,7 +535,6 @@ function profileOrNull(who: Principal, requested: unknown): string | null {
   }
 }
 
-/** A row of the activity list; seconds per km for a run. */
 function activityRow(a: Omit<ActivitySummary, "detailed"> & { detailed?: boolean }) {
   return {
     id: a.id,
@@ -704,7 +559,6 @@ function activityRow(a: Omit<ActivitySummary, "detailed"> & { detailed?: boolean
   };
 }
 
-/** The one-rep max of each exercise of this activity: the same ones the Stats view shows (see lifetimeStats). */
 function oneRepMaxes(profile: string, sets: ExerciseSet[] | undefined): Record<string, BestLift> {
   const names = new Set(liftSets(sets).map((x) => x.exerciseName));
   if (!names.size) return {};
@@ -713,9 +567,8 @@ function oneRepMaxes(profile: string, sets: ExerciseSet[] | undefined): Record<s
   return out;
 }
 
-/** One activity with everything stored: its row, the slim form (sets, intervals, feel and RPE), and the plan workout it came from. */
 function activityDetail(profile: string, a: StoredActivity) {
-  const raw = a.raw ?? {}, summary = a.detail?.summaryDTO ?? {}; // what the list lacks, the details may carry
+  const raw = a.raw ?? {}, summary = a.detail?.summaryDTO ?? {};
   const row = activityRow({
     id: a.id, startLocal: a.startLocal, type: a.type, name: a.name, distance: a.distance, duration: a.duration, avgHr: a.avgHr,
     maxHr: raw.maxHR ?? summary.maxHR ?? null, speed: raw.averageSpeed ?? summary.averageSpeed ?? null, trainingEffectLabel: raw.trainingEffectLabel ?? summary.trainingEffectLabel ?? null,
@@ -730,7 +583,6 @@ function activityDetail(profile: string, a: StoredActivity) {
     detailed: a.detail !== null,
     stats: activityStats(raw, a.detail),
     oneRepMax: a.type === "strength_training" ? oneRepMaxes(profile, slim?.exerciseSets) : {},
-    // the charts, read from what was stored; null until the chart data has been fetched
     chart: buildChart(store().activities.getChart(profile, a.id)),
     planned: entry ? { path: entry.path, index: entry.index, workout: entry.workout } : null,
   };
@@ -741,10 +593,6 @@ const sameId = (a: unknown, b: unknown): boolean => hasId(a) && hasId(b) && Stri
 
 type WorkoutRowState = "garmin-only" | "linked" | "not-uploaded";
 
-/**
- * One row per workout on Garmin plus one per plan workout Garmin does not list. "linked" rows
- * have a workoutId and plan entries to compare (checked afterwards through /api/garmin/status).
- */
 function workoutRows(library: LibraryWorkout[], entries: PlanEntry[]) {
   const ref = (e: PlanEntry) => ({ path: e.path, index: e.index, version: e.version });
   const listed = new Set(library.map((w) => String(w.workoutId)));
@@ -756,7 +604,6 @@ function workoutRows(library: LibraryWorkout[], entries: PlanEntry[]) {
     description?: string;
     updatedDate?: string;
     plans: ReturnType<typeof ref>[];
-    /** The days the plans schedule it on, sorted. */
     dates: string[];
     state: WorkoutRowState;
   }[] = [];
@@ -766,7 +613,6 @@ function workoutRows(library: LibraryWorkout[], entries: PlanEntry[]) {
     const linked = entries.filter((e) => sameId(e.workout.workoutId, w.workoutId));
     rows.push({ key: `g:${w.workoutId}`, ...w, plans: linked.map(ref), dates: datesOf(linked), state: linked.length ? "linked" : "garmin-only" });
   }
-  // Not in the (at most LIBRARY_LIMIT long) listing: unverified until the status check asks Garmin for it.
   for (const e of entries) {
     if (hasId(e.workout.workoutId) && listed.has(String(e.workout.workoutId))) continue;
     rows.push({
@@ -788,20 +634,16 @@ function requireGarmin(who: Principal): void {
   if (!info.enabled) throw new HttpError(409, info.reason ?? "Garmin actions are disabled.");
 }
 
-/** The profile a Garmin request is about must have a Garmin login of its own; the others work without Garmin. */
 function requireConnected(profile: string): void {
   if (!garminConnected(profile)) throw new HttpError(409, `Profile "${profile}" has no Garmin login: add one in Settings.`);
 }
 
 function requireConfirm(body: any): void {
-  // The UI asks first; the API insists so a stray request can't change the account.
   if (body.confirm !== true) throw new HttpError(400, "Confirmation required (confirm: true).");
 }
 
-/** A call that failed on Garmin's side is a 502; one that could not start because the profile has no Garmin login is a 409. */
 const garminFailure = (error: unknown): number => (error instanceof GarminNotConnectedError ? 409 : 502);
 
-/** Run a Garmin call serialized with the others; a failure becomes a 502 that carries the Garmin log. */
 async function viaGarmin<T>(fn: () => Promise<T>): Promise<{ value: T; log: string }> {
   const outcome = await runCaptured(fn);
   if (!outcome.ok) {
@@ -814,7 +656,6 @@ interface PlanFile {
   logical: string;
   owner: string | null;
   data: unknown;
-  /** Live reference into `data`. */
   workouts: any[];
 }
 
@@ -842,7 +683,6 @@ interface PlanTarget {
   index: number;
 }
 
-/** Check that each referenced plan entry still exists and carries the workout we think it does, before anything is changed. */
 function loadPlanTargets(who: Principal, refs: unknown, workoutId?: unknown): { files: PlanFile[]; targets: PlanTarget[] } {
   if (refs === undefined) return { files: [], targets: [] };
   if (!Array.isArray(refs)) throw new HttpError(400, "plans must be a list");
@@ -870,12 +710,10 @@ function workoutFrom(body: any): Record<string, any> {
   return workout;
 }
 
-/** data/<PROFILE>/ plans and owned plans decide the Garmin profile; otherwise the request (or default) does. */
 const ownerHint = (files: PlanFile[]): string => files.find((f) => profileOfPath(f.logical) || f.owner)?.logical ?? "";
 
 const changedFiles = (files: PlanFile[]) => files.map((f) => ({ path: f.logical, version: store().head(f.logical)?.version }));
 
-/** Add a new workout to a plan and/or Garmin. */
 async function createWorkout(body: any, who: Principal): Promise<unknown> {
   const workout = workoutFrom(body);
   const upload = body.upload === true;
@@ -895,11 +733,10 @@ async function createWorkout(body: any, who: Principal): Promise<unknown> {
     const profile = profileFor(who, plan?.logical ?? "", body.profile);
     requireConnected(profile);
     const toUpload = { ...workout };
-    delete toUpload.workoutId; // a new workout never replaces an existing one
+    delete toUpload.workoutId;
     ({ value: saved, log } = await viaGarmin(() => saveWorkout(profile, toUpload, body.schedule === true)));
   }
   const created = saved ? { ...workout, workoutId: saved.workoutId } : { ...workout };
-  // Not uploaded: the entry is unlinked, unless it is a copy of a workout that is already on Garmin (linkWorkoutId).
   if (!saved) { if (hasId(body.linkWorkoutId)) created.workoutId = body.linkWorkoutId; else delete created.workoutId; }
   let index: number | undefined;
   if (plan) {
@@ -910,10 +747,6 @@ async function createWorkout(body: any, who: Principal): Promise<unknown> {
   return { workoutId: created.workoutId, path: plan?.logical, index, changed: plan ? changedFiles([plan]) : [], validation, log };
 }
 
-/**
- * Save an edited workout: into its plan entry (plans[0]) and/or onto Garmin. Garmin replaces the workout
- * (new workoutId), so every plan entry that pointed at the old one is repointed.
- */
 async function updateWorkout(body: any, who: Principal): Promise<unknown> {
   const workout = workoutFrom(body);
   const upload = body.upload === true;
@@ -948,7 +781,6 @@ async function updateWorkout(body: any, who: Principal): Promise<unknown> {
   return { workoutId: newId ?? workout.workoutId, changed: changedFiles(files), validation, log };
 }
 
-/** Remove a workout from Garmin and/or from the plan entries that carry it. */
 async function deleteWorkout(body: any, who: Principal): Promise<unknown> {
   const fromGarmin = body.garmin === true;
   const fromPlans = body.removeFromPlans === true;
@@ -971,19 +803,12 @@ async function deleteWorkout(body: any, who: Principal): Promise<unknown> {
       file.workouts.splice(0, file.workouts.length, ...file.workouts.filter((_, i) => !gone.has(i)));
     }
   } else {
-    // Only Garmin's copy is gone: the plan keeps the workout, as "not uploaded".
     for (const { file, index } of targets) delete file.workouts[index].workoutId;
   }
   files.forEach(savePlanFile);
   return { deleted: { garmin: fromGarmin, plans: fromPlans }, changed: changedFiles(files), log };
 }
 
-/**
- * Move a workout from one day to another: the day `from` of each plan entry in `plans` becomes `to` (a workout on several days
- * moves on that one only). With garmin: true Garmin's calendar follows, when the workout is on Garmin and the plan's profile has
- * a Garmin login (see moveScheduledWorkout). The plans are saved first, so a Garmin failure leaves them moved and is told in
- * `garmin`, not thrown: moved, not-scheduled (Garmin's calendar does not have it on `from`), skipped (with why) or failed.
- */
 async function moveWorkoutDay(body: any, who: Principal): Promise<unknown> {
   const { from, to } = body;
   if (!isoDate(from) || !isoDate(to)) throw new HttpError(400, "from and to must be days written YYYY-MM-DD.");
@@ -998,7 +823,6 @@ async function moveWorkoutDay(body: any, who: Principal): Promise<unknown> {
     if (!scheduledDates(entry).includes(from)) throw new HttpError(409, `"${entry.workoutName}" is not on ${from} in ${file.logical} any more. Reload and try again.`);
   }
 
-  // Whether Garmin's calendar is asked is settled before anything is written, so a refusal (no confirm) changes nothing.
   const workoutId = targets.map(({ file, index }) => file.workouts[index].workoutId).find(hasId);
   const garminSide = body.garmin === true ? garminForMove(who, body, files, workoutId) : null;
 
@@ -1014,7 +838,6 @@ async function moveWorkoutDay(body: any, who: Principal): Promise<unknown> {
   return { from, to, changed: changedFiles(files), garmin };
 }
 
-/** The profile whose Garmin calendar a move changes, or why it changes none. Asks for confirm: true only when Garmin will be written to. */
 function garminForMove(who: Principal, body: any, files: PlanFile[], workoutId: unknown): { profile: string } | { skipped: string } {
   if (!hasId(workoutId)) return { skipped: "The workout is not on Garmin." };
   if (files.some((f) => store().head(f.logical)?.archivedAt != null)) return { skipped: "The plan is archived." };
@@ -1031,7 +854,6 @@ function garminForMove(who: Principal, body: any, files: PlanFile[], workoutId: 
   return { profile };
 }
 
-/** Archive a plan: its workouts leave Garmin, the plan stays in the database (see archivePlan). Garmin is only touched, and confirm only asked for, when the plan has workoutIds. */
 async function archiveFile(body: any, who: Principal): Promise<unknown> {
   const logical = scopedPath(who, body.path);
   const doc = store().get(logical);
@@ -1058,7 +880,6 @@ async function archiveFile(body: any, who: Principal): Promise<unknown> {
   return { ...value, version: store().head(logical)?.version, log };
 }
 
-/** A save that would put workouts on Garmin must not land in an archived plan: it would be listed there again with ids. */
 function assertNotArchived(files: PlanFile[]): void {
   for (const file of files) {
     if (store().head(file.logical)?.archivedAt != null) throw new HttpError(409, `${file.logical} is archived: unarchive it before sending its workouts to Garmin.`);
@@ -1076,19 +897,12 @@ const MIME: Record<string, string> = {
   ".png": "image/png",
 };
 
-/**
- * A short hash of the page's own scripts. The page stamps it on their URLs (?v=), so a browser or CDN that keeps a script for
- * hours fetches the new one after a deploy: behind Cloudflare every .js is kept 4 hours by the browser whatever the server
- * says, and a page that ran new code against an old script failed without a word. The page itself is never cached. A page
- * load reads a few hundred KB to work it out, which a single-user editor does not notice.
- */
 export function assetVersion(dir = PUBLIC_DIR): string {
   const hash = createHash("sha1");
   for (const file of fs.readdirSync(dir).filter((f) => f.endsWith(".js")).sort()) hash.update(file).update(fs.readFileSync(path.join(dir, file)));
   return hash.digest("hex").slice(0, 10);
 }
 
-/** The page with ?v=<version> on the URL of each of its own scripts (the vendored libraries have versions of their own). */
 export const stampScripts = (html: string, version: string): string =>
   html.replace(/(<script\s+src="\/)([^"?#]+\.js)"/g, (match, head: string, file: string) => (file.startsWith("vendor/") ? match : `${head}${file}?v=${version}"`));
 
@@ -1115,7 +929,7 @@ function serveStatic(pathname: string, res: http.ServerResponse): void {
     res.writeHead(404, { "Content-Type": "text/plain" });
     return void res.end("Not found");
   }
-  let content = fs.readFileSync(full); // read first: a failure must still be able to send a 500
+  let content = fs.readFileSync(full);
   if (full === path.join(PUBLIC_DIR, "index.html")) content = Buffer.from(stampScripts(content.toString("utf-8"), assetVersion()));
   res.writeHead(200, {
     "Content-Type": MIME[path.extname(full)] ?? "application/octet-stream",
@@ -1124,7 +938,6 @@ function serveStatic(pathname: string, res: http.ServerResponse): void {
   res.end(content);
 }
 
-/** A food lookup, its refusals and failures as the status and words the page shows: a bad question is 400, Open Food Facts not answering 502. */
 async function foodLookup<T>(ask: () => Promise<T>): Promise<T> {
   try {
     return await ask();
@@ -1135,10 +948,8 @@ async function foodLookup<T>(ask: () => Promise<T>): Promise<T> {
   }
 }
 
-/** The status each kind of failed AI estimate is answered with. */
 const FOOD_AI_STATUS: Record<FoodAiErrorKind, number> = { input: 400, unconfigured: 503, busy: 429, limit: 429, refused: 422, upstream: 502 };
 
-/** An AI estimate, its refusals and failures as the status and words the page shows. */
 async function foodAiCall<T>(ask: () => Promise<T>): Promise<T> {
   try {
     return await ask();
@@ -1148,8 +959,6 @@ async function foodAiCall<T>(ask: () => Promise<T>): Promise<T> {
   }
 }
 
-/** What the Food view shows: one day with its meals, the days of a range for the trend, the foods the form offers again, and whether the AI box works. */
-/** How ready each day of the week (Monday to Sunday) that has `date` was; a day to come cannot be judged, so it has no band. */
 function readinessWeek(profile: string, date: string, today: string) {
   const monday = addDays(date, -((new Date(`${date}T00:00:00Z`).getUTCDay() + 6) % 7)), sunday = addDays(monday, 6);
   const known = readinessDays(store(), profile, monday, sunday < today ? sunday : today);
@@ -1157,7 +966,6 @@ function readinessWeek(profile: string, date: string, today: string) {
   return Array.from({ length: 7 }, (_, i) => { const day = addDays(monday, i); return byDay.get(day) ?? { day, band: "unknown" as const, score: null }; });
 }
 
-/** The calories of each day of the week (Monday to Sunday) that has `date`, with the day's goal: the totals only, the foods are in the day shown. */
 function weekOf(profile: string, date: string, today: string, goals: ReturnType<typeof getGoals>) {
   const monday = addDays(date, -((new Date(`${date}T00:00:00Z`).getUTCDay() + 6) % 7));
   return nutritionDays(store(), profile, monday, addDays(monday, 6), today).map(({ day, kcal, entries, activeKcal }) => ({ day, kcal, entries, kcalGoal: kcalGoalOf(goals, activeKcal) }));
@@ -1169,7 +977,6 @@ function nutritionView(profile: string, asked: unknown, daysAsked: unknown) {
   try {
     date = parseDay(asked, today);
   } catch {
-    // a date that is not one shows today
   }
   const n = Math.min(90, Math.max(7, Math.floor(Number(daysAsked)) || 30));
   const days = nutritionDays(store(), profile, addDays(today, -(n - 1)), today, today);
@@ -1181,33 +988,22 @@ function nutritionView(profile: string, asked: unknown, daysAsked: unknown) {
     date,
     meals: MEALS,
     day,
-    // the trend carries totals only (and each day's calorie goal, which follows the burn when the person set it so); the entries are in `day`
     days: days.map(({ meals, ...totals }) => ({ ...totals, kcalGoal: kcalGoalOf(goals, totals.activeKcal) })),
-    // the Monday-to-Sunday week the day shown is in, one entry for each day (the days after today have nothing): the strip of the week at the top of the Food view
     week: weekOf(profile, date, today, goals),
-    // the daily goals by key, and where the day shown stands against each (the meals' own totals are in `day`)
     goals,
     progress: goalProgress(goals, day, day.activeKcal),
     average: averageOf(days, today),
     recent: recentFoods(store(), profile),
     ai: foodAiStatus(profile, today),
-    // false: no Garmin and nothing stored from it, so there is no burn to set the food against
     burn: hasHealth(profile),
   };
 }
 
-// ── Today view: the day so far and the days to come, from what the database and the plan files hold ──
 
-/** How many days after today the Today view looks ahead for planned workouts (a week: the same weekday next week is in). */
 const AHEAD_DAYS = 7;
 
-/**
- * The workouts the plans put on today and the next 7 days, in date order. One workout in several plan files, or listed twice on
- * a date, shows once. `done` is only said of today: an activity of today that was started from the workout (same Garmin workout id).
- */
 function plannedAhead(profile: string, today: string, doneIds: Set<string>) {
   const last = addDays(today, AHEAD_DAYS), byKey = new Map<string, { date: string; path: string; index: number; name: string; type: string | null; seconds: number | null; done: boolean; workout: unknown }>();
-  // the plan files first, so that a copy kept in the profile's data folder is the duplicate and the click opens the plan
   const entries = planEntriesFor(profile).sort((x, y) => Number(y.path.startsWith("workout-plans/")) - Number(x.path.startsWith("workout-plans/")));
   for (const { path: file, index, workout } of entries) {
     const seconds = Number(workout.estimatedDurationSeconds) > 0 ? Math.round(Number(workout.estimatedDurationSeconds)) : null;
@@ -1217,17 +1013,15 @@ function plannedAhead(profile: string, today: string, doneIds: Set<string>) {
       const key = `${date}|${hasId(workout.workoutId) ? workout.workoutId : String(workout.workoutName).toLowerCase()}`;
       const done = date === today && hasId(workout.workoutId) && doneIds.has(String(workout.workoutId));
       const kept = byKey.get(key);
-      if (!kept) byKey.set(key, { date, path: file, index, name: workout.workoutName, type, seconds, done, workout }); // the whole workout, for the page to total its steps
-      else { kept.type ??= type; kept.seconds ??= seconds; } // the copy may know what the plan does not
+      if (!kept) byKey.set(key, { date, path: file, index, name: workout.workoutName, type, seconds, done, workout });
+      else { kept.type ??= type; kept.seconds ??= seconds; }
     }
   }
   return [...byKey.values()].sort((a, b) => a.date.localeCompare(b.date) || a.path.localeCompare(b.path) || a.index - b.index);
 }
 
-/** What the Today view shows. Steps and the rest are null when the day's summary is not stored yet: that is "not synced", never zero. */
 function todayView(profile: string) {
   const today = localToday(store(), profile);
-  // today's activities by the watch's own clock (a day's start is local, the table's range is GMT), earliest first
   const activities = store().activities.summaries(profile, 40).map(activityRow).filter((a) => a.date === today).sort((a, b) => a.time.localeCompare(b.time));
   const doneIds = new Set(activities.flatMap((a) => (hasId(a.workoutId) ? [String(a.workoutId)] : [])));
   const { readiness } = readinessAt(store(), profile, today);
@@ -1244,7 +1038,6 @@ function todayView(profile: string) {
     workouts: plannedAhead(profile, today, doneIds),
     activities,
     hasActivities: store().activities.counts(profile).total > 0,
-    // false: no Garmin and nothing stored from it, so the page leaves out the steps, sleep and readiness
     health: hasHealth(profile),
     food,
     goals,
@@ -1273,8 +1066,6 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
     }
 
     case "PUT /api/file": {
-      // Body: { text, version? } to update (409 if the file was saved by someone else since `version`),
-      //       { text, create: true } to create (409 if it already exists).
       const body = await readBody(req);
       const logical = scoped(queryPath);
       parseOr400(body.text);
@@ -1316,7 +1107,6 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
     }
 
     case "GET /api/history": {
-      // The versions this document had before its latest save, newest first.
       const logical = scoped(queryPath);
       const current = store().head(logical);
       if (!current) throw new HttpError(404, `File not found: ${logical}`);
@@ -1384,7 +1174,7 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
         week: readinessWeek(profile, date, today),
         readinessDays: readinessDays(store(), profile, addDays(date, -(days - 1)), date),
         stored: store().wellness.rowsOfDay(profile, date),
-        sync: wellnessSyncStatus(profile, Math.max(0, Math.round((Date.parse(today) - Date.parse(date)) / 86_400_000)) + days), // all the days the page shows
+        sync: wellnessSyncStatus(profile, Math.max(0, Math.round((Date.parse(today) - Date.parse(date)) / 86_400_000)) + days),
       });
     }
 
@@ -1400,24 +1190,19 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
       const today = localToday(store(), profile), asked = url.searchParams.get("date");
       const days = Math.min(90, Math.max(7, Math.floor(Number(url.searchParams.get("days"))) || 60));
       const range = bodyRange(store(), profile, addDays(today, -(days - 1)), today);
-      // the day whose stored responses are listed: the one asked for, else the last weigh-in, else today
       const date = asked && /^\d{4}-\d{2}-\d{2}$/.test(asked) ? asked : range.body.latest?.day ?? today;
-      // the goal weight (kg, null with none) and what the Food log says was eaten against what Garmin says was burned over these days, for the Weight view
       return send(res, 200, { profile, today, date, ...range, goalKg: getGoals(store(), profile)[WEIGHT_KEY] ?? null, intake: intakeVsBurn(store(), profile, addDays(today, -(days - 1)), today, today), stored: store().wellness.rowsOfDay(profile, date), sync: wellnessSyncStatus(profile, days) });
     }
 
     case "GET /api/foods/search": {
-      // Foods by name from Open Food Facts, with their nutrition per 100 g. The server asks them; nothing about the person is sent.
       return send(res, 200, { foods: await foodLookup(() => searchFoods(url.searchParams.get("q"))) });
     }
 
     case "GET /api/foods/barcode": {
-      // The food of a scanned barcode; null when Open Food Facts has none.
       return send(res, 200, { food: await foodLookup(() => lookupBarcode(store(), url.searchParams.get("code"))) });
     }
 
     case "POST /api/foods/ai": {
-      // Foods estimated from words and photos by Claude or Gemini. Nothing is logged: the page shows the estimate and logs what is kept with POST /api/nutrition.
       const body = await readBody(req);
       const profile = profileFor(who, "", body.profile);
       return send(res, 200, await foodAiCall(() => estimateFoods({ profile, text: body.text, images: body.images, defaultMeal: body.defaultMeal, today: localToday(store(), profile) })));
@@ -1430,8 +1215,6 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
     }
 
     case "POST /api/nutrition": {
-      // The food log: add the foods of a meal, copy logged foods to today, change one entry, delete some. It touches the database
-      // only, never Garmin. The answer is the day shown (`date` when given) and the ids of the foods just written (`added`), to undo.
       const body = await readBody(req);
       const profile = profileFor(who, "", body.profile);
       const today = localToday(store(), profile);
@@ -1441,7 +1224,7 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
           const rows = addFoods(store(), profile, body, today, "web");
           date = rows[0].day; added = rows.map((r) => r.id);
         } else if (body.action === "copy") {
-          date = parseDay(body.date, today); // checked first: a refused request writes nothing
+          date = parseDay(body.date, today);
           added = copyFoods(store(), profile, body.ids, today, "web").map((r) => r.id);
         } else if (body.action === "update") date = changeFood(store(), profile, Number(body.id), body).day;
         else if (body.action === "delete") {
@@ -1465,7 +1248,6 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
     }
 
     case "POST /api/settings/garmin": {
-      // The Garmin login of a profile (optional): saved in the database, checked or removed.
       const body = await readBody(req);
       const profile = profileFor(who, "", body.profile);
       let result: Record<string, unknown> = {};
@@ -1485,7 +1267,6 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
     }
 
     case "POST /api/settings/goals": {
-      // The daily food goals of a profile: a patch of calories, macros and nutrients (a number sets, null removes, a key left out stays), or all cleared.
       const body = await readBody(req);
       const profile = profileFor(who, "", body.profile);
       try {
@@ -1500,7 +1281,6 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
     }
 
     case "POST /api/settings/prefs": {
-      // How the profile likes things shown: weightUnit "lb" or "kg" (plans keep lb; this is what the editor shows).
       const body = await readBody(req);
       const profile = profileFor(who, "", body.profile);
       try {
@@ -1513,7 +1293,6 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
     }
 
     case "POST /api/settings/web": {
-      // The password the profile signs in to the web editor with, typed twice (password, confirm). It is mandatory: it can be changed, not removed.
       const body = await readBody(req);
       const profile = profileFor(who, "", body.profile);
       try {
@@ -1527,13 +1306,11 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
     }
 
     case "GET /api/invites": {
-      // The invite codes the admin has made, with their state and the profiles each made.
       if (!who.admin) throw new HttpError(403, "Only the admin login can see the invites.");
       return send(res, 200, { invites: inviteList(store()) });
     }
 
     case "POST /api/invites": {
-      // Make an invite code (note, maxUses, days), cancel one (revoke) or forget one (remove).
       if (!who.admin) throw new HttpError(403, "Only the admin login can make invites.");
       const body = await readBody(req);
       let created: string | undefined;
@@ -1551,7 +1328,6 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
     }
 
     case "POST /api/welcome": {
-      // The welcome flow was finished or skipped: it is not shown again (the admin has none, so nothing to do).
       const body = await readBody(req);
       if (body.action !== "done") throw new HttpError(400, `Unknown action "${body.action}".`);
       if (!who.admin) store().profiles.setWelcomePending(who.profile, false);
@@ -1559,11 +1335,8 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
     }
 
     case "POST /api/profiles": {
-      // A new profile: a name and the password it signs in with, typed twice (name, password, confirm). Garmin and Renpho are connected
-      // afterwards, in Settings, if the person wants them. Once a profile has a password the editor asks for a sign-in.
       if (!who.admin) throw new HttpError(403, "Only the admin login can add a profile.");
       const body = await readBody(req);
-      // a name is taken whatever its case: "med" next to "MED" would be two folders the lookups cannot tell apart
       const wanted = typeof body.name === "string" ? body.name.trim().toLowerCase() : "";
       const taken = wanted ? getAvailableProfiles().find((p) => p.toLowerCase() === wanted) : undefined;
       if (taken) throw new HttpError(409, `Profile "${taken}" exists already.`);
@@ -1578,8 +1351,6 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
     }
 
     case "POST /api/settings/mcp": {
-      // The profile's MCP token: the key that lets an assistant use the MCP server as this profile and no other. `create` makes one (and
-      // replaces the old one) and answers with it, the only time it is ever sent; `remove` takes it away. The MCP server checks it per request.
       const body = await readBody(req);
       const profile = profileFor(who, "", body.profile);
       let token: string | undefined;
@@ -1590,7 +1361,6 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
     }
 
     case "POST /api/settings/renpho": {
-      // The Renpho scale's login and sync: settings, a login check, a run now, or clearing what is kept.
       const body = await readBody(req);
       const profile = profileFor(who, "", body.profile);
       let result: Record<string, unknown> = {};
@@ -1610,7 +1380,6 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
     }
 
     case "GET /api/settings/renpho/fit": {
-      // The newest weigh-ins as a FIT file, to try an import on Garmin Connect's website by hand.
       const profile = profileOrNull(who, url.searchParams.get("profile"));
       const count = Math.min(100, Math.max(1, Math.floor(Number(url.searchParams.get("count"))) || 3));
       const fit = profile ? recentFit(store(), profile, count) : null;
@@ -1629,15 +1398,11 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
     }
 
     case "POST /api/wellness/sync": {
-      // Fetches the last days' sleep, HRV and summary now, and starts the background fill of the rest.
       requireGarmin(who);
       const body = await readBody(req);
       const profile = profileFor(who, "", body.profile);
       requireConnected(profile);
-      // the Weight view's button asks for the weigh-ins again: one may have been added on Garmin since the empty answer was stored
       if (body.rereadWeight === true) rereadWeighIns(profile);
-      // manual: a Sync button, which fetches every kind and keeps today's responses a minute; the look a view takes on opening is not (five
-      // minutes, the kinds a readiness is made of). days: how far back the page shows, so a button fills in all of it, not only the days kept
       const manual = body.manual === true, span = manual ? Math.floor(Number(body.days)) || 0 : 0;
       const refreshed = await refreshWellness(profile, { manual });
       const background = startBackgroundWellness(profile, span);
@@ -1654,7 +1419,6 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
     }
 
     case "POST /api/activities/sync": {
-      // Asks Garmin for what is new. history: true also starts the background fill of the whole history and the details.
       requireGarmin(who);
       const body = await readBody(req);
       const profile = profileFor(who, "", body.profile);
@@ -1687,24 +1451,20 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
     }
 
     case "GET /api/runs": {
-      // From the saved activity files alone, like the calendar: no Garmin login needed.
       let profile: string | null = null;
       try {
         profile = profileFor(who, "", url.searchParams.get("profile"));
       } catch {
-        // no usable profile: nothing to learn a pace from
       }
       return send(res, 200, { profile, runs: profile ? recentRuns(profile) : [] });
     }
 
     case "GET /api/exercises": {
-      // Garmin's exercises for the workout form's picker, and the ones the profile's plans use (none when no profile is known).
       const profile = profileOrNull(who, url.searchParams.get("profile"));
       return send(res, 200, { profile, exercises: EXERCISES, used: profile ? usedExercises(profile) : [] });
     }
 
     case "GET /api/calendar":
-      // Read from the stored plans alone, so it works without a Garmin profile and in mock mode.
       return send(res, 200, { plans: calendarPlans(who), done: doneWorkouts(who, url.searchParams.get("profile")) });
 
     case "GET /api/garmin/workout": {
@@ -1739,7 +1499,6 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse, ur
       return send(res, 200, await deleteWorkout(await readBody(req), who));
 
     case "POST /api/garmin/status": {
-      // Is each workout of a plan up to date on Garmin? Body: { path, text? (unsaved editor content), profile?, refresh? }.
       const body = await readBody(req);
       requireGarmin(who);
       const logical = scoped(body.path);
@@ -1772,17 +1531,11 @@ export function startWebServer(options: WebServerOptions): Promise<http.Server> 
   if (!isLoopback(options.host) && !options.token && profilesWithWebPassword().length === 0) {
     throw new Error("WEB_AUTH_TOKEN (or a profile with a web sign-in password) is required when binding to a non-loopback host.");
   }
-  // Checked per request: a web sign-in password set or removed in Settings applies without a restart.
   const authRequired = () => !!options.token || profilesWithWebPassword().length > 0;
 
-  // Wrong passwords per client address. A password is checked with scrypt, so a flood of guesses is slowed, and each costs the same.
   const throttle = new LoginThrottle();
   const trustProxy = options.trustProxy ?? trustProxyOf(process.env.TRUST_PROXY);
 
-  /**
-   * Who a user name and secret stand for. A profile name matches in any case; the token is the admin login. A wrong guess from an
-   * address that has made too many waits (429), and takes as long whichever name it was made with, so the time says nothing.
-   */
   const verify = async (req: http.IncomingMessage, user: string, secret: string): Promise<Principal | null> => {
     const address = clientAddress(req.headers, req.socket.remoteAddress ?? "", trustProxy);
     const wait = throttle.waitMs(address);
@@ -1794,13 +1547,12 @@ export function startWebServer(options: WebServerOptions): Promise<http.Server> 
     let who: Principal | null = null;
     if (profile && (await store().profiles.checkWebPasswordAsync(profile, secret))) who = { admin: false, profile };
     else if (options.token && sameSecret(secret, options.token)) who = ADMIN;
-    else if (!profile) await decoyCheck(secret); // no such profile: spend what a real check would
+    else if (!profile) await decoyCheck(secret);
     if (who) throttle.clear(address);
     else throttle.fail(address);
     return who;
   };
 
-  // Wrong invite codes per client address, counted apart from the wrong passwords: a code is as good as a password to whoever finds it.
   const inviteThrottle = new LoginThrottle();
   const inviteAddress = (req: http.IncomingMessage) => clientAddress(req.headers, req.socket.remoteAddress ?? "", trustProxy);
   const inviteWait = (address: string) => {
@@ -1810,11 +1562,7 @@ export function startWebServer(options: WebServerOptions): Promise<http.Server> 
     throw new HttpError(429, `Too many wrong invite codes. Try again in ${seconds} second${seconds === 1 ? "" : "s"}.`, { retryAfter: seconds }, { "Retry-After": String(seconds) });
   };
 
-  // Logins made through the form, kept in the database so they outlive a restart. A session ends when it has gone unused for
-  // SESSION_IDLE_MS, SESSION_MAX_MS after the sign-in, on logout, or when the secret it was made with changes (a changed or removed
-  // web sign-in password), just as Basic credentials stop working then.
   const idHashOf = (id: string) => createHash("sha256").update(id).digest("hex");
-  /** What ties a session to the secret it was made with; the id hash salts it, so the table holds no bare hash of the token. */
   const bindingOf = (idHash: string, secret: string) => createHash("sha256").update(`${idHash}:${secret}`).digest("hex");
   const sameHex = (a: string, b: string) => a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
   const expiryFor = (createdAt: number, now: number) => Math.min(now + SESSION_IDLE_MS, createdAt + SESSION_MAX_MS);
@@ -1831,7 +1579,6 @@ export function startWebServer(options: WebServerOptions): Promise<http.Server> 
     const secure = req.headers["x-forwarded-proto"] === "https" || (req.socket as { encrypted?: boolean }).encrypted;
     return `${name}=${value}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${Math.floor(maxAgeMs / 1000)}${secure ? "; Secure" : ""}`;
   };
-  /** Who the session cookie stands for. A session in use is renewed once a day: its expiry moves out and the cookie is sent again. */
   const sessionOf = (req: http.IncomingMessage, res: http.ServerResponse): Principal | null => {
     const id = cookieValue(req, SESSION_COOKIE);
     if (!id) return null;
@@ -1852,7 +1599,7 @@ export function startWebServer(options: WebServerOptions): Promise<http.Server> 
           store().sessions.renew(idHash, expiresAt, now);
           res.setHeader("Set-Cookie", setCookie(req, SESSION_COOKIE, id, expiresAt - now));
         } catch (error) {
-          console.error("[web] session renewal failed (the next request tries again):", error); // the request itself is fine
+          console.error("[web] session renewal failed (the next request tries again):", error);
         }
       }
     }
@@ -1863,7 +1610,7 @@ export function startWebServer(options: WebServerOptions): Promise<http.Server> 
     if (!authRequired()) return ADMIN;
     const session = sessionOf(req, res);
     if (session) return session;
-    if (cookieValue(req, SIGNED_OUT_COOKIE)) return null; // signed out of this browser; scripts carry no cookies
+    if (cookieValue(req, SIGNED_OUT_COOKIE)) return null;
     const m = /^Basic\s+(.+)$/i.exec(req.headers.authorization ?? "");
     if (!m) return null;
     const decoded = Buffer.from(m[1], "base64").toString("utf8");
@@ -1881,7 +1628,6 @@ export function startWebServer(options: WebServerOptions): Promise<http.Server> 
     startSession(req, res, who, 200);
   }
 
-  /** Open a session for a login that was just proven (the password, or the sign-up that made the profile) and answer with its cookie. */
   function startSession(req: http.IncomingMessage, res: http.ServerResponse, who: Principal, status: number): void {
     const now = Date.now();
     const id = randomBytes(32).toString("hex");
@@ -1892,7 +1638,6 @@ export function startWebServer(options: WebServerOptions): Promise<http.Server> 
     });
   }
 
-  /** Whether an invite code works now, for the page that opened a link with one: the answer is the code's state, never its note or who used it. */
   async function checkInvite(req: http.IncomingMessage, res: http.ServerResponse, url: URL): Promise<void> {
     const address = inviteAddress(req);
     inviteWait(address);
@@ -1902,7 +1647,6 @@ export function startWebServer(options: WebServerOptions): Promise<http.Server> 
     throw new HttpError(404, new InviteError(problem).message, { valid: false, problem });
   }
 
-  /** A person makes their own profile with an invite code and is signed in as it. */
   async function signup(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
     const body = await readBody(req);
     const address = inviteAddress(req);
@@ -1929,16 +1673,13 @@ export function startWebServer(options: WebServerOptions): Promise<http.Server> 
         res.writeHead(200, { "Content-Type": "text/plain" });
         return void res.end("ok");
       }
-      // Without a token on loopback, reject foreign Host headers (DNS rebinding).
       if (!authRequired() && !/^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(req.headers.host ?? "")) {
         res.writeHead(403, { "Content-Type": "text/plain" });
         return void res.end("Forbidden host");
       }
-      // The page and the editor's scripts hold no data, so they load without a login: the page shows the sign-in form itself.
       if (!url.pathname.startsWith("/api/")) {
         return req.method === "GET" ? serveStatic(url.pathname, res) : send(res, 405, { error: "Method not allowed" });
       }
-      // Custom header forces a CORS preflight, so other sites can't drive the API from a browser (or sign it in).
       if (req.method !== "GET" && req.headers["x-requested-with"] !== "plan-editor") {
         throw new HttpError(403, "Missing X-Requested-With header");
       }
@@ -1955,13 +1696,11 @@ export function startWebServer(options: WebServerOptions): Promise<http.Server> 
         });
       }
       if (route === "GET /api/session") {
-        // 200 even when signed out, so the page can tell "show the form" from a failure.
         const who = await authenticate(req, res);
         return send(res, 200, { authRequired: authRequired(), user: who ? userInfo(who) : null });
       }
 
       const who = await authenticate(req, res);
-      // No WWW-Authenticate: the browser must not open its own login dialog over the form.
       if (!who) return send(res, 401, { error: "Authentication required" });
       await handleApi(req, res, url, who);
     } catch (error) {
@@ -1982,7 +1721,7 @@ export function startWebServer(options: WebServerOptions): Promise<http.Server> 
 
 if (require.main === module) {
   dotenv.config({ path: path.join(PROJECT_ROOT, ".env") });
-  installConsoleRedirect(); // capture the editor's console output for the Garmin action log
+  installConsoleRedirect();
   const host = process.env.WEB_HOST ?? "127.0.0.1";
   const port = Number(process.env.WEB_PORT ?? 8788);
   startWebServer({ host, port, token: process.env.WEB_AUTH_TOKEN || undefined })
@@ -1990,7 +1729,7 @@ if (require.main === module) {
       console.log(`Plan editor on http://${host}:${port}  (store: ${store().location})`);
       const plain = store().credentials.plainWarning();
       if (plain) console.warn(`[web] ${plain}`);
-      startRenphoTimer(); // the Renpho runs that are due, from the Settings view's switches
+      startRenphoTimer();
     })
     .catch((error) => {
       console.error(error.message);

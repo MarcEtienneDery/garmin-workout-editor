@@ -1,10 +1,3 @@
-/*
- * activityCharts.js — the pictures of one activity: stacked graphs of heart rate, pace, elevation and cadence with a
- * cursor, bars for laps and kilometer splits and the heart-rate zone bar.
- *
- * Plain DOM and SVG, no library. The numbers it needs (ranges, smoothing, zone shares) come from
- * ActivityModel, which has the tests; this file only draws. ChartData is what GET /api/activity returns as `chart`.
- */
 (function (root) {
   "use strict";
 
@@ -27,11 +20,9 @@
   const W = 420, H = 86, LEFT = 38, RIGHT = 8, TOP = 6, BOTTOM = 6;
   const valid = (v) => v !== null && v !== undefined;
 
-  // ── Stacked graphs with one cursor ──────────────────────────────────────
 
   const paceText = (sec) => `${Math.floor(sec / 60)}:${String(Math.round(sec % 60)).padStart(2, "0")}`;
 
-  /** The panels an activity can have; each is drawn only when its series holds enough samples. */
   function panelsOf(chart) {
     const all = [
       { key: "hr", label: "Heart rate", unit: "bpm", values: chart.hr, color: "#e0393c", format: (v) => String(Math.round(v)) },
@@ -42,10 +33,6 @@
     return all.filter((p) => p.values.filter(valid).length >= 3);
   }
 
-  /**
-   * The graphs of one activity. Returns { el, setCursor(index), destroy() }. onCursor(index | null) is called as the
-   * pointer moves over a graph, so a map can follow it; setCursor moves the cursor from outside (the map).
-   */
   function graphs(chart, { onCursor } = {}) {
     const panels = panelsOf(chart);
     const hasDistance = chart.distance.filter(valid).length >= 3 && Math.max(...chart.distance.filter(valid)) >= 500;
@@ -95,7 +82,6 @@
         const value = html("b", "acv");
         head.append(value);
         const svg = make("svg", { viewBox: `0 0 ${W} ${H}`, class: "acsvg", role: "img", "aria-label": `${p.label} over the activity` });
-        // heart-rate zone bands, behind the line, when Garmin gave the bounds
         if (p.key === "hr" && chart.zones) {
           chart.zones.filter((z) => z.low !== null).forEach((z) => {
             const top = z.high === null ? scale.hi : Math.min(z.high, scale.hi), bottom = Math.max(z.low, scale.lo);
@@ -106,7 +92,6 @@
           svg.append(make("line", { x1: LEFT, x2: W - RIGHT, y1: sy(t), y2: sy(t), class: "acgrid" }));
           svg.append(make("text", { x: LEFT - 4, y: sy(t) + 3, class: "aclab", "text-anchor": "end" }, p.format(t)));
         }
-        // the line, broken where a sample is missing; a dashed bridge joins the two sides (a stop has no pace, but the run goes on)
         let d = "", bridge = "", pen = false, area = "", last = null;
         xs.forEach((x, i) => {
           const v = p.values[i];
@@ -130,7 +115,6 @@
         box.append(head, svg);
         body.append(box);
         cursorParts.push({ p, line, dot, value, sx, sy });
-        // pointer events, not mouse events: a finger drags the cursor too, and a vertical drag still scrolls the pane
         const move = (e) => {
           const r = svg.getBoundingClientRect();
           if (!r.width) return;
@@ -143,7 +127,6 @@
         svg.addEventListener("pointerdown", move);
         svg.addEventListener("pointerleave", (e) => { if (e.pointerType === "mouse") { place(null); if (onCursor) onCursor(null); } });
       }
-      // the shared x axis
       const axis = make("svg", { viewBox: `0 0 ${W} 16`, class: "acsvg acaxis", "aria-hidden": "true" });
       const ticks = AM.niceRange(x0, x1, 4).ticks.filter((t) => t >= x0 && t <= x1);
       for (const t of ticks) axis.append(make("text", { x: sx(t), y: 11, class: "aclab", "text-anchor": "middle" }, xLabel(t)));
@@ -151,7 +134,6 @@
       place(state.cursor);
     }
 
-    /** Put the cursor at a sample, or hide it. */
     function place(i) {
       state.cursor = i;
       const xs = state.axis === "distance" ? chart.distance : chart.time;
@@ -173,9 +155,7 @@
     return { el, setCursor: place, destroy() { cursorParts = []; el.remove(); }, get axis() { return state.axis; }, xs: () => (state.axis === "distance" ? chart.distance : chart.time) };
   }
 
-  // ── Bars ────────────────────────────────────────────────────────────────
 
-  /** Rows with a bar: label, text, a share (0..1) and a class (fast, slow) for the bar's colour. */
   function bars(rows) {
     const box = html("div", "abars");
     for (const r of rows) {
@@ -190,7 +170,6 @@
     return box;
   }
 
-  /** Laps or splits as bars of speed: the longer the bar, the faster. */
   function paceBars(items, { label, extra, title }) {
     const speeds = items.filter((x) => x.paceSec).map((x) => 1 / x.paceSec);
     if (!speeds.length) return html("div", "anote", "No pace in these.");
@@ -205,7 +184,6 @@
     })));
   }
 
-  /** Time in each heart-rate zone as one stacked bar and a legend. */
   function zoneBar(seconds, zones) {
     const shares = AM.zoneShares(seconds);
     const box = html("div", "azones");

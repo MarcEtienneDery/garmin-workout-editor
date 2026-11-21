@@ -13,7 +13,6 @@ describe("a database made before the nutrients existed", () => {
   beforeEach(() => {
     dir = fs.mkdtempSync(path.join(os.tmpdir(), "nutrients-"));
     file = path.join(dir, "garmin.db");
-    // the table exactly as it was before the `extras` column, with a food in it
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { DatabaseSync } = require("node:sqlite");
     const old = new DatabaseSync(file);
@@ -58,7 +57,6 @@ describe("a database made before the nutrients existed", () => {
       expect(third.nutrition.range("MED", TODAY, TODAY)).toHaveLength(2);
       third.close();
     } finally {
-      /* the stores are closed above */
     }
   });
 });
@@ -117,7 +115,7 @@ describe("the nutrients of an entry", () => {
     const [a] = log([{ name: "Lentils", kcal: 230, nutrients: { fiberG: 15.6, ironMg: 6.6 } }]);
     expect(changeFood(store, "MED", a.id, { nutrients: { fiberG: 12, sodiumMg: 5 } }).nutrients).toEqual({ fiberG: 12, ironMg: 6.6, sodiumMg: 5 });
     expect(changeFood(store, "MED", a.id, { nutrients: { ironMg: null } }).nutrients).toEqual({ fiberG: 12, sodiumMg: 5 });
-    expect(changeFood(store, "MED", a.id, { nutrients: { ironMg: 0 } }).nutrients).toEqual({ fiberG: 12, sodiumMg: 5, ironMg: 0 }); // zero is a value
+    expect(changeFood(store, "MED", a.id, { nutrients: { ironMg: 0 } }).nutrients).toEqual({ fiberG: 12, sodiumMg: 5, ironMg: 0 });
     const cleared = changeFood(store, "MED", a.id, { nutrients: { fiberG: null, sodiumMg: "", ironMg: null } });
     expect(cleared.nutrients).toEqual({});
     expect(store.nutrition.get("MED", a.id)?.nutrients).toEqual({});

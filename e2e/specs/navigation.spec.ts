@@ -1,14 +1,6 @@
-/**
- * The views, the address, the account menu and the Today tiles: which view buttons each profile sees (navModel.js), how a click, an
- * address, Back and Forward open a view, and that the page raises no error on the way. Reads only: alice's data is never changed.
- */
 import type { Page } from "@playwright/test";
 import { test as base, expect, loginAs, ADMIN_TOKEN, toggleTheme } from "../support/fixtures";
 
-/**
- * The server closes an idle connection after a few seconds, and a client that sends on it meets a reset (and a loaded machine answers
- * slowly): a request that failed that way is sent again, on a new connection. Only for what is safe to send twice.
- */
 async function retried<T>(run: () => Promise<T>): Promise<T> {
   for (let attempt = 1; ; attempt++) {
     try {
@@ -20,19 +12,13 @@ async function retried<T>(run: () => Promise<T>): Promise<T> {
 }
 
 
-/** The app is slow on a shared server (every page load asks for the profiles' views and the settings), so these waits are longer than the suite's default. */
 const slow = expect.configure({ timeout: 30_000 });
 
-/** Wait for the first view to be drawn: the sign-in form is gone and the header is up. */
 async function ready(page: Page): Promise<void> {
   await slow(page.locator("#login")).toBeHidden();
   await slow(page.locator("#views")).toBeVisible();
 }
 
-/**
- * Open the page on a view, signed in already, and wait until it is drawn. On a loaded server a script of the page can fail to arrive;
- * the page then keeps its placeholder (the Today view, "Loading…") for good, so a view that is not drawn within 15 seconds is loaded again, once.
- */
 async function openView(page: Page, view: string): Promise<void> {
   const address = view === "today" ? "/" : `/#${view}`;
   for (let attempt = 1; ; attempt++) {
@@ -49,7 +35,6 @@ async function openView(page: Page, view: string): Promise<void> {
   }
 }
 
-/** The admin login (the access token, any name): its own page in its own browser context, the way a person on the admin's machine has it. */
 const test = base.extend<{ adminPage: Page }>({
   adminPage: async ({ browser, baseURL }, use) => {
     const context = await browser.newContext({ baseURL, viewport: { width: 1280, height: 860 }, timezoneId: "UTC", locale: "en-CA" });
@@ -62,7 +47,6 @@ const test = base.extend<{ adminPage: Page }>({
 });
 test.describe.configure({ timeout: 90_000 });
 
-/** The view buttons, by view name, as the page has them. */
 const BUTTON = {
   today: "vToday",
   plans: "vPlans",
@@ -77,17 +61,14 @@ type View = keyof typeof BUTTON;
 
 const ALL_BUTTONS = Object.values(BUTTON);
 
-/** The view buttons a page shows, in the strip's order (hidden ones left out). */
 const strip = (page: Page) => page.locator("#views button:visible");
 
-/** Only the button of `view` is pressed (Settings has none). */
 async function expectOnly(page: Page, view: View | "settings"): Promise<void> {
   for (const id of ALL_BUTTONS) await slow(page.locator(`#${id}`)).toHaveAttribute("aria-pressed", id === BUTTON[view as View] ? "true" : "false");
 }
 
 const isOn = (page: Page, view: View | "settings") => slow(page.locator("body")).toHaveAttribute("data-view", view);
 
-/** Map tiles are never reached: a spec that opens a map answers them itself. */
 test.beforeEach(async ({ page }) => {
   await page.route("**/tile.openstreetmap.org/**", (route) => route.fulfill({ status: 204, body: "" }));
 });
@@ -104,8 +85,8 @@ test.describe("the rail", () => {
     expect(box.header.width).toBeGreaterThanOrEqual(72);
     expect(box.header.width).toBeLessThanOrEqual(90);
     expect(Math.round(box.header.height)).toBe(box.window);
-    expect(new Set(box.buttons.map((b) => b.left)).size).toBe(1); // one column
-    expect(box.buttons.map((b) => b.top)).toEqual([...box.buttons.map((b) => b.top)].sort((x, y) => x - y)); // top to bottom, in the strip's order
+    expect(new Set(box.buttons.map((b) => b.left)).size).toBe(1);
+    expect(box.buttons.map((b) => b.top)).toEqual([...box.buttons.map((b) => b.top)].sort((x, y) => x - y));
     for (const b of box.buttons) expect(b.width).toBeLessThanOrEqual(box.header.width);
     expect(box.view).toBeGreaterThanOrEqual(box.header.width);
   });
@@ -122,7 +103,7 @@ test.describe("the rail", () => {
       });
       expect(parts.icon).toBeGreaterThanOrEqual(18);
       expect(parts.iconAbove).toBe(true);
-      expect(parts.hidden).toBe("true"); // the name is what a screen reader says
+      expect(parts.hidden).toBe("true");
     }
   });
 
@@ -191,9 +172,8 @@ test.describe("which views a profile sees", () => {
   });
 
   test("the admin sees the views any profile can use: Activities, Recovery and Weight (alice has data), and Workouts exactly when some profile has Garmin", async ({ adminPage }) => {
-    // the admin sees every profile, so Workouts shows when any of them has a Garmin login (the database is shared by the whole suite)
     await openView(adminPage, "today");
-    await slow(adminPage.locator("#vActivities")).toBeVisible(); // the page has the profiles' views by now
+    await slow(adminPage.locator("#vActivities")).toBeVisible();
     const anyGarmin = await adminPage.evaluate(() => (Object.values(garmin.profileInfo) as { garmin: boolean }[]).some((p) => p.garmin));
     const expected = anyGarmin
       ? ["Today", "Plans", "Workouts", "Calendar", "Activities", "Recovery", "Weight", "Food"]
@@ -467,7 +447,6 @@ test.describe("the Today view's links", () => {
     const tiles = alice.locator(".tfig");
     await slow(tiles).toHaveCount(4);
     for (let i = 0; i < 4; i++) await slow(tiles.nth(i)).toHaveAttribute("tabindex", "0");
-    // Today can draw its tiles again a moment after they first show, which drops a focus that was set before: so focus and press again until it opens
     await slow(async () => {
       await tiles.nth(1).focus();
       await alice.keyboard.press("Enter");
@@ -522,7 +501,6 @@ test.describe("the page as a whole", () => {
       await isOn(alice, view);
       await alice.waitForLoadState("networkidle");
     }
-    // one activity opened, so its map is drawn (its tiles are blocked above)
     await alice.locator("#vActivities").click();
     await isOn(alice, "activities");
     const row = alice.locator("#aview .arow").first();

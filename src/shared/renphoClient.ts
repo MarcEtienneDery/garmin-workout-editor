@@ -1,19 +1,9 @@
-/**
- * renphoClient.ts — a client for Renpho's cloud, the one the Renpho Health app talks to. Unofficial: there is no public
- * API, so this follows what the app does as others have written it down (no one has published a check against a live
- * account, so what the Settings view shows of a run is the real test). It may stop working when Renpho changes the app.
- *
- * Every request is a POST of `{ "encryptData": <base64> }`, the JSON body encrypted with AES-128-ECB under a constant key
- * that is part of the app (a protocol constant, not a secret of the account); answers are `{ code: 101, data: <base64> }`.
- * The client only reads. Rate limits and refused logins are reported, never retried here.
- */
 import * as crypto from "crypto";
 
 const BASE_URL = "https://cloud.renpho.com";
 const KEY = Buffer.from("ed*wijdi$h6fe3ew", "utf8");
 const APP_VERSION = "7.0.0";
 const PAGE_SIZE = 200;
-/** Pages read per table before giving up: 10 000 weigh-ins. */
 const MAX_PAGES = 50;
 const TIMEOUT_MS = 20_000;
 const OK = 101;
@@ -27,10 +17,8 @@ export const decrypt = (data: string): string => {
   return Buffer.concat([decipher.update(Buffer.from(data, "base64")), decipher.final()]).toString("utf8");
 };
 
-/** Parse JSON without losing the long integers (ids, as an object's value or an array's item) that a number cannot hold: they are kept as text. Strings are skipped over, so their digits stay as they are. */
 export const parseJson = (text: string): any => JSON.parse(text.replace(/"(?:[^"\\]|\\.)*"|(?<![\w.+-])(-?\d{16,})(?=\s*[,}\]])/g, (match, long) => (long ? `"${long}"` : match)));
 
-/** What went wrong: "login" (Renpho refused the login), "rate" (too many requests), "other" (the network, an error answer, an answer that makes no sense). */
 export class RenphoError extends Error {
   constructor(
     message: string,
@@ -50,7 +38,6 @@ export type Measurement = Record<string, unknown>;
 
 export class RenphoClient {
   private token: string | null = null;
-  /** The account's id, which its own weigh-ins are filed under. */
   userId: string | null = null;
 
   constructor(
@@ -87,7 +74,6 @@ export class RenphoClient {
     }
   }
 
-  /** Sign in. A refusal is a "login" error: the email, the password or the area code is wrong, or the account signs in with Google or Apple and has no password. */
   async login(): Promise<void> {
     this.token = null;
     let data: any;
@@ -107,7 +93,6 @@ export class RenphoClient {
     this.userId = String(login.id);
   }
 
-  /** An authenticated call; when the session is refused once, sign in again and retry that one time. */
   private async call(path: string, payload?: unknown): Promise<any> {
     if (!this.token) await this.login();
     try {
@@ -119,14 +104,12 @@ export class RenphoClient {
     }
   }
 
-  /** The tables the account's scales write to. */
   async scaleTables(): Promise<ScaleTable[]> {
     const data = await this.call("renpho-aggregation/device/count");
     const scale: any[] = Array.isArray(data?.scale) ? data.scale : [];
     return scale.filter((t) => typeof t?.tableName === "string" && Array.isArray(t.userIds) && t.userIds.length).map((t) => ({ tableName: t.tableName, userIds: t.userIds, count: Number(t.count) || 0 }));
   }
 
-  /** Every weigh-in of a table, as Renpho keeps them; `complete` is false when the page limit ended the read. */
   async measurements(table: ScaleTable): Promise<{ rows: Measurement[]; complete: boolean }> {
     const rows: Measurement[] = [];
     for (let pageNum = 1; pageNum <= MAX_PAGES; pageNum++) {

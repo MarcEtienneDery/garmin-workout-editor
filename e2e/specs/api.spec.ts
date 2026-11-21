@@ -1,19 +1,9 @@
-/**
- * The HTTP API's contract: who may call what, what each call answers, the headers it sends, and what it refuses.
- *
- * Calls sign in with HTTP Basic (or a session cookie in a context of its own). This file sends no wrong password, so the server's
- * per-address throttle is never touched. Changes only happen in profiles made for the test; alice's data is only read, and the
- * refused calls against it change nothing.
- */
 import { request as pwRequest } from "@playwright/test";
 import { test, expect, CSRF, PASSWORD, ADMIN_TOKEN, daysAgo } from "../support/fixtures";
 
-// Every call here goes to a server shared with the other runs, which can take several seconds to answer on a busy machine: a
-// test that makes many calls gets up to ninety seconds.
 test.describe.configure({ timeout: 90_000 });
 
 const basic = (user: string, secret: string) => `Basic ${Buffer.from(`${user}:${secret}`).toString("base64")}`;
-/** Headers that sign a call in as a login, with the header every non-GET needs. */
 const as = (user: string, secret: string): Record<string, string> => ({ ...CSRF, Authorization: basic(user, secret) });
 const ALICE = () => as("alice", PASSWORD);
 const BOB = () => as("bob", PASSWORD);
@@ -21,14 +11,12 @@ const ADMIN = () => as("admin", ADMIN_TOKEN);
 const unique = () => `t${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
 const enc = (path: string) => encodeURIComponent(path);
 
-/** A plan that validates. */
 const goodPlan = (name = "Easy run") =>
   JSON.stringify({
     weekStart: "2026-11-02",
     weekEnd: "2026-11-08",
     workouts: [{ workoutName: name, workoutType: "running", scheduledDate: "2026-11-03", steps: [{ stepType: "interval", targetType: "no.target", endCondition: "time", endConditionValue: 600 }] }],
   });
-/** A plan that does not: a workout with no name and a step type that does not exist. */
 const badPlan = () => JSON.stringify({ workouts: [{ workoutName: "", steps: [{ stepType: "bogus", targetType: "x" }] }] });
 
 const cookieHeaders = (res: { headersArray(): { name: string; value: string }[] }) =>
@@ -63,7 +51,7 @@ test.describe("a login is needed", () => {
       expect(await res.json(), `${method} ${url}`).toEqual({ error: "Authentication required" });
     }
     const admin = await request.get(`/api/file?path=${enc(probe)}`, { headers: ADMIN() });
-    expect(admin.status()).toBe(404); // the PUT without a login created nothing
+    expect(admin.status()).toBe(404);
   });
 
   test("the session, sign-out and health routes answer without a login", async ({ request }) => {
@@ -131,7 +119,6 @@ test.describe("the page and its scripts", () => {
     const scripts = [...html.matchAll(/<script\s+src="(\/[^"]+\.js[^"]*)"/g)].map((m) => m[1]);
     expect(scripts.length).toBeGreaterThan(5);
     for (const src of scripts) {
-      // the page's own scripts carry the version stamp; the vendored libraries keep their own names
       if (!src.startsWith("/vendor/")) expect(src, "scripts are stamped with the page's version").toMatch(/\?v=[0-9a-f]{10}$/);
       const js = await request.get(src);
       expect(js.status(), src).toBe(200);
@@ -316,7 +303,6 @@ test.describe("who sees which files", () => {
     expect((await (await request.get("/api/weight?profile=alice", { headers: bob })).json()).profile).toBe("bob");
     expect((await (await request.get("/api/settings?profile=alice", { headers: bob })).json()).profile).toBe("bob");
 
-    // the same question as the admin, who may ask about any profile, has alice's five meals
     const asAdmin = await (await admin.get(`/api/nutrition?profile=alice&date=${yesterday}`)).json();
     expect(asAdmin.profile).toBe("alice");
     expect(asAdmin.day.entries).toBe(5);
@@ -555,7 +541,6 @@ test.describe("paths", () => {
     "data/../workout-plans/x.json",
   ];
 
-  // one test per path, so a slow run shows which path failed and no single test makes many calls
   for (const path of BAD) {
     test(`a path of ${JSON.stringify(path)} is refused with 400 on every file route`, async ({ profile }) => {
       const get = await profile.api.get(`/api/file?path=${enc(path)}`);

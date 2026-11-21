@@ -9,12 +9,9 @@ import WorkoutEditor from "../workoutEditor";
 import ActivityExporter from "../activityExporter";
 import { captureLogs, CaptureOutcome } from "./logCapture";
 
-// ─── Settings ───────────────────────────────────────────────────────────────
 
 export interface McpSettings {
-  /** Use mock data and refuse Garmin writes. */
   mock: boolean;
-  /** Profile used when a tool call doesn't name one. */
   defaultProfile?: string;
 }
 
@@ -32,27 +29,18 @@ export function getSettings(): Readonly<McpSettings> {
   return settings;
 }
 
-// ─── Scope (a connection that is one profile) ───────────────────────────────
 
-// The MCP server's own token reaches every profile. A profile's token (Settings → Claude (MCP)) reaches that profile only: the HTTP
-// transport runs the whole request, and so every tool it calls, inside runScoped, and the two places everything goes through, the profile
-// a tool acts on (resolveProfileName) and the documents it reads or writes (logicalPath, mayReach), keep to it. Fail closed: a connection
-// that is scoped never falls back to the default profile or to the only profile there is.
 const scope = new AsyncLocalStorage<{ profile: string }>();
 
-/** Run `fn` (an MCP request) as the profile alone. */
 export const runScoped = <T>(profile: string, fn: () => T): T => scope.run({ profile }, fn);
 
-/** The profile this connection is limited to; undefined for the server's own token and for stdio. */
 export const scopedProfile = (): string | undefined => scope.getStore()?.profile;
 
-/** Whether this connection may reach a document (the same reach as the profile's web sign-in); true when it is not scoped. */
 export function mayReach(logical: string, owner: string | null): boolean {
   const only = scopedProfile();
   return only === undefined || profileReaches(only, logical, owner);
 }
 
-// ─── Sessions (one cached Garmin client per profile) ────────────────────────
 
 export interface Session {
   profile: ProfileConfig;
@@ -83,10 +71,6 @@ export function resolveProfileName(requested?: string): string {
   );
 }
 
-/**
- * The profile a tool that only uses the database acts on: no login is read and no Garmin client is made. It must exist, as
- * for the web editor, or the tool would write rows under a name nothing ever reads (the Garmin tools fail at their login).
- */
 export function dataProfile(requested?: string): string {
   if (settings.mock) return getMockProfile().name;
   const name = resolveProfileName(requested);
@@ -98,22 +82,15 @@ export function dataProfile(requested?: string): string {
   return name;
 }
 
-/** Whether Garmin can be reached for the profile: it has a login (mock mode counts, with its fake one). */
 export function garminAvailable(name: string): boolean {
   return settings.mock || garminConnected(name);
 }
 
-/**
- * Get (or lazily create) the Garmin client/editor/exporter for a profile.
- * The client is cached so the Garmin login and token cache are reused across calls.
- * Throws GarminNotConnectedError for a profile that has no Garmin login.
- */
 export function getSession(requested?: string): Session {
   const mock = settings.mock;
   const profile = mock ? getMockProfile() : loadProfile(resolveProfileName(requested));
   if (!profile.login) throw new GarminNotConnectedError(profile.name);
 
-  // a login changed in Settings (by the other process, perhaps) makes a new client
   const cached = sessions.get(profile.name);
   if (cached && cached.profile.login?.email === profile.login.email && cached.profile.login.password === profile.login.password) return cached;
 
@@ -134,14 +111,12 @@ export function getSession(requested?: string): Session {
   return session;
 }
 
-/** Log in to Garmin (a cached token is reused), or say why not. */
 export async function requireAuth(session: Session): Promise<void> {
   if (!(await session.garminClient.ensureAuthenticated())) {
     throw session.garminClient.authError();
   }
 }
 
-/** Garmin write operations must never run against the mock client. */
 export function assertLive(session: Session, action: string): void {
   if (session.mock) {
     throw new Error(
@@ -152,10 +127,6 @@ export function assertLive(session: Session, action: string): void {
 
 let validatorEditor: WorkoutEditor | undefined;
 
-/**
- * An editor for the pure validation helpers; needs no profile and never talks to Garmin.
- * Gets a throwaway data dir, so its token cache is never the one of a real profile.
- */
 export function getValidatorEditor(): WorkoutEditor {
   if (!validatorEditor) {
     const client = new GarminClient(
@@ -171,10 +142,6 @@ export function getValidatorEditor(): WorkoutEditor {
 
 let dataExporter: ActivityExporter | undefined;
 
-/**
- * An exporter for the pure helpers (the slim form of stored activities); needs no profile and never talks to Garmin, so a
- * profile without a Garmin login can be read with it.
- */
 export function getDataExporter(): ActivityExporter {
   if (!dataExporter) {
     dataExporter = new ActivityExporter(new GarminClient("data@example.com", "unused", true, path.join(os.tmpdir(), "garmin-mcp-validator")));
@@ -182,12 +149,7 @@ export function getDataExporter(): ActivityExporter {
   return dataExporter;
 }
 
-// ─── Documents (plans and per-profile data) ─────────────────────────────────
 
-/**
- * Canonical logical path ("workout-plans/x.json", "data/MED/x.json") of a tool-supplied path.
- * Only .json documents under the two roots exist; hidden segments and ".." are rejected.
- */
 export function logicalPath(input: string): string {
   let logical: string;
   try {
@@ -200,7 +162,6 @@ export function logicalPath(input: string): string {
   return logical;
 }
 
-/** The parsed content of a stored document. */
 export function readJsonDoc(logical: string): unknown {
   const doc = getStore().get(logical);
   if (!doc) throw new Error(`File not found: ${logical}`);
@@ -213,15 +174,10 @@ export function readJsonDoc(logical: string): unknown {
 
 const jsonText = (data: unknown): string => JSON.stringify(data, null, 2);
 
-/**
- * Create or replace a stored document; the previous version stays in its history. `owner` is who a NEW plan under workout-plans/
- * belongs to (null: shared); a document that exists keeps its owner, and one under data/<profile>/ belongs to that profile.
- */
 export function writeJsonDoc(logical: string, data: unknown, source = "mcp", owner: string | null = null): DocMeta {
   return getStore().put(logical, jsonText(data), { source, owner });
 }
 
-/** Read, change and save a document as one step, so another writer cannot slip in between. */
 export function updateJsonDoc(logical: string, change: (data: any) => void, source = "mcp"): DocMeta {
   return getStore().update(
     logical,
@@ -239,9 +195,7 @@ export function updateJsonDoc(logical: string, change: (data: any) => void, sour
   );
 }
 
-// ─── Tool execution ─────────────────────────────────────────────────────────
 
-// Garmin calls are serialized: one session, rate limits, and shared token cache.
 let lockTail: Promise<unknown> = Promise.resolve();
 
 function withLock<T>(fn: () => Promise<T>): Promise<T> {
@@ -250,7 +204,6 @@ function withLock<T>(fn: () => Promise<T>): Promise<T> {
   return run;
 }
 
-/** Like runTool's serialized path, for non-MCP callers (the web editor): returns the outcome and captured log. */
 export function runCaptured<T>(fn: () => Promise<T>): Promise<CaptureOutcome<T>> {
   return withLock(() => captureLogs(fn));
 }
@@ -259,10 +212,6 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-/**
- * Run a tool body: capture its console output, turn throws into isError
- * results, and (for Garmin-touching tools) serialize against other calls.
- */
 export async function runTool(
   fn: () => Promise<unknown>,
   options: { serialize?: boolean } = {}

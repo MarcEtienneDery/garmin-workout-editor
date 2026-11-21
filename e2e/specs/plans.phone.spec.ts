@@ -1,17 +1,10 @@
-/**
- * Plans on a phone: the bottom tab bar (Files, Editor, Outline, Checks), the toolbar's ⋯ panel, and the Checks badge.
- * alice's plans are read only; anything that writes a file uses a profile of its own (`me`).
- */
 import { test, expect, openView, daysAhead, mondayOf, today, type Page, type Profile } from "../support/fixtures";
 
-// The suite shares this machine with other runs, so a step can take longer than the default 30 s on a loaded box.
 test.setTimeout(60_000);
 
-/** What sticks out past the phone's width outside any box that scrolls by itself (the page itself never scrolls sideways). */
 async function stickingOut(page: Page): Promise<string[]> {
   return page.evaluate(() => {
     const width = document.documentElement.clientWidth;
-    // what an element can show of itself: its own box, cut at the edge of every box above it that clips (hidden, scroll, auto)
     const shownRight = (el: Element) => {
       let right = el.getBoundingClientRect().right;
       for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) {
@@ -32,7 +25,6 @@ async function stickingOut(page: Page): Promise<string[]> {
   });
 }
 
-/** A plan the validator passes: a week and one running workout dated today. */
 const validPlan = () =>
   JSON.stringify({
     weekStart: mondayOf(today()),
@@ -48,16 +40,10 @@ const validPlan = () =>
     ],
   });
 
-/** A plan with two errors: no week, and a workout with no name and an unknown type. */
 const invalidPlan = () => JSON.stringify({ workouts: [{ workoutName: "", workoutType: "nope", steps: [] }] });
 
-/**
- * A plan file of the profile's own, named after it: workout-plans/ is one namespace shared by every profile, so a name another test
- * took belongs to that one.
- */
 const planPath = (profile: Profile, kind: string) => `workout-plans/${profile.name}-${kind}.json`;
 
-/** Writes a plan into the profile's own plans, through its API (the page then lists it). */
 async function putPlan(profile: Profile, kind: string, text: string) {
   const res = await profile.api.put(`/api/file?path=${encodeURIComponent(planPath(profile, kind))}`, { data: { text, create: true } });
   expect(res.status()).toBe(201);
@@ -65,21 +51,14 @@ async function putPlan(profile: Profile, kind: string, text: string) {
 
 const tab = (page: Page, name: "files" | "editor" | "outline" | "problems") => page.locator(`#tabbar button[data-tab="${name}"]`);
 
-// These specs are about the JSON editor on a phone, the Plans view with JSON chosen (the choice is kept in the browser): the form on a
-// phone has workout-form.phone.spec.ts.
 test.use({ editMode: "json" });
 
-/**
- * Plans opens with its toolbar and tabs wired: the page wires them once the editor has its schema, so a tap before that does
- * nothing. Waits for that answer, then for the view.
- */
 async function openPlans(page: Page) {
   const wired = page.waitForResponse((r) => r.url().includes("/api/schema") && r.ok());
   await openView(page, "plans");
   await wired;
 }
 
-/** Taps a file in Files, and waits until it is the open file (the page moves to its pane once the file has loaded). */
 async function openPlanFile(page: Page, name: string) {
   await page.locator("#filelist .file", { hasText: name }).tap();
   await expect(page.locator("#current")).toContainText(name);

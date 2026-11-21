@@ -1,13 +1,3 @@
-/*
- * barcodeScanner.js — reads a product barcode (EAN-13, EAN-8, UPC-A, UPC-E) from the phone's camera.
- *
- * Where the browser has BarcodeDetector (Chrome on Android) it is used; elsewhere (Safari on iPhone) the page loads ZXing
- * (/vendor/zxing/index.min.js, from node_modules) and this decodes frames drawn on a canvas. Either way a read is only
- * accepted when its check digit is good, so a misread bar never looks up the wrong product.
- *
- * The camera needs a secure page (HTTPS or localhost). decodeFrame is pure and has a test; start() is the DOM part.
- * Loaded by the page as a plain script after nutritionModel.js; the tests require() it.
- */
 (function (root, factory) {
   const api = factory(typeof module === "object" && module.exports ? require("./nutritionModel.js") : root.NutritionModel);
   if (typeof module === "object" && module.exports) module.exports = api;
@@ -19,7 +9,6 @@
   const INTERVAL_MS = 220;
   const MAX_FRAME_WIDTH = 1280;
 
-  /** Why the camera could not be used, in words for the person. */
   class ScanError extends Error {}
 
   function explain(error) {
@@ -31,7 +20,6 @@
     return new ScanError(`The camera could not be started${error && error.message ? `: ${error.message}` : "."}`);
   }
 
-  /** RGBA pixels as the one-byte brightness ZXing reads. */
   function toLuminance(rgba, width, height) {
     const out = new Uint8ClampedArray(width * height);
     for (let i = 0, p = 0; i < out.length; i++, p += 4) out[i] = (rgba[p] * 299 + rgba[p + 1] * 587 + rgba[p + 2] * 114) / 1000;
@@ -39,7 +27,6 @@
   }
 
   const readers = new WeakMap();
-  /** One reader per ZXing build: it keeps its decoders between frames, and the hints say what to look for. */
   function readerOf(ZX) {
     let reader = readers.get(ZX);
     if (!reader) {
@@ -53,7 +40,6 @@
     return reader;
   }
 
-  /** The brightness image turned a quarter, so a barcode standing upright in the frame lies flat (ZXing's RGB source cannot rotate itself). */
   function turnQuarter(lum, width, height) {
     const out = new Uint8ClampedArray(lum.length);
     for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) out[x * height + (height - 1 - y)] = lum[y * width + x];
@@ -65,22 +51,16 @@
     try {
       return NM.normalizeBarcode(readerOf(ZX).decodeWithState(bitmap).getText());
     } catch {
-      return null; // ZXing throws when a frame holds no barcode, which is most frames
+      return null;
     }
   }
 
-  /** The barcode in one frame of RGBA pixels, lying or standing, or null: nothing found, or a read whose check digit is wrong. */
   function decodeFrame(ZX, rgba, width, height) {
     const lum = toLuminance(rgba, width, height);
     return read(ZX, lum, width, height) || read(ZX, turnQuarter(lum, width, height), height, width);
   }
 
   let zxingLoading = null;
-  /**
-   * ZXing, loaded once and only when the browser has no BarcodeDetector. The page has an AMD loader (the code editor's), and a
-   * library that sees one registers itself with it instead of putting ZXing on window: so the library is fetched and run where
-   * define, exports and module do not exist, which makes it take the plain-script path.
-   */
   function loadZxing() {
     if (window.ZXing) return Promise.resolve(window.ZXing);
     zxingLoading = zxingLoading || fetch("/vendor/zxing/index.min.js")
@@ -94,7 +74,6 @@
     return zxingLoading;
   }
 
-  /** The browser's own detector, when it reads the formats the products use. */
   async function nativeDetector() {
     if (!window.BarcodeDetector) return null;
     try {
@@ -106,10 +85,6 @@
     }
   }
 
-  /**
-   * Open the camera into `video` and call onCode(code) with the first good barcode it reads. Resolves with { stop() } once the
-   * camera runs; rejects with a ScanError saying why it could not. The caller stops it when its dialog closes, however it closes.
-   */
   async function start(video, onCode) {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new ScanError(window.isSecureContext === false ? "The camera needs a secure page (HTTPS)." : "This browser cannot use the camera.");
     let stream;
@@ -124,7 +99,6 @@
       video.srcObject = null;
     };
     try {
-      // iPhone plays a video fullscreen, or not at all, unless it is muted and inline
       video.muted = true;
       video.setAttribute("playsinline", "");
       video.srcObject = stream;
@@ -146,7 +120,7 @@
       };
       const tick = async () => {
         let code = null;
-        try { code = await look(); } catch { /* a frame that cannot be read is skipped */ }
+        try { code = await look(); } catch { }
         if (stopped) return;
         if (code) { onCode(code); return; }
         timer = setTimeout(tick, INTERVAL_MS);

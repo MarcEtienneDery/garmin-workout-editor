@@ -1,15 +1,9 @@
-/**
- * nutrition.ts — the food log: what a food item may hold, the totals of a meal and a day, and the days of a range next to
- * the calories Garmin says they burned. The MCP tools and the web view both write and answer from these functions, so they
- * cannot disagree. Garmin has nowhere to store food, so the log lives in the `nutrition` table (store/nutrition.ts).
- */
 import { NUTRIENTS, type NutrientTotals, type Nutrients, maxOf, nutrientTotals } from "./nutrients";
 import { type FoodEntry, type FoodFields, type FoodProduct, MEALS, type Meal, type SqliteStore } from "./store";
 import { addDays } from "./wellnessSync";
 
 export { MEALS, type Meal };
 
-/** A food the person gave is refused with a message they can act on. */
 export class NutritionError extends Error {}
 
 export const MAX_KCAL = 10_000;
@@ -17,15 +11,12 @@ export const MAX_GRAMS = 2_000;
 export const MAX_NAME = 120;
 export const MAX_ITEMS = 50;
 export const MAX_RANGE_DAYS = 120;
-/** How many foods the entry form offers to fill in again. */
 export const RECENT_FOODS = 40;
 
-/** What the log holds energy-wise for a gram of each macro (Atwater factors; labels, fibre and alcohol make the real value differ). */
 export const kcalOfMacros = (proteinG: number, carbsG: number, fatG: number): number => Math.round(4 * proteinG + 4 * carbsG + 9 * fatG);
 
 const round1 = (n: number): number => Math.round(n * 10) / 10;
 
-/** A day as YYYY-MM-DD, or `fallback` when none was given. */
 export function parseDay(value: unknown, fallback: string): string {
   if (value === undefined || value === null || value === "") return fallback;
   const text = typeof value === "string" ? value : "";
@@ -40,7 +31,6 @@ export function parseMeal(value: unknown): Meal {
   return meal as Meal;
 }
 
-/** A number from 0 to `max` (a numeric string is read too), undefined when none was given; rounded to `decimals`. */
 function amount(value: unknown, label: string, max: number, decimals = 1): number | undefined {
   if (value === undefined || value === null || value === "") return undefined;
   const n = typeof value === "string" ? Number(value.trim().replace(",", ".")) : value;
@@ -48,22 +38,17 @@ function amount(value: unknown, label: string, max: number, decimals = 1): numbe
   return Math.round(n * 10 ** decimals) / 10 ** decimals;
 }
 
-/** A food as the person or the assistant gives it: calories are worked out from the macros when left out. */
 export interface FoodInput {
   name?: unknown;
   kcal?: unknown;
   proteinG?: unknown;
   carbsG?: unknown;
   fatG?: unknown;
-  /** The nutrients beyond the macros, by key (see shared/nutrients.ts): `{ fiberG: 3, sodiumMg: 410 }`. A key left out, null or empty is unknown, never zero. */
   nutrients?: unknown;
-  /** The product the numbers were scaled from (see FoodProduct), so the food can be changed by quantity later; the page sends it, the MCP tools do not. */
   product?: unknown;
-  /** Only in addFoods: the meal of this food when it is not the call's (the page logs an estimate of a whole day's meals in one call). */
   meal?: unknown;
 }
 
-/** The nutrients of a food as given: known keys with a number from 0; null, empty or left out means unknown. Anything else is refused. */
 export function parseNutrients(input: unknown): Nutrients {
   if (input === undefined || input === null) return {};
   if (typeof input !== "object" || Array.isArray(input)) throw new NutritionError(`nutrients must be an object like { ${NUTRIENTS[0].key}: 3 }.`);
@@ -78,10 +63,8 @@ export function parseNutrients(input: unknown): Nutrients {
   return found;
 }
 
-/** What 100 g (or ml) can hold: at most 950 kcal and 100 g of a macro, as foodSearch's toFood checks; of a nutrient, 100 g or 40 g of sodium (pure salt). */
 const PER_100_MAX = { kcal: 950, g: 100, mg: 40_000 };
 
-/** The product a food was scaled from, checked; null when none was given. A product the page could not have made is refused. */
 export function parseProduct(input: unknown): FoodProduct | null {
   if (input === undefined || input === null) return null;
   const bad = (what: string): never => {
@@ -140,7 +123,6 @@ export interface AddFoods {
   items: FoodInput[];
 }
 
-/** Log foods for a meal of a day (`today` by default); a food may name a meal of its own. All are checked before any is kept. */
 export function addFoods(store: SqliteStore, profile: string, input: AddFoods, today: string, source: string): FoodEntry[] {
   if (!Array.isArray(input.items) || !input.items.length) throw new NutritionError("Give at least one food.");
   if (input.items.length > MAX_ITEMS) throw new NutritionError(`Give at most ${MAX_ITEMS} foods at a time.`);
@@ -148,10 +130,6 @@ export function addFoods(store: SqliteStore, profile: string, input: AddFoods, t
   return store.nutrition.add(profile, input.items.map((item) => parseFood(item ?? {}, { day, meal: item?.meal === undefined || item.meal === null ? meal : parseMeal(item.meal) })), source);
 }
 
-/**
- * Log again on `day` (today, from the server) foods already logged, each in the meal it was in, with its numbers and the nutrients
- * it states (one it does not state stays unknown). All are found before any is kept; an id given twice is copied once.
- */
 export function copyFoods(store: SqliteStore, profile: string, ids: unknown, day: string, source: string): FoodEntry[] {
   if (!Array.isArray(ids) || !ids.length) throw new NutritionError("Give at least one food to copy.");
   const unique = [...new Set(ids.map(Number))];
@@ -170,17 +148,11 @@ export interface FoodPatch extends FoodInput {
   meal?: unknown;
 }
 
-/**
- * Change a food item: what the patch leaves out stays (the calories are not worked out again from changed macros). A nutrient of the
- * patch is set, one given as null is removed (unknown again), one the patch does not mention stays. The product it was scaled from is
- * replaced by the patch's (null removes it), and stays only while the name and numbers stay: a food corrected by hand or by an
- * assistant no longer is that quantity of that product, and changing its quantity later would undo the correction.
- */
 export function changeFood(store: SqliteStore, profile: string, id: number, patch: FoodPatch): FoodEntry {
   const current = store.nutrition.get(profile, id);
   if (!current) throw new NutritionError(`There is no food entry ${id}.`);
   const keep = (key: "name" | "kcal" | "proteinG" | "carbsG" | "fatG") => (patch[key] === undefined ? current[key] : patch[key]);
-  parseNutrients(patch.nutrients); // refuses a patch that is not an object, names no nutrient or holds a bad number
+  parseNutrients(patch.nutrients);
   const nutrients: Record<string, unknown> = { ...current.nutrients };
   for (const [key, value] of Object.entries((patch.nutrients ?? {}) as Record<string, unknown>)) if (value !== undefined) nutrients[key] = value;
   const food = parseFood(
@@ -196,22 +168,18 @@ export function changeFood(store: SqliteStore, profile: string, id: number, patc
   return changed;
 }
 
-/** Delete food entries; the ids that did not exist are reported, not an error (a retry finds them gone). */
 export function deleteFoods(store: SqliteStore, profile: string, ids: number[]): { deleted: number[]; missing: number[] } {
   const deleted = store.nutrition.remove(profile, ids);
   return { deleted, missing: ids.filter((id) => !deleted.includes(id)) };
 }
 
-// ── Totals and days ─────────────────────────────────────────────────────
 
 export interface Totals {
   kcal: number;
   proteinG: number;
   carbsG: number;
   fatG: number;
-  /** How many food items. */
   entries: number;
-  /** The nutrients beyond the macros that at least one food states, each with how many foods state it: one stated by fewer than `entries` is a lower bound. */
   nutrients: NutrientTotals;
 }
 
@@ -226,20 +194,15 @@ export interface MealBlock {
   totals: Totals;
 }
 
-/** A day of the log: its totals, the calories Garmin says it burned, and the meals. */
 export interface NutritionDay extends Totals {
   day: string;
-  /** What the day burned, from the watch; null when no day summary is stored. Today's is what has burned so far. */
   burnedKcal: number | null;
-  /** Of that, what is above resting (what a calorie goal that follows the burn adds); null when no day summary states it. */
   activeKcal: number | null;
   burnedSoFar: boolean;
-  /** Eaten minus burned; null on a day nothing was logged or Garmin has no burn for. */
   netKcal: number | null;
   meals: MealBlock[];
 }
 
-/** The days from `from` to `to` inclusive, oldest first, a day nothing was logged on included. */
 export function nutritionDays(store: SqliteStore, profile: string, from: string, to: string, today: string): NutritionDay[] {
   if (from > to) throw new NutritionError("from is after to.");
   if (Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`) > MAX_RANGE_DAYS * 86_400_000) throw new NutritionError(`Ask for at most ${MAX_RANGE_DAYS} days at a time.`);
@@ -266,7 +229,6 @@ export interface Average {
   fatG: number;
 }
 
-/** The mean of the days that were logged and are over (today is still being filled in); null when there is none. */
 export function averageOf(days: NutritionDay[], today: string): Average | null {
   const logged = days.filter((d) => d.entries && d.day < today);
   if (!logged.length) return null;
@@ -274,7 +236,6 @@ export function averageOf(days: NutritionDay[], today: string): Average | null {
   return { days: logged.length, kcal: Math.round(mean((d) => d.kcal)), proteinG: mean((d) => d.proteinG), carbsG: mean((d) => d.carbsG), fatG: mean((d) => d.fatG) };
 }
 
-/** The foods the entry form offers to fill in again, the newest of each name first. */
 export function recentFoods(store: SqliteStore, profile: string): { name: string; meal: Meal; kcal: number; proteinG: number; carbsG: number; fatG: number; nutrients: Nutrients; product: FoodProduct | null }[] {
   return store.nutrition.recentFoods(profile, RECENT_FOODS).map(({ name, meal, kcal, proteinG, carbsG, fatG, nutrients, product }) => ({ name, meal, kcal, proteinG, carbsG, fatG, nutrients, product }));
 }

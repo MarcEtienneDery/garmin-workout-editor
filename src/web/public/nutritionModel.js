@@ -1,11 +1,3 @@
-/*
- * nutritionModel.js — the logic of the Food view: how a meal, calories and grams are said, the figures at the top, the
- * macro shares, the fields of the daily table, the charts, and what a food form holds before it is sent.
- *
- * Pure functions on what GET /api/nutrition returns ({ today, date, day: { meals, kcal, proteinG, nutrients, ... burnedKcal, netKcal },
- * days: [{ day, kcal, ... }], average, recent }). Loaded by the page as a plain script after recoveryModel.js (the numbers
- * and dates are said the same way); the tests require() it. The server checks every number again.
- */
 (function (root, factory) {
   const api = factory(typeof module === "object" && module.exports ? require("./recoveryModel.js") : root.RecoveryModel);
   if (typeof module === "object" && module.exports) module.exports = api;
@@ -16,10 +8,6 @@
   const { num, valid } = RM;
   const MINUS = "−";
 
-  /**
-   * The nutrients beyond the macros, in the order of a Canadian Nutrition Facts table: the same list as NUTRIENTS in shared/nutrients.ts
-   * (a test keeps the two equal). A food either states one or it does not: unknown is never zero, and a total says how many foods it counts.
-   */
   const NUTRIENTS = [
     { key: "fiberG", label: "Fiber", unit: "g" },
     { key: "sugarsG", label: "Sugars", unit: "g" },
@@ -37,26 +25,17 @@
   const mealLabel = (meal) => MEAL_LABELS[meal] || meal;
 
   const kcal = (v) => (valid(v) ? `${num(v)} kcal` : "–");
-  /** Grams, with a decimal only when there is one: "30 g", "12.5 g". */
   const grams = (v) => (valid(v) ? `${num(v, Number.isInteger(v) ? 0 : 1)} g` : "–");
-  /** A difference in calories, signed: "+250 kcal", "−300 kcal". */
   const signed = (v) => (valid(v) ? `${v > 0 ? "+" : v < 0 ? MINUS : ""}${num(Math.abs(v))} kcal` : "–");
 
-  /** "P 30 · C 45 · F 12" for one food or a total. */
   const macros = (f) => `P ${num(f.proteinG, Number.isInteger(f.proteinG) ? 0 : 1)} · C ${num(f.carbsG, Number.isInteger(f.carbsG) ? 0 : 1)} · F ${num(f.fatG, Number.isInteger(f.fatG) ? 0 : 1)}`;
 
-  /** An amount of a nutrient with a decimal only when there is one: "3 g", "12.5 g", "1.5 mg"; milligrams from 10 up are whole ("410 mg"), a labelled precision no one reads. */
   const nutrientAmount = (v, unit) => `${num(v, Number.isInteger(v) || (unit === "mg" && v >= 10) ? 0 : 1)} ${unit}`;
 
-  /** "Fiber 3 g · Sodium 410 mg": the nutrients a food states, in the list's order; "" when it states none. */
   function nutrientLine(nutrients) {
     return NUTRIENTS.filter((n) => valid((nutrients || {})[n.key])).map((n) => `${n.label} ${nutrientAmount(nutrients[n.key], n.unit)}`).join(" · ");
   }
 
-  /**
-   * The tiles of a day's nutrients: one for each nutrient, "–" for one no food states. A total that counts fewer foods than the day
-   * has is a lower bound, so it reads "≥ 18 g" with the note "from 4 of 6 foods". A day with nothing logged has no tiles.
-   */
   function nutrientTiles(day) {
     if (!day || !day.entries) return [];
     return NUTRIENTS.map((n) => {
@@ -67,7 +46,6 @@
     });
   }
 
-  /** The share of the macros' own calories (4 kcal a gram of protein and carbs, 9 of fat) that each makes, in whole percent; null when there are none. */
   function shares(t) {
     const p = (t.proteinG || 0) * 4, c = (t.carbsG || 0) * 4, f = (t.fatG || 0) * 9, all = p + c + f;
     if (!(all > 0)) return null;
@@ -75,13 +53,8 @@
     return { protein, carbs, fat: Math.max(0, 100 - protein - carbs) };
   }
 
-  /**
-   * Whether the view has a burn to show: the server says `burn: false` for a profile that has no Garmin and nothing stored from it,
-   * where "burned" would only ever read "no day summary from Garmin". A view that does not say shows it.
-   */
   const hasBurn = (view) => !view || view.burn !== false;
 
-  /** The tiles above the day: eaten, burned, the difference (the last two when there is a burn), and the macros with their shares. */
   function figures(view) {
     const d = view.day, logged = d.entries > 0, today = d.day === view.today;
     const s = shares(d);
@@ -96,26 +69,21 @@
     return [eaten, ...(hasBurn(view) ? burn : []), macro];
   }
 
-  /** What the logged days before today average, or null. */
   function averageNote(average) {
     if (!average) return "";
     return `Average of ${average.days} logged day${average.days === 1 ? "" : "s"}: ${kcal(average.kcal)} · ${macros(average)}`;
   }
 
-  // ── The daily table and the charts ──────────────────────────────────────
 
   const g = (key, label) => ({ key, label, grams: true });
-  /** The numbers of a day, in the groups the table shows. */
   const GROUPS = [
     { name: "Eaten", fields: [{ key: "kcal", label: "Calories", unit: " kcal" }, g("proteinG", "Protein"), g("carbsG", "Carbs"), g("fatG", "Fat")] },
     { name: "Garmin", fields: [{ key: "burnedKcal", label: "Burned", unit: " kcal" }, { key: "netKcal", label: "Eaten − burned", net: true }] },
     { name: "Nutrients", fields: NUTRIENTS.map((n) => ({ key: n.key, label: n.label, unit: n.unit, nutrient: true })) },
   ];
 
-  /** The groups the table shows for a view: without a burn (no Garmin) the Garmin group is left out. */
   const groupsFor = (view) => (hasBurn(view) ? GROUPS : GROUPS.filter((group) => group.name !== "Garmin"));
 
-  /** How one field of a day reads; a day nothing was logged on has no eaten numbers. */
   function cell(field, day) {
     if (field.net) return signed(day.netKcal);
     if (field.nutrient) {
@@ -126,21 +94,10 @@
     return field.grams ? grams(day[field.key]) : num(day[field.key], 0, field.unit || "");
   }
 
-  /** The days for the charts: a day nothing was logged on has no eaten numbers (it is not a day of zero). */
   const chartDays = (days) => days.map((d) => (d.entries ? d : { ...d, kcal: null, proteinG: null, carbsG: null, fatG: null }));
 
-  /**
-   * What the view draws: the calories eaten against the burn (when there is one) and the calorie goal (when one is set), the macros piled
-   * up, and the protein against its goal (when one is set).
-   */
-  /** How near a target goal (the calories, carbs, fat) a day may end and still be on target: the server's TARGET_TOLERANCE, and a test keeps the two equal. */
   const TARGET_TOLERANCE = 0.1;
 
-  /**
-   * Where an amount stands against a goal of a kind: "min" is a floor (reached or short), "max" a ceiling (ok or over), "target" an aim within
-   * the tolerance (short, ok or over). The rule of the server (nutritionGoals.ts goalProgress), mirrored here so the charts say the same as
-   * the cards; a test holds the two together.
-   */
   function standing(kind, amount, goal) {
     const ratio = amount / goal;
     if (kind === "min") return ratio >= 1 ? "ok" : "short";
@@ -148,7 +105,6 @@
     return ratio < 1 - TARGET_TOLERANCE ? "short" : ratio > 1 + TARGET_TOLERANCE ? "over" : "ok";
   }
 
-  /** "8 of 20 finished days on target · 2 over · 10 under": the days counted by `standOf` (null for a day that does not count), skipping today, which is not over. */
   function standingLine(days, today, standOf, { good, words }) {
     const done = days.filter((d) => d.day !== today).map(standOf).filter(Boolean);
     if (!done.length) return "";
@@ -159,17 +115,11 @@
     return parts.join(" · ");
   }
 
-  // ── The week strip and the insights ─────────────────────────────────────
 
   const WEEKDAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
   const weekdayOf = (day) => new Date(`${day}T00:00:00Z`).getUTCDay();
   const MONTH_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-  /**
-   * The seven days of the week the day shown is in, for the strip at the top: how many calories each had against its goal (`pct`, up to 1,
-   * null with no goal or nothing logged), its state (`ok`, `over` more than the 10 % that counts as on target, `none` nothing logged,
-   * `future`), and the words a screen reader says. A day under the goal is on target; only over is told apart.
-   */
   function weekStrip(view) {
     if (!view || !Array.isArray(view.week)) return [];
     const goals = view.goals || {}, follows = valid(goals.kcal) && valid(goals.kcalBurnPct);
@@ -187,15 +137,9 @@
     });
   }
 
-  /** The days of a range that are finished and have food in them (today is still going, a day with nothing is unknown, not zero). */
   const finishedDays = (view) => ((view && view.days) || []).filter((d) => d.day !== view.today && d.entries > 0 && valid(d.kcal));
   const meanOf = (list) => (list.length ? list.reduce((a, b) => a + b, 0) / list.length : null);
 
-  /**
-   * What the finished days of the range add up to, as tiles { label, value, note } for the Insights tab: the average of the calories, how many
-   * days were on target (under the goal counts) and over it, the protein against its goal, and what was eaten against what Garmin counted as
-   * burned. Empty with no finished day.
-   */
   function insightTiles(view) {
     const days = finishedDays(view), goals = (view && view.goals) || {};
     if (!days.length) return [];
@@ -215,10 +159,6 @@
     return tiles;
   }
 
-  /**
-   * The finished days by weekday, Monday first: the average calories of each (null with fewer than two days of it), and a sentence on which
-   * weekday runs highest and which is lowest in protein. Null when fewer than three weekdays have two days.
-   */
   function weekdayPattern(view) {
     const days = finishedDays(view), rows = [1, 2, 3, 4, 5, 6, 0].map((wd) => {
       const mine = days.filter((d) => weekdayOf(d.day) === wd), protein = mine.filter((d) => valid(d.proteinG));
@@ -240,10 +180,7 @@
   function charts(view) {
     const burn = hasBurn(view), goals = (view && view.goals) || {}, today = view && view.today;
     const against = (key, unit) => (valid(goals[key]) ? { goal: { label: `Goal ${num(goals[key])} ${unit}`, value: goals[key] } } : {});
-    // a calorie goal that follows the burn is a level of its own each day (the server works it out per day)
     const follows = valid(goals.kcal) && valid(goals.kcalBurnPct);
-    // where a day ended against the calorie goal (the day's own when it follows the burn), null with no goal or nothing logged. On a chart a day
-    // under the goal counts as on target (only over is told apart), where the card says "short" for a day more than 10 % under.
     const kcalLimit = (d) => (follows ? d.kcalGoal : goals.kcal);
     const kcalStands = (d) => (valid(goals.kcal) && valid(d.kcal) && valid(kcalLimit(d)) && kcalLimit(d) > 0 ? (standing("target", d.kcal, kcalLimit(d)) === "over" ? "over" : "ok") : null);
     const kcalGoal = follows ? { goal: { label: `Goal ${num(goals.kcal)} kcal + ${num(goals.kcalBurnPct)} % of active`, values: (d) => d.kcalGoal } } : against("kcal", "kcal");
@@ -262,19 +199,12 @@
     ];
   }
 
-  // ── The daily goals: how the day stands against them, said and drawn ─────
-  // `progress` is what the server works out (shared/nutritionGoals.ts goalProgress): per goal the amount (null: unknown, never zero), the
-  // state (short, ok, over, unknown) and what is left. This only words it and sizes the bars; the meaning of short, ok and over is the server's.
 
-  /** An amount without its unit: calories whole, grams with a decimal only when there is one, milligrams from 10 up whole. */
   const bare = (v, unit) => num(v, unit === "kcal" || Number.isInteger(v) || (unit === "mg" && v >= 10) ? 0 : 1);
-  /** An amount of a goal's unit: "2,000 kcal", "140 g", "2,300 mg". */
   const qty = (v, unit) => `${bare(v, unit)} ${unit}`;
 
-  /** "1,240 / 2,000 kcal", "≥ 4 / 30 g" (a floor, from some of the foods), "– / 2,300 mg" (unknown). */
   const goalValue = (p) => `${p.amount === null ? "–" : `${p.partial ? "≥ " : ""}${bare(p.amount, p.unit)}`} / ${qty(p.goal, p.unit)}`;
 
-  /** What is left or over, in words: "760 kcal to go", "✓ reached", "1,500 mg left", "▲ over by 100 mg". A floor from some of the foods is said as a limit ("up to 26 g to go"). */
   function goalNote(p, entries) {
     if (p.state === "unknown" || p.left === null) return entries ? "no food states it" : "nothing logged";
     const rest = qty(Math.abs(p.left), p.unit), some = p.partial ? "up to " : "";
@@ -284,22 +214,15 @@
     return `${some}${rest} to go`;
   }
 
-  /** The bar of a goal: the fill as a percentage of the track, and where the goal is on it when the amount went past it (else the track's end is the goal). Null when the amount is unknown. */
   function goalMeter(p) {
     if (p.amount === null) return null;
     const top = Math.max(p.goal, p.amount);
     return { fill: (p.amount / top) * 100, tick: p.amount > p.goal ? (p.goal / top) * 100 : null };
   }
 
-  /** The grams of each macro are worth this many calories, as the server's kcalOfMacros has it. */
   const MACRO_KCAL = { protein: 4, carbs: 4, fat: 9 };
   const MACRO_KEYS = [["protein", "proteinG", "Protein"], ["carbs", "carbsG", "Carbs"], ["fat", "fatG", "Fat"]];
 
-  /**
-   * The day's calorie bar: its segments are the calories of the protein, carbs and fat (scaled to the calories eaten, which labels and fibre
-   * make differ from 4/4/9), as fractions of the track. The track is the goal, or the day when it went past the goal or there is none. Null for
-   * a day nothing was logged on.
-   */
   function calorieBar(day, goal) {
     if (!day.entries) return null;
     const parts = MACRO_KEYS.map(([cls, key, label]) => ({ cls, label, kcal: (day[key] || 0) * MACRO_KCAL[cls], grams: day[key] || 0 })), sum = parts.reduce((t, x) => t + x.kcal, 0);
@@ -308,13 +231,11 @@
     return { segments, tick: valid(goal) && day.kcal > goal ? (goal / top) * 100 : null };
   }
 
-  /** The calorie goal the day is measured against: the server's (it follows the burn when the person set it so), else the set one; undefined when there is none. */
   function calorieGoal(view) {
     const kp = (view.progress || []).find((p) => p.key === "kcal");
     return kp ? kp.goal : (view.goals || {}).kcal;
   }
 
-  /** How a calorie goal that follows the burn came about ("Goal 2,510 kcal = 2,200 set + 310 (50 % of 620 active kcal burned so far)"); "" when the goal is fixed or there is none. */
   function goalLine(view) {
     const kp = (view.progress || []).find((p) => p.key === "kcal"), a = kp && kp.adjust;
     if (!a) return "";
@@ -322,10 +243,6 @@
     return `Goal ${qty(kp.goal, "kcal")} = ${num(a.base)} set + ${num(a.added)} (${num(a.pct)} % of ${num(a.activeKcal)} active kcal burned${view.day.day === view.today ? " so far" : ""})`;
   }
 
-  /**
-   * The middle of the day's calorie ring and the line under it: what is left of the goal ("1,385", "kcal left") or past it ("120", "kcal over"),
-   * or without a goal what was eaten. `label` says it in words, for a screen reader; `short` is the add sheet's foot ("1,015 / 2,400 kcal · 1,385 left").
-   */
   function ring(view) {
     const d = view.day, kp = (view.progress || []).find((p) => p.key === "kcal"), goal = kp ? ` · goal ${qty(kp.goal, "kcal")}` : "";
     if (!d.entries) return { big: "–", small: kp ? `of ${qty(kp.goal, "kcal")}` : "kcal", state: "unknown", line: `Nothing logged${goal}`, label: `Nothing logged${goal}`, short: `Nothing logged${goal}` };
@@ -335,14 +252,12 @@
     return { big: num(Math.abs(kp.left)), small: over ? "kcal over" : "kcal left", state: kp.state, line: `${eaten}${goal}`, label: `${eaten} · ${rest}${goal}`, short: `${num(d.kcal)} / ${qty(kp.goal, "kcal")} · ${num(Math.abs(kp.left))} ${over ? "over" : "left"}` };
   }
 
-  /** The line under the calorie bar: the calories Garmin says were burned and the difference, when there is a burn. */
   function burnLine(view) {
     const d = view.day;
     if (!hasBurn(view) || d.burnedKcal === null || d.burnedKcal === undefined) return "";
     return `Burned ${kcal(d.burnedKcal)}${d.day === view.today ? " so far" : ""} by Garmin${d.netKcal === null ? "" : ` · eaten − burned ${signed(d.netKcal)}`}`;
   }
 
-  /** The protein, carbs and fat rows: with a goal a bar and what is left; without one just the grams. */
   function macroRows(view) {
     const d = view.day, byKey = Object.fromEntries((view.progress || []).map((p) => [p.key, p]));
     return MACRO_KEYS.map(([cls, key, label]) => {
@@ -352,16 +267,11 @@
     });
   }
 
-  /** "30 % protein · 45 % carbs · 25 % fat" of the macros' calories; "" for a day with none. */
   function sharesLine(day) {
     const s = shares(day);
     return s ? `${s.protein} % protein · ${s.carbs} % carbs · ${s.fat} % fat of the macros' calories` : "";
   }
 
-  /**
-   * The bars of the meals: one per meal of the day, as long as its calories against the day's largest meal, split into the calories of its protein,
-   * carbs and fat. `share` is the meal's part of the calorie goal (or of the day without one). A meal with nothing logged has no bar.
-   */
   function mealBars(view) {
     const d = view.day, goal = calorieGoal(view), blocks = d.meals || [], top = Math.max(0, ...blocks.map((b) => b.totals.kcal));
     return blocks.map((b) => {
@@ -379,10 +289,6 @@
     });
   }
 
-  /**
-   * The rows of the day's nutrients: the ones with a goal first (a bar, the amount against the goal, what is left), then the rest as the tiles
-   * said them (the amount, and how many foods state it). A day nothing was logged on has only its goals, as "nothing logged".
-   */
   function nutrientRows(view) {
     const d = view.day, keys = new Set(NUTRIENT_KEYS), withGoal = (view.progress || []).filter((p) => keys.has(p.key));
     const goalRows = withGoal.map((p) => ({ key: p.key, label: p.label, value: goalValue(p), note: goalNote(p, d.entries), meter: goalMeter(p), state: p.state, kind: p.kind, partial: p.partial, goal: true }));
@@ -391,14 +297,11 @@
     return [...goalRows, ...rest];
   }
 
-  /** What a goal is, in words: protein is "at least", sodium "at most", calories "the aim". */
   const KIND_LABELS = { min: "at least", max: "at most", target: "the aim", burn: "100" };
   const kindLabel = (kind) => KIND_LABELS[kind] || "";
 
 
-  // ── The food form ───────────────────────────────────────────────────────
 
-  /** A form field's text as a number, null when empty, undefined when it is not a number from 0. */
   function amount(text) {
     const t = String(text == null ? "" : text).trim().replace(",", ".");
     if (!t) return null;
@@ -406,17 +309,12 @@
     return Number.isFinite(n) && n >= 0 ? n : undefined;
   }
 
-  /** The calories the macros add up to (4 a gram of protein and carbs, 9 of fat), null when none is given. Same as the server's. */
   function kcalOf(draft) {
     const [p, c, f] = [draft.proteinG, draft.carbsG, draft.fatG].map(amount);
     if (![p, c, f].some((v) => typeof v === "number")) return null;
     return [p, c, f].some((v) => v === undefined) ? null : Math.round(4 * (p || 0) + 4 * (c || 0) + 9 * (f || 0));
   }
 
-  /**
-   * A macro was typed in the form: from then on the calories are the macros' sum (`fromMacros`), shown in their field and not typed, so the
-   * two cannot disagree. Once every macro is empty again the calories are free, and empty. Changes the draft and gives it back.
-   */
   function followMacros(draft) {
     draft.fromMacros = ["proteinG", "carbsG", "fatG"].some((key) => String(draft[key] == null ? "" : draft[key]).trim() !== "");
     const k = draft.fromMacros ? kcalOf(draft) : null;
@@ -424,11 +322,6 @@
     return draft;
   }
 
-  /**
-   * What the form holds as the fields of a food to send ({ item }), or what is wrong with it ({ error }). A field left empty
-   * is left out, so the server works the calories out from the macros; with `full` (changing a food) every field is sent:
-   * an empty macro is 0 and empty calories are the macros' sum. Calories that follow the macros (followMacros) count as empty.
-   */
   function parseDraft(draft, full = false) {
     const name = String(draft.name || "").trim();
     if (!name) return { error: "Give the food a name." };
@@ -439,7 +332,6 @@
       if (v !== null) item[key] = v;
     }
     if (item.kcal === undefined && item.proteinG === undefined && item.carbsG === undefined && item.fatG === undefined) return { error: "Give the calories or at least one macro." };
-    // a nutrient left empty is unknown: it is left out of a new food, and sent as null when changing one so that it is removed (never as 0)
     const nutrients = {};
     for (const n of NUTRIENTS) {
       const v = amount(draft[n.key]);
@@ -456,42 +348,29 @@
   }
 
   const text = (v) => (valid(v) ? String(v) : "");
-  /** The form fields (as text) for a food already logged, to change it. */
   const draftOf = (entry) => ({ name: entry.name, kcal: text(entry.kcal), proteinG: text(entry.proteinG), carbsG: text(entry.carbsG), fatG: text(entry.fatG), ...Object.fromEntries(NUTRIENT_KEYS.map((key) => [key, text((entry.nutrients || {})[key])])) });
   const EMPTY_DRAFT = () => ({ name: "", kcal: "", proteinG: "", carbsG: "", fatG: "", ...Object.fromEntries(NUTRIENT_KEYS.map((key) => [key, ""])) });
-  /** True when the form holds any number, the calories, a macro or a nutrient. */
   const hasNumbers = (draft) => ["kcal", "proteinG", "carbsG", "fatG", ...NUTRIENT_KEYS].some((key) => String(draft[key] == null ? "" : draft[key]).trim() !== "");
-  /** True when the form holds a nutrient (so the section for them is shown open). */
   const hasNutrients = (draft) => NUTRIENT_KEYS.some((key) => String(draft[key] == null ? "" : draft[key]).trim() !== "");
 
-  /** The food used lately by this name (any case), to fill the form in again; null when there is none. */
   function recentMatch(recent, name) {
     const key = String(name || "").trim().toLowerCase();
     return key ? (recent || []).find((r) => r.name.toLowerCase() === key) || null : null;
   }
 
-  /** Text compared without case or accents, so "creme" finds "Crème". */
   const fold = (s) => String(s == null ? "" : s).normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
-  /**
-   * The foods used lately to offer again in a meal, each as it was logged (one tap adds it as is): the ones last logged in this meal
-   * first, then the others, newest first in each. With a query, only the ones whose name holds every word of it.
-   */
   function recentFor(recent, meal, query) {
     const words = fold(query).split(/\s+/).filter(Boolean);
     const found = (recent || []).filter((r) => words.every((w) => fold(r.name).includes(w)));
     return [...found.filter((r) => r.meal === meal), ...found.filter((r) => r.meal !== meal)];
   }
 
-  /** The fields of a logged food to log it again: its name, numbers, the nutrients it states and the product it was scaled from. */
   const again = (f) => ({ name: f.name, kcal: f.kcal, proteinG: f.proteinG, carbsG: f.carbsG, fatG: f.fatG, nutrients: { ...(f.nutrients || {}) }, product: f.product || null });
 
-  /** "3 foods", "1 food". */
   const foods = (n) => `${n} food${n === 1 ? "" : "s"}`;
 
-  // ── Barcodes ────────────────────────────────────────────────────────────
 
-  /** A digit string of 8, 12, 13 or 14 digits whose last digit is the GTIN check digit (alternate weights 3 and 1 from the right). */
   function gtinOk(code) {
     if (!/^\d+$/.test(code) || ![8, 12, 13, 14].includes(code.length)) return false;
     let sum = 0;
@@ -499,7 +378,6 @@
     return (10 - (sum % 10)) % 10 === Number(code[code.length - 1]);
   }
 
-  /** The 12-digit UPC-A a UPC-E (8 digits) stands for, or null when it is not a valid one. */
   function expandUpcE(code) {
     if (!/^[01]\d{7}$/.test(code)) return null;
     const n = code[0], x = code.slice(1, 7), check = code[7], last = Number(x[5]);
@@ -508,7 +386,6 @@
     return gtinOk(full) ? full : null;
   }
 
-  /** What a barcode reader or the person typed as the code to look up: digits only, with a good check digit, a UPC-E expanded; null when it is not a barcode. */
   function normalizeBarcode(text) {
     const code = String(text == null ? "" : text).replace(/[\s-]/g, "");
     if (!/^\d{8,14}$/.test(code)) return null;
@@ -516,45 +393,33 @@
     return gtinOk(code) ? code : null;
   }
 
-  // ── A food found by name or barcode, and how much of it was eaten ───────
 
   const MAX_AMOUNT = 2000;
-  /** A quantity typed in (grams, or a number of portions): a number above 0, else null. */
   function parseAmount(text) {
     const n = Number(String(text == null ? "" : text).trim().replace(",", "."));
     return Number.isFinite(n) && n > 0 ? n : null;
   }
 
   const round1 = (v) => Math.round(v * 10) / 10;
-  /** Grams eaten: the amount typed, or portions times the portion's size (a food with no portion size has no portions). */
   const amountGrams = (food, amount, unit) => (unit === "portion" && food.servingG ? amount * food.servingG : amount);
-  /** The calories and macros of `grams` of a food that holds `per100` in 100 g; liquids are taken as 1 g a ml. */
   const scale = (per100, grams) => ({ kcal: Math.round((per100.kcal * grams) / 100), proteinG: round1((per100.proteinG * grams) / 100), carbsG: round1((per100.carbsG * grams) / 100), fatG: round1((per100.fatG * grams) / 100) });
 
-  /** The nutrients of `grams` of a food that holds `per100` of them in 100 g; a nutrient the food does not state stays unknown (absent), and nothing is added for it. */
   function scaleNutrients(per100, grams) {
     const out = {};
     for (const key of NUTRIENT_KEYS) if (valid((per100 || {})[key])) out[key] = round1((per100[key] * grams) / 100);
     return out;
   }
 
-  /** The brand to show next to a food's name: none when the name has it already ("Nutella" by Nutella). */
   const brandOf = (food) => (food.brand && !food.name.toLowerCase().includes(food.brand.toLowerCase()) ? food.brand : "");
 
   const unitOf = (food) => (food.unit === "ml" ? "ml" : "g");
   const plain = (v) => String(round1(v));
-  /** What the log calls a food that was scaled: "Greek yogurt (Chobani) · 170 g" or "· 2 × 30 g", at most 120 characters. */
   function entryName(food, amount, unit) {
     const base = brandOf(food) ? `${food.name} (${brandOf(food)})` : food.name;
     const tail = unit === "portion" && food.servingG ? ` · ${plain(amount)} × ${plain(food.servingG)} ${unitOf(food)}` : ` · ${plain(amount)} ${unitOf(food)}`;
     return base.length + tail.length <= 120 ? base + tail : `${base.slice(0, 120 - tail.length - 1).trimEnd()}…${tail}`;
   }
 
-  /**
-   * What eating `amountText` (grams, or portions) of a food comes to: the grams, the calories and macros, the nutrients it states, the
-   * name to log it under and the product to keep with it (so it can be changed by quantity later); null when the quantity is no number
-   * or more than MAX_AMOUNT g.
-   */
   function portion(food, amountText, unit) {
     const amount = parseAmount(amountText);
     if (amount === null) return null;
@@ -565,15 +430,8 @@
     return { amount, grams, nutrition: scale(food.per100, grams), nutrients: scaleNutrients(food.nutrients, grams), name: entryName(food, amount, unit), product };
   }
 
-  /** The tail entryName gives a food: " · 170 g", " · 2 × 30 g". */
   const QUANTITY_TAIL = / · (?:(\d+(?:\.\d+)?) × (\d+(?:\.\d+)?)|(\d+(?:\.\d+)?)) (g|ml)$/;
 
-  /**
-   * The product a logged food was scaled from, to change its quantity: the one kept with it, or when none is kept (it was logged before
-   * products were, or its numbers were corrected since), one worked out from its numbers and the quantity its name ends with
-   * (" · 150 g"): exact at that quantity, within the rounding of the numbers at another, and a correction scales with it. Null for a
-   * food typed in or estimated.
-   */
   function productOf(entry) {
     if (entry.product) return entry.product;
     const m = QUANTITY_TAIL.exec(entry.name || "");
@@ -586,44 +444,29 @@
     return { code: null, name: entry.name.slice(0, m.index), brand: null, unit: m[4], per100: { kcal: per100(entry.kcal), proteinG: per100(entry.proteinG), carbsG: per100(entry.carbsG), fatG: per100(entry.fatG) }, nutrients, servingG, servingText: null, amount, per: servingG ? "portion" : "g" };
   }
 
-  /** What the quantity picker starts from to change a logged food scaled from `product`: the food, the quantity as text and its unit. */
   const pickOf = (product) => ({ food: { ...product, complete: true }, amount: plain(product.amount), unit: product.per });
 
-  /** Every nutrient of a food, null for one it does not state: a change sends them all, so one the new quantity or food does not state is removed. */
   const allNutrients = (nutrients) => Object.fromEntries(NUTRIENT_KEYS.map((key) => [key, valid((nutrients || {})[key]) ? nutrients[key] : null]));
 
-  /** "52 kcal · P 9.5 · C 4 · F 0" per 100 g (or ml). */
   const per100Line = (food) => `${num(food.per100.kcal)} kcal · ${macros(food.per100)} per 100 ${unitOf(food)}`;
-  /** A food as the results list shows it: the name and the brand. */
   const foodTitle = (food) => (brandOf(food) ? `${food.name} · ${brandOf(food)}` : food.name);
 
-  // ── Foods estimated by AI from words and photos (the Food view's "Describe or photograph what you ate" box) ──
 
-  /** What the server takes of a question: the same as MIN_TEXT, MAX_TEXT and MAX_PHOTOS of shared/foodAi.ts (a test keeps them equal). */
   const AI_LIMITS = { minText: 3, maxText: 1000, maxPhotos: 3 };
 
-  /** The meal a food is most likely in at this hour (0 to 23), for when the person's words do not say: breakfast until 10, lunch until 14, a snack until 17, dinner until 22, else a snack. */
   function mealForHour(hour) {
     const h = Number(hour);
     if (!Number.isFinite(h)) return "snack";
     return h < 4 ? "snack" : h < 10 ? "breakfast" : h < 14 ? "lunch" : h < 17 ? "snack" : h < 22 ? "dinner" : "snack";
   }
 
-  /** True when there is something to estimate: a few words (not too many), or a photo alone. Same as the server's check. */
   function canEstimate(text, photoCount) {
     const n = String(text == null ? "" : text).trim().length;
     return n === 0 ? photoCount > 0 : n >= AI_LIMITS.minText && n <= AI_LIMITS.maxText;
   }
 
-  /** What 100 g (or ml) can hold, as the server's parseProduct checks it: a gram of anything is at most 100 g, and fat is at most 9 kcal a gram. */
   const PER_100_MAX = { kcal: 950, g: 100, mg: 40000 };
 
-  /**
-   * An estimated food ({ name, amount, unit, kcal, proteinG, carbsG, fatG, nutrients } for the amount eaten) as a Food holding its
-   * numbers per 100 g (or ml), so the grams box and the log work as for a food found on Open Food Facts: portion() scales it and gives the
-   * name and the product kept with the entry. Null when the numbers cannot be per 100 g (the server would refuse the product): the row
-   * is then logged as estimated, with no quantity to change.
-   */
   function aiFood(item) {
     const amount = Number(item.amount);
     if (!(amount > 0)) return null;
@@ -640,23 +483,16 @@
     return { code: null, name: item.name, brand: null, per100, nutrients, complete: true, unit: item.unit === "ml" ? "ml" : "g", servingG: null, servingText: null };
   }
 
-  /** The rows of an estimate to check before logging: each estimated food with its Food, the amount as the text of the grams box and its meal. */
   const aiRows = (items) => (items || []).map((item) => ({ item, food: aiFood(item), amount: plain(item.amount), meal: item.meal }));
 
-  /**
-   * What a row comes to at its amount: { grams, nutrition, nutrients, name, product }, as portion() gives it. A row with no Food keeps the
-   * numbers it was estimated with (and logs them with no product). Null when the amount is no number above 0 or more than MAX_AMOUNT.
-   */
   function aiRowValue(row) {
     if (row.food) return portion(row.food, row.amount, "g");
     const i = row.item;
     return { grams: i.amount, nutrition: { kcal: i.kcal, proteinG: i.proteinG, carbsG: i.carbsG, fatG: i.fatG }, nutrients: i.nutrients || {}, name: entryName({ name: i.name, brand: null, unit: i.unit }, i.amount, "g"), product: null };
   }
 
-  /** The rows by meal, in the day's order, only the meals that have rows: [{ meal, rows }]. */
   const aiGroups = (rows) => Object.keys(MEAL_LABELS).map((meal) => ({ meal, rows: rows.filter((r) => r.meal === meal) })).filter((g) => g.rows.length);
 
-  /** The calories and macros of the rows that have a good amount, summed. */
   function aiTotals(rows) {
     const t = { kcal: 0, proteinG: 0, carbsG: 0, fatG: 0 };
     for (const row of rows) {
@@ -667,23 +503,16 @@
     return { kcal: Math.round(t.kcal), proteinG: round1(t.proteinG), carbsG: round1(t.carbsG), fatG: round1(t.fatG) };
   }
 
-  /** "≈ 306 kcal · P 15 · C 16 · F 21": an estimate's numbers, marked as estimates. */
   const approx = (t) => `≈ ${kcal(t.kcal)} · ${macros(t)}`;
 
-  /** The three levels of an estimate's confidence, as the page words them. */
   const CONFIDENCE_LABELS = { low: "Low", medium: "Medium", high: "High" };
 
-  /**
-   * How sure the AI is of an estimate and what would sharpen it: { level, label, tip } for "Confidence: Medium · Say how big the bowl
-   * was", or null when it gave neither (an older answer, or nothing to log). A level it did not give is not shown; a tip can stand alone.
-   */
   function aiConfidence(level, improve) {
     const known = Object.prototype.hasOwnProperty.call(CONFIDENCE_LABELS, level) ? level : null, tip = String(improve == null ? "" : improve).trim();
     if (!known && !tip) return null;
     return { level: known, label: known ? `Confidence: ${CONFIDENCE_LABELS[known]}` : "", tip };
   }
 
-  /** The foods to send to POST /api/nutrition ({ items }, each with its own meal), or what is wrong ({ error }): a row whose amount is no good cannot be logged. */
   function aiItems(rows) {
     if (!rows.length) return { error: "There is nothing to log." };
     const items = [];

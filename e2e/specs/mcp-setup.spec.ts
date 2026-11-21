@@ -1,18 +1,12 @@
-/**
- * Setting an assistant up to use the MCP server as one profile: the token card in Settings. The page makes a token, shows it once with the
- * lines to paste into Claude, and keeps only a placeholder after a reload. (The MCP server itself is not started by this suite: what a token
- * reaches is tested against the server in src/__tests__/mcpScope.test.ts.) The suite's server has no MCP_PUBLIC_URL, so the lines carry a host placeholder.
- */
 import type { Page } from "@playwright/test";
 import { test, expect } from "../support/fixtures";
 
 const slow = expect.configure({ timeout: 30_000 });
 
-/** The MCP card of Settings, once Settings is drawn. */
 async function openCard(page: Page) {
   await page.goto("/#settings");
   await slow(page.locator("#sbody .snav")).toBeVisible();
-  await page.locator('#sbody .snav [data-section="signin"]').click(); // the token is kept with the sign-in
+  await page.locator('#sbody .snav [data-section="signin"]').click();
   const card = page.locator(".scard").filter({ has: page.locator("h2", { hasText: "Claude (MCP)" }) });
   await slow(card).toBeVisible();
   return card;
@@ -42,9 +36,8 @@ test.describe("the Claude (MCP) card", () => {
     expect(JSON.parse((await lines.nth(2).textContent()) ?? "")).toEqual({
       mcpServers: { [`garmin-${profile.name.toLowerCase()}`]: { type: "http", url: "https://<your-mcp-host>/mcp", headers: { Authorization: `Bearer ${token}` } } },
     });
-    await expect(card).toContainText("MCP_PUBLIC_URL"); // the placeholder host is explained
+    await expect(card).toContainText("MCP_PUBLIC_URL");
 
-    // the server never says the token again
     const settings = await (await profile.api.get("/api/settings")).text();
     expect(settings).not.toContain(token);
 
@@ -66,7 +59,7 @@ test.describe("the Claude (MCP) card", () => {
     await expect(me.locator("#dlg")).toBeVisible();
     await expect(me.locator("#dlgText")).toContainText("The old token stops working at once");
     await me.locator("#dlgCancel").click();
-    await expect(card.locator(".mcptoken")).toHaveText(first); // cancelled: nothing changed
+    await expect(card.locator(".mcptoken")).toHaveText(first);
 
     await card.getByRole("button", { name: "Make a new token" }).click();
     await me.locator("#dlgOk").click();

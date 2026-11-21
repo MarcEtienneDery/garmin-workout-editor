@@ -1,17 +1,3 @@
-/*
- * workoutFormModel.js — the logic of the workout form: how a workout's flat list of steps reads as the blocks the form shows
- * (exercises and their sets, supersets, steps and repeats), the edits the form makes, the units it shows and the checks it runs.
- *
- * The plan's JSON stays the one copy of a workout. The form reads the steps with `toBlocks`, an edit changes the blocks, and
- * `fromBlocks` writes them back. Only what an edit is about changes: a step the edit does not touch is the same object, and a workout
- * opened and written back untouched keeps its JSON as it was, so nothing shows as different from Garmin for having been looked at.
- * Steps are the flat list the plan files and the upload use: a repeat is a run of consecutive steps that carry the same
- * repeatGroupIndex and a numberOfRepeats above 1, and restTimeSeconds on a step is a rest after it. A list written with nested
- * repeatSteps (as the demo data is) is read as the same blocks; the first edit writes it flat, the only form the upload understands.
- *
- * Pure functions, shared by the page (which loads this as a plain script, after workoutModel.js) and the tests (which require() it).
- * Clocks, names and the lb/kg factor are workoutModel.js's.
- */
 (function (root, factory) {
   const node = typeof module === "object" && module.exports;
   const api = factory(node ? require("./workoutModel.js") : root.WorkoutModel);
@@ -27,7 +13,6 @@
   const hasGroup = (st) => st.repeatGroupIndex !== undefined && st.repeatGroupIndex !== null;
   const round = (n, places) => { const f = 10 ** places; return Math.round(n * f) / f; };
 
-  /** A copy of `obj` with `patch` applied: a key set to undefined goes. The same object when nothing changes. */
   function patched(obj, patch) {
     let out = null;
     for (const [key, value] of Object.entries(patch)) {
@@ -40,13 +25,7 @@
     return out || obj;
   }
 
-  // ── The sports and what their steps can ask for ─────────────────────────
 
-  /**
-   * What the form offers for each workout type. strength: exercises with sets; endurance: steps and repeats with one target each;
-   * json: no form (swimming has pool lengths and strokes the plan format does not hold). `targets` are the target types offered,
-   * `cadence` the unit a cadence is counted in, `end` how a new step ends, `work` the name of a work step.
-   */
   const SPORTS = {
     strength_training: { mode: "strength", label: "Strength", targets: ["no.target"], end: "reps", work: "Exercise" },
     running: { mode: "endurance", label: "Run", targets: ["no.target", "pace.zone", "heart.rate.zone", "cadence.zone", "power.zone"], cadence: "spm", end: "distance", work: "Run" },
@@ -55,21 +34,17 @@
     other: { mode: "endurance", label: "Other", targets: ["no.target", "heart.rate.zone"], end: "time", work: "Interval" },
     swimming: { mode: "json", label: "Swim", targets: [], end: "distance", work: "Swim" },
   };
-  /** The workout types the form's type list offers, in its order. */
   const TYPES = Object.keys(SPORTS);
   const sportOf = (w) => SPORTS[w && w.workoutType] || null;
 
-  /** How the form edits a workout: "strength", "endurance" or "json". A type the plans do not know (walking, say) gets the plain step editor. */
   function modeOf(w) {
     const sport = sportOf(w);
     if (sport) return sport.mode;
     return w && typeof w.workoutType === "string" && w.workoutType ? "endurance" : "strength";
   }
 
-  /** What a kind of step is called: a work step by the sport's own word for it (Run, Ride), the others as the workout's picture says. */
   const kindLabel = (type, w) => (type === "interval" || type === "exercise" ? (sportOf(w) || SPORTS.other).work : WM.KIND_LABEL[type] || prettyName(type || "step"));
 
-  /** Target types: the label, the unit and how a value is written in a field. Values are as the plan holds them (speeds in m/s). */
   const TARGETS = {
     "no.target": { label: "No target" },
     "pace.zone": { label: "Pace", unit: "/km", field: "pace" },
@@ -81,7 +56,6 @@
   };
   const targetUnit = (type, w) => (type === "cadence.zone" ? (sportOf(w) || SPORTS.running).cadence || "spm" : (TARGETS[type] || {}).unit || "");
 
-  /** The target types a step of this workout can pick: the sport's, plus the one it has (so a step is never shown without its own). */
   function targetsFor(w, st) {
     const list = [...(sportOf(w) || SPORTS.other).targets];
     const own = st && st.targetType;
@@ -89,55 +63,42 @@
     return list;
   }
 
-  // ── Units: what a field shows, and what a field typed means ─────────────
 
-  /**
-   * Seconds from "1:02:05", "4:30", "4:30.5", "90s", "2 min", "1h" or a bare number, which counts as `bare` ("s" or "min": a rest is typed
-   * in seconds, a step in minutes). null for text that is not a time; 0 is a time.
-   */
   function parseClock(text, bare = "s") {
     const t = String(text ?? "").trim().replace(/\s+/g, "").replace(",", ".");
     if (!t) return null;
     if (/^\d+(\.\d+)?$/.test(t)) return round(Number(t) * (bare === "min" ? 60 : 1), 1);
-    const unit = /^(\d+(?:\.\d+)?)(s|sec|secs|seconds?|m|min|mins|minutes?|h|hr|hrs|hours?)$/i.exec(t); // 90s, 2min, 1h
+    const unit = /^(\d+(?:\.\d+)?)(s|sec|secs|seconds?|m|min|mins|minutes?|h|hr|hrs|hours?)$/i.exec(t);
     if (unit) return round(Number(unit[1]) * (/^h/i.test(unit[2]) ? 3600 : /^m/i.test(unit[2]) ? 60 : 1), 1);
     const m = /^(?:(\d+):)?(\d+):(\d{1,2}(?:\.\d+)?)$/.exec(t);
     if (!m || Number(m[3]) >= 60 || (m[1] !== undefined && Number(m[2]) >= 60)) return null;
     return round(Number(m[1] || 0) * 3600 + Number(m[2]) * 60 + Number(m[3]), 1);
   }
 
-  /** A pace from a speed in m/s: 3.333 -> "5:00" (per km). "" for no speed. */
   const paceText = (speed) => (num(speed) > 0 ? WM.pace(speed) : "");
 
-  /** A speed in m/s from a pace typed as "4:58" (or "458", "4.58"), to the thousandth. null when it is not a pace. */
   function parsePace(text) {
     let t = String(text ?? "").trim().replace(/\s|\/km$/gi, "");
-    if (/^\d{1,2}$/.test(t)) t = `${t}:00`; // 5 -> 5:00
-    else if (/^\d{3,4}$/.test(t)) t = `${t.slice(0, -2)}:${t.slice(-2)}`; // 458 -> 4:58
-    else if (/^\d{1,2}[.,]\d{2}$/.test(t)) t = t.replace(/[.,]/, ":"); // 4.58 -> 4:58
+    if (/^\d{1,2}$/.test(t)) t = `${t}:00`;
+    else if (/^\d{3,4}$/.test(t)) t = `${t.slice(0, -2)}:${t.slice(-2)}`;
+    else if (/^\d{1,2}[.,]\d{2}$/.test(t)) t = t.replace(/[.,]/, ":");
     const seconds = /:/.test(t) ? parseClock(t) : null;
     return seconds && seconds >= 60 && seconds <= 3600 ? round(1000 / seconds, 3) : null;
   }
 
-  /** km/h from m/s: 8.333 -> "30" ("30.5"); "" for none. */
   const kmhText = (speed) => (num(speed) > 0 ? String(round(speed * 3.6, 1)) : "");
-  /** m/s from km/h typed, to the thousandth. null when it is not a speed. */
   function parseKmh(text) {
     const n = parseNumber(text);
     return n !== null && n > 0 && n < 200 ? round(n / 3.6, 3) : null;
   }
 
-  /** A number typed with a comma or a point; null when it is not one. */
   function parseNumber(text) {
     const t = String(text ?? "").trim().replace(",", ".");
     return /^-?\d+(\.\d+)?$/.test(t) || /^-?\.\d+$/.test(t) ? Number(t) : null;
   }
 
-  /** The unit a distance is shown in at first: whole metres under a kilometre in m, else km. */
   const distanceUnit = (meters) => (num(meters) && meters < 1000 && Number.isInteger(meters) ? "m" : "km");
-  /** A distance in the unit a field shows it in: 1200 -> "1.2" (km) or "1200" (m). */
   const distanceIn = (meters, unit) => (num(meters) ? String(unit === "m" ? round(meters, 1) : round(meters / 1000, 3)) : "");
-  /** Metres from a distance typed in `unit` ("km" or "m"); a trailing "km" or "m" typed with it wins. null when it is not a distance. */
   function parseDistance(text, unit = "km") {
     const m = /^\s*(\d+(?:[.,]\d+)?|[.,]\d+)\s*(km|m)?\s*$/i.exec(String(text ?? ""));
     if (!m) return null;
@@ -146,23 +107,19 @@
     return meters > 0 ? round(meters, 1) : null;
   }
 
-  /** A weight kept in lb, as the unit shows it: 195 -> "195" (lb) or "88.5" (kg). "" for none. */
   function weightText(lb, unit = "lb") {
     if (!(num(lb) > 0)) return "";
     return String(unit === "kg" ? round(lb / LB_PER_KG, 1) : round(lb, 1));
   }
-  /** The lb a weight typed in `unit` keeps: whole tenths of a lb typed in lb, hundredths when it comes from kg. null when it is not a weight. */
   function parseWeight(text, unit = "lb") {
     const n = parseNumber(text);
     if (n === null || n < 0) return null;
     return unit === "kg" ? round(n * LB_PER_KG, 2) : round(n, 1);
   }
 
-  // ── One step: how it ends, what it aims for, its rest ───────────────────
 
   const MIRROR = { reps: "reps", time: "durationSeconds", distance: "distanceMeters" };
 
-  /** How a step ends: { by, value }. by is reps, time, distance, lap, or another of Garmin's (calories, heart.rate, iterations), value its number. */
   function endOf(st) {
     const by = st.endCondition, v = num(st.endConditionValue);
     if (by === "lap.button") return { by: "lap", value: 0 };
@@ -171,27 +128,18 @@
     return { by: by || "", value: v };
   }
 
-  /**
-   * The step ending another way: `by` reps, time, distance or lap (any other of Garmin's is kept as it is), `value` its number. The
-   * field that mirrors the value (reps, durationSeconds, distanceMeters) follows, and the mirrors of the other ends go.
-   */
   function withEnd(st, by, value) {
     const lap = by === "lap", patch = { endCondition: lap ? "lap.button" : by, endConditionValue: lap ? 0 : value, reps: undefined, durationSeconds: undefined, distanceMeters: undefined };
     if (MIRROR[by]) patch[MIRROR[by]] = value;
     return patched(st, patch);
   }
 
-  /** The target: { type, lo, hi } with the plan's values (speeds in m/s), lo the lower number. */
   function targetOf(st) {
     const type = st.targetType || "no.target", a = st.targetValueOne, b = st.targetValueTwo;
     if (isNum(a) && isNum(b)) return { type, lo: Math.min(a, b), hi: Math.max(a, b) };
     return { type, lo: isNum(a) ? a : isNum(b) ? b : null, hi: null };
   }
 
-  /**
-   * The step aiming for another target. A range goes in as the plan keeps it: the lower number first (for a pace, the slower speed).
-   * No target drops the values. A type that is unchanged with the same numbers leaves the step as it was, whichever order it held them in.
-   */
   function withTarget(st, type, lo, hi) {
     if (type === "no.target" || type === "open") return patched(st, { targetType: type, targetValueOne: undefined, targetValueTwo: undefined });
     let one = isNum(lo) ? lo : undefined, two = isNum(hi) ? hi : undefined;
@@ -201,22 +149,13 @@
     return patched(st, { targetType: type, targetValueOne: one, targetValueTwo: two });
   }
 
-  /** The step with this rest after it (seconds); 0 or less takes the rest away. */
   const withRest = (st, seconds) => patched(st, { restTimeSeconds: num(seconds) > 0 ? seconds : undefined });
 
-  /** A set: a step that does an exercise (a warm-up, a recovery or a rest that names one is still that). */
   const isExercise = (st) => isStep(st) && !!st.exerciseName && !["warmup", "cooldown", "rest", "recovery"].includes(st.stepType);
 
-  // ── Nested repeats: read as flat ────────────────────────────────────────
 
   const isNested = (st) => isStep(st) && Array.isArray(st.repeatSteps);
 
-  /**
-   * The flat list for steps that may hold nested repeats ({ stepType: "repeat", numberOfRepeats, repeatSteps: [...] }): each repeat's
-   * steps carry its count and an index of their own, and a timed rest that follows a step inside it becomes that step's
-   * restTimeSeconds, as Garmin's own steps read. The same array when nothing is nested; null when a repeat holds another repeat,
-   * which the flat list cannot hold.
-   */
   function flatten(steps) {
     const list = Array.isArray(steps) ? steps : [];
     if (!list.some(isNested)) return list;
@@ -243,11 +182,7 @@
     return out.map((s, i) => (isStep(s) && s.stepOrder !== undefined ? patched(s, { stepOrder: i + 1 }) : s));
   }
 
-  // ── Blocks: the flat list as the form shows it ──────────────────────────
-  // A block is { steps, times, gi }: steps done `times` times. A repeat (times above 1) has one or more steps; a block done once
-  // always has one. `gi` is the repeatGroupIndex the block's steps carry (undefined for none).
 
-  /** The blocks of a flat list, read as the upload reads it: consecutive steps with the same repeatGroupIndex are one repeat, as many times as the first says. */
   function toBlocks(steps) {
     const list = (Array.isArray(steps) ? steps : []).filter(isStep);
     const blocks = [];
@@ -263,12 +198,6 @@
     return blocks;
   }
 
-  /**
-   * The flat list of these blocks. A repeat's steps carry its count and its index: it keeps the index it had when no other repeat
-   * holds it yet, and gets a new one otherwise (a repeat copied, or two that the list once numbered alike). A step done once drops a
-   * count above 1, and the index it had when that index would join it to a repeat beside it. stepOrder numbers the steps in their
-   * order, which is the order the upload follows. Steps that need no change are the same objects.
-   */
   function fromBlocks(blocks) {
     const groups = blocks.filter((b) => b.times > 1);
     const taken = new Set(), gis = new Map();
@@ -291,13 +220,10 @@
     return out.map((s, i) => patched(s, { stepOrder: i + 1 }));
   }
 
-  // ── Edits on blocks (each returns a new list; the blocks it does not touch are the same objects) ──
 
-  /** A block of one step, done once. */
   const once = (st) => ({ steps: [st], times: 1, gi: undefined });
   const copyStep = (st) => { const { repeatGroupIndex: _g, numberOfRepeats: _n, ...rest } = JSON.parse(JSON.stringify(st)); return rest; };
 
-  /** A block's steps done another number of times. Down to 1, a repeat of several steps becomes those steps, each a block of its own. */
   function setTimes(blocks, k, times) {
     const b = blocks[k], n = Math.max(1, Math.floor(num(times)) || 1);
     if (n === b.times) return blocks;
@@ -308,7 +234,6 @@
   const insertBlocks = (blocks, at, added) => [...blocks.slice(0, at), ...added, ...blocks.slice(at)];
   const removeBlocks = (blocks, k, count = 1) => [...blocks.slice(0, k), ...blocks.slice(k + count)];
 
-  /** Blocks k..k+count-1 moved so they start where block `to` is now (to is counted before the move). */
   function moveBlocks(blocks, k, count, to) {
     if (to >= k && to <= k + count) return blocks;
     const moving = blocks.slice(k, k + count), rest = removeBlocks(blocks, k, count);
@@ -316,29 +241,22 @@
     return insertBlocks(rest, at, moving);
   }
 
-  /** A copy of blocks k..k+count-1 right after them: new steps, and a repeat gets an index of its own when written. */
   function duplicateBlocks(blocks, k, count = 1) {
     const copies = blocks.slice(k, k + count).map((b) => ({ steps: b.steps.map(copyStep), times: b.times, gi: undefined }));
     return insertBlocks(blocks, k + count, copies);
   }
 
-  /** Change step j of block k (its position in the block); `fn` gets the step and returns it changed. */
   function updateStep(blocks, k, j, fn) {
     const b = blocks[k], st = b.steps[j], next = fn(st);
     if (next === st) return blocks;
     return blocks.map((x, i) => (i === k ? { ...b, steps: b.steps.map((s, m) => (m === j ? next : s)) } : x));
   }
 
-  /** Steps added into repeat k at position j (at its end without one). */
   function insertInto(blocks, k, j, steps) {
     const b = blocks[k], at = j === undefined ? b.steps.length : j;
     return blocks.map((x, i) => (i === k ? { ...b, times: Math.max(2, b.times), steps: [...b.steps.slice(0, at), ...steps, ...b.steps.slice(at)] } : x));
   }
 
-  /**
-   * Step j taken out of repeat k: dropped, or, with `keep`, put beside the repeat (before it when it was the first step), done `times`
-   * times (once unless said: an exercise taken out of a superset keeps its sets). A repeat left with one step stays a repeat of it.
-   */
   function takeOut(blocks, k, j, { keep = false, times = 1 } = {}) {
     const b = blocks[k], st = b.steps[j], left = b.steps.filter((_, m) => m !== j);
     const rest = left.length ? [{ ...b, steps: left }] : [];
@@ -346,7 +264,6 @@
     return [...blocks.slice(0, k), ...(keep && j === 0 ? [...out, ...rest] : [...rest, ...out]), ...blocks.slice(k + 1)];
   }
 
-  /** Step j of repeat k moved by `by` (-1 up, 1 down) inside it; past either end it leaves the repeat, before or after it. */
   function moveInside(blocks, k, j, by) {
     const b = blocks[k], to = j + by;
     if (to >= 0 && to < b.steps.length) {
@@ -359,10 +276,6 @@
     return [...blocks.slice(0, k), ...(to < 0 ? [alone, left] : [left, alone]), ...blocks.slice(k + 1)];
   }
 
-  /**
-   * Blocks k..k+count-1 joined into one repeat (a superset, or a repeat of steps): their steps, done as many times as the most any
-   * of them was. For a superset, only the last exercise keeps its rest: the rest after a round.
-   */
   function joinBlocks(blocks, k, count, { superset = false } = {}) {
     const parts = blocks.slice(k, k + count), steps = parts.flatMap((b) => b.steps);
     const times = Math.max(2, ...parts.map((b) => b.times));
@@ -371,7 +284,6 @@
     return [...blocks.slice(0, k), { steps: joined, times, gi: keptGi ? keptGi.gi : undefined }, ...blocks.slice(k + count)];
   }
 
-  /** Repeat k split: each of its steps done as many times on its own (a superset back into its exercises' sets). */
   function splitBlock(blocks, k) {
     const b = blocks[k];
     if (b.steps.length < 2) return blocks;
@@ -379,7 +291,6 @@
   }
 
 
-  /** A line of N sets made N lines of one set each, so each set can differ. */
   function eachSet(blocks, k) {
     const b = blocks[k];
     if (b.steps.length !== 1 || b.times < 2) return blocks;
@@ -387,7 +298,6 @@
     return [...blocks.slice(0, k), ...sets, ...blocks.slice(k + 1)];
   }
 
-  /** Lines k..k+count-1 of one exercise, all alike, made one line of that many sets again. null when they differ. */
   function sameSets(blocks, k, count) {
     const lines = blocks.slice(k, k + count);
     const key = (b) => JSON.stringify(copyStep(b.steps[0]), (name, v) => (name === "stepOrder" ? undefined : v));
@@ -396,13 +306,7 @@
     return [...blocks.slice(0, k), { steps: [lines[0].steps[0]], times, gi: lines.find((b) => b.gi !== undefined)?.gi }, ...blocks.slice(k + count)];
   }
 
-  // ── The strength view: exercises with their lines of sets, and supersets ──
 
-  /**
-   * The cards of a strength workout, over its blocks. exercise: the consecutive lines of one exercise (a line is a block of one
-   * exercise step: its sets are the block's times); superset: a repeat of two or more exercises; repeat: any other repeat; step:
-   * any other step (warm-up, rest, cool-down). Each card says which blocks it covers: `k` the first, `count` how many.
-   */
   function strengthCards(blocks) {
     const cards = [];
     blocks.forEach((b, k) => {
@@ -419,12 +323,7 @@
   }
 
 
-  // ── New steps and workouts ──────────────────────────────────────────────
 
-  /**
-   * A new step of this kind for the workout's sport. It ends as `end` says ({ by, value }), else the kind's way: a warm-up or a
-   * cool-down of a strength workout on the lap button, else 10 and 5 minutes; a rest one minute, a recovery two; a work step the sport's way.
-   */
   function newStep(w, type = "interval", end) {
     const sport = sportOf(w) || SPORTS.other;
     const [by, value] = end ? [end.by, end.value]
@@ -434,18 +333,15 @@
     return withEnd({ stepType: type, targetType: "no.target" }, by, value);
   }
 
-  /** How long a step of this kind lasts when it is timed and nothing says how long: 10 min warm-up, 5 min cool-down, 1 min rest, 2 min recovery, else 10 min. */
   const TIMES = { warmup: 600, cooldown: 300, rest: 60, recovery: 120 };
   const defaultTime = (type) => TIMES[type] || 600;
 
-  /** A set of an exercise: `reps` reps, at `weight` lb when there is one, with `rest` seconds after it. */
   function newSet(exerciseName, { reps = 10, weight, rest = 90 } = {}) {
     let st = withEnd({ stepType: "interval", targetType: "no.target", exerciseName }, "reps", reps);
     if (num(weight) > 0) st = { ...st, weight };
     return withRest(st, rest);
   }
 
-  /** The steps a new workout of this type starts with: a strength workout two exercises, a run 5 km and a ride 40 min between a warm-up and a cool-down. */
   function starterSteps(type) {
     const w = { workoutType: type }, work = { running: { by: "distance", value: 5000 }, cycling: { by: "time", value: 2400 } }[type];
     const blocks = modeOf(w) === "strength"
@@ -455,10 +351,8 @@
     return fromBlocks(blocks);
   }
 
-  /** A new workout of this type, named. */
   const newWorkout = (type, name) => ({ workoutName: name, workoutType: type, description: "", sendToDevice: true, steps: starterSteps(type) });
 
-  /** Ready-made blocks the endurance form can add: { id, label, blocks(w) }. */
   const PRESETS = {
     running: [
       { id: "intervals", label: "Intervals 5 × 1 km", blocks: (w) => [{ steps: [newStep(w, "interval", { by: "distance", value: 1000 }), newStep(w, "recovery")], times: 5 }] },
@@ -472,13 +366,10 @@
     ],
   };
 
-  // ── Checks: what the upload would refuse, field by field ────────────────
-  // The server's validation (the same as before an upload) stays the judge; these say at once which field is wrong.
 
   const STEP_TYPES = ["warmup", "cooldown", "interval", "recovery", "rest", "exercise", "repeat", "other"];
   const END_TYPES = ["reps", "time", "distance", "lap.button", "iterations", "calories", "heart.rate"];
 
-  /** Why the form cannot show this workout, which the JSON still edits: a reason, or "" when it can. */
   function formProblem(w) {
     if (!w || typeof w !== "object" || Array.isArray(w)) return "This is not a workout.";
     if (w.steps !== undefined && !Array.isArray(w.steps)) return "Its steps are not a list.";
@@ -489,10 +380,6 @@
     return "";
   }
 
-  /**
-   * The problems of a workout's steps: { i (position in the flat list), field, level ("err" refused by the upload, "warn" worth a
-   * look), text }. `known(name)` says whether an exercise name is Garmin's.
-   */
   function check(w, known) {
     const out = [], steps = Array.isArray(w && w.steps) ? w.steps : [];
     const add = (i, field, level, text) => out.push({ i, field, level, text });
@@ -523,16 +410,9 @@
     return out;
   }
 
-  // ── Exercise search ──────────────────────────────────────────────────────
 
-  /** Words people type for a part of Garmin's names. */
   const ALIASES = { DB: ["DUMBBELL"], BB: ["BARBELL"], KB: ["KETTLEBELL"], RDL: ["ROMANIAN", "DEADLIFT"], OHP: ["OVERHEAD", "PRESS"], SLDL: ["STIFF", "DEADLIFT"], PULLUP: ["PULL", "UP"], CHINUP: ["CHIN", "UP"], PUSHUP: ["PUSH", "UP"], SITUP: ["SIT", "UP"] };
 
-  /**
-   * Garmin exercises ([{ name, category }]) that match every word typed (in the name, or the name without its underscores), in
-   * `category` when one is given. The ones in `recent` (names, most used first) come first, then names that start with the first word,
-   * then the shorter names.
-   */
   function searchExercises(all, query, { category, recent = [], limit = 60 } = {}) {
     const words = String(query ?? "").toUpperCase().split(/[^A-Z0-9]+/).filter(Boolean).flatMap((t) => ALIASES[t] || [t]);
     const rank = new Map(recent.map((name, i) => [name, i]));

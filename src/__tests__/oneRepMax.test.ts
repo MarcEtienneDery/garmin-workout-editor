@@ -12,7 +12,7 @@ describe("the Epley estimate", () => {
 
   it("cannot say from a set with no weight, no counted reps, or more than the limit", () => {
     expect(epley(0, 5)).toBeNull();
-    expect(epley(200, 0)).toBeNull(); // reps Garmin did not count
+    expect(epley(200, 0)).toBeNull();
     expect(epley(200, MAX_REPS)).not.toBeNull();
     expect(epley(200, MAX_REPS + 1)).toBeNull();
     expect(epley(NaN, 5)).toBeNull();
@@ -34,7 +34,6 @@ describe("the best lifts over some activities", () => {
       { date: "2026-09-01", sets: [set("Bench", { sets: 1, reps: 5, weight: 200 }), set("Row", { sets: 2, reps: 10, weight: 100 })] },
       { date: "2026-10-01", sets: [set("Bench", { sets: 3, repsList: [0, 3, 6], weightList: [135, 225, 200] })] },
     ]);
-    // 200 x 5 = 233.3, 225 x 3 = 247.5, 200 x 6 = 240; the 0-rep set is no use
     expect(out.Bench).toEqual({ oneRm: 247.5, weight: 225, reps: 3, date: "2026-10-01" });
     expect(out.Row.oneRm).toBeCloseTo(133.33, 1);
     expect(out.Row.date).toBe("2026-09-01");

@@ -1,6 +1,3 @@
-/**
- * The explanations on a phone: an ⓘ is a finger-sized target though it draws a small circle, and a note opened does not widen the page.
- */
 import type { Page } from "@playwright/test";
 import { test, expect, openView } from "../support/fixtures";
 
@@ -10,7 +7,7 @@ test("the ⓘ buttons of Settings are at least 32 px both ways, and their notes 
   await openView(alice, "settings");
   await expect(alice.locator("#sbody .snav")).toBeVisible({ timeout: 15_000 });
   let seen = 0;
-  for (const section of ["connections", "goals", "display", "signin"]) { // the list of sections is the home screen: each opens over the whole screen
+  for (const section of ["connections", "goals", "display", "signin"]) {
     await alice.locator(`#sbody .snav [data-section="${section}"]`).tap();
     await expect(alice.locator(`#sbody .spane[data-section="${section}"]`)).toBeVisible();
     const infos = alice.locator("#sbody button.infob:visible");

@@ -1,21 +1,5 @@
 import type { Database } from "./sqliteStore";
 
-/**
- * The Garmin activities of each profile, one row per activity, kept in the same database as the documents.
- *
- * An activity is written once and rarely changes on Garmin, so a row is never refetched to refresh it. It keeps
- * Garmin's list item as it came (`raw`) and, once fetched, the activity's details (`detail`: the activity itself and
- * its exercise sets), so the slim format can be rebuilt from them later without asking Garmin again. The columns are
- * only what the views filter and sort by.
- *
- * An activity's chart data (the time series, the route, the laps and the heart-rate zones Garmin keeps apart from the
- * activity) lives in `activity_charts`, in the shape Garmin sent it, pruned and decimated to a few hundred samples: the
- * charts are drawn from it when read, so a change to how they are read never needs Garmin again. A row without data only
- * counts the failures.
- *
- * Next to the rows, one `activity_sync` row per profile remembers how far the listing got (`complete`, `next_offset`)
- * and who is syncing (a lease), because the MCP server and the web editor are two processes with two Garmin sessions.
- */
 export const ACTIVITY_SCHEMA = `
 CREATE TABLE IF NOT EXISTS activities (
   profile       TEXT NOT NULL,
@@ -57,23 +41,17 @@ CREATE TABLE IF NOT EXISTS activity_sync (
 );
 `;
 
-/** A young activity's details are fetched again no sooner than this after the last time. */
 export const REFRESH_YOUNG_MS = 6 * 3_600_000;
 
-/** How many times an activity's details may fail before it is left alone (a deleted activity answers 404 forever). */
 export const MAX_DETAIL_FAILURES = 3;
 
-/** A new activity, as the sync builds it from Garmin's list item. */
 export interface NewActivity {
   id: string;
-  /** "YYYY-MM-DD HH:MM:SS", UTC and local time of the start. */
   startGmt: string;
   startLocal: string;
-  /** running, strength_training, cycling, swimming or other. */
   type: string;
   name: string;
   duration: number | null;
-  /** Meters, as Garmin lists it. */
   distance: number | null;
   avgHr: number | null;
   workoutId: string | null;
@@ -82,13 +60,11 @@ export interface NewActivity {
 
 export interface StoredActivity extends Omit<NewActivity, "raw"> {
   raw: any;
-  /** The activity's details and exercise sets; null until fetched. */
   detail: any | null;
   detailAt: number | null;
   syncedAt: number;
 }
 
-/** One activity's columns and the few list-item fields the lifetime stats add up. */
 export interface LifetimeRow {
   id: string;
   startLocal: string;
@@ -96,7 +72,6 @@ export interface LifetimeRow {
   name: string;
   distance: number | null;
   duration: number | null;
-  /** Climb in meters, calories, VO2max and, for strength, the sets and reps, as the list item has them. */
   gain: number | null;
   calories: number | null;
   vo2: number | null;
@@ -104,7 +79,6 @@ export interface LifetimeRow {
   reps: number | null;
 }
 
-/** What a training-load estimate needs of an activity: its length and effort, and how hard the person rated it. */
 export interface LoadRow {
   id: string;
   startLocal: string;
@@ -113,22 +87,18 @@ export interface LoadRow {
   seconds: number | null;
   avgHr: number | null;
   maxHr: number | null;
-  /** The self-rated effort Garmin keeps in the details, 0-100. */
   rpe: number | null;
 }
 
-/** What a list shows of an activity: columns and a few fields of the list item, read in SQL so the 15-20 KB of raw JSON is not parsed in node. */
 export interface ActivitySummary {
   id: string;
   startLocal: string;
   type: string;
   name: string;
-  /** Meters and seconds, as Garmin lists them. */
   distance: number | null;
   duration: number | null;
   avgHr: number | null;
   maxHr: number | null;
-  /** Average speed in m/s. */
   speed: number | null;
   trainingEffectLabel: string | null;
   aerobicEffect: number | null;
@@ -142,14 +112,10 @@ export interface ActivitySummary {
 
 export interface SyncState {
   complete: boolean;
-  /** Where an unfinished listing resumes. */
   nextOffset: number;
-  /** Who holds the lease, and until when (ms). */
   holder: string | null;
   leaseUntil: number | null;
-  /** Why the last sync stopped early, if it did. */
   error: string | null;
-  /** A background sync does not start again before this instant (ms), after it stopped on an error. */
   retryAfter: number | null;
   updatedAt: number | null;
 }
@@ -164,10 +130,8 @@ export interface ActivityCounts {
 
 type Row = Record<string, any>;
 
-/** The calories of an activity: the list item's, else the details'. One definition for the list and the lifetime stats. */
 const CALORIES = "COALESCE(json_extract(raw, '$.calories'), json_extract(detail, '$.summaryDTO.calories'))";
 
-/** A JSON number from SQL, or null. */
 const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
 
 const toActivity = (r: Row): StoredActivity => ({
@@ -186,7 +150,6 @@ const toActivity = (r: Row): StoredActivity => ({
   syncedAt: r.synced_at,
 });
 
-/** The instant an activity started, from its "YYYY-MM-DD HH:MM:SS" GMT string. */
 export const startMs = (startGmt: string): number => Date.parse(startGmt.replace(" ", "T") + "Z");
 
 export class ActivityTable {
@@ -195,7 +158,6 @@ export class ActivityTable {
     private readonly tx: <T>(fn: () => T) => T
   ) {}
 
-  /** Store the activities that are not stored yet and leave the others as they are. Returns how many were new. */
   insertNew(profile: string, activities: NewActivity[], now = Date.now()): number {
     return this.tx(() => {
       const insert = this.db.prepare(
@@ -211,7 +173,6 @@ export class ActivityTable {
     });
   }
 
-  /** Which of these ids are stored already. */
   known(profile: string, ids: string[]): Set<string> {
     const found = new Set<string>();
     const select = this.db.prepare("SELECT 1 AS yes FROM activities WHERE profile = ? AND id = ?");
@@ -219,10 +180,6 @@ export class ActivityTable {
     return found;
   }
 
-  /**
-   * Keep an activity's details (and when they were fetched), clearing any failures. A list item may lack the workout
-   * the activity came from; the details carry it as metadataDTO.associatedWorkoutId, so the column is filled from there.
-   */
   setDetail(profile: string, id: string, detail: unknown, now = Date.now()): void {
     const text = JSON.stringify(detail);
     this.tx(() =>
@@ -236,16 +193,10 @@ export class ActivityTable {
     );
   }
 
-  /** The details of this activity could not be fetched; after MAX_DETAIL_FAILURES it is no longer tried. */
   noteDetailFailure(profile: string, id: string): void {
     this.tx(() => this.db.prepare("UPDATE activities SET detail_failed = detail_failed + 1 WHERE profile = ? AND id = ?").run(profile, id));
   }
 
-  /**
-   * The activities whose details are missing, newest first, plus those whose details were fetched less than
-   * `settleMs` after they started and at least `refreshMs` ago: RPE and feel are often entered after the workout,
-   * so those may still change. Once fetched after `settleMs`, details are final.
-   */
   needingDetail(profile: string, options: { limit?: number; settleMs: number; refreshMs?: number; ids?: string[]; now?: number }): { id: string; startGmt: string; type: string }[] {
     const limit = options.limit ?? 1_000_000;
     const missing = this.db
@@ -267,7 +218,6 @@ export class ActivityTable {
       .map((r) => ({ id: r.id, startGmt: r.start_gmt, type: r.type }));
   }
 
-  /** The stored activities that started between two instants ("YYYY-MM-DD HH:MM:SS" GMT, either may be left out), newest first. */
   between(profile: string, options: { from?: string; to?: string; type?: string; limit?: number } = {}): StoredActivity[] {
     const where = ["profile = ?"], params: unknown[] = [profile];
     if (options.from) { where.push("start_gmt >= ?"); params.push(options.from); }
@@ -277,9 +227,7 @@ export class ActivityTable {
     return this.db.prepare(`SELECT * FROM activities WHERE ${where.join(" AND ")} ORDER BY start_gmt DESC LIMIT ?`).all(...params).map(toActivity);
   }
 
-  // ── Chart data ──
 
-  /** Keep an activity's chart data, as Garmin sent it (pruned). An empty answer is stored too: it is an answer. */
   setChart(profile: string, id: string, data: unknown, now = Date.now()): void {
     this.tx(() =>
       this.db
@@ -291,7 +239,6 @@ export class ActivityTable {
     );
   }
 
-  /** Garmin refused this activity's chart data for a reason other than a rate limit; after MAX_DETAIL_FAILURES it is left alone. */
   noteChartFailure(profile: string, id: string): void {
     this.tx(() =>
       this.db
@@ -305,7 +252,6 @@ export class ActivityTable {
     return r && r.data !== null && r.data !== undefined ? JSON.parse(r.data) : null;
   }
 
-  /** The activities that have no chart data yet, newest first. */
   needingChart(profile: string, options: { limit?: number; ids?: string[] } = {}): { id: string; startGmt: string; type: string }[] {
     const rows = this.db
       .prepare(
@@ -315,16 +261,10 @@ export class ActivityTable {
       )
       .all(profile, MAX_DETAIL_FAILURES);
     const wanted = options.ids ? new Set(options.ids) : null;
-    // the ids narrow the list first, then the limit: the newest activity lacking a chart is not always the one asked for
     return rows.filter((r) => !wanted || wanted.has(r.id)).slice(0, options.limit ?? rows.length).map((r) => ({ id: r.id, startGmt: r.start_gmt, type: r.type }));
   }
 
-  // ── For the lifetime stats ──
 
-  /**
-   * A short string that changes whenever an activity is added or gets its details (or a young one's details are fetched
-   * again), so a cached answer can be kept for exactly as long as the table stays the same.
-   */
   fingerprint(profile: string): string {
     const r = this.db
       .prepare("SELECT COUNT(*) AS n, COUNT(detail) AS d, COALESCE(MAX(synced_at), 0) AS s, COALESCE(MAX(detail_at), 0) AS t FROM activities WHERE profile = ?")
@@ -332,7 +272,6 @@ export class ActivityTable {
     return `${r.n}:${r.d}:${r.s}:${r.t}`;
   }
 
-  /** Every activity's columns and list-item fields, oldest first; the raw JSON is read in SQL, not parsed here. */
   lifetimeRows(profile: string): LifetimeRow[] {
     return this.db
       .prepare(
@@ -348,7 +287,6 @@ export class ActivityTable {
       }));
   }
 
-  /** The fastest split the watch timed inside each activity (`fastestSplit_<meters>` in the list item), as distance and seconds. */
   fastestSplits(profile: string): { id: string; meters: number; seconds: number }[] {
     return this.db
       .prepare("SELECT a.id AS id, j.key AS key, j.value AS value FROM activities a, json_each(a.raw) j WHERE a.profile = ? AND a.type = 'running' AND j.key GLOB 'fastestSplit_[0-9]*'")
@@ -359,7 +297,6 @@ export class ActivityTable {
       });
   }
 
-  /** The activities that started on or after a local time ("YYYY-MM-DD HH:MM:SS"), oldest first, with what a load estimate needs. */
   loadRows(profile: string, sinceLocal: string): LoadRow[] {
     return this.db
       .prepare(
@@ -370,7 +307,6 @@ export class ActivityTable {
       .map((r) => ({ id: r.id, startLocal: r.start_local, type: r.type, name: r.name, seconds: num(r.duration), avgHr: num(r.avg_hr), maxHr: num(r.max_hr), rpe: num(r.rpe) }));
   }
 
-  /** The local time's offset from GMT in minutes, as the newest activity shows it; null without activities. */
   localOffsetMinutes(profile: string): number | null {
     const r = this.db.prepare("SELECT start_gmt, start_local FROM activities WHERE profile = ? ORDER BY start_gmt DESC LIMIT 1").get(profile);
     if (!r) return null;
@@ -379,7 +315,6 @@ export class ActivityTable {
     return Number.isFinite(minutes) ? Math.round(minutes / 15) * 15 : null;
   }
 
-  /** The newest activities as list rows, newest first. */
   summaries(profile: string, limit = 5000): ActivitySummary[] {
     return this.db
       .prepare(
@@ -427,7 +362,6 @@ export class ActivityTable {
     return { total: r.total, withDetail: r.with_detail, withChart: charts.n, newest: r.newest ?? null, oldest: r.oldest ?? null };
   }
 
-  // ── Where the sync stands, and who is running it ──
 
   state(profile: string): SyncState {
     const r = this.db.prepare("SELECT * FROM activity_sync WHERE profile = ?").get(profile);
@@ -442,7 +376,6 @@ export class ActivityTable {
     };
   }
 
-  /** Record progress: whether the whole history is listed, where a listing resumes, why a sync stopped and when it may try again. */
   saveProgress(profile: string, progress: { complete?: boolean; nextOffset?: number; error?: string | null; retryAfter?: number | null }, now = Date.now()): void {
     this.tx(() => {
       this.db.prepare("INSERT OR IGNORE INTO activity_sync (profile) VALUES (?)").run(profile);
@@ -455,7 +388,6 @@ export class ActivityTable {
     });
   }
 
-  /** Become the one that syncs this profile. False while another holder's lease runs; a lease that ran out is taken over. */
   claim(profile: string, holder: string, leaseMs: number, now = Date.now()): boolean {
     return this.tx(() => {
       this.db.prepare("INSERT OR IGNORE INTO activity_sync (profile) VALUES (?)").run(profile);
@@ -466,7 +398,6 @@ export class ActivityTable {
     });
   }
 
-  /** Extend the lease; false when it was lost (it ran out and another holder took over). */
   renew(profile: string, holder: string, leaseMs: number, now = Date.now()): boolean {
     return this.tx(() => {
       const r = this.db.prepare("SELECT holder FROM activity_sync WHERE profile = ?").get(profile);

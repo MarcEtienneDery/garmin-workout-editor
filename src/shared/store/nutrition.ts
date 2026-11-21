@@ -1,19 +1,6 @@
 import { NUTRIENTS, type Nutrients } from "../nutrients";
 import type { Database } from "./sqliteStore";
 
-/**
- * The food a profile ate, one row per food item: the day, the meal it belongs to, its name, its calories and its
- * protein, carbohydrate and fat in grams. Garmin has no place to write food to, so this is the only copy; the web editor
- * and the MCP server both write it (`source` says which).
- *
- * The nutrients beyond the macros (fiber, sodium...: see shared/nutrients.ts) are one JSON object in `extras`, holding only the ones
- * the food states; NULL is none. A food scaled from a product (a barcode scan or a search on Open Food Facts) keeps that product in
- * `product`, as JSON: its numbers per 100 g as they were then and how much was eaten, so it can be changed by quantity later; NULL
- * for a food typed in or estimated. A database made before a column existed gets it when it is opened (migrateNutrition).
- *
- * A meal is a name for the rows that share a day and a meal slot: one row per meal is a total typed in, several rows are a
- * meal broken into foods. Nothing is derived here: totals are summed on read (see shared/nutrition.ts).
- */
 export const NUTRITION_SCHEMA = `
 CREATE TABLE IF NOT EXISTS nutrition (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -39,34 +26,22 @@ CREATE TABLE IF NOT EXISTS nutrition_goals (
 ) WITHOUT ROWID;
 `;
 
-/**
- * Give a table made before the nutrients the `extras` column, and one made before products the `product` column. The store runs it
- * inside the transaction that creates the schema, and a transaction is exclusive, so the MCP server and the web editor opening the
- * same file together cannot both add a column.
- */
 export function migrateNutrition(db: Database): void {
   const columns = new Set(db.prepare("PRAGMA table_info(nutrition)").all().map((column) => column.name));
   for (const name of ["extras", "product"]) if (!columns.has(name)) db.exec(`ALTER TABLE nutrition ADD COLUMN ${name} TEXT`);
 }
 
-/** The daily goals of a profile by key (calories, the three macros and the nutrients: see shared/nutritionGoals.ts); a key that is absent has no goal. */
 export type GoalValues = Record<string, number>;
 
-/** The slots of a day, in the order they are listed. */
 export const MEALS = ["breakfast", "lunch", "dinner", "snack"] as const;
 export type Meal = (typeof MEALS)[number];
 
-/**
- * The product a food was scaled from, as it was when it was logged (Open Food Facts may change it since): its nutrition per 100 g (or
- * ml), the size of a portion when it states one, and how much was eaten, in grams (or ml) or portions.
- */
 export interface FoodProduct {
   code: string | null;
   name: string;
   brand: string | null;
   unit: "g" | "ml";
   per100: { kcal: number; proteinG: number; carbsG: number; fatG: number };
-  /** The nutrients it states per 100 g (or ml). */
   nutrients: Nutrients;
   servingG: number | null;
   servingText: string | null;
@@ -74,7 +49,6 @@ export interface FoodProduct {
   per: "g" | "portion";
 }
 
-/** What is stored of a food item, without its id and times. */
 export interface FoodFields {
   day: string;
   meal: Meal;
@@ -83,9 +57,7 @@ export interface FoodFields {
   proteinG: number;
   carbsG: number;
   fatG: number;
-  /** The nutrients beyond the macros the food states; none when left out. */
   nutrients?: Nutrients;
-  /** The product it was scaled from; none for a food typed in or estimated. */
   product?: FoodProduct | null;
 }
 
@@ -98,7 +70,6 @@ export interface FoodEntry extends FoodFields {
   updatedAt: number;
 }
 
-/** The nutrients of an `extras` cell: the known keys with a number, whatever else the text holds is ignored. */
 function readExtras(text: unknown): Nutrients {
   let raw: unknown;
   try {
@@ -114,7 +85,6 @@ function readExtras(text: unknown): Nutrients {
 const writeExtras = (nutrients: Nutrients | undefined): string | null => (nutrients && Object.keys(nutrients).length ? JSON.stringify(nutrients) : null);
 const writeProduct = (product: FoodProduct | null | undefined): string | null => (product ? JSON.stringify(product) : null);
 
-/** The product of a `product` cell; null when there is none or it is not one (it was checked when written: see parseProduct). */
 function readProduct(text: unknown): FoodProduct | null {
   try {
     const raw = typeof text === "string" ? JSON.parse(text) : null;
@@ -146,7 +116,6 @@ export class NutritionTable {
     private readonly tx: <T>(fn: () => T) => T
   ) {}
 
-  /** Keep food items, all or none; returns them with their ids, in the order given. */
   add(profile: string, items: FoodFields[], source: string, now = Date.now()): FoodEntry[] {
     return this.tx(() => {
       const insert = this.db.prepare("INSERT INTO nutrition (profile, day, meal, name, kcal, protein_g, carbs_g, fat_g, extras, product, source, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
@@ -162,7 +131,6 @@ export class NutritionTable {
     return r ? toEntry(r) : null;
   }
 
-  /** Replace an item's fields; null when this profile has no such item. */
   update(profile: string, id: number, f: FoodFields, now = Date.now()): FoodEntry | null {
     return this.tx(() => {
       const r = this.db
@@ -172,7 +140,6 @@ export class NutritionTable {
     });
   }
 
-  /** Delete the items with these ids that belong to this profile; returns the ids that were deleted. */
   remove(profile: string, ids: number[]): number[] {
     return this.tx(() => {
       const found = ids.filter((id) => this.get(profile, id));
@@ -181,29 +148,32 @@ export class NutritionTable {
     });
   }
 
-  /** The items of the days from `from` to `to` inclusive: by day, then meal slot, then the order they were entered. */
   range(profile: string, from: string, to: string): FoodEntry[] {
     const slot = `CASE meal ${MEALS.map((m, i) => `WHEN '${m}' THEN ${i}`).join(" ")} ELSE ${MEALS.length} END`;
     return this.db.prepare(`SELECT * FROM nutrition WHERE profile = ? AND day BETWEEN ? AND ? ORDER BY day, ${slot}, id`).all(profile, from, to).map(toEntry);
   }
 
-  /** The newest item of each food name (ignoring case), newest first: what the entry form offers to fill in again. */
   recentFoods(profile: string, limit: number): FoodEntry[] {
-    return this.db
-      .prepare("SELECT * FROM nutrition WHERE id IN (SELECT MAX(id) FROM nutrition WHERE profile = ? GROUP BY lower(name)) ORDER BY id DESC LIMIT ?")
-      .all(profile, limit)
+    const rows = this.db
+      .prepare("SELECT * FROM nutrition WHERE id IN (SELECT MAX(id) FROM nutrition WHERE profile = ? GROUP BY lower(name)) ORDER BY id DESC")
+      .all(profile)
       .map(toEntry);
+    const seen = new Set<string>();
+    const found: FoodEntry[] = [];
+    for (const row of rows) {
+      const key = row.name.replace(/ · (?:\d+(?:\.\d+)? × )?\d+(?:\.\d+)? (?:g|ml)$/, "").trim().toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      found.push(row);
+      if (found.length >= limit) break;
+    }
+    return found;
   }
 }
 
-/**
- * A profile's daily goals: one JSON object of key to number, written whole (the rules for a change are shared/nutritionGoals.ts). A profile
- * that never set any has no row; one that cleared them all has its row deleted.
- */
 export class GoalTable {
   constructor(private readonly db: Database) {}
 
-  /** The goals of a profile, `{}` when it has none. A cell that is not an object of numbers is read as no goals. */
   get(profile: string): GoalValues {
     const r = this.db.prepare("SELECT goals FROM nutrition_goals WHERE profile = ?").get(profile);
     try {
@@ -216,7 +186,6 @@ export class GoalTable {
     }
   }
 
-  /** Keep these goals instead of the profile's own; none at all removes the row. */
   set(profile: string, goals: GoalValues, now = Date.now()): void {
     if (!Object.keys(goals).length) this.db.prepare("DELETE FROM nutrition_goals WHERE profile = ?").run(profile);
     else this.db.prepare("INSERT INTO nutrition_goals (profile, goals, updated_at) VALUES (?, ?, ?) ON CONFLICT (profile) DO UPDATE SET goals = excluded.goals, updated_at = excluded.updated_at").run(profile, JSON.stringify(goals), now);

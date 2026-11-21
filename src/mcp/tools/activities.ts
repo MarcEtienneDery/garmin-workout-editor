@@ -1,7 +1,3 @@
-/**
- * The activities tools' side of the activity store: Garmin as an ActivitySource, a refresh that lists what is new,
- * and the answer to get_activities, read from the database. The sync itself is shared/activitySync.ts.
- */
 import { getLastNWeeksStart } from "../../activityExporter";
 import { lapIntervals } from "../../shared/activityChart";
 import { type ActivitySource, COOL_OFF_MS, LeaseLost, SETTLE_MS, isBackfilling, startBackfill, syncCharts, syncDetails, syncList, syncStatus, withLease, type SyncStatus } from "../../shared/activitySync";
@@ -9,30 +5,21 @@ import { getStore } from "../../shared/store";
 import { garminConnected } from "../../shared/profileLoader";
 import { type Session, dataProfile, getDataExporter, getSession, getSettings, requireAuth, runCaptured } from "../context";
 
-/**
- * Names the one that syncs, in the lease the MCP server and the web editor share. Every operation takes a name of its
- * own: get_activities calls overlap, and two that shared a name would release each other's lease.
- */
 const PROCESS = `${process.pid}:${Math.random().toString(36).slice(2, 8)}`;
 let operations = 0;
 export const holder = () => `${PROCESS}:${++operations}`;
-/** Activities whose details a get_activities call fetches itself; the rest fill in the background. */
 const INLINE_DETAILS = 30;
-/** Runs whose laps a get_activities call fetches itself (three Garmin calls each) when they are not stored yet. */
 const INLINE_CHARTS = 3;
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
-/** Pause between two detail calls (GARMIN_DETAIL_GAP_MS; the default of the sync, 500 ms, is gentle on Garmin's rate limit). */
 export const detailGapMs = (): number | undefined => (process.env.GARMIN_DETAIL_GAP_MS ? Number(process.env.GARMIN_DETAIL_GAP_MS) : undefined);
 
-/** Run one Garmin call alone, queued with the rest of the Garmin work, and give back its value or throw its error. */
 export async function locked<T>(fn: () => Promise<T>): Promise<T> {
   const outcome = await runCaptured(fn);
   if (!outcome.ok) throw outcome.error;
   return outcome.value;
 }
 
-/** Garmin, one call at a time, signed in on first use. */
 export function sourceFor(session: Session): ActivitySource {
   const client = () => session.garminClient.getClientAny();
   let signedIn = false;
@@ -57,7 +44,6 @@ export function sourceFor(session: Session): ActivitySource {
           try {
             fullExerciseSets = await session.garminClient.getActivityExerciseSets(id);
           } catch {
-            // the summarized sets in the details stay
           }
         }
         return { ...details, ...(fullExerciseSets !== undefined && { fullExerciseSets }) };
@@ -65,10 +51,7 @@ export function sourceFor(session: Session): ActivitySource {
     },
     async fetchChart({ id }) {
       await ready();
-      // each call has the Garmin lock to itself, with a pause between them: the laps and the zones are optional
       const details = await locked(() => session.garminClient.getActivityDetails(id));
-      // Only "there is no such thing for this activity" (a 404 or a 400) leaves a part out. Anything else (a 500, a timeout,
-      // a dropped connection) throws, so the activity counts a failure and is tried again: a chart that is stored is never fetched again.
       const optional = async (call: () => Promise<unknown>) => {
         await sleep(detailGapMs() ?? 300);
         try {
@@ -87,10 +70,9 @@ export function sourceFor(session: Session): ActivitySource {
 
 const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
-/** Add the activities Garmin has and the table lacks. Never throws: a failure comes back as `error`, and the table still answers. */
 export async function refreshActivities(profile?: string): Promise<{ added: number; busy: boolean; error: string | null }> {
   const session = getSession(profile), store = getStore(), name = session.profile.name;
-  if (isBackfilling(store, name)) return { added: 0, busy: true, error: null }; // the background job is listing already
+  if (isBackfilling(store, name)) return { added: 0, busy: true, error: null };
   try {
     const leased = await withLease(store, name, holder(), (renew) => syncList(store, name, sourceFor(session), { renew }));
     return leased.ok ? { added: leased.value.added, busy: false, error: null } : { added: 0, busy: true, error: null };
@@ -101,7 +83,6 @@ export async function refreshActivities(profile?: string): Promise<{ added: numb
   }
 }
 
-/** Fetch the details of these activities now (at most `limit`), unless a background sync is already filling them in. */
 export async function fetchDetailsNow(profile: string | undefined, ids: string[], limit = INLINE_DETAILS): Promise<{ fetched: number; error: string | null }> {
   const session = getSession(profile), store = getStore(), name = session.profile.name;
   if (!ids.length || isBackfilling(store, name)) return { fetched: 0, error: null };
@@ -114,7 +95,6 @@ export async function fetchDetailsNow(profile: string | undefined, ids: string[]
   }
 }
 
-/** Fetch the chart data of one activity now, unless a background sync is already filling the charts in. */
 export async function fetchChartNow(profile: string | undefined, id: string): Promise<{ fetched: number; error: string | null }> {
   const session = getSession(profile), store = getStore(), name = session.profile.name;
   if (isBackfilling(store, name)) return { fetched: 0, error: null };
@@ -127,7 +107,6 @@ export async function fetchChartNow(profile: string | undefined, id: string): Pr
   }
 }
 
-/** Keep filling the table in the background: the whole history, then every activity's details. A no-op when all is stored. */
 export function startBackgroundSync(profile?: string): { started: boolean; reason?: string } {
   const session = getSession(profile);
   if (session.mock) return { started: false, reason: "Mock mode." };
@@ -139,7 +118,6 @@ export function activitySyncStatus(profile?: string): SyncStatus {
   return syncStatus(getStore(), dataProfile(profile));
 }
 
-// ── get_activities ──
 
 export type ActivityPeriod = "last-week" | "this-week" | "last-4-weeks" | "all";
 
@@ -156,7 +134,6 @@ export interface GetActivitiesArgs {
 const gmtText = (d: Date) => d.toISOString().slice(0, 19).replace("T", " ");
 const DAY_MS = 86_400_000;
 
-/** A generous range in the table's GMT strings for the period; the exporter's own filters then cut it exactly. */
 function rangeFor(args: GetActivitiesArgs): { from?: string; to?: string } {
   const startOf = (isoDay: string) => Date.parse(`${isoDay}T00:00:00Z`);
   const customStart = args.weekStart ?? (args.weekEnd ? "1970-01-01" : undefined);
@@ -169,11 +146,6 @@ function rangeFor(args: GetActivitiesArgs): { from?: string; to?: string } {
   return { from: from === undefined ? undefined : gmtText(new Date(from)), to: to === undefined ? undefined : gmtText(new Date(to)) };
 }
 
-/**
- * The profile's activities for a period in the slim planning format, read from the database. Garmin is asked only
- * for what is new (a page of the list) and for the details of the activities returned that lack them; the rest of the
- * history and of the details fills in the background.
- */
 export async function getActivities(args: GetActivitiesArgs) {
   const options = {
     filterToLastWeek: !args.weekStart && !args.weekEnd && args.period === "last-week",
@@ -184,7 +156,6 @@ export async function getActivities(args: GetActivitiesArgs) {
   };
 
   if (getSettings().mock) {
-    // Mock mode answers with generated activities and keeps nothing: the database holds only what Garmin returned.
     const session = getSession(args.profile);
     const raw = await session.exporter.fetchActivities(args.limit, args.includeDetails);
     if (raw.length === 0) throw new Error("No mock activities.");
@@ -192,7 +163,6 @@ export async function getActivities(args: GetActivitiesArgs) {
   }
 
   const store = getStore(), name = dataProfile(args.profile), exporter = getDataExporter();
-  // Garmin is optional: a profile without a login answers from what is stored, which is nothing unless it had a login before.
   const connected = garminConnected(name);
   const refreshed = connected ? await refreshActivities(name) : { added: 0, busy: false, error: null };
   const range = rangeFor(args);
@@ -214,10 +184,8 @@ export async function getActivities(args: GetActivitiesArgs) {
   const shown = data.activities.slice(0, args.limit);
   const runs = shown.filter((a: any) => a.activityType === "running").map((a: any) => String(a.id));
   if (connected && args.includeDetails && runs.length) {
-    // a run's laps, newest first: the background job takes any that are left
     for (const { id } of store.activities.needingChart(name, { ids: runs, limit: INLINE_CHARTS })) await fetchChartNow(name, id);
   }
-  // A run's laps tell the reps apart; Garmin's own summary of it merges the laps of a kind into one block. Without laps stored, the summary stays.
   const activities = shown.map((a: any) => {
     if (a.activityType !== "running") return a;
     const laps = lapIntervals(store.activities.getChart(name, String(a.id)));
@@ -225,7 +193,6 @@ export async function getActivities(args: GetActivitiesArgs) {
   });
   const background = connected ? startBackgroundSync(name) : { started: false };
 
-  // without a Garmin login nothing is fetched, so nothing is pending or running, and an old failure no longer says anything
   const sync = connected ? activitySyncStatus(name) : { ...activitySyncStatus(name), pendingDetails: 0, pendingCharts: 0, syncing: false, error: null };
   return {
     ...data,

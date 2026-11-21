@@ -1,8 +1,3 @@
-/**
- * The Workouts view's layout: the strip of states above the list (a tile shows only those, a second tap shows all), rows with their type, the
- * plans that carry them and a ⋯ menu, and the plan against Garmin beside it (the banner, the Garmin / Plan switch, the muscles of a lifting
- * workout, the plans that hold it). The server has no Garmin login for these profiles, so the page's requests for the library are answered here.
- */
 import { test, expect, openView, type Page } from "../support/fixtures";
 import { withGarmin } from "../support/garmin";
 
@@ -52,7 +47,7 @@ async function openLibrary(page: Page, profile: string): Promise<void> {
   });
   await openView(page, "workouts");
   await expect(page.locator("#wrows .wrow")).toHaveCount(6);
-  await expect(page.locator("#wstrip .wchecking")).toHaveCount(0); // every plan workout has been checked against Garmin
+  await expect(page.locator("#wstrip .wchecking")).toHaveCount(0);
 }
 
 test.describe("the strip of states", () => {

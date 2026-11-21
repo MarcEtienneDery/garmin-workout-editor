@@ -1,14 +1,8 @@
-/**
- * The edges of every view on a phone: a view's bar and its page start 16 px from the window's edge (the same on every view, so the
- * eye does not step when one view replaces another), the small "About these numbers" button is not pushed against the edge, and
- * nothing makes the page scroll sideways at 412 or 375 px. alice's data, read only.
- */
 import { test, expect, openView, type Page } from "../support/fixtures";
 
 test.setTimeout(60_000);
 
 const WIDTHS = [412, 375];
-/** A view and the parts of it that must share the 16 px gutter. */
 const GUTTERS: Record<string, string[]> = {
   today: ["#tbar", "#tbody"],
   food: ["#fbar", "#fweek", "#fbody"],

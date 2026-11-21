@@ -1,8 +1,3 @@
-/**
- * The wellness tools' side of the wellness store: Garmin as a WellnessSource, a refresh of the last days, and the answers
- * to get_readiness and get_wellness, read from the database. The sync itself is shared/wellnessSync.ts, the reading of
- * the data shared/readiness.ts.
- */
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { LeaseLost } from "../../shared/activitySync";
@@ -16,7 +11,6 @@ import { READ_GARMIN, isoDate, profileArg } from "./garmin";
 
 const BASE = "https://connectapi.garmin.com";
 
-/** Where Garmin keeps each kind, for a day (and the user's display name, which two of them are filed under). */
 const URLS: Record<WellnessKind, (day: string, name: string) => string> = {
   summary: (d, n) => `/usersummary-service/usersummary/daily/${n}?calendarDate=${d}`,
   sleep: (d) => `/sleep-service/sleep/dailySleepData?date=${d}&nonSleepBufferMinutes=60`,
@@ -29,17 +23,13 @@ const URLS: Record<WellnessKind, (day: string, name: string) => string> = {
   weight: (d) => `/weight-service/weight/dayview/${d}`,
 };
 
-/** What a readiness is made of, and the weigh-in (one call, and a person who has just weighed in wants to see it): fetched at once for the last days by a view opening or a tool call, the rest of the kinds fill in the background. A Sync button fetches every kind at once. */
 const NOW_KINDS: WellnessKind[] = ["summary", "sleep", "hrv", "weight"];
 const MAX_RANGE_DAYS = 120;
-/** How many days the background sync keeps: 60, or WELLNESS_DAYS. */
 const keptDays = (): number => Math.min(MAX_RANGE_DAYS, Math.max(RECENT_DAYS, Math.floor(Number(process.env.WELLNESS_DAYS)) || BACKFILL_DAYS));
-/** The days a sync fills in: the ones kept, or more when a page shows more (`span`: days back from today). */
 const filledDays = (span = 0): number => Math.min(MAX_RANGE_DAYS, Math.max(keptDays(), Math.floor(span) || 0));
 
 const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
-/** Garmin, one call at a time, signed in on first use. */
 export function wellnessSourceFor(session: Session): WellnessSource {
   let signedIn = false, displayName: string | undefined;
   return {
@@ -56,12 +46,6 @@ export function wellnessSourceFor(session: Session): WellnessSource {
   };
 }
 
-/**
- * Fetch the last days' readiness kinds now, unless a background sync is on it or Garmin said to wait. Never throws.
- * What was fetched lately is kept (see refreshMs): today's for a minute when a Sync button asks (`manual`, which fetches every kind) and
- * five otherwise (the kinds a readiness is made of), the days before for half an hour, so `fetched: 0` (and no error, not busy) means
- * all of it was that recent.
- */
 export async function refreshWellness(profile?: string, options: { manual?: boolean } = {}): Promise<{ fetched: number; busy: boolean; error: string | null }> {
   const session = getSession(profile), store = getStore(), name = session.profile.name;
   if (isWellnessBackfilling(store, name)) return { fetched: 0, busy: true, error: null };
@@ -79,13 +63,11 @@ export async function refreshWellness(profile?: string, options: { manual?: bool
   }
 }
 
-/** Forget the empty weigh-in answers of the kept days, so the next fill asks Garmin again (a weigh-in may have been added there since). */
 export function rereadWeighIns(profile?: string): number {
   const store = getStore(), name = dataProfile(profile), today = localToday(store, name);
   return store.wellness.forgetEmptyWeighIns(name, addDays(today, -(keptDays() - 1)), today);
 }
 
-/** Keep filling the table in the background: the last 60 days (more when a page shows more), every kind. A no-op when all is stored. */
 export function startBackgroundWellness(profile?: string, span = 0): { started: boolean; reason?: string } {
   const session = getSession(profile), store = getStore(), name = session.profile.name;
   if (session.mock) return { started: false, reason: "Mock mode." };
@@ -93,15 +75,12 @@ export function startBackgroundWellness(profile?: string, span = 0): { started: 
   return { started, reason };
 }
 
-/** How the wellness sync stands, for a profile: what is stored, what is still to fetch, whether it runs, and why it stopped. */
 export function wellnessSyncStatus(profile: string, span = 0) {
   const store = getStore();
   return wellnessStatus(store, profile, localToday(store, profile), Date.now(), filledDays(span));
 }
 
-/** What a result says of the sync: how much is stored, whether it fills in the background, and why it stopped early. */
 function syncNote(profile: string, refreshError: string | null, background: { started: boolean }, connected = true) {
-  // without a Garmin login nothing is fetched, so nothing is pending or running, and an old failure no longer says anything
   const status = connected ? wellnessSyncStatus(profile) : { ...wellnessSyncStatus(profile), pending: 0, syncing: false, error: null };
   return {
     ...status,
@@ -120,11 +99,9 @@ export interface GetReadinessArgs {
   date?: string;
 }
 
-/** How recovered the person is on a day (today by default), with the signals behind it and what to do with the day's workout. */
 export async function getReadiness(args: GetReadinessArgs) {
   if (getSettings().mock) return MOCK;
   const store = getStore(), name = dataProfile(args.profile), today = localToday(store, name), date = args.date ?? today;
-  // Garmin is optional: a profile without a login answers from what is stored
   const connected = garminConnected(name);
   const refreshed = connected && date >= addDays(today, -RECENT_DAYS) ? await refreshWellness(name) : { fetched: 0, busy: false, error: null };
   const background = connected ? startBackgroundWellness(name) : { started: false };
@@ -140,7 +117,6 @@ export interface GetWellnessArgs {
   rawKinds?: WellnessKind[];
 }
 
-/** The stored daily health data over a range (the last `days` days by default), newest first, with the person's own normal. */
 export async function getWellness(args: GetWellnessArgs) {
   if (getSettings().mock) return MOCK;
   const store = getStore(), name = dataProfile(args.profile), today = localToday(store, name);
@@ -153,7 +129,7 @@ export async function getWellness(args: GetWellnessArgs) {
   const refreshed = connected && to >= addDays(today, -RECENT_DAYS) ? await refreshWellness(name) : { fetched: 0, busy: false, error: null };
   const background = connected ? startBackgroundWellness(name) : { started: false };
   const range = wellnessRange(store, name, from, to);
-  const days = withScaleWeighIns(store, name, from, to, range.days); // the Weight view's days: a scale weigh-in counts with or without Garmin
+  const days = withScaleWeighIns(store, name, from, to, range.days);
   const { baselines } = range;
   const raw = args.rawKinds?.length ? Object.fromEntries(args.rawKinds.map((k) => [k, store.wellness.get(name, from, k)])) : undefined;
   return {
@@ -161,7 +137,7 @@ export async function getWellness(args: GetWellnessArgs) {
     from,
     to,
     baselines,
-    body: bodyRange(store, name, from, to).body, // the scale weigh-ins count too, with or without Garmin
+    body: bodyRange(store, name, from, to).body,
     days: days.reverse(),
     ...(raw && { raw }),
     sync: syncNote(name, refreshed.error, background, connected),
