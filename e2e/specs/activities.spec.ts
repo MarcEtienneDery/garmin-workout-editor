@@ -526,15 +526,17 @@ test.describe("Activities view in every mode", () => {
 });
 
 test.describe("the daily steps", () => {
-  test("a bar for each stored day of the last 30 sits in the Log, over the list, and not in Recovery", async ({ alice }) => {
+  test("a bar for each stored day of the last 30, steps and intensity minutes, sits in the Log over the list; Steps is not in Recovery, Intensity minutes is in both", async ({ alice }) => {
     await openView(alice, "activities");
     const card = alice.locator("#amove .rc", { hasText: "Steps" });
     await expect(card).toBeVisible();
     await expect(card.locator("rect.rc-bar")).toHaveCount(30);
+    await expect(alice.locator("#amove .rc", { hasText: "Intensity minutes" }).locator("rect.rc-part.moderate")).toHaveCount(30);
     await alice.locator("#aModes").getByRole("button", { name: "Progress", exact: true }).click();
     await expect(alice.locator("#amove")).toBeHidden();
     await openView(alice, "recovery");
     await alice.locator("#rTabs").getByRole("button", { name: "Trends", exact: true }).click();
     await expect(alice.locator("#rbody .rc .rch b", { hasText: "Steps" })).toHaveCount(0);
+    await expect(alice.locator("#rbody .rc .rch b", { hasText: "Intensity minutes" })).toHaveCount(1);
   });
 });
