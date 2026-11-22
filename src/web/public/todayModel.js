@@ -95,7 +95,7 @@
 
     return [
       {
-        id: "steps", label: "Steps", go: "recovery", pct: stepPct, done: stepPct !== null && stepPct >= 100,
+        id: "steps", label: "Steps", go: "activities", pct: stepPct, done: stepPct !== null && stepPct >= 100,
         trend: tileTrend(view, "steps"),
         value: present(steps) ? num(steps) : "–",
         note: !present(steps) ? "not synced yet" : join([stepPct !== null ? `of ${num(stepGoal)} · ${stepPct}%` : "steps", km]),

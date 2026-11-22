@@ -524,3 +524,17 @@ test.describe("Activities view in every mode", () => {
     await expect(alice.locator("#astats .srec.go").first()).toHaveAttribute("tabindex", "0");
   });
 });
+
+test.describe("the daily steps", () => {
+  test("a bar for each stored day of the last 30 sits in the Log, over the list, and not in Recovery", async ({ alice }) => {
+    await openView(alice, "activities");
+    const card = alice.locator("#amove .rc", { hasText: "Steps" });
+    await expect(card).toBeVisible();
+    await expect(card.locator("rect.rc-bar")).toHaveCount(30);
+    await alice.locator("#aModes").getByRole("button", { name: "Progress", exact: true }).click();
+    await expect(alice.locator("#amove")).toBeHidden();
+    await openView(alice, "recovery");
+    await alice.locator("#rTabs").getByRole("button", { name: "Trends", exact: true }).click();
+    await expect(alice.locator("#rbody .rc .rch b", { hasText: "Steps" })).toHaveCount(0);
+  });
+});

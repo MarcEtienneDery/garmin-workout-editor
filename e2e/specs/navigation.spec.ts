@@ -431,14 +431,15 @@ test.describe("Settings", () => {
 
 test.describe("the Today view's links", () => {
   for (const label of ["Steps", "Intensity minutes", "Body Battery", "Sleep"]) {
-    test(`the ${label} tile opens Recovery`, async ({ alice }) => {
+    const target = label === "Steps" ? "activities" : "recovery";
+    test(`the ${label} tile opens ${label === "Steps" ? "Activities" : "Recovery"}`, async ({ alice }) => {
       await openView(alice, "today");
       const tile = alice.locator(".tfig", { hasText: label });
       await slow(tile).toBeVisible();
       await slow(tile).toHaveAttribute("role", "link");
       await tile.click();
-      await isOn(alice, "recovery");
-      await expectOnly(alice, "recovery");
+      await isOn(alice, target);
+      await expectOnly(alice, target);
     });
   }
 

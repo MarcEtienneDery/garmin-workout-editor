@@ -58,7 +58,7 @@ describe("the daily table", () => {
     expect(RM.cell(by("hrvLastNight"), day)).toBe("52 ms");
     expect(RM.cell(by("hrvStatus"), day)).toBe("unbalanced");
     expect(RM.cell(by("avgSleepRespiration"), day)).toBe("14.3 /min");
-    expect(RM.cell(by("steps"), day)).toBe((12_345).toLocaleString());
+    expect(RM.cell({ key: "steps" }, day)).toBe((12_345).toLocaleString());
     expect(RM.cell(by("restingHr"), day)).toBe("–");
     expect(RM.cell(by("hrvLowUpper"), day)).toBe("–");
   });
@@ -106,7 +106,7 @@ describe("the charts", () => {
     expect(by("sleep").read(day)).toBe("7 h 30 · score 82");
     expect(by("bb").read(day)).toBe("75 on waking · 20–90 over the day");
     expect(by("stress").read(day)).toBe("average 28 · max 80");
-    expect(by("steps").read(day)).toBe(`${(8000).toLocaleString()} steps`);
+    expect(RM.STEPS_CHART.read(day)).toBe(`${(8000).toLocaleString()} steps`);
     expect(by("intensity").read({ ...day, moderateMinutes: 30, vigorousMinutes: 14 })).toBe("58 min · 30 moderate, 14 vigorous");
     expect(by("intensity").read({ ...day, moderateMinutes: null, vigorousMinutes: 5 })).toBe("10 min · 0 moderate, 5 vigorous");
     expect(by("intensity").read({ ...day, moderateMinutes: 0, vigorousMinutes: 0 })).toBe("0 min · 0 moderate, 0 vigorous");

@@ -65,7 +65,7 @@ describe("how old the numbers are", () => {
 describe("the progress tiles", () => {
   it("shows the steps against the goal, with the distance", () => {
     const steps = tile(view(), "steps");
-    expect(steps).toMatchObject({ label: "Steps", value: n(4491), pct: 72, done: false, go: "recovery" });
+    expect(steps).toMatchObject({ label: "Steps", value: n(4491), pct: 72, done: false, go: "activities" });
     expect(steps.note).toBe(`of ${n(6230)} · 72% · 3.4 km`);
   });
 
