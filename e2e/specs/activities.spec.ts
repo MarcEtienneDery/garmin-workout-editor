@@ -526,8 +526,11 @@ test.describe("Activities view in every mode", () => {
 });
 
 test.describe("the daily steps", () => {
-  test("a bar for each stored day of the last 30, steps and intensity minutes, sits in the Log over the list; Steps is not in Recovery, Intensity minutes is in both", async ({ alice }) => {
+  test("the Overview shows a bar for each stored day of the last 30, steps and intensity minutes; Steps is not in Recovery, Intensity minutes is in both", async ({ alice }) => {
     await openView(alice, "activities");
+    await expect(alice.locator("#amove")).toBeHidden();
+    await alice.locator("#aModes").getByRole("button", { name: "Overview", exact: true }).click();
+    await expect(alice.locator("#alist")).toBeHidden();
     const card = alice.locator("#amove .rc", { hasText: "Steps" });
     await expect(card).toBeVisible();
     await expect(card.locator("rect.rc-bar")).toHaveCount(30);

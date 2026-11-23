@@ -49,7 +49,7 @@ test.describe("the Log", () => {
     await openLog(alice);
     await expect(alice.locator("#abar h1")).toHaveText("Activities");
     await expect(alice.locator("#aNote")).toHaveText("27 stored · 3 with details · 1 with graphs");
-    await expect(alice.locator("#aModes button")).toHaveText(["Log", "Progress"]);
+    await expect(alice.locator("#aModes button")).toHaveText(["Log", "Progress", "Overview"]);
     await expect(alice.locator("#aModes button", { hasText: "Log" })).toHaveAttribute("aria-pressed", "true");
     await alice.locator("#aModes button", { hasText: "Progress" }).click();
     await expect(alice.locator("#aModes button", { hasText: "Progress" })).toHaveAttribute("aria-pressed", "true");
