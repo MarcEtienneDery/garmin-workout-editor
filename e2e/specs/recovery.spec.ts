@@ -91,7 +91,7 @@ const card = (page: Page) => page.locator("#rbody .rhero");
 const table = (page: Page) => page.locator("#rbody table.rmetrics");
 const rows = (page: Page) => table(page).locator("tbody tr");
 const chart = (page: Page, title: string) => page.locator("#rbody .rc", { has: page.locator("b", { hasText: title }) });
-const CHART_TITLES = ["Readiness (score)", "HRV overnight (ms)", "Resting heart rate (bpm)", "Breathing (/min)", "Sleep (h)", "Body Battery", "Stress", "Steps", "Intensity minutes"];
+const CHART_TITLES = ["Readiness (score)", "HRV overnight (ms)", "Resting heart rate (bpm)", "Breathing (/min)", "Sleep (h)", "Body Battery", "Stress", "Intensity minutes"];
 const part = (page: Page, name: "Verdict" | "Trends" | "Data") => page.locator("#rTabs").getByRole("button", { name, exact: true });
 
 async function openPart(page: Page, name: "Verdict" | "Trends" | "Data") {
@@ -342,7 +342,6 @@ test.describe("Recovery view, alice (45 days stored, no Garmin login)", () => {
     await expect(alice.locator("#rbody .rth #rRange")).toHaveCount(1);
     await expect(alice.locator("#rbody .rth h3")).toHaveText("Trends, 30 days");
     await alice.locator("#rRange").selectOption("14");
-    await expect(chart(alice, "Steps").locator("rect.rc-bar")).toHaveCount(14);
     await expect(alice.locator("#rbody .rth h3")).toHaveText("Trends, 14 days");
     await openData(alice);
     await expect(rows(alice)).toHaveCount(14);
@@ -381,7 +380,6 @@ test.describe("Recovery view, alice (45 days stored, no Garmin login)", () => {
     await expect(chart(alice, "Sleep (h)").locator("rect.rc-part.deep")).toHaveCount(14);
     await expect(chart(alice, "Body Battery").locator("line.rc-range")).toHaveCount(14);
     await expect(chart(alice, "Stress").locator("rect.rc-bar")).toHaveCount(14);
-    await expect(chart(alice, "Steps").locator("rect.rc-bar")).toHaveCount(14);
     await expect(chart(alice, "Intensity minutes").locator("rect.rc-part.moderate")).toHaveCount(14);
     await expect(chart(alice, "Readiness").locator("rect.rc-bar")).toHaveCount(14);
   });
@@ -390,7 +388,6 @@ test.describe("Recovery view, alice (45 days stored, no Garmin login)", () => {
     await openRecovery(alice);
     await openTrends(alice);
     await expect(chart(alice, "HRV overnight").locator("circle.rc-dot")).toHaveCount(30);
-    await expect(chart(alice, "Steps").locator("rect.rc-bar")).toHaveCount(30);
     await expect(chart(alice, "Body Battery").locator("line.rc-range")).toHaveCount(30);
   });
 
@@ -438,11 +435,11 @@ test.describe("Recovery view, alice (45 days stored, no Garmin login)", () => {
     await alice.locator("#rRange").selectOption("14");
     await expect(alice.locator("#rbody .rth h3")).toHaveText("Trends, 14 days");
     const day = data.days[0].day;
-    await click(alice, chart(alice, "Steps"), 0.02);
+    await click(alice, chart(alice, "Stress"), 0.02);
     await expect(alice.locator("#rDate")).toHaveValue(day);
     await expect(part(alice, "Trends")).toHaveAttribute("aria-pressed", "true");
-    await expect(chart(alice, "Steps").locator("rect.rc-sel")).toHaveCount(1);
-    await expect(chart(alice, "Steps").locator(".rcr")).toContainText(label(day));
+    await expect(chart(alice, "Stress").locator("rect.rc-sel")).toHaveCount(1);
+    await expect(chart(alice, "Stress").locator(".rcr")).toContainText(label(day));
     await openPart(alice, "Verdict");
     await expect(card(alice)).toContainText(label(day));
   });

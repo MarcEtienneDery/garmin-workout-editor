@@ -524,3 +524,22 @@ test.describe("Activities view in every mode", () => {
     await expect(alice.locator("#astats .srec.go").first()).toHaveAttribute("tabindex", "0");
   });
 });
+
+test.describe("the daily steps", () => {
+  test("the Overview shows a bar for each stored day of the last 30, steps and intensity minutes; Steps is not in Recovery, Intensity minutes is in both", async ({ alice }) => {
+    await openView(alice, "activities");
+    await expect(alice.locator("#amove")).toBeHidden();
+    await alice.locator("#aModes").getByRole("button", { name: "Overview", exact: true }).click();
+    await expect(alice.locator("#alist")).toBeHidden();
+    const card = alice.locator("#amove .rc", { hasText: "Steps" });
+    await expect(card).toBeVisible();
+    await expect(card.locator("rect.rc-bar")).toHaveCount(30);
+    await expect(alice.locator("#amove .rc", { hasText: "Intensity minutes" }).locator("rect.rc-part.moderate")).toHaveCount(30);
+    await alice.locator("#aModes").getByRole("button", { name: "Progress", exact: true }).click();
+    await expect(alice.locator("#amove")).toBeHidden();
+    await openView(alice, "recovery");
+    await alice.locator("#rTabs").getByRole("button", { name: "Trends", exact: true }).click();
+    await expect(alice.locator("#rbody .rc .rch b", { hasText: "Steps" })).toHaveCount(0);
+    await expect(alice.locator("#rbody .rc .rch b", { hasText: "Intensity minutes" })).toHaveCount(1);
+  });
+});

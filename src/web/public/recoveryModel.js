@@ -106,6 +106,8 @@
     return seen.reduce((a, b) => a + b, 0) / seen.length;
   }
 
+  const STEPS_CHART = { id: "steps", title: "Steps", unit: "", kind: "bars", min: 0, value: (d) => d.steps, read: (d) => (valid(d.steps) ? `${num(d.steps)} steps` : "–") };
+
   const CHARTS = [
     {
       id: "hrv", title: "HRV overnight", unit: "ms", kind: "line", value: (d) => d.hrvLastNight, band: (d) => [d.hrvBalancedLow, d.hrvBalancedHigh], ref: { label: "7-day average", value: (d) => d.hrvWeeklyAvg },
@@ -130,7 +132,6 @@
       read: (d) => (valid(d.bodyBatteryWake) ? `${num(d.bodyBatteryWake)} on waking${valid(d.bodyBatteryLow) && valid(d.bodyBatteryHigh) ? ` · ${num(d.bodyBatteryLow)}–${num(d.bodyBatteryHigh)} over the day` : ""}` : "–"),
     },
     { id: "stress", title: "Stress", unit: "", kind: "bars", min: 0, max: 100, value: (d) => d.avgStress, color: (d) => stressClass(d.avgStress), read: (d) => (valid(d.avgStress) ? `average ${num(d.avgStress)}${valid(d.maxStress) ? ` · max ${num(d.maxStress)}` : ""}` : "–") },
-    { id: "steps", title: "Steps", unit: "", kind: "bars", min: 0, value: (d) => d.steps, read: (d) => (valid(d.steps) ? `${num(d.steps)} steps` : "–") },
     {
       id: "intensity", title: "Intensity minutes", unit: "", kind: "stack", min: 0, scaleBy: 1,
       parts: [{ key: "moderateMinutes", label: "Moderate", cls: "moderate" }, { key: "vigorousMinutes", label: "Vigorous (counts twice)", cls: "vigorous", weight: 2 }],
@@ -267,5 +268,5 @@
   };
   const TRENDS = [READINESS_CHART, ...CHARTS];
 
-  return { intensityMinutes, rollingMean, addDays, dayLabel, shortDay, bandInfo, BANDS, pip, num, hm, hours, size, KINDS, compactJson, GROUPS, cell, niceStep, scale, stressClass, CHARTS, valid, BACK_OFF_SCORE, GO_HARDER_SCORE, SIGNAL_NAMES, signalName, zoneOf, weekStrip, gauge, changeLine, signalMeter, signalRows, notCounted, loadBars, sleepCard, chartDays, READINESS_CHART, TRENDS };
+  return { intensityMinutes, rollingMean, addDays, dayLabel, shortDay, bandInfo, BANDS, pip, num, hm, hours, size, KINDS, compactJson, GROUPS, cell, niceStep, scale, stressClass, CHARTS, STEPS_CHART, valid, BACK_OFF_SCORE, GO_HARDER_SCORE, SIGNAL_NAMES, signalName, zoneOf, weekStrip, gauge, changeLine, signalMeter, signalRows, notCounted, loadBars, sleepCard, chartDays, READINESS_CHART, TRENDS };
 });

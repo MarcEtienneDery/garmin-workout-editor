@@ -149,13 +149,13 @@ test.describe("alice's day", () => {
     await expect(alice.locator("#tbody")).not.toContainText("not synced yet");
   });
 
-  test("every tile opens the Recovery view, from a click", async ({ alice }) => {
+  test("every tile opens the view it comes from (Steps: Activities, the others: Recovery), from a click", async ({ alice }) => {
     await openToday(alice);
     for (const label of ["Steps", "Intensity minutes", "Body Battery", "Sleep"]) {
       await alice.locator("#vToday").click();
       await expect(alice.locator("body")).toHaveAttribute("data-view", "today");
       await tile(alice, label).click();
-      await expect(alice.locator("body")).toHaveAttribute("data-view", "recovery");
+      await expect(alice.locator("body")).toHaveAttribute("data-view", label === "Steps" ? "activities" : "recovery");
     }
   });
 

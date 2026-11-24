@@ -242,7 +242,7 @@ test.describe("Today on a phone", () => {
   test("a tile opens the view it comes from", async ({ alice }) => {
     await openView(alice, "today");
     await expect(alice.locator("#tbody")).not.toContainText("Loading…");
-    await alice.locator(".tfig", { hasText: "Steps" }).tap();
+    await alice.locator(".tfig", { hasText: "Sleep" }).tap();
     await expect(alice.locator("body")).toHaveAttribute("data-view", "recovery");
     await expect(alice.locator("#rview")).toBeVisible();
   });
