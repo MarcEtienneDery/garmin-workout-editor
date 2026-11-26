@@ -11,7 +11,7 @@ export const MAX_GRAMS = 2_000;
 export const MAX_NAME = 120;
 export const MAX_ITEMS = 50;
 export const MAX_RANGE_DAYS = 120;
-export const RECENT_FOODS = 40;
+export const RECENT_FOODS = 200;
 
 export const kcalOfMacros = (proteinG: number, carbsG: number, fatG: number): number => Math.round(4 * proteinG + 4 * carbsG + 9 * fatG);
 
